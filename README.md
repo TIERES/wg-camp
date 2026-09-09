@@ -1,6 +1,6 @@
 # Arena17 Downloads
 
-Aplicação leve para publicar campeonatos de Winning Eleven 2002 e os seus arquivos.
+Aplicação leve para publicar campeonatos de Winning Eleven 2002, suas ligas e arquivos.
 
 O Flask guarda metadados e administra uploads. O Nginx entrega os arquivos de
 `/var/www/arena17/downloads` diretamente, sem transferi-los pelo processo Python.
@@ -30,6 +30,11 @@ o servidor de desenvolvimento Flask.
 - `ARENA17_DOWNLOADS_DIR`: diretório final dos downloads.
 - `ARENA17_UPLOAD_TMP_DIR`: diretório temporário, fora do diretório público.
 - `ARENA17_MAX_UPLOAD_BYTES`: máximo por upload, padrão 8 GiB.
+- `ARENA17_SERVE_DOWNLOADS_LOCALLY`: use `true` somente em testes locais sem Nginx.
 
 Os diretórios de upload precisam pertencer ao usuário da aplicação. O diretório
 do banco não deve ser exposto pelo Nginx.
+
+Em produção, o botão de download chama o Flask somente para autorizar o arquivo.
+Ele responde com `X-Accel-Redirect`, e o Nginx entrega o arquivo internamente;
+assim, links de arquivos não ficam expostos como diretórios públicos.

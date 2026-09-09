@@ -53,3 +53,14 @@ def init_app(app):
         except sqlite3.IntegrityError:
             raise click.ClickException("Este usuário já existe.")
         click.echo("Administrador criado.")
+
+    @app.cli.command("migrate-db")
+    def migrate_db_command():
+        """Aplica a pequena migração necessária para bancos de testes iniciais."""
+        database = get_db()
+        columns = {column["name"] for column in database.execute("PRAGMA table_info(championships)")}
+        if "league_name" not in columns:
+            database.execute("ALTER TABLE championships ADD COLUMN league_name TEXT")
+        database.execute("DROP INDEX IF EXISTS one_current_championship")
+        database.commit()
+        click.echo("Banco de dados atualizado.")

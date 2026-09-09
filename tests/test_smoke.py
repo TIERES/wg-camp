@@ -21,16 +21,17 @@ class SmokeTest(unittest.TestCase):
         with self.app.app_context():
             init_db()
             db = get_db()
-            db.execute("INSERT INTO championships (slug,name,description,is_current,is_published,created_at,updated_at) VALUES (?,?,?,?,?,?,?)", ("copa", "Copa", "Teste", 1, 1, now(), now()))
+            db.execute("INSERT INTO championships (slug,name,league_name,description,is_published,created_at,updated_at) VALUES (?,?,?,?,?,?,?)", ("copa", "Copa", "Liga Arena17", "Teste", 1, now(), now()))
             db.commit()
 
     def tearDown(self):
         self.temp.cleanup()
 
-    def test_public_page_shows_current_championship(self):
+    def test_public_page_lists_published_championships(self):
         response = self.app.test_client().get("/")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Copa", response.data)
+        self.assertIn(b"Liga Arena17", response.data)
 
 
 if __name__ == "__main__":

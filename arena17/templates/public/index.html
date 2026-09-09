@@ -1,17 +1,14 @@
 {% extends 'base.html' %}
 {% block content %}
-  {% if championship %}
+  <section class="intro"><h1>Campeonatos e downloads</h1><p>Encontre os arquivos necessários para cada campeonato de Winning Eleven 2002.</p></section>
+  {% if championships %}<div class="championships">{% for championship in championships %}
     <article class="championship">
-      <p class="eyebrow">Campeonato atual</p>
-      <h1>{{ championship.name }}</h1>
+      {% if championship.league_name %}<p class="eyebrow">{{ championship.league_name }}</p>{% endif %}
+      <h2>{{ championship.name }}</h2>
       {% if championship.start_date or championship.end_date %}<p class="period">{{ championship.start_date or 'Sem início informado' }} — {{ championship.end_date or 'Sem fim informado' }}</p>{% endif %}
       {% if championship.description %}<div class="description">{{ championship.description }}</div>{% endif %}
       {% if championship.arena17_url %}<p><a href="{{ championship.arena17_url }}" rel="noopener noreferrer" target="_blank">Ver campeonato no Arena17</a></p>{% endif %}
+      <div class="download-list"><h3>Downloads</h3>{% for file in files_by_championship.get(championship.id, []) %}<div class="download-row"><div><strong>{{ file.display_name }}</strong>{% if file.description %}<small>{{ file.description }}</small>{% endif %}<small>{{ file.file_type|upper }} · {{ file.file_size | filesize }}</small></div><a class="button" href="{{ url_for('public.download', file_id=file.id) }}">Baixar</a></div>{% else %}<p class="period">Nenhum arquivo publicado ainda.</p>{% endfor %}</div>
     </article>
-    <section><h2>Downloads</h2>
-      {% if files %}<div class="files">{% for file in files %}
-        <article class="file"><h3>{{ file.display_name }}</h3>{% if file.description %}<p>{{ file.description }}</p>{% endif %}<small>{{ file.file_type|upper }} · {{ file.file_size | filesize }}</small><a class="button" href="/downloads/{{ file.stored_name }}" download>Baixar arquivo</a></article>
-      {% endfor %}</div>{% else %}<p>Nenhum arquivo publicado para este campeonato ainda.</p>{% endif %}
-    </section>
-  {% else %}<section><h1>Nenhum campeonato atual</h1><p>Em breve, os arquivos do próximo campeonato estarão disponíveis aqui.</p></section>{% endif %}
+  {% endfor %}</div>{% else %}<section><h2>Nenhum campeonato publicado</h2><p>Em breve, os arquivos dos campeonatos estarão disponíveis aqui.</p></section>{% endif %}
 {% endblock %}

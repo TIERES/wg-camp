@@ -53,7 +53,7 @@ def logout():
 @bp.get("/")
 @login_required
 def dashboard():
-    championships = get_db().execute("SELECT * FROM championships ORDER BY is_current DESC, created_at DESC").fetchall()
+    championships = get_db().execute("SELECT * FROM championships ORDER BY is_published DESC, start_date DESC, created_at DESC").fetchall()
     return render_template("admin/dashboard.html", championships=championships)
 
 
@@ -109,19 +109,16 @@ def save_championship(existing=None):
         flash("Use datas válidas.", "error")
         return redirect(request.url)
     db = get_db()
-    current = int("is_current" in request.form)
     published = int("is_published" in request.form)
     timestamp = now()
     slug = slugify(request.form.get("slug", "") or name)
     try:
         with db:
-            if current:
-                db.execute("UPDATE championships SET is_current = 0 WHERE is_current = 1")
-            values = (slug, name, request.form.get("description", "").strip(), request.form.get("arena17_url", "").strip() or None, start, end, current, published, timestamp)
+            values = (slug, name, request.form.get("league_name", "").strip() or None, request.form.get("description", "").strip(), request.form.get("arena17_url", "").strip() or None, start, end, published, timestamp)
             if existing:
-                db.execute("UPDATE championships SET slug=?, name=?, description=?, arena17_url=?, start_date=?, end_date=?, is_current=?, is_published=?, updated_at=? WHERE id=?", values + (existing["id"],))
+                db.execute("UPDATE championships SET slug=?, name=?, league_name=?, description=?, arena17_url=?, start_date=?, end_date=?, is_published=?, updated_at=? WHERE id=?", values + (existing["id"],))
             else:
-                db.execute("INSERT INTO championships (slug,name,description,arena17_url,start_date,end_date,is_current,is_published,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)", values + (timestamp,))
+                db.execute("INSERT INTO championships (slug,name,league_name,description,arena17_url,start_date,end_date,is_published,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)", values + (timestamp,))
     except sqlite3.IntegrityError:
         flash("Slug já utilizado.", "error")
         return redirect(request.url)

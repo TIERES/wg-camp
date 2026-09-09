@@ -13,18 +13,15 @@ CREATE TABLE IF NOT EXISTS championships (
     id INTEGER PRIMARY KEY,
     slug TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
+    league_name TEXT,
     description TEXT NOT NULL DEFAULT '',
     arena17_url TEXT,
     start_date TEXT,
     end_date TEXT,
-    is_current INTEGER NOT NULL DEFAULT 0 CHECK (is_current IN (0, 1)),
     is_published INTEGER NOT NULL DEFAULT 1 CHECK (is_published IN (0, 1)),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
-
-CREATE UNIQUE INDEX IF NOT EXISTS one_current_championship
-ON championships(is_current) WHERE is_current = 1;
 
 CREATE TABLE IF NOT EXISTS files (
     id INTEGER PRIMARY KEY,
