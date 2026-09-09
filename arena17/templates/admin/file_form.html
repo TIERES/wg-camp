@@ -1,0 +1,6 @@
+{% extends 'base.html' %}{% block content %}
+<h1>Editar arquivo</h1>
+<form method="post" class="form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<p><strong>Arquivo armazenado:</strong> {{ file.original_filename }}<br><small>{{ file.file_size | filesize }} · SHA-256: {{ file.sha256 }}</small></p>
+<label>Nome exibido<input name="display_name" required value="{{ file.display_name }}"></label><label>Descrição<textarea name="description">{{ file.description }}</textarea></label><label>Tipo<select name="file_type">{% for option, label in [('iso','ISO'),('rom','ROM'),('patch','Patch'),('update','Atualização'),('other','Outro')] %}<option value="{{ option }}" {% if file.file_type == option %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label><label class="check"><input type="checkbox" name="is_published" {% if file.is_published %}checked{% endif %}> Publicar no site</label><button>Salvar</button> <a href="{{ url_for('admin.files', championship_id=file.championship_id) }}">Cancelar</a></form>
+{% endblock %}

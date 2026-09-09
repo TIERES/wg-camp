@@ -1,0 +1,13 @@
+{% extends 'base.html' %}{% block content %}
+<h1>{{ 'Editar' if championship else 'Novo' }} campeonato</h1>
+<form method="post" class="form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<label>Nome<input name="name" required value="{{ championship.name if championship else '' }}"></label>
+<label>Slug (opcional)<input name="slug" value="{{ championship.slug if championship else '' }}" pattern="[a-z0-9-]+"></label>
+<label>Descrição<textarea name="description" rows="6">{{ championship.description if championship else '' }}</textarea></label>
+<label>URL do Arena17<input type="url" name="arena17_url" value="{{ championship.arena17_url or '' if championship else '' }}"></label>
+<div class="two-columns"><label>Início<input type="date" name="start_date" value="{{ championship.start_date or '' if championship else '' }}"></label><label>Fim<input type="date" name="end_date" value="{{ championship.end_date or '' if championship else '' }}"></label></div>
+<label class="check"><input type="checkbox" name="is_current" {% if championship and championship.is_current %}checked{% endif %}> Este é o campeonato atual</label>
+<label class="check"><input type="checkbox" name="is_published" {% if not championship or championship.is_published %}checked{% endif %}> Publicar no site</label>
+<button>Salvar</button> <a href="{{ url_for('admin.dashboard') }}">Cancelar</a></form>
+{% if championship %}<form method="post" action="{{ url_for('admin.championship_delete', championship_id=championship.id) }}" class="delete"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label class="check"><input type="checkbox" name="confirm" value="delete"> Confirmo a exclusão do campeonato sem arquivos</label><button class="danger">Excluir campeonato</button></form>{% endif %}
+{% endblock %}

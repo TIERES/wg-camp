@@ -1,0 +1,24 @@
+[Unit]
+Description=Arena17 Downloads (Flask/Gunicorn)
+After=network.target
+
+[Service]
+Type=exec
+User=arena17
+# O socket fica acessível ao worker Nginx sem expor o Gunicorn na rede.
+Group=nginx
+WorkingDirectory=/opt/arena17-downloads
+EnvironmentFile=/etc/arena17-downloads.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/arena17-downloads/venv/bin/gunicorn --workers 1 --threads 2 --worker-tmp-dir /dev/shm --bind unix:/run/arena17-downloads/gunicorn.sock --umask 007 wsgi:app
+RuntimeDirectory=arena17-downloads
+RuntimeDirectoryMode=0750
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/opt/arena17-downloads/instance /var/www/arena17
+
+[Install]
+WantedBy=multi-user.target

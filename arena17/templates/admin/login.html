@@ -1,0 +1,3 @@
+{% extends 'base.html' %}{% block title %}Entrar · Arena17{% endblock %}{% block content %}
+<section class="login"><h1>Administração</h1><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Usuário<input name="username" autocomplete="username" required></label><label>Senha<input type="password" name="password" autocomplete="current-password" required></label><button>Entrar</button></form></section>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block content %}
+  {% if championship %}
+    <article class="championship">
+      <p class="eyebrow">Campeonato atual</p>
+      <h1>{{ championship.name }}</h1>
+      {% if championship.start_date or championship.end_date %}<p class="period">{{ championship.start_date or 'Sem início informado' }} — {{ championship.end_date or 'Sem fim informado' }}</p>{% endif %}
+      {% if championship.description %}<div class="description">{{ championship.description }}</div>{% endif %}
+      {% if championship.arena17_url %}<p><a href="{{ championship.arena17_url }}" rel="noopener noreferrer" target="_blank">Ver campeonato no Arena17</a></p>{% endif %}
+    </article>
+    <section><h2>Downloads</h2>
+      {% if files %}<div class="files">{% for file in files %}
+        <article class="file"><h3>{{ file.display_name }}</h3>{% if file.description %}<p>{{ file.description }}</p>{% endif %}<small>{{ file.file_type|upper }} · {{ file.file_size | filesize }}</small><a class="button" href="/downloads/{{ file.stored_name }}" download>Baixar arquivo</a></article>
+      {% endfor %}</div>{% else %}<p>Nenhum arquivo publicado para este campeonato ainda.</p>{% endif %}
+    </section>
+  {% else %}<section><h1>Nenhum campeonato atual</h1><p>Em breve, os arquivos do próximo campeonato estarão disponíveis aqui.</p></section>{% endif %}
+{% endblock %}
