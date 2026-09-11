@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Campeonatos WE 2002{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/retroarch.svg') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css') }}">
+</head>
+<body>
+  <header><a href="{{ url_for('public.index') }}">Campeonatos · Winning Eleven 2002</a>{% if session.user_id %}<a class="admin-link" href="{{ url_for('admin.dashboard') }}">Administração</a>{% endif %}</header>
+  <main>
+    {% for category, message in get_flashed_messages(with_categories=true) %}<p class="notice {{ category }}">{{ message }}</p>{% endfor %}
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="site-footer">
+    <div>Arquivos oficiais dos campeonatos de Winning Eleven 2002.</div>
+    <div>Desenvolvido por <a href="https://www.wgs.dev.br" rel="noopener noreferrer" target="_blank">WGS Sistemas</a></div>
+    <a class="wgs-logo" href="https://www.wgs.dev.br" rel="noopener noreferrer" target="_blank"><img src="https://www.wgs.dev.br/assets/images/logo/logo-text.svg" alt="WGS Sistemas"></a>
+  </footer>
+</body>
+</html>

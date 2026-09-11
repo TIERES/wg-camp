@@ -1,10 +1,11 @@
 import sqlite3
 from datetime import datetime
 
-from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash
 
 from .db import get_db, now
+from .arena17_import import import_championship
 from .security import login_required, validate_csrf
 from .storage import delete_stored_file, store_upload
 
@@ -63,6 +64,17 @@ def championship_new():
     if request.method == "POST":
         return save_championship()
     return render_template("admin/championship_form.html", championship=None)
+
+
+@bp.post("/championships/import-arena17")
+@login_required
+def championship_import_arena17():
+    validate_csrf()
+    try:
+        data = import_championship(request.form.get("arena17_url", "").strip())
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    return jsonify(data)
 
 
 @bp.route("/championships/<int:championship_id>/edit", methods=("GET", "POST"))
@@ -146,12 +158,14 @@ def file_upload(championship_id):
         flash("Selecione um arquivo.", "error")
         return redirect(url_for("admin.files", championship_id=championship_id))
     stored = None
+    db = get_db()
     try:
         if request.form.get("file_type") not in {"iso", "rom", "patch", "update", "other"}:
             raise ValueError("Tipo de arquivo inválido.")
+        if db.execute("SELECT 1 FROM files WHERE championship_id=?", (championship_id,)).fetchone():
+            raise ValueError("Cada campeonato pode ter apenas um arquivo. Edite ou remova o arquivo atual antes de enviar outro.")
         stored = store_upload(upload)
         display_name = request.form.get("display_name", "").strip() or stored["original_filename"]
-        db = get_db()
         db.execute("INSERT INTO files (championship_id,display_name,description,stored_name,original_filename,file_type,file_size,sha256,is_published,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)", (championship_id, display_name, request.form.get("description", "").strip(), stored["stored_name"], stored["original_filename"], request.form.get("file_type", "other"), stored["file_size"], stored["sha256"], int("is_published" in request.form), now(), now()))
         db.commit()
     except (ValueError, OSError, sqlite3.IntegrityError) as error:
@@ -160,6 +174,7 @@ def file_upload(championship_id):
         flash(str(error), "error")
     else:
         flash("Arquivo enviado e registrado.", "success")
+        return redirect(url_for("admin.dashboard"))
     return redirect(url_for("admin.files", championship_id=championship_id))
 
 

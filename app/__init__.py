@@ -17,7 +17,7 @@ def create_app(test_config=None):
         UPLOAD_TMP_DIR=os.environ.get("ARENA17_UPLOAD_TMP_DIR", str(root / "storage" / "uploads-tmp")),
         MAX_CONTENT_LENGTH=int(os.environ.get("ARENA17_MAX_UPLOAD_BYTES", 8 * 1024**3)),
         SERVE_DOWNLOADS_LOCALLY=os.environ.get("ARENA17_SERVE_DOWNLOADS_LOCALLY", "").lower() in {"1", "true", "yes"},
-        ALLOWED_EXTENSIONS={"iso", "rom", "zip", "7z", "rar", "ips", "ppf", "xdelta", "bin"},
+        ALLOWED_EXTENSIONS={"iso", "rom", "chd", "zip", "7z", "rar", "ips", "ppf", "xdelta", "bin"},
     )
     if test_config:
         app.config.update(test_config)

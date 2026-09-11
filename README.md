@@ -20,6 +20,9 @@ flask --app wsgi create-admin admin
 flask --app wsgi run --debug
 ```
 
+Para criar administradores posteriormente, execute `python create_admin.py` no
+diretório da aplicação. O script solicita o usuário e a senha duas vezes.
+
 Em produção, configure as variáveis no arquivo de ambiente do systemd. Não use
 o servidor de desenvolvimento Flask.
 

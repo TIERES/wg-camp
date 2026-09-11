@@ -1,0 +1,84 @@
+{% extends 'base.html' %}
+{% block content %}
+  <section class="emulator-download" aria-labelledby="emulator-title">
+    <div>
+      <h2 id="emulator-title">Emulador RetroArch Casanova</h2>
+      <p>Baixe o RetroArch Casanova já configurado para Winning Eleven 2002.</p>
+    </div>
+    <a class="button" href="https://archive.org/download/one-two-iso/RetroArch%28casanova%29WE2002.zip" rel="noopener noreferrer" target="_blank">Baixar RetroArch</a>
+  </section>
+  <section class="intro"><h1>Campeonatos e downloads</h1><p>Encontre os arquivos necessários para cada campeonato de Winning Eleven 2002.</p></section>
+  {% if championships %}
+    <section class="championship-list" aria-label="Campeonatos">
+      <div class="championship-table-wrap">
+        <table class="championship-table">
+          <caption class="visually-hidden">Campeonatos disponíveis para download</caption>
+          <colgroup><col class="indicator-column"><col class="league-column"><col class="championship-column"><col class="start-column"><col class="end-column"><col class="download-column"></colgroup>
+          <thead><tr><th scope="col"><span class="visually-hidden">Detalhes</span></th><th scope="col">Liga</th><th scope="col">Campeonato</th><th scope="col">Início</th><th scope="col">Fim provável</th><th scope="col">Download</th></tr></thead>
+          <tbody>
+            {% for championship in championships %}
+              {% set file = files_by_championship.get(championship.id, [])|first %}
+              {% set row_tone = 'tone-light' if loop.index0 is even else 'tone-dark' %}
+              <tr class="championship-data-row {{ row_tone }}" tabindex="0" aria-expanded="false" aria-controls="championship-details-{{ championship.id }}">
+                <td class="expansion-indicator" aria-hidden="true"><span>&gt;</span></td>
+                <td class="league-name">
+                  <strong>{{ championship.league_name or '—' }}</strong>
+                </td>
+                <td>{{ championship.name }}</td>
+                <td>{% if championship.start_date %}{{ championship.start_date[8:10] }}-{{ championship.start_date[5:7] }}-{{ championship.start_date[0:4] }}{% else %}Não informado{% endif %}</td>
+                <td>{% if championship.end_date %}{{ championship.end_date[8:10] }}-{{ championship.end_date[5:7] }}-{{ championship.end_date[0:4] }}{% else %}Não informado{% endif %}</td>
+                <td>{% if file %}<a class="button download-button" href="{{ url_for('public.download', file_id=file.id) }}">Baixar {{ file.file_type|upper }}</a>{% else %}<small>Indisponível</small>{% endif %}</td>
+              </tr>
+              <tr id="championship-details-{{ championship.id }}" class="championship-details-row {{ row_tone }}" hidden>
+                <td colspan="6">
+                  <div class="championship-details">
+                    {% if championship.description %}<span class="description">{{ championship.description }}</span>{% else %}<span class="period">Nenhuma descrição informada.</span>{% endif %}
+                    {% if championship.arena17_url %}<a href="{{ championship.arena17_url }}" rel="noopener noreferrer" target="_blank">Ver campeonato no Arena17</a>{% endif %}
+                    {% if file and file.description %}<span class="period">{{ file.description }}</span>{% endif %}
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {% else %}<section><h2>Nenhum campeonato publicado</h2><p>Em breve, os arquivos dos campeonatos estarão disponíveis aqui.</p></section>{% endif %}
+  <script>
+    document.querySelectorAll('.championship-data-row').forEach((row) => {
+      const closeDetails = (openRow) => {
+        const openDetails = document.getElementById(openRow.getAttribute('aria-controls'));
+        openRow.setAttribute('aria-expanded', 'false');
+        openDetails.classList.remove('is-open');
+        window.setTimeout(() => {
+          if (!openDetails.classList.contains('is-open')) openDetails.hidden = true;
+        }, 220);
+      };
+      const toggleDetails = () => {
+        const details = document.getElementById(row.getAttribute('aria-controls'));
+        const expanded = row.getAttribute('aria-expanded') === 'true';
+        document.querySelectorAll('.championship-data-row[aria-expanded="true"]').forEach((openRow) => {
+          if (openRow !== row) closeDetails(openRow);
+        });
+        if (expanded) {
+          closeDetails(row);
+        } else {
+          row.setAttribute('aria-expanded', 'true');
+          details.hidden = false;
+          window.requestAnimationFrame(() => {
+            if (row.getAttribute('aria-expanded') === 'true') details.classList.add('is-open');
+          });
+        }
+      };
+      row.addEventListener('click', (event) => {
+        if (!event.target.closest('a')) toggleDetails();
+      });
+      row.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          toggleDetails();
+        }
+      });
+    });
+  </script>
+{% endblock %}

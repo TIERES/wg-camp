@@ -1,0 +1,7 @@
+{
+    email admin@wgs.dev.br
+}
+
+we2002.wgs.dev.br {
+    reverse_proxy 127.0.0.1:8000
+}

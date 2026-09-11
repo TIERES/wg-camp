@@ -39,3 +39,10 @@ CREATE TABLE IF NOT EXISTS files (
 );
 
 CREATE INDEX IF NOT EXISTS files_championship_idx ON files(championship_id);
+
+CREATE TRIGGER IF NOT EXISTS files_one_per_championship
+BEFORE INSERT ON files
+WHEN EXISTS (SELECT 1 FROM files WHERE championship_id = NEW.championship_id)
+BEGIN
+    SELECT RAISE(ABORT, 'Cada campeonato pode ter apenas um arquivo.');
+END;

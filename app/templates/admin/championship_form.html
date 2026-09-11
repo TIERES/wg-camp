@@ -1,0 +1,76 @@
+{% extends 'base.html' %}{% block content %}
+<h1>{{ 'Editar' if championship else 'Novo' }} campeonato</h1>
+<form method="post" class="form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<label>URL do Arena17<input id="arena17-url" type="url" name="arena17_url" value="{{ championship.arena17_url or '' if championship else '' }}" aria-describedby="arena17-help"><small id="arena17-help">Ao informar uma URL de campeonato do Arena17, os dados são preenchidos automaticamente.</small></label>
+<button type="button" id="import-arena17">Preencher dados do Arena17</button>
+<div id="arena17-import-status" hidden aria-live="polite"></div>
+<label>Nome<input id="championship-name" name="name" required value="{{ championship.name if championship else '' }}"></label>
+<label>Liga (opcional)<input id="championship-league" name="league_name" value="{{ championship.league_name or '' if championship else '' }}" placeholder="Ex.: Liga Arena17"></label>
+<label>Slug (opcional)<input id="championship-slug" name="slug" value="{{ championship.slug if championship else '' }}" pattern="[a-z0-9-]+" aria-describedby="slug-help"><small id="slug-help">Preenchido automaticamente a partir do nome; você pode alterá-lo.</small></label>
+<label>Descrição<textarea id="championship-description" name="description" rows="6">{{ championship.description if championship else '' }}</textarea></label>
+<div class="two-columns"><label>Início<input type="date" name="start_date" value="{{ championship.start_date or '' if championship else '' }}"></label><label>Fim<input type="date" name="end_date" value="{{ championship.end_date or '' if championship else '' }}"></label></div>
+<label class="check"><input type="checkbox" name="is_published" {% if not championship or championship.is_published %}checked{% endif %}> Publicar no site</label>
+<button>Salvar</button> <a href="{{ url_for('admin.dashboard') }}">Cancelar</a></form>
+{% if championship %}<form method="post" action="{{ url_for('admin.championship_delete', championship_id=championship.id) }}" class="delete"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label class="check"><input type="checkbox" name="confirm" value="delete"> Confirmo a exclusão do campeonato sem arquivos</label><button class="danger">Excluir campeonato</button></form>{% endif %}
+<script>
+  (() => {
+    const name = document.querySelector('#championship-name');
+    const slug = document.querySelector('#championship-slug');
+    if (!name || !slug) return;
+
+    const slugify = (value) => value.normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+    // Existing championships preserve their current URL. New entries follow
+    // the name until the slug field is edited directly.
+    let automatic = !slug.value;
+    slug.addEventListener('input', () => { automatic = false; });
+    name.addEventListener('input', () => {
+      if (automatic) slug.value = slugify(name.value);
+    });
+
+    const arenaUrl = document.querySelector('#arena17-url');
+    const league = document.querySelector('#championship-league');
+    const description = document.querySelector('#championship-description');
+    const importButton = document.querySelector('#import-arena17');
+    const status = document.querySelector('#arena17-import-status');
+    const csrf = document.querySelector('input[name="csrf_token"]');
+
+    const showStatus = (message, error = false) => {
+      status.hidden = false;
+      status.className = `notice${error ? ' error' : ''}`;
+      status.textContent = message;
+    };
+
+    const importArena17 = async () => {
+      if (!arenaUrl.value) return;
+      importButton.disabled = true;
+      showStatus('Consultando o Arena17...');
+      const body = new FormData();
+      body.set('arena17_url', arenaUrl.value);
+      body.set('csrf_token', csrf.value);
+      try {
+        const response = await fetch('{{ url_for("admin.championship_import_arena17") }}', { method: 'POST', body });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Não foi possível importar os dados.');
+        name.value = data.name || name.value;
+        name.dispatchEvent(new Event('input'));
+        league.value = data.league_name || league.value;
+        description.value = data.description || description.value;
+        const details = Object.entries(data.details || {}).map(([label, value]) => `${label}: ${value}`);
+        showStatus(details.length ? `Dados preenchidos. Também encontrados: ${details.join(' · ')}` : 'Dados preenchidos.');
+      } catch (error) {
+        showStatus(error.message, true);
+      } finally {
+        importButton.disabled = false;
+      }
+    };
+
+    importButton.addEventListener('click', importArena17);
+    arenaUrl.addEventListener('change', importArena17);
+  })();
+</script>
+{% endblock %}
