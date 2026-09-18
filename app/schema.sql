@@ -40,6 +40,20 @@ CREATE TABLE IF NOT EXISTS files (
 
 CREATE INDEX IF NOT EXISTS files_championship_idx ON files(championship_id);
 
+CREATE TABLE IF NOT EXISTS live_sessions (
+    id INTEGER PRIMARY KEY,
+    session_id TEXT NOT NULL UNIQUE,
+    app_name TEXT NOT NULL DEFAULT '',
+    game_name TEXT NOT NULL DEFAULT '',
+    player_names TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'live' CHECK (status IN ('live', 'finished')),
+    stored_name TEXT NOT NULL,
+    bytes_received INTEGER NOT NULL DEFAULT 0,
+    started_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    ended_at TEXT
+);
+
 CREATE TRIGGER IF NOT EXISTS files_one_per_championship
 BEFORE INSERT ON files
 WHEN EXISTS (SELECT 1 FROM files WHERE championship_id = NEW.championship_id)

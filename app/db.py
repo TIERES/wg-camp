@@ -62,5 +62,20 @@ def init_app(app):
         if "league_name" not in columns:
             database.execute("ALTER TABLE championships ADD COLUMN league_name TEXT")
         database.execute("DROP INDEX IF EXISTS one_current_championship")
+        database.execute("""
+            CREATE TABLE IF NOT EXISTS live_sessions (
+                id INTEGER PRIMARY KEY,
+                session_id TEXT NOT NULL UNIQUE,
+                app_name TEXT NOT NULL DEFAULT '',
+                game_name TEXT NOT NULL DEFAULT '',
+                player_names TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'live' CHECK (status IN ('live', 'finished')),
+                stored_name TEXT NOT NULL,
+                bytes_received INTEGER NOT NULL DEFAULT 0,
+                started_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                ended_at TEXT
+            )
+        """)
         database.commit()
         click.echo("Banco de dados atualizado.")

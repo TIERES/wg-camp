@@ -34,6 +34,19 @@ o servidor de desenvolvimento Flask.
 - `ARENA17_UPLOAD_TMP_DIR`: diretório temporário, fora do diretório público.
 - `ARENA17_MAX_UPLOAD_BYTES`: máximo por upload, padrão 8 GiB.
 - `ARENA17_SERVE_DOWNLOADS_LOCALLY`: use `true` somente em testes locais sem Nginx.
+- `ARENA17_LIVE_DIR`: diretório dos arquivos `.krec` de partidas ao vivo/recebidas via `/spectate/ingest`, padrão `storage/live/`.
+- `ARENA17_SPECTATE_KEY`: chave compartilhada exigida (header `X-Api-Key`) pelo endpoint `/spectate/ingest`. Obrigatório em produção, já que o endpoint fica acessível publicamente pelo domínio; sem ela, o endpoint aceita qualquer chamada.
+
+## Live spectate ingest
+
+`POST /spectate/ingest` recebe, em lotes periódicos, a mesma gravação que o
+`kailleraclient.dll` (projeto `kaillera-client`) grava localmente em `.krec`
+durante uma partida. Ver `common/n02_stream.h` naquele repositório para o
+contrato completo (headers `X-Session-Id`/`X-Sequence`/`X-Session-End`, corpo
+= registros no formato `.krec`). Os arquivos ficam em `ARENA17_LIVE_DIR`,
+como `<session_id>.krec.part` enquanto a partida está em andamento e
+`<session_id>.krec` quando termina; metadados (jogo, jogadores, status) ficam
+na tabela `live_sessions`.
 
 Os diretórios de upload precisam pertencer ao usuário da aplicação. O diretório
 do banco não deve ser exposto pelo Nginx.

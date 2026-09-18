@@ -18,6 +18,8 @@ def create_app(test_config=None):
         MAX_CONTENT_LENGTH=int(os.environ.get("ARENA17_MAX_UPLOAD_BYTES", 8 * 1024**3)),
         SERVE_DOWNLOADS_LOCALLY=os.environ.get("ARENA17_SERVE_DOWNLOADS_LOCALLY", "").lower() in {"1", "true", "yes"},
         ALLOWED_EXTENSIONS={"iso", "rom", "chd", "zip", "7z", "rar", "ips", "ppf", "xdelta", "bin"},
+        LIVE_DIR=os.environ.get("ARENA17_LIVE_DIR", str(root / "storage" / "live")),
+        SPECTATE_API_KEY=os.environ.get("ARENA17_SPECTATE_KEY", ""),
     )
     if test_config:
         app.config.update(test_config)
@@ -25,6 +27,7 @@ def create_app(test_config=None):
     Path(app.instance_path).mkdir(parents=True, exist_ok=True)
     Path(app.config["DOWNLOADS_DIR"]).mkdir(parents=True, exist_ok=True)
     Path(app.config["UPLOAD_TMP_DIR"]).mkdir(parents=True, exist_ok=True)
+    Path(app.config["LIVE_DIR"]).mkdir(parents=True, exist_ok=True)
 
     db.init_app(app)
     from .security import init_template_helpers
@@ -34,6 +37,8 @@ def create_app(test_config=None):
 
     from .public import bp as public_bp
     from .admin import bp as admin_bp
+    from .spectate import bp as spectate_bp
     app.register_blueprint(public_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(spectate_bp)
     return app
