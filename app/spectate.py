@@ -3,7 +3,7 @@ import re
 import secrets
 from pathlib import Path
 
-from flask import Blueprint, abort, current_app, request
+from flask import Blueprint, abort, current_app, jsonify, request
 
 from .db import get_db, now
 
@@ -11,6 +11,11 @@ bp = Blueprint("spectate", __name__, url_prefix="/spectate")
 
 # Matches the session id the kaillera-client DLL generates ("<pid>-<unix-ts>").
 SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+# A single GET /stream response never returns more than this many bytes, so a
+# spectator far behind live still gets bounded, steadily-progressing chunks
+# instead of one huge read.
+MAX_STREAM_CHUNK_BYTES = 1 * 1024 * 1024
 
 # Layout of the 400-byte KRC1-style header the client sends once, on the
 # first batch (X-Sequence: 0) of every session - byte-identical to the local
@@ -65,12 +70,12 @@ def _parse_header(body: bytes):
     }
 
 
-def _ensure_session_row(db, session_id, stored_name):
+def _ensure_session_row(db, session_id, stored_name, owner_name):
     db.execute(
-        """INSERT INTO live_sessions (session_id, status, stored_name, bytes_received, started_at, updated_at)
-           VALUES (?, 'live', ?, 0, ?, ?)
+        """INSERT INTO live_sessions (session_id, owner_name, status, stored_name, bytes_received, started_at, updated_at)
+           VALUES (?, ?, 'live', ?, 0, ?, ?)
            ON CONFLICT(session_id) DO NOTHING""",
-        (session_id, stored_name, now(), now()),
+        (session_id, owner_name, stored_name, now(), now()),
     )
 
 
@@ -98,6 +103,7 @@ def ingest():
         abort(400, "X-Sequence ausente.")
 
     session_end = request.headers.get("X-Session-End", "").strip().lower() == "true"
+    owner_name = request.headers.get("X-Owner-Name", "")[:64]
 
     if request.content_length and request.content_length > MAX_BATCH_BYTES:
         abort(413)
@@ -110,7 +116,7 @@ def ingest():
     file_path = live_dir / stored_name
 
     db = get_db()
-    _ensure_session_row(db, session_id, stored_name)
+    _ensure_session_row(db, session_id, stored_name, owner_name)
 
     if sequence == 0:
         with file_path.open("wb") as f:
@@ -148,3 +154,95 @@ def ingest():
 
     db.commit()
     return ("", 204)
+
+
+@bp.get("/lookup")
+def lookup():
+    """Finds the live (or just-finished) session for a Kaillera room name.
+
+    In kaillera-server mode, the "game name" the client sends with a session
+    is the room name the host typed when creating the game (see
+    kaillera_ui.cpp's GAME / kailleraclient.cpp's _gameCallback), so a
+    spectator picking "Watch" on a room in the lobby can look it up here by
+    that same name. Returns the most recently started match for that name,
+    preferring one that's still live over an already-finished one.
+
+    Room names aren't unique - two different hosts can create rooms with the
+    same name at the same time. When the caller also passes `owner` (the
+    "owner" column the lobby list already shows next to the room name), it
+    narrows the match to that specific host instead of guessing from the
+    name alone, since a Kaillera user can only host one room at a time.
+    """
+    _check_api_key()
+
+    room = request.args.get("room", "").strip()
+    if not room:
+        abort(400, "Parâmetro 'room' ausente.")
+    owner = request.args.get("owner", "").strip()
+
+    if owner:
+        query = """SELECT session_id, status, app_name, game_name, player_names, bytes_received
+                   FROM live_sessions
+                   WHERE game_name = ? AND owner_name = ?
+                   ORDER BY (status = 'live') DESC, started_at DESC
+                   LIMIT 1"""
+        params = (room, owner)
+    else:
+        query = """SELECT session_id, status, app_name, game_name, player_names, bytes_received
+                   FROM live_sessions
+                   WHERE game_name = ?
+                   ORDER BY (status = 'live') DESC, started_at DESC
+                   LIMIT 1"""
+        params = (room,)
+
+    row = get_db().execute(query, params).fetchone()
+    if row is None:
+        abort(404, "Nenhuma transmissão encontrada para essa sala.")
+
+    return jsonify(dict(row))
+
+
+@bp.get("/stream/<session_id>")
+def stream(session_id):
+    """Serves back the bytes of a live (or finished) session from an offset.
+
+    A spectator polls this repeatedly with an ever-increasing `offset`
+    (starting at 0) to fast-forward-replay the same record stream the host
+    is recording locally - each response's body is a straight slice of the
+    session's .krec/.krec.part file, so concatenating bodies in order
+    reproduces the same bytes described in n02_stream.h. X-Status tells the
+    caller whether to expect more data later ("live") or stop asking
+    ("finished"); X-Next-Offset is the offset to request next.
+    """
+    _check_api_key()
+
+    if not SESSION_ID_RE.match(session_id):
+        abort(400, "Session id inválido.")
+
+    try:
+        offset = int(request.args.get("offset", "0"))
+    except ValueError:
+        abort(400, "Offset inválido.")
+    if offset < 0:
+        abort(400, "Offset inválido.")
+
+    row = get_db().execute(
+        "SELECT status, stored_name FROM live_sessions WHERE session_id = ?",
+        (session_id,),
+    ).fetchone()
+    if row is None:
+        abort(404, "Sessão desconhecida.")
+
+    file_path = _live_dir() / row["stored_name"]
+    chunk = b""
+    try:
+        with file_path.open("rb") as f:
+            f.seek(offset)
+            chunk = f.read(MAX_STREAM_CHUNK_BYTES)
+    except FileNotFoundError:
+        pass  # host hasn't sent its first batch yet - report status, no bytes
+
+    response = current_app.response_class(chunk, mimetype="application/octet-stream")
+    response.headers["X-Status"] = row["status"]
+    response.headers["X-Next-Offset"] = str(offset + len(chunk))
+    return response

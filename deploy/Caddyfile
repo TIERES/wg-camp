@@ -6,12 +6,18 @@ we2002.wgs.dev.br {
     reverse_proxy 127.0.0.1:8000
 }
 
-# Plain HTTP listener for the kaillera-client live-spectate ingest endpoint.
-# The client (running on whichever machine hosts a game) speaks unencrypted
-# HTTP, not HTTPS, so this can't go through the main HTTPS site above.
-# Scoped to only this one path; everything else on this port 404s.
+# Plain HTTP listener for the kaillera-client live-spectate endpoints
+# (ingest from the hosting client, lookup/stream for spectators). The client
+# speaks unencrypted HTTP, not HTTPS, so this can't go through the main
+# HTTPS site above. Scoped to only these paths; everything else 404s.
 http://:8080 {
     handle /spectate/ingest {
+        reverse_proxy 127.0.0.1:8000
+    }
+    handle /spectate/lookup {
+        reverse_proxy 127.0.0.1:8000
+    }
+    handle /spectate/stream/* {
         reverse_proxy 127.0.0.1:8000
     }
     handle {

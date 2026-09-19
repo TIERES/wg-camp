@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS live_sessions (
     session_id TEXT NOT NULL UNIQUE,
     app_name TEXT NOT NULL DEFAULT '',
     game_name TEXT NOT NULL DEFAULT '',
+    owner_name TEXT NOT NULL DEFAULT '',
     player_names TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'live' CHECK (status IN ('live', 'finished')),
     stored_name TEXT NOT NULL,
@@ -53,6 +54,8 @@ CREATE TABLE IF NOT EXISTS live_sessions (
     updated_at TEXT NOT NULL,
     ended_at TEXT
 );
+
+CREATE INDEX IF NOT EXISTS live_sessions_game_name_idx ON live_sessions(game_name);
 
 CREATE TRIGGER IF NOT EXISTS files_one_per_championship
 BEFORE INSERT ON files

@@ -42,11 +42,33 @@ o servidor de desenvolvimento Flask.
 `POST /spectate/ingest` recebe, em lotes periódicos, a mesma gravação que o
 `kailleraclient.dll` (projeto `kaillera-client`) grava localmente em `.krec`
 durante uma partida. Ver `common/n02_stream.h` naquele repositório para o
-contrato completo (headers `X-Session-Id`/`X-Sequence`/`X-Session-End`, corpo
-= registros no formato `.krec`). Os arquivos ficam em `ARENA17_LIVE_DIR`,
-como `<session_id>.krec.part` enquanto a partida está em andamento e
-`<session_id>.krec` quando termina; metadados (jogo, jogadores, status) ficam
-na tabela `live_sessions`.
+contrato completo (headers `X-Session-Id`/`X-Sequence`/`X-Session-End`/
+`X-Owner-Name`, corpo = registros no formato `.krec`). Os arquivos ficam em
+`ARENA17_LIVE_DIR`, como `<session_id>.krec.part` enquanto a partida está em
+andamento e `<session_id>.krec` quando termina; metadados (jogo, dono,
+jogadores, status) ficam na tabela `live_sessions`.
+
+Do lado da leitura (para o recurso "Watch Live" no cliente), o `game_name`
+gravado é o nome da sala do lobby Kaillera (não o nome da ROM), então:
+
+- `GET /spectate/lookup?room=<nome da sala>&owner=<dono>` devolve JSON com o
+  `session_id`/`status` mais recente para essa sala (preferindo uma partida
+  ainda `live` a uma já `finished`), 404 se nada for encontrado. `owner` é
+  opcional mas recomendado: como nomes de sala não são únicos (dois hosts
+  podem nomear a sala igual, ex. "We2002.bin"), ele desambigua usando a
+  coluna "owner" que a lista do lobby já mostra ao lado do nome da sala -
+  um usuário só hospeda uma sala por vez, então o par (room, owner) é
+  efetivamente único.
+- `GET /spectate/stream/<session_id>?offset=<bytes>` devolve, em
+  `application/octet-stream`, a fatia da gravação a partir de `offset` (até
+  `MAX_STREAM_CHUNK_BYTES` por chamada), com os headers `X-Status`
+  (`live`/`finished`) e `X-Next-Offset` para a próxima chamada. Concatenar os
+  corpos em ordem de offset reproduz o mesmo stream de `/spectate/ingest`.
+  Isso permite ao espectador dar fast-forward desde o frame 0 até alcançar o
+  "live edge" da partida.
+
+Ambos exigem `X-Api-Key` quando `ARENA17_SPECTATE_KEY` está configurada, igual
+ao `/spectate/ingest`.
 
 Os diretórios de upload precisam pertencer ao usuário da aplicação. O diretório
 do banco não deve ser exposto pelo Nginx.

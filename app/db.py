@@ -68,6 +68,7 @@ def init_app(app):
                 session_id TEXT NOT NULL UNIQUE,
                 app_name TEXT NOT NULL DEFAULT '',
                 game_name TEXT NOT NULL DEFAULT '',
+                owner_name TEXT NOT NULL DEFAULT '',
                 player_names TEXT NOT NULL DEFAULT '',
                 status TEXT NOT NULL DEFAULT 'live' CHECK (status IN ('live', 'finished')),
                 stored_name TEXT NOT NULL,
@@ -77,5 +78,9 @@ def init_app(app):
                 ended_at TEXT
             )
         """)
+        live_session_columns = {column["name"] for column in database.execute("PRAGMA table_info(live_sessions)")}
+        if "owner_name" not in live_session_columns:
+            database.execute("ALTER TABLE live_sessions ADD COLUMN owner_name TEXT NOT NULL DEFAULT ''")
+        database.execute("CREATE INDEX IF NOT EXISTS live_sessions_game_name_idx ON live_sessions(game_name)")
         database.commit()
         click.echo("Banco de dados atualizado.")
