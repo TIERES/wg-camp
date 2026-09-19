@@ -91,3 +91,12 @@ Caddy, o Flask serve o arquivo diretamente e nenhuma configuração de proxy
 adicional é necessária). Depois de atualizar o banco de um deploy existente,
 rode `flask --app wsgi migrate-db` para criar a coluna `duration_seconds` e
 preencher a duração das sessões já finalizadas.
+
+`GET /replays/list.txt?limit=20` devolve a mesma lista em texto simples,
+uma linha por replay (`session_id\thorário\tISO\tjogadores\tduration_seconds\tnome_de_download\tbytes_received`,
+sem cabeçalho), para o kaillera-client consumir na tela "Replays Online" do
+Playback sem precisar de um parser de JSON em C. `limit` é opcional (padrão
+20, máximo 50). Como o cliente fala HTTP puro (sem TLS), `/replays/list.txt`
+e `/replays/<id>/download` também precisam estar liberados no listener
+`http://:8080` do Caddy (ver `deploy/Caddyfile`), do mesmo jeito que
+`/spectate/*`.

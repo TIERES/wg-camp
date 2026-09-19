@@ -100,6 +100,49 @@ class ReplaysTest(unittest.TestCase):
         response = self.client.get("/replays/does-not-exist/download")
         self.assertEqual(response.status_code, 404)
 
+    def test_list_txt_returns_tsv_line_per_qualifying_replay(self):
+        self._finish_session("111-222", started_ago_seconds=310)
+        self._finish_session("333-444", started_ago_seconds=10)  # too short, excluded
+
+        response = self.client.get("/replays/list.txt")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, "text/plain")
+
+        lines = response.data.decode("utf-8").strip("\n").split("\n")
+        self.assertEqual(len(lines), 1)
+        fields = lines[0].split("\t")
+        self.assertEqual(len(fields), 7)
+        session_id, when, game_name, player_names, duration_seconds, download_name, bytes_received = fields
+        self.assertEqual(session_id, "111-222")
+        self.assertEqual(game_name, "Winning Eleven 2002")
+        self.assertEqual(player_names, "host, guest")
+        self.assertGreaterEqual(int(duration_seconds), 300)
+        self.assertTrue(download_name.endswith(".krec"))
+        self.assertNotIn("\t", when)
+        self.assertGreater(int(bytes_received), 0)
+
+    def test_list_txt_respects_limit(self):
+        for i in range(3):
+            self._finish_session(f"s{i}-1", started_ago_seconds=400)
+
+        response = self.client.get("/replays/list.txt?limit=2")
+        lines = response.data.decode("utf-8").strip("\n").split("\n")
+        self.assertEqual(len(lines), 2)
+
+    def test_list_txt_sanitizes_tabs_and_newlines_in_free_text_fields(self):
+        self._finish_session("111-222", started_ago_seconds=310)
+        with self.app.app_context():
+            get_db().execute(
+                "UPDATE live_sessions SET game_name = ?, player_names = ? WHERE session_id = ?",
+                ("Evil\tGame\nName", "Player\tOne", "111-222"),
+            )
+            get_db().commit()
+
+        response = self.client.get("/replays/list.txt")
+        lines = response.data.decode("utf-8").strip("\n").split("\n")
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(len(lines[0].split("\t")), 7)
+
 
 if __name__ == "__main__":
     unittest.main()
