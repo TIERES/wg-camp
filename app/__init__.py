@@ -35,10 +35,21 @@ def create_app(test_config=None):
     from .storage import human_size
     app.jinja_env.filters["filesize"] = human_size
 
+    def format_duration(seconds):
+        seconds = int(seconds or 0)
+        minutes, seconds = divmod(seconds, 60)
+        hours, minutes = divmod(minutes, 60)
+        if hours:
+            return f"{hours}h{minutes:02d}m"
+        return f"{minutes}m{seconds:02d}s"
+    app.jinja_env.filters["duration"] = format_duration
+
     from .public import bp as public_bp
     from .admin import bp as admin_bp
     from .spectate import bp as spectate_bp
+    from .replays import bp as replays_bp
     app.register_blueprint(public_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(spectate_bp)
+    app.register_blueprint(replays_bp)
     return app

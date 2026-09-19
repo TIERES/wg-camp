@@ -52,10 +52,12 @@ CREATE TABLE IF NOT EXISTS live_sessions (
     bytes_received INTEGER NOT NULL DEFAULT 0,
     started_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    ended_at TEXT
+    ended_at TEXT,
+    duration_seconds INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS live_sessions_game_name_idx ON live_sessions(game_name);
+CREATE INDEX IF NOT EXISTS live_sessions_replay_idx ON live_sessions(status, duration_seconds);
 
 CREATE TRIGGER IF NOT EXISTS files_one_per_championship
 BEFORE INSERT ON files

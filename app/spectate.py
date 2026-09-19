@@ -1,6 +1,7 @@
 import os
 import re
 import secrets
+from datetime import datetime
 from pathlib import Path
 
 from flask import Blueprint, abort, current_app, jsonify, request
@@ -147,9 +148,14 @@ def ingest():
             final_name = final_path.name
         except OSError:
             final_name = stored_name
+        ended_at = now()
+        row = db.execute(
+            "SELECT started_at FROM live_sessions WHERE session_id = ?", (session_id,)
+        ).fetchone()
+        duration_seconds = max(0, int((datetime.fromisoformat(ended_at) - datetime.fromisoformat(row["started_at"])).total_seconds()))
         db.execute(
-            "UPDATE live_sessions SET status='finished', stored_name=?, ended_at=?, updated_at=? WHERE session_id=?",
-            (final_name, now(), now(), session_id),
+            "UPDATE live_sessions SET status='finished', stored_name=?, ended_at=?, duration_seconds=?, updated_at=? WHERE session_id=?",
+            (final_name, ended_at, duration_seconds, ended_at, session_id),
         )
 
     db.commit()

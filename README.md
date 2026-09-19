@@ -76,3 +76,18 @@ do banco não deve ser exposto pelo Nginx.
 Em produção, o botão de download chama o Flask somente para autorizar o arquivo.
 Ele responde com `X-Accel-Redirect`, e o Nginx entrega o arquivo internamente;
 assim, links de arquivos não ficam expostos como diretórios públicos.
+
+## Replays
+
+`GET /replays` lista, publicamente, as partidas com status `finished` e pelo
+menos 5 minutos de duração (`duration_seconds >= 300`, calculado a partir de
+`started_at`/`ended_at` quando o `/spectate/ingest` recebe `X-Session-End`).
+Mostra jogadores, horário, ISO (`game_name`) e duração. `GET
+/replays/<session_id>/download` entrega o `.krec` correspondente, usando o
+mesmo mecanismo de `ARENA17_SERVE_DOWNLOADS_LOCALLY`/`X-Accel-Redirect` dos
+downloads de campeonato (ver `deploy/nginx-arena17.conf` para o caso de uso
+com Nginx; com `ARENA17_SERVE_DOWNLOADS_LOCALLY=true`, como neste deploy com
+Caddy, o Flask serve o arquivo diretamente e nenhuma configuração de proxy
+adicional é necessária). Depois de atualizar o banco de um deploy existente,
+rode `flask --app wsgi migrate-db` para criar a coluna `duration_seconds` e
+preencher a duração das sessões já finalizadas.

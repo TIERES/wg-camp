@@ -8,7 +8,13 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css') }}">
 </head>
 <body>
-  <header><a href="{{ url_for('public.index') }}">Campeonatos · Winning Eleven 2002</a>{% if session.user_id %}<a class="admin-link" href="{{ url_for('admin.dashboard') }}">Administração</a>{% endif %}</header>
+  <header>
+    <a href="{{ url_for('public.index') }}">Campeonatos · Winning Eleven 2002</a>
+    <nav>
+      <a href="{{ url_for('replays.index') }}">Replays</a>
+      {% if session.user_id %}<a class="admin-link" href="{{ url_for('admin.dashboard') }}">Administração</a>{% endif %}
+    </nav>
+  </header>
   <main>
     {% for category, message in get_flashed_messages(with_categories=true) %}<p class="notice {{ category }}">{{ message }}</p>{% endfor %}
     {% block content %}{% endblock %}

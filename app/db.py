@@ -56,31 +56,59 @@ def init_app(app):
 
     @app.cli.command("migrate-db")
     def migrate_db_command():
-        """Aplica a pequena migração necessária para bancos de testes iniciais."""
-        database = get_db()
-        columns = {column["name"] for column in database.execute("PRAGMA table_info(championships)")}
-        if "league_name" not in columns:
-            database.execute("ALTER TABLE championships ADD COLUMN league_name TEXT")
-        database.execute("DROP INDEX IF EXISTS one_current_championship")
-        database.execute("""
-            CREATE TABLE IF NOT EXISTS live_sessions (
-                id INTEGER PRIMARY KEY,
-                session_id TEXT NOT NULL UNIQUE,
-                app_name TEXT NOT NULL DEFAULT '',
-                game_name TEXT NOT NULL DEFAULT '',
-                owner_name TEXT NOT NULL DEFAULT '',
-                player_names TEXT NOT NULL DEFAULT '',
-                status TEXT NOT NULL DEFAULT 'live' CHECK (status IN ('live', 'finished')),
-                stored_name TEXT NOT NULL,
-                bytes_received INTEGER NOT NULL DEFAULT 0,
-                started_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                ended_at TEXT
-            )
-        """)
-        live_session_columns = {column["name"] for column in database.execute("PRAGMA table_info(live_sessions)")}
-        if "owner_name" not in live_session_columns:
-            database.execute("ALTER TABLE live_sessions ADD COLUMN owner_name TEXT NOT NULL DEFAULT ''")
-        database.execute("CREATE INDEX IF NOT EXISTS live_sessions_game_name_idx ON live_sessions(game_name)")
-        database.commit()
+        migrate_db()
         click.echo("Banco de dados atualizado.")
+
+
+def migrate_db():
+    """Aplica a pequena migração necessária para bancos de testes iniciais.
+
+    Chamada tanto pelo comando `flask --app wsgi migrate-db` (uso local) quanto
+    diretamente via script Python em produção, onde a CLI do Flask não
+    funciona sob Python 3.9 com as dependências vendorizadas (falta
+    `importlib_metadata`) - mesmo motivo pelo qual o bootstrap chama `init_db()`
+    direto em vez de `flask --app wsgi init-db`.
+    """
+    database = get_db()
+    columns = {column["name"] for column in database.execute("PRAGMA table_info(championships)")}
+    if "league_name" not in columns:
+        database.execute("ALTER TABLE championships ADD COLUMN league_name TEXT")
+    database.execute("DROP INDEX IF EXISTS one_current_championship")
+    database.execute("""
+        CREATE TABLE IF NOT EXISTS live_sessions (
+            id INTEGER PRIMARY KEY,
+            session_id TEXT NOT NULL UNIQUE,
+            app_name TEXT NOT NULL DEFAULT '',
+            game_name TEXT NOT NULL DEFAULT '',
+            owner_name TEXT NOT NULL DEFAULT '',
+            player_names TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'live' CHECK (status IN ('live', 'finished')),
+            stored_name TEXT NOT NULL,
+            bytes_received INTEGER NOT NULL DEFAULT 0,
+            started_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            ended_at TEXT
+        )
+    """)
+    live_session_columns = {column["name"] for column in database.execute("PRAGMA table_info(live_sessions)")}
+    if "owner_name" not in live_session_columns:
+        database.execute("ALTER TABLE live_sessions ADD COLUMN owner_name TEXT NOT NULL DEFAULT ''")
+    if "duration_seconds" not in live_session_columns:
+        database.execute("ALTER TABLE live_sessions ADD COLUMN duration_seconds INTEGER")
+    database.execute("CREATE INDEX IF NOT EXISTS live_sessions_game_name_idx ON live_sessions(game_name)")
+    database.execute("CREATE INDEX IF NOT EXISTS live_sessions_replay_idx ON live_sessions(status, duration_seconds)")
+    rows = database.execute(
+        "SELECT session_id, started_at, ended_at FROM live_sessions WHERE status = 'finished' AND duration_seconds IS NULL AND ended_at IS NOT NULL"
+    ).fetchall()
+    for row in rows:
+        try:
+            started = datetime.fromisoformat(row["started_at"])
+            ended = datetime.fromisoformat(row["ended_at"])
+        except ValueError:
+            continue
+        duration = max(0, int((ended - started).total_seconds()))
+        database.execute(
+            "UPDATE live_sessions SET duration_seconds = ? WHERE session_id = ?",
+            (duration, row["session_id"]),
+        )
+    database.commit()

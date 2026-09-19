@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}Replays · Campeonatos WE 2002{% endblock %}
+{% block content %}
+  <section class="intro"><h1>Replays das partidas</h1><p>Gravações completas das partidas jogadas com pelo menos 5 minutos de duração.</p></section>
+  {% if replays %}
+    <table>
+      <caption class="visually-hidden">Replays disponíveis para download</caption>
+      <thead><tr><th scope="col">Jogadores</th><th scope="col">Horário</th><th scope="col">ISO</th><th scope="col">Duração</th><th scope="col">Download</th></tr></thead>
+      <tbody>
+        {% for replay in replays %}
+          <tr>
+            <td>{{ replay.player_names or '—' }}</td>
+            <td>{{ replay.started_at[8:10] }}-{{ replay.started_at[5:7] }}-{{ replay.started_at[0:4] }} {{ replay.started_at[11:16] }}</td>
+            <td>{{ replay.game_name or '—' }}</td>
+            <td>{{ replay.duration_seconds|duration }}</td>
+            <td><a class="button download-button" href="{{ url_for('replays.download', session_id=replay.session_id) }}">Baixar</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}<section><h2>Nenhum replay disponível</h2><p>Assim que uma partida com pelo menos 5 minutos terminar, ela aparecerá aqui.</p></section>{% endif %}
+{% endblock %}
