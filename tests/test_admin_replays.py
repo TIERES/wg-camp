@@ -103,14 +103,14 @@ class AdminReplaysTest(unittest.TestCase):
             row = get_db().execute("SELECT player_names FROM live_sessions WHERE session_id=?", ("111-222",)).fetchone()
         self.assertEqual(row["player_names"], "Novo Nome, Outro Nome")
 
-    def test_delete_removes_row_and_file(self):
+    def test_bulk_delete_removes_a_single_selected_replay(self):
         self._finish_session("333-444")
         self._login()
         self.assertTrue((self.live_dir / "333-444.krec").exists())
 
         response = self.client.post(
-            "/admin/replays/333-444/delete",
-            data={"csrf_token": "test-csrf-token", "confirm": "delete"},
+            "/admin/replays/bulk-delete",
+            data={"csrf_token": "test-csrf-token", "session_ids": ["333-444"]},
         )
         self.assertEqual(response.status_code, 302)
         self.assertFalse((self.live_dir / "333-444.krec").exists())
@@ -118,11 +118,29 @@ class AdminReplaysTest(unittest.TestCase):
             row = get_db().execute("SELECT 1 FROM live_sessions WHERE session_id=?", ("333-444",)).fetchone()
         self.assertIsNone(row)
 
-    def test_delete_without_confirm_checkbox_does_nothing(self):
+    def test_bulk_delete_removes_multiple_selected_replays(self):
+        self._finish_session("333-444")
+        self._finish_session("555-666")
+        self._finish_session("777-888")
+        self._login()
+
+        response = self.client.post(
+            "/admin/replays/bulk-delete",
+            data={"csrf_token": "test-csrf-token", "session_ids": ["333-444", "555-666"]},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse((self.live_dir / "333-444.krec").exists())
+        self.assertFalse((self.live_dir / "555-666.krec").exists())
+        self.assertTrue((self.live_dir / "777-888.krec").exists())
+        with self.app.app_context():
+            remaining = {r["session_id"] for r in get_db().execute("SELECT session_id FROM live_sessions").fetchall()}
+        self.assertEqual(remaining, {"777-888"})
+
+    def test_bulk_delete_without_any_selection_does_nothing(self):
         self._finish_session("555-666")
         self._login()
 
-        self.client.post("/admin/replays/555-666/delete", data={"csrf_token": "test-csrf-token"})
+        self.client.post("/admin/replays/bulk-delete", data={"csrf_token": "test-csrf-token"})
         self.assertTrue((self.live_dir / "555-666.krec").exists())
         with self.app.app_context():
             row = get_db().execute("SELECT 1 FROM live_sessions WHERE session_id=?", ("555-666",)).fetchone()

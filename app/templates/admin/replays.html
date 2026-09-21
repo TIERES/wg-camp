@@ -9,16 +9,62 @@
 {% endif %}
 {% for label in pending_backups %}<p><a href="{{ url_for('admin.replays_cleanup_status', label=label) }}">Backup pendente: {{ label }}.zip</a></p>{% endfor %}
 </section>
-<table><thead><tr><th>Data</th><th>Jogo</th><th>Jogadores</th><th>Duração</th><th>Tamanho</th><th>Ações</th></tr></thead><tbody>
+<form method="post" action="{{ url_for('admin.replays_bulk_delete') }}" id="replays-form">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<table><thead><tr><th><input type="checkbox" id="select-all"></th><th>Data</th><th>Jogo</th><th>Jogadores</th><th>Duração</th><th>Tamanho</th><th>Ações</th></tr></thead><tbody>
 {% for replay in replays %}<tr>
+<td><input type="checkbox" name="session_ids" value="{{ replay.session_id }}" class="row-select"></td>
 <td>{{ replay.started_at[:16] | replace('T', ' ') }}</td>
 <td>{{ replay.game_name }}</td>
 <td>{{ replay.player_names or '—' }}</td>
 <td>{{ replay.duration_seconds | duration }}</td>
 <td>{{ replay.bytes_received | filesize }}</td>
-<td><a href="{{ url_for('admin.replay_edit', session_id=replay.session_id) }}">Editar</a> · <a href="{{ url_for('admin.replay_download', session_id=replay.session_id) }}">Baixar</a>
-<form method="post" action="{{ url_for('admin.replay_delete', session_id=replay.session_id) }}" class="delete"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label class="check"><input type="checkbox" name="confirm" value="delete"> Confirmo</label><button class="danger">Excluir</button></form>
-</td>
-</tr>{% else %}<tr><td colspan="6">Nenhum replay finalizado ainda.</td></tr>{% endfor %}
+<td><a href="{{ url_for('admin.replay_edit', session_id=replay.session_id) }}">Editar</a> · <a href="{{ url_for('admin.replay_download', session_id=replay.session_id) }}">Baixar</a></td>
+</tr>{% else %}<tr><td colspan="7">Nenhum replay finalizado ainda.</td></tr>{% endfor %}
 </tbody></table>
+{% if replays %}<button type="submit" class="danger" id="bulk-delete-btn">Excluir selecionados</button>{% endif %}
+</form>
+
+<dialog id="confirm-dialog">
+  <p id="confirm-text"></p>
+  <button type="button" id="confirm-yes" class="danger">Sim</button>
+  <button type="button" id="confirm-no">Não</button>
+</dialog>
+
+<script>
+(function () {
+  var form = document.getElementById('replays-form');
+  var dialog = document.getElementById('confirm-dialog');
+  if (!form || !dialog) return;
+
+  var selectAll = document.getElementById('select-all');
+  var rowBoxes = form.querySelectorAll('.row-select');
+  if (selectAll) {
+    selectAll.addEventListener('change', function () {
+      rowBoxes.forEach(function (box) { box.checked = selectAll.checked; });
+    });
+  }
+
+  form.addEventListener('submit', function (event) {
+    var checked = form.querySelectorAll('.row-select:checked');
+    if (checked.length === 0) {
+      event.preventDefault();
+      alert('Selecione ao menos um replay.');
+      return;
+    }
+    event.preventDefault();
+    document.getElementById('confirm-text').textContent =
+      'Deseja excluir ' + checked.length + ' replay(s) selecionado(s)? Esta ação não pode ser desfeita.';
+    dialog.showModal();
+  });
+
+  document.getElementById('confirm-yes').addEventListener('click', function () {
+    dialog.close();
+    form.submit();
+  });
+  document.getElementById('confirm-no').addEventListener('click', function () {
+    dialog.close();
+  });
+})();
+</script>
 {% endblock %}

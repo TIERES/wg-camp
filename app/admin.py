@@ -340,21 +340,27 @@ def replay_download(session_id):
     return response
 
 
-@bp.post("/replays/<session_id>/delete")
+@bp.post("/replays/bulk-delete")
 @login_required
-def replay_delete(session_id):
+def replays_bulk_delete():
+    """Deletes one or more replays selected via checkboxes in the replays
+    list. No server-side confirmation checkbox by design - the "tem
+    certeza?" prompt is a client-side JS dialog (see replays.html), since
+    this is an authenticated admin-only action, not a public-facing one."""
     validate_csrf()
-    db = get_db()
-    replay = db.execute("SELECT * FROM live_sessions WHERE session_id=?", (session_id,)).fetchone()
-    if not replay:
-        return ("Não encontrado", 404)
-    if request.form.get("confirm") != "delete":
-        flash("Para excluir, marque a confirmação.", "error")
+    session_ids = request.form.getlist("session_ids")
+    if not session_ids:
+        flash("Nenhum replay selecionado.", "error")
         return redirect(url_for("admin.replays_list"))
-    _delete_replay_file(replay["stored_name"])
-    db.execute("DELETE FROM live_sessions WHERE session_id=?", (session_id,))
+
+    db = get_db()
+    placeholders = ",".join("?" * len(session_ids))
+    rows = db.execute(f"SELECT session_id, stored_name FROM live_sessions WHERE session_id IN ({placeholders})", session_ids).fetchall()
+    for row in rows:
+        _delete_replay_file(row["stored_name"])
+    db.executemany("DELETE FROM live_sessions WHERE session_id=?", [(row["session_id"],) for row in rows])
     db.commit()
-    flash("Replay excluído.", "success")
+    flash(f"{len(rows)} replay(s) excluído(s).", "success")
     return redirect(url_for("admin.replays_list"))
 
 
