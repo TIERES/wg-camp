@@ -1,0 +1,35 @@
+{% extends 'base.html' %}{% block content %}
+<div class="page-title"><h1>Limpeza de replays: {{ label }}</h1><a href="{{ url_for('admin.replays_list') }}">Voltar</a></div>
+<p>{{ manifest.session_ids | length }} replay(s) · {{ zip_size | filesize }} · gerado em {{ manifest.created_at[:16] | replace('T', ' ') }}</p>
+
+{% if manifest.deleted_from_server %}
+<p class="notice success">Esses replays já foram removidos do servidor. O backup abaixo é a única cópia restante - baixe/envie para o archive.org antes de descartar.</p>
+{% else %}
+<p class="notice">Nada foi removido do servidor ainda. Baixe e/ou envie para o archive.org, confira que o backup está correto, e só então confirme a exclusão.</p>
+{% endif %}
+
+<p><a class="button" href="{{ url_for('admin.replays_cleanup_download', label=label) }}">Baixar {{ label }}.zip</a></p>
+
+<form method="post" action="{{ url_for('admin.replays_cleanup_archive', label=label) }}" class="form">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{% if archive_configured %}
+<button>Enviar para o archive.org</button>
+{% else %}
+<button disabled title="Configure ARENA17_IA_ACCESS_KEY / ARENA17_IA_SECRET_KEY no servidor">Enviar para o archive.org (não configurado)</button>
+{% endif %}
+</form>
+
+{% if not manifest.deleted_from_server %}
+<form method="post" action="{{ url_for('admin.replays_cleanup_confirm_delete', label=label) }}" class="delete">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<label class="check"><input type="checkbox" name="confirm" value="delete"> Já salvei o backup - confirmo a exclusão dos {{ manifest.session_ids | length }} replay(s) do servidor</label>
+<button class="danger">Excluir do servidor</button>
+</form>
+{% endif %}
+
+<form method="post" action="{{ url_for('admin.replays_cleanup_discard', label=label) }}" class="delete">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<label class="check"><input type="checkbox" name="confirm" value="delete"> Confirmo que quero descartar este backup {{ '(os replays já foram removidos do servidor - esta é a última cópia)' if manifest.deleted_from_server else '(os replays continuam no servidor, nada será perdido)' }}</label>
+<button class="danger">Descartar backup</button>
+</form>
+{% endblock %}

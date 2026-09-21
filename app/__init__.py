@@ -21,6 +21,10 @@ def create_app(test_config=None):
         LIVE_DIR=os.environ.get("ARENA17_LIVE_DIR", str(root / "storage" / "live")),
         SPECTATE_API_KEY=os.environ.get("ARENA17_SPECTATE_KEY", ""),
         UPDATES_DIR=os.environ.get("ARENA17_UPDATES_DIR", str(root / "storage" / "updates")),
+        REPLAY_BACKUPS_DIR=os.environ.get("ARENA17_REPLAY_BACKUPS_DIR", str(root / "storage" / "replay-backups")),
+        IA_ACCESS_KEY=os.environ.get("ARENA17_IA_ACCESS_KEY", ""),
+        IA_SECRET_KEY=os.environ.get("ARENA17_IA_SECRET_KEY", ""),
+        IA_COLLECTION=os.environ.get("ARENA17_IA_COLLECTION", "opensource_media"),
     )
     if test_config:
         app.config.update(test_config)
@@ -30,6 +34,7 @@ def create_app(test_config=None):
     Path(app.config["UPLOAD_TMP_DIR"]).mkdir(parents=True, exist_ok=True)
     Path(app.config["LIVE_DIR"]).mkdir(parents=True, exist_ok=True)
     Path(app.config["UPDATES_DIR"]).mkdir(parents=True, exist_ok=True)
+    Path(app.config["REPLAY_BACKUPS_DIR"]).mkdir(parents=True, exist_ok=True)
 
     db.init_app(app)
     from .security import init_template_helpers

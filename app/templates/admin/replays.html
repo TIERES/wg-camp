@@ -1,0 +1,24 @@
+{% extends 'base.html' %}{% block content %}
+<div class="page-title"><h1>Replays</h1></div>
+<section class="notice">
+{% if stale_count %}
+<p>{{ stale_count }} replay(s) com mais de {{ retention_days }} dias ({{ stale_size | filesize }}) prontos para limpeza.</p>
+<form method="post" action="{{ url_for('admin.replays_cleanup_generate') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Gerar backup e revisar limpeza</button></form>
+{% else %}
+<p>Nenhum replay com mais de {{ retention_days }} dias no momento.</p>
+{% endif %}
+{% for label in pending_backups %}<p><a href="{{ url_for('admin.replays_cleanup_status', label=label) }}">Backup pendente: {{ label }}.zip</a></p>{% endfor %}
+</section>
+<table><thead><tr><th>Data</th><th>Jogo</th><th>Jogadores</th><th>Duração</th><th>Tamanho</th><th>Ações</th></tr></thead><tbody>
+{% for replay in replays %}<tr>
+<td>{{ replay.started_at[:16] | replace('T', ' ') }}</td>
+<td>{{ replay.game_name }}</td>
+<td>{{ replay.player_names or '—' }}</td>
+<td>{{ replay.duration_seconds | duration }}</td>
+<td>{{ replay.bytes_received | filesize }}</td>
+<td><a href="{{ url_for('admin.replay_edit', session_id=replay.session_id) }}">Editar</a> · <a href="{{ url_for('admin.replay_download', session_id=replay.session_id) }}">Baixar</a>
+<form method="post" action="{{ url_for('admin.replay_delete', session_id=replay.session_id) }}" class="delete"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label class="check"><input type="checkbox" name="confirm" value="delete"> Confirmo</label><button class="danger">Excluir</button></form>
+</td>
+</tr>{% else %}<tr><td colspan="6">Nenhum replay finalizado ainda.</td></tr>{% endfor %}
+</tbody></table>
+{% endblock %}
