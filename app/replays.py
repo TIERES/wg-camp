@@ -2,6 +2,7 @@ from flask import Blueprint, Response, abort, current_app, render_template, requ
 from werkzeug.utils import secure_filename
 
 from .db import get_db
+from .spectate import reap_stale_live_sessions
 
 bp = Blueprint("replays", __name__, url_prefix="/replays")
 
@@ -17,7 +18,9 @@ def _download_name(entry):
 
 @bp.get("/")
 def index():
-    rows = get_db().execute(
+    db = get_db()
+    reap_stale_live_sessions(db)
+    rows = db.execute(
         """SELECT * FROM live_sessions
            WHERE status = 'finished' AND duration_seconds >= ?
            ORDER BY started_at DESC""",
@@ -45,7 +48,9 @@ def list_txt():
         limit = DEFAULT_LIST_LIMIT
     limit = max(1, min(limit, MAX_LIST_LIMIT))
 
-    rows = get_db().execute(
+    db = get_db()
+    reap_stale_live_sessions(db)
+    rows = db.execute(
         """SELECT * FROM live_sessions
            WHERE status = 'finished' AND duration_seconds >= ?
            ORDER BY started_at DESC

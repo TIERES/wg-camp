@@ -1,7 +1,7 @@
 import os
 import re
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from flask import Blueprint, abort, current_app, jsonify, request
@@ -30,6 +30,16 @@ _NUMPLAYERS = slice(268, 272)
 _PLAYER_NAMES = slice(272, 400)
 
 MAX_BATCH_BYTES = 2 * 1024 * 1024  # generous ceiling for a ~300ms batch of controller frames
+
+# A hosting client normally updates its session every ~300ms (see
+# N02_STREAM_BATCH_MS in n02_stream.cpp) for as long as it's connected, and
+# always sends X-Session-End on a graceful shutdown/game-end. No update in
+# this long means the host vanished without that signal - a crash, a force
+# quit, or a dead network - not a normal lag spike. Reap it so the bytes
+# already on disk don't stay stranded as an undownloadable .krec.part
+# forever (see kaillera-client issue: a Kaillera-server connection drop mid
+# game silently orphaned the second half of a match this way).
+STALE_LIVE_TIMEOUT_SECONDS = 300
 
 
 def _live_dir():
@@ -80,6 +90,55 @@ def _ensure_session_row(db, session_id, stored_name, owner_name):
     )
 
 
+def _finalize_session(db, session_id, stored_name, ended_at):
+    """Renames <session_id>.krec.part to its final .krec name and marks the
+    live_sessions row finished. `ended_at` is when the last usable byte
+    arrived - the client's own timestamp on a graceful X-Session-End, or the
+    session's last ingest update for one the reaper below gives up on -
+    never "now", which would count a host's downtime as part of the replay.
+    """
+    final_path = _live_dir() / f"{session_id}.krec"
+    final_name = stored_name
+    try:
+        os.replace(_live_dir() / stored_name, final_path)
+        final_name = final_path.name
+    except OSError:
+        pass  # .part never showed up (sequence 0 never arrived) - nothing to rename
+
+    row = db.execute("SELECT started_at FROM live_sessions WHERE session_id = ?", (session_id,)).fetchone()
+    duration_seconds = 0
+    if row:
+        duration_seconds = max(0, int((datetime.fromisoformat(ended_at) - datetime.fromisoformat(row["started_at"])).total_seconds()))
+    db.execute(
+        "UPDATE live_sessions SET status='finished', stored_name=?, ended_at=?, duration_seconds=?, updated_at=? WHERE session_id=?",
+        (final_name, ended_at, duration_seconds, ended_at, session_id),
+    )
+
+
+def reap_stale_live_sessions(db, exclude_session_id=None):
+    """Finalizes any 'live' session abandoned for STALE_LIVE_TIMEOUT_SECONDS.
+
+    Cheap to call on every request that touches live_sessions (ingest, the
+    replay list/page): the query is a no-op in the common case where nothing
+    is stale. `exclude_session_id` lets ingest() skip the session it's about
+    to update itself, so a host whose own update just crossed the staleness
+    threshold (e.g. it was retrying a stuck connection) isn't reaped out
+    from under the batch that's arriving right now.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=STALE_LIVE_TIMEOUT_SECONDS)).replace(microsecond=0).isoformat()
+    query = "SELECT session_id, stored_name, updated_at FROM live_sessions WHERE status = 'live' AND updated_at < ?"
+    params = [cutoff]
+    if exclude_session_id:
+        query += " AND session_id != ?"
+        params.append(exclude_session_id)
+
+    stale = db.execute(query, params).fetchall()
+    for row in stale:
+        _finalize_session(db, row["session_id"], row["stored_name"], row["updated_at"])
+    if stale:
+        db.commit()
+
+
 @bp.post("/ingest")
 def ingest():
     """Receives one live-spectate batch from a hosting kaillera-client.
@@ -117,6 +176,7 @@ def ingest():
     file_path = live_dir / stored_name
 
     db = get_db()
+    reap_stale_live_sessions(db, exclude_session_id=session_id)
     _ensure_session_row(db, session_id, stored_name, owner_name)
 
     if sequence == 0:
@@ -142,21 +202,7 @@ def ingest():
     )
 
     if session_end:
-        final_path = live_dir / f"{session_id}.krec"
-        try:
-            os.replace(file_path, final_path)
-            final_name = final_path.name
-        except OSError:
-            final_name = stored_name
-        ended_at = now()
-        row = db.execute(
-            "SELECT started_at FROM live_sessions WHERE session_id = ?", (session_id,)
-        ).fetchone()
-        duration_seconds = max(0, int((datetime.fromisoformat(ended_at) - datetime.fromisoformat(row["started_at"])).total_seconds()))
-        db.execute(
-            "UPDATE live_sessions SET status='finished', stored_name=?, ended_at=?, duration_seconds=?, updated_at=? WHERE session_id=?",
-            (final_name, ended_at, duration_seconds, ended_at, session_id),
-        )
+        _finalize_session(db, session_id, stored_name, now())
 
     db.commit()
     return ("", 204)
