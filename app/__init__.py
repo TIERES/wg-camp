@@ -20,6 +20,7 @@ def create_app(test_config=None):
         ALLOWED_EXTENSIONS={"iso", "rom", "chd", "zip", "7z", "rar", "ips", "ppf", "xdelta", "bin"},
         LIVE_DIR=os.environ.get("ARENA17_LIVE_DIR", str(root / "storage" / "live")),
         SPECTATE_API_KEY=os.environ.get("ARENA17_SPECTATE_KEY", ""),
+        UPDATES_DIR=os.environ.get("ARENA17_UPDATES_DIR", str(root / "storage" / "updates")),
     )
     if test_config:
         app.config.update(test_config)
@@ -28,6 +29,7 @@ def create_app(test_config=None):
     Path(app.config["DOWNLOADS_DIR"]).mkdir(parents=True, exist_ok=True)
     Path(app.config["UPLOAD_TMP_DIR"]).mkdir(parents=True, exist_ok=True)
     Path(app.config["LIVE_DIR"]).mkdir(parents=True, exist_ok=True)
+    Path(app.config["UPDATES_DIR"]).mkdir(parents=True, exist_ok=True)
 
     db.init_app(app)
     from .security import init_template_helpers
@@ -48,8 +50,10 @@ def create_app(test_config=None):
     from .admin import bp as admin_bp
     from .spectate import bp as spectate_bp
     from .replays import bp as replays_bp
+    from .updates import bp as updates_bp
     app.register_blueprint(public_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(spectate_bp)
     app.register_blueprint(replays_bp)
+    app.register_blueprint(updates_bp)
     return app

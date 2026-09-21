@@ -24,6 +24,9 @@ http://:8080 {
     handle /replays/* {
         reverse_proxy 127.0.0.1:8000
     }
+    handle /updates/* {
+        reverse_proxy 127.0.0.1:8000
+    }
     handle {
         respond 404
     }
