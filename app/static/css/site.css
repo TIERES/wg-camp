@@ -2,8 +2,10 @@
 .site-footer { text-align:center; display:flex; flex-direction:column; align-items:center; gap:.35rem }
 .wgs-logo { display:inline-block; margin-top:.25rem }
 .wgs-logo img { display:block; width:180px; max-width:80vw; height:auto }
-.emulator-download { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:1rem; margin:1rem 0; padding:1rem 1.25rem; background:var(--card); border:1px solid #46662e; border-radius:8px }
+.emulator-download { display:flex; flex-wrap:nowrap; align-items:center; justify-content:space-between; gap:1rem; margin:1rem 0; padding:1rem 1.25rem; background:var(--card); border:1px solid #46662e; border-radius:8px }
 .emulator-download h2,.emulator-download p { margin:.15rem 0 }
+.emulator-download > div { min-width:0 }
+.emulator-download > .button { flex-shrink:0 }
 .championship-list { margin:1rem 0 }
 .championship-table-wrap { overflow-x:auto; border:1px solid #374151; border-radius:8px; background:var(--card) }
 .championship-table { width:100%; min-width:760px; margin:0; padding:0; table-layout:fixed; border-collapse:collapse; background:transparent }

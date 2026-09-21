@@ -2,11 +2,20 @@
 {% block content %}
   <section class="emulator-download" aria-labelledby="emulator-title">
     <div>
-      <h2 id="emulator-title">Emulador RetroArch Casanova</h2>
-      <p>Baixe o RetroArch Casanova já configurado para Winning Eleven 2002.</p>
+      <h2 id="emulator-title">Emulador RetroArch FFW TIERES 0.1</h2>
+      <p>Baixe o RetroArch FFW TIERES 0.1 já configurado com o plugin Kaillera netplay{% if kailleraclient_version %} {{ kailleraclient_version }}{% endif %} para jogos online e acompanhamento de partidas ao vivo!</p>
     </div>
-    <a class="button" href="https://archive.org/download/one-two-iso/RetroArch%28casanova%29WE2002.zip" rel="noopener noreferrer" target="_blank">Baixar RetroArch</a>
+    <a class="button" href="https://archive.org/download/one-two-iso/RetroArch%28casanova%29WE2002.zip" rel="noopener noreferrer" target="_blank">Baixar RetroArch (x64)</a>
   </section>
+  {% if kailleraclient_available %}
+    <section class="emulator-download" aria-labelledby="kailleraclient-title">
+      <div>
+        <h2 id="kailleraclient-title">Plugin de netplay (kailleraclient.dll)</h2>
+        <p>Baixe o plugin de netplay para usar com seu emulador{% if kailleraclient_version %} — versão atual: {{ kailleraclient_version }}{% endif %}.</p>
+      </div>
+      <a class="button" href="{{ url_for('updates.download', arch='x64') }}">Baixar kailleraclient.dll (x64)</a>
+    </section>
+  {% endif %}
   <section class="intro"><h1>Campeonatos e downloads</h1><p>Encontre os arquivos necessários para cada campeonato de Winning Eleven 2002.</p></section>
   {% if championships %}
     <section class="championship-list" aria-label="Campeonatos">

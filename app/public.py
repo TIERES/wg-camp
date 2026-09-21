@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from flask import Blueprint, Response, abort, current_app, render_template, send_from_directory
 
 from .db import get_db
@@ -15,7 +17,16 @@ def index():
         entries = db.execute(f"SELECT * FROM files WHERE is_published = 1 AND championship_id IN ({placeholders}) ORDER BY id DESC", tuple(item["id"] for item in championships)).fetchall()
         for entry in entries:
             files_by_championship.setdefault(entry["championship_id"], []).append(entry)
-    return render_template("public/index.html", championships=championships, files_by_championship=files_by_championship)
+    version_file = Path(current_app.config["UPDATES_DIR"]) / "version.txt"
+    kailleraclient_version = version_file.read_text(encoding="utf-8").strip() if version_file.exists() else None
+    kailleraclient_available = kailleraclient_version is not None and (Path(current_app.config["UPDATES_DIR"]) / "kailleraclient-x64.dll").exists()
+    return render_template(
+        "public/index.html",
+        championships=championships,
+        files_by_championship=files_by_championship,
+        kailleraclient_version=kailleraclient_version,
+        kailleraclient_available=kailleraclient_available,
+    )
 
 
 @bp.get("/download/<int:file_id>")

@@ -61,4 +61,10 @@ def download(arch):
         abort(400, "Arquitetura inválida.")
     if not _dll_path(arch).exists():
         abort(404)
-    return send_from_directory(_updates_dir(), _dll_path(arch).name, mimetype="application/octet-stream")
+    # download_name is always "kailleraclient.dll" (not "-x64"/"-x86"), matching
+    # the exact filename the emulator expects it dropped in as - so a browser
+    # download can be copied straight into place with no renaming needed.
+    return send_from_directory(
+        _updates_dir(), _dll_path(arch).name, mimetype="application/octet-stream",
+        as_attachment=True, download_name="kailleraclient.dll",
+    )
