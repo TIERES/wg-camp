@@ -413,21 +413,30 @@ def replays_cleanup_download(label):
     return send_file(zip_path, as_attachment=True, download_name=f"{label}.zip", mimetype="application/zip")
 
 
+
+# One fixed item holds every backup as a separate dated .zip file, instead
+# of a new item per cleanup run - browsable as a single collection at
+# archive.org/details/<this>. Title/description are item-level metadata
+# (archive.org has no per-file description via this API), so they stay
+# generic; each zip's filename (the date range) is what tells batches
+# apart within the item's file listing.
+ARCHIVE_ORG_ITEM_IDENTIFIER = "wecamp-replays"
+
+
 @bp.post("/replays/cleanup/<label>/archive")
 @login_required
 def replays_cleanup_archive(label):
     validate_csrf()
     zip_path, manifest = _load_backup_manifest(label)
-    identifier = f"wecamp-replays-{label}"
     try:
         url = upload_zip(
-            identifier=identifier,
+            identifier=ARCHIVE_ORG_ITEM_IDENTIFIER,
             file_path=zip_path,
             access_key=current_app.config["IA_ACCESS_KEY"],
             secret_key=current_app.config["IA_SECRET_KEY"],
             collection=current_app.config["IA_COLLECTION"],
-            title=f"WE Camp - Replays {label.replace('_a_', ' a ')}",
-            description=f"Backup de {len(manifest['session_ids'])} replay(s) de partidas gravadas na WE Camp entre {label.replace('_a_', ' e ')}.",
+            title="WE Camp - Backups de Replays",
+            description="Backups periódicos de replays gravados na comunidade WE Camp (Winning Eleven 2002), um .zip por limpeza - o nome de cada arquivo é o intervalo de datas que ele cobre.",
         )
     except ArchiveOrgError as error:
         flash(f"Falha ao enviar para o archive.org: {error}", "error")
