@@ -198,6 +198,39 @@ class SpectateWatchTest(unittest.TestCase):
         self.assertEqual(r3.data, b"")
         self.assertEqual(r3.headers["X-Status"], "finished")
 
+    def test_stream_never_reads_past_committed_bytes_received(self):
+        """Guards against the race this clamp was added for: a concurrent
+        ingest() append can grow the file on disk before its bytes_received
+        UPDATE commits, so stream() must never serve bytes past the DB's
+        count even if the file itself is already longer (a torn/in-flight
+        write parked at the tail otherwise desyncs the spectator's parser)."""
+        first_body = build_header() + frame_record()
+        self._ingest("111-222", first_body)
+
+        # Simulate a write that landed on disk but hasn't updated
+        # bytes_received yet (the in-flight window this bug lived in).
+        stray_bytes = frame_record(b"\x99\x99")
+        with (self.live_dir / "111-222.krec.part").open("ab") as f:
+            f.write(stray_bytes)
+
+        response = self.client.get(f"/spectate/stream/111-222?offset={len(first_body)}")
+        self.assertEqual(response.data, b"")
+        self.assertEqual(response.headers["X-Next-Offset"], str(len(first_body)))
+
+        # Once bytes_received actually catches up (the write's own ingest()
+        # call finishing and committing its UPDATE), the same bytes become
+        # servable - update it directly here rather than re-ingesting
+        # stray_bytes, which would append it to the file a second time.
+        with self.app.app_context():
+            db = get_db()
+            db.execute(
+                "UPDATE live_sessions SET bytes_received = bytes_received + ? WHERE session_id = ?",
+                (len(stray_bytes), "111-222"),
+            )
+            db.commit()
+        response2 = self.client.get(f"/spectate/stream/111-222?offset={len(first_body)}")
+        self.assertEqual(response2.data, stray_bytes)
+
     def test_stream_unknown_session_is_404(self):
         response = self.client.get("/spectate/stream/does-not-exist?offset=0")
         self.assertEqual(response.status_code, 404)
