@@ -1,4 +1,5 @@
 import os
+import sqlite3
 from pathlib import Path
 
 from flask import Flask
@@ -37,6 +38,19 @@ def create_app(test_config=None):
     Path(app.config["REPLAY_BACKUPS_DIR"]).mkdir(parents=True, exist_ok=True)
 
     db.init_app(app)
+    # migrate_db() is idempotent (checks column/table existence before every
+    # ALTER/CREATE) - run it on every startup instead of relying on someone
+    # remembering `flask --app wsgi migrate-db` after a pull. A schema-adding
+    # commit landing without this silently 500s every endpoint that touches
+    # the new column (see the Watch Live "state_requested_at" incident).
+    # OperationalError means `init-db` itself hasn't run yet (fresh install,
+    # e.g. tests using a throwaway DB) - nothing to migrate yet in that case.
+    with app.app_context():
+        if Path(app.config["DATABASE"]).exists():
+            try:
+                db.migrate_db()
+            except sqlite3.OperationalError:
+                pass
     from .security import init_template_helpers
     init_template_helpers(app)
     from .storage import human_size

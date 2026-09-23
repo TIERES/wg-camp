@@ -21,6 +21,14 @@ http://:8080 {
     handle /spectate/stream/* {
         reverse_proxy 127.0.0.1:8000
     }
+    # "Ir direto para o Ao Vivo!" (Watch Live toolbar) - state hand-off
+    # between a spectator and the host, per session id.
+    handle /spectate/*/state-request {
+        reverse_proxy 127.0.0.1:8000
+    }
+    handle /spectate/*/state {
+        reverse_proxy 127.0.0.1:8000
+    }
     handle /replays/* {
         reverse_proxy 127.0.0.1:8000
     }
