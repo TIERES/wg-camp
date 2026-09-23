@@ -4,7 +4,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from flask import Blueprint, abort, current_app, jsonify, request
+from flask import Blueprint, abort, current_app, jsonify, request, send_from_directory
 
 from .db import get_db, now
 
@@ -17,6 +17,10 @@ SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 # spectator far behind live still gets bounded, steadily-progressing chunks
 # instead of one huge read.
 MAX_STREAM_CHUNK_BYTES = 1 * 1024 * 1024
+
+# Generous ceiling for a single N64 core savestate (retro_serialize() output)
+# - same bound as replays.py's retry-connect /state upload.
+MAX_STATE_BYTES = 32 * 1024 * 1024
 
 # Layout of the 400-byte KRC1-style header the client sends once, on the
 # first batch (X-Sequence: 0) of every session - byte-identical to the local
@@ -309,4 +313,98 @@ def stream(session_id):
     response = current_app.response_class(chunk, mimetype="application/octet-stream")
     response.headers["X-Status"] = row["status"]
     response.headers["X-Next-Offset"] = str(offset + len(chunk))
+    return response
+
+
+def _live_states_dir():
+    path = Path(current_app.config["LIVE_DIR"]) / "live_states"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _known_session_or_404(session_id):
+    if not SESSION_ID_RE.match(session_id):
+        abort(400, "Session id inválido.")
+    row = get_db().execute("SELECT session_id FROM live_sessions WHERE session_id = ?", (session_id,)).fetchone()
+    if row is None:
+        abort(404)
+    return row
+
+
+@bp.post("/<session_id>/state-request")
+def request_state(session_id):
+    """"Ir direto para o Ao Vivo!" (kaillera-client's Watch Live toolbar) - a
+    spectator who fell behind (rewound, or just paused a while) marks that
+    they want a fresh sync point. The host's own client polls
+    GET .../state-request periodically while streaming and, if pending,
+    takes a retro_serialize() - no pause needed, unlike retry-connect's host,
+    this one is playing live - and uploads it via POST .../state below,
+    which clears this flag as a side effect. Idempotent: a request that
+    arrives before the host has serviced the previous one just keeps the
+    same "pending" state, no queueing needed since only the latest state
+    ever matters to a spectator jumping to "now" anyway.
+    """
+    _check_api_key()
+    _known_session_or_404(session_id)
+    db = get_db()
+    db.execute("UPDATE live_sessions SET state_requested_at = ? WHERE session_id = ?", (now(), session_id))
+    db.commit()
+    return ("", 204)
+
+
+@bp.get("/<session_id>/state-request")
+def check_state_request(session_id):
+    """Host-side poll - see request_state() above. Whether a request is
+    currently pending is all the host needs (not when), so that's all this
+    returns."""
+    _check_api_key()
+    row = _known_session_or_404(session_id)
+    row = get_db().execute(
+        "SELECT state_requested_at FROM live_sessions WHERE session_id = ?", (session_id,)
+    ).fetchone()
+    return jsonify({"pending": row["state_requested_at"] is not None})
+
+
+@bp.post("/<session_id>/state")
+def upload_state(session_id):
+    """Host uploads the state request_state() above asked for. Body: 4-byte
+    little-endian frame index followed by the raw retro_serialize() bytes -
+    same shape as retry-connect's /replays/<id>/state (see that endpoint's
+    docstring for why). Clears the pending request as a side effect;
+    overwrites any previous upload for this session, since only the latest
+    ever matters to a spectator jumping to "now"."""
+    _check_api_key()
+    _known_session_or_404(session_id)
+
+    if request.content_length and request.content_length > MAX_STATE_BYTES:
+        abort(413)
+    body = request.get_data(cache=False)
+    if len(body) > MAX_STATE_BYTES:
+        abort(413)
+    if len(body) < 4:
+        abort(400, "Corpo do state save inválido.")
+
+    (_live_states_dir() / f"{session_id}.state").write_bytes(body)
+    db = get_db()
+    db.execute("UPDATE live_sessions SET state_requested_at = NULL WHERE session_id = ?", (session_id,))
+    db.commit()
+    return ("", 204)
+
+
+@bp.get("/<session_id>/state")
+def download_state(session_id):
+    """Spectator downloads the most recent state a host uploaded via POST
+    .../state above - 404 until the host has serviced at least one request."""
+    _check_api_key()
+    _known_session_or_404(session_id)
+
+    state_name = f"{session_id}.state"
+    if not (_live_states_dir() / state_name).exists():
+        abort(404)
+
+    if current_app.config["SERVE_DOWNLOADS_LOCALLY"]:
+        return send_from_directory(str(_live_states_dir()), state_name, as_attachment=True, download_name=state_name)
+    response = current_app.response_class()
+    response.headers["X-Accel-Redirect"] = f"/_protected_live_states/{state_name}"
+    response.headers["Content-Disposition"] = f'attachment; filename="{state_name}"'
     return response
