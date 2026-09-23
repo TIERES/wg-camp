@@ -283,20 +283,32 @@ def stream(session_id):
         abort(400, "Offset inválido.")
 
     row = get_db().execute(
-        "SELECT status, stored_name FROM live_sessions WHERE session_id = ?",
+        "SELECT status, stored_name, bytes_received FROM live_sessions WHERE session_id = ?",
         (session_id,),
     ).fetchone()
     if row is None:
         abort(404, "Sessão desconhecida.")
 
+    # Never read past bytes_received: it's only bumped in ingest() *after*
+    # that batch's write() has returned, so it's the one number guaranteed to
+    # never be ahead of what's actually, fully landed on disk. Reading the
+    # file's raw current length instead would race a concurrent ingest()
+    # append on the gunicorn worker's other thread - a spectator polling the
+    # live edge could catch the file mid-write and get a torn/truncated tail
+    # record, desyncing their .krec parser (seen in practice: kaillera-client
+    # reported "unrecognized record type" and dropped the stream a few
+    # minutes into watching a live match).
+    want = max(0, min(MAX_STREAM_CHUNK_BYTES, row["bytes_received"] - offset))
+
     file_path = _live_dir() / row["stored_name"]
     chunk = b""
-    try:
-        with file_path.open("rb") as f:
-            f.seek(offset)
-            chunk = f.read(MAX_STREAM_CHUNK_BYTES)
-    except FileNotFoundError:
-        pass  # host hasn't sent its first batch yet - report status, no bytes
+    if want > 0:
+        try:
+            with file_path.open("rb") as f:
+                f.seek(offset)
+                chunk = f.read(want)
+        except FileNotFoundError:
+            pass  # host hasn't sent its first batch yet - report status, no bytes
 
     response = current_app.response_class(chunk, mimetype="application/octet-stream")
     response.headers["X-Status"] = row["status"]
