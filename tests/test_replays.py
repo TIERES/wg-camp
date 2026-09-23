@@ -143,6 +143,50 @@ class ReplaysTest(unittest.TestCase):
         self.assertEqual(len(lines), 1)
         self.assertEqual(len(lines[0].split("\t")), 7)
 
+    def _state_blob(self, frame_index=1234, payload=b"fake-savestate-bytes"):
+        return struct.pack("<I", frame_index) + payload
+
+    def test_state_round_trip(self):
+        self._finish_session("777-888", started_ago_seconds=400)
+        blob = self._state_blob()
+
+        upload = self.client.post("/replays/777-888/state", data=blob, content_type="application/octet-stream")
+        self.assertEqual(upload.status_code, 204)
+
+        download = self.client.get("/replays/777-888/state")
+        self.assertEqual(download.status_code, 200)
+        self.assertEqual(download.data, blob)
+
+    def test_state_upload_overwrites_previous_one(self):
+        self._finish_session("777-888", started_ago_seconds=400)
+        self.client.post("/replays/777-888/state", data=self._state_blob(1000, b"old"), content_type="application/octet-stream")
+        new_blob = self._state_blob(2000, b"new")
+        self.client.post("/replays/777-888/state", data=new_blob, content_type="application/octet-stream")
+
+        download = self.client.get("/replays/777-888/state")
+        self.assertEqual(download.data, new_blob)
+
+    def test_state_download_before_any_upload_is_404(self):
+        self._finish_session("777-888", started_ago_seconds=400)
+        download = self.client.get("/replays/777-888/state")
+        self.assertEqual(download.status_code, 404)
+
+    def test_state_upload_rejects_replay_that_does_not_qualify(self):
+        self._finish_session("333-444", started_ago_seconds=10)  # too short, not a real replay
+        upload = self.client.post("/replays/333-444/state", data=self._state_blob(), content_type="application/octet-stream")
+        self.assertEqual(upload.status_code, 404)
+
+    def test_state_upload_rejects_oversized_body(self):
+        self._finish_session("777-888", started_ago_seconds=400)
+        from app import replays as replays_module
+        too_big = b"\x00" * (replays_module.MAX_STATE_BYTES + 1)
+        upload = self.client.post("/replays/777-888/state", data=too_big, content_type="application/octet-stream")
+        self.assertEqual(upload.status_code, 413)
+
+    def test_state_upload_rejects_invalid_session_id(self):
+        upload = self.client.post("/replays/../../etc/state", data=self._state_blob(), content_type="application/octet-stream")
+        self.assertIn(upload.status_code, (400, 404))
+
 
 if __name__ == "__main__":
     unittest.main()

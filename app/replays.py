@@ -1,3 +1,6 @@
+import re
+from pathlib import Path
+
 from flask import Blueprint, Response, abort, current_app, render_template, request, send_from_directory
 from werkzeug.utils import secure_filename
 
@@ -9,6 +12,14 @@ bp = Blueprint("replays", __name__, url_prefix="/replays")
 MIN_REPLAY_DURATION_SECONDS = 300
 DEFAULT_LIST_LIMIT = 20
 MAX_LIST_LIMIT = 50
+
+# Matches the session id kaillera-client assigns a replay ("<pid>-<unix-ts>",
+# same format as spectate.py's live sessions) - used as a filename component
+# below, so this whitelist also doubles as path-traversal protection.
+SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+# Generous ceiling for a single N64 core savestate (retro_serialize() output).
+MAX_STATE_BYTES = 32 * 1024 * 1024
 
 
 def _download_name(entry):
@@ -78,8 +89,9 @@ def list_txt():
     return Response("\n".join(lines) + ("\n" if lines else ""), mimetype="text/plain")
 
 
-@bp.get("/<session_id>/download")
-def download(session_id):
+def _finished_replay_or_404(session_id):
+    if not SESSION_ID_RE.match(session_id):
+        abort(400, "Session id inválido.")
     entry = get_db().execute(
         """SELECT * FROM live_sessions
            WHERE session_id = ? AND status = 'finished' AND duration_seconds >= ?""",
@@ -87,6 +99,12 @@ def download(session_id):
     ).fetchone()
     if not entry:
         abort(404)
+    return entry
+
+
+@bp.get("/<session_id>/download")
+def download(session_id):
+    entry = _finished_replay_or_404(session_id)
 
     download_name = _download_name(entry)
 
@@ -95,4 +113,56 @@ def download(session_id):
     response = Response()
     response.headers["X-Accel-Redirect"] = f"/_protected_replays/{entry['stored_name']}"
     response.headers["Content-Disposition"] = f'attachment; filename="{download_name}"'
+    return response
+
+
+def _retryconnect_states_dir():
+    path = Path(current_app.config["LIVE_DIR"]) / "retryconnect_states"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+@bp.post("/<session_id>/state")
+def upload_state(session_id):
+    """retry-connect: host uploads a savestate taken at the exact frame it
+    stopped fast-forwarding a group replay (see kaillera-client's
+    kcore/kaillera_retryconnect.cpp). Fast-forward during retry-connect is
+    host-only and purely local - different machines/cores can't be trusted to
+    reach the identical frame from replaying the same recorded input at
+    whatever speed their own hardware allows, so nobody else tries to
+    reproduce it by fast-forwarding themselves. Instead, the moment the host
+    stops, everyone else loads this exact state.
+
+    Body: 4-byte little-endian frame index the state was taken at, followed
+    by the raw retro_serialize() bytes. Only the latest state matters for a
+    given replay session, so a new upload just overwrites the last one -
+    nothing here needs cleaning up by callers.
+    """
+    _finished_replay_or_404(session_id)
+
+    if request.content_length and request.content_length > MAX_STATE_BYTES:
+        abort(413)
+    body = request.get_data(cache=False)
+    if len(body) > MAX_STATE_BYTES:
+        abort(413)
+    if len(body) < 4:
+        abort(400, "Corpo do state save inválido.")
+
+    (_retryconnect_states_dir() / f"{session_id}.state").write_bytes(body)
+    return ("", 204)
+
+
+@bp.get("/<session_id>/state")
+def download_state(session_id):
+    _finished_replay_or_404(session_id)
+
+    state_name = f"{session_id}.state"
+    if not (_retryconnect_states_dir() / state_name).exists():
+        abort(404)
+
+    if current_app.config["SERVE_DOWNLOADS_LOCALLY"]:
+        return send_from_directory(str(_retryconnect_states_dir()), state_name, as_attachment=True, download_name=state_name)
+    response = Response()
+    response.headers["X-Accel-Redirect"] = f"/_protected_replay_states/{state_name}"
+    response.headers["Content-Disposition"] = f'attachment; filename="{state_name}"'
     return response
