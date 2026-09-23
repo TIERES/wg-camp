@@ -53,7 +53,8 @@ CREATE TABLE IF NOT EXISTS live_sessions (
     started_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     ended_at TEXT,
-    duration_seconds INTEGER
+    duration_seconds INTEGER,
+    state_requested_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS live_sessions_game_name_idx ON live_sessions(game_name);

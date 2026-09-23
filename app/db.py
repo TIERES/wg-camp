@@ -95,6 +95,8 @@ def migrate_db():
         database.execute("ALTER TABLE live_sessions ADD COLUMN owner_name TEXT NOT NULL DEFAULT ''")
     if "duration_seconds" not in live_session_columns:
         database.execute("ALTER TABLE live_sessions ADD COLUMN duration_seconds INTEGER")
+    if "state_requested_at" not in live_session_columns:
+        database.execute("ALTER TABLE live_sessions ADD COLUMN state_requested_at TEXT")
     database.execute("CREATE INDEX IF NOT EXISTS live_sessions_game_name_idx ON live_sessions(game_name)")
     database.execute("CREATE INDEX IF NOT EXISTS live_sessions_replay_idx ON live_sessions(status, duration_seconds)")
     rows = database.execute(
