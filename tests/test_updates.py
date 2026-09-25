@@ -81,6 +81,12 @@ class UpdatesTest(unittest.TestCase):
         self.assertIn(b"https://archive.org/download/one-two-iso/RetroArch-TIERES-light.zip", response.data)
         self.assertNotIn(b"RetroArch-1.16.0.FFW.TIERES.0.1.zip", response.data)
 
+    def test_public_page_links_the_tutorial_pdf(self):
+        response = self.app.test_client().get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Tutorial RetroArch FFW TIERES 0.2 (PDF)", response.data)
+        self.assertIn(b"https://archive.org/download/one-two-iso/Tutorial_RetroArch_FFW_TIERES_0.2.pdf", response.data)
+
 
 if __name__ == "__main__":
     unittest.main()
