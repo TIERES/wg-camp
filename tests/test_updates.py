@@ -72,6 +72,15 @@ class UpdatesTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn(b"kailleraclient.dll (x64)", response.data)
 
+    def test_public_page_links_full_and_light_retroarch_downloads(self):
+        response = self.app.test_client().get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Emulador RetroArch FFW TIERES 0.2".encode("utf-8"), response.data)
+        self.assertIn(b"https://archive.org/download/one-two-iso/RetroArch-1.16.0.FFW.TIERES.0.2.zip", response.data)
+        self.assertIn("Atualização light".encode("utf-8"), response.data)
+        self.assertIn(b"https://archive.org/download/one-two-iso/RetroArch-TIERES-light.zip", response.data)
+        self.assertNotIn(b"RetroArch-1.16.0.FFW.TIERES.0.1.zip", response.data)
+
 
 if __name__ == "__main__":
     unittest.main()
