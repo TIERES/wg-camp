@@ -3,6 +3,7 @@ import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import parse_qsl
 
 from flask import Blueprint, abort, current_app, jsonify, request, send_from_directory
 
@@ -63,6 +64,22 @@ def _check_api_key():
     provided = request.headers.get("X-Api-Key", "")
     if not secrets.compare_digest(provided, expected):
         abort(401)
+
+
+def _dll_query_arg(name):
+    """A query arg the way kaillera-client sends it: percent-encoded bytes in
+    the Windows code page ("é" -> %E9), which request.args' UTF-8 decoding
+    turns into U+FFFD. Valid UTF-8 (a browser, a future client) still wins;
+    anything else is read as latin-1 - the same decoding the X-Owner-Name
+    header (WSGI) and the KRC1 header's room name (_decode_cstr) already get,
+    so both sides of the lookup's comparison end up as the same string."""
+    for key, value in parse_qsl(request.query_string.decode("ascii", "replace"), keep_blank_values=True, encoding="latin-1"):
+        if key == name:
+            try:
+                return value.encode("latin-1").decode("utf-8")
+            except UnicodeDecodeError:
+                return value
+    return ""
 
 
 def _decode_cstr(chunk: bytes) -> str:
@@ -231,10 +248,10 @@ def lookup():
     """
     _check_api_key()
 
-    room = request.args.get("room", "").strip()
+    room = _dll_query_arg("room").strip()
     if not room:
         abort(400, "Parâmetro 'room' ausente.")
-    owner = request.args.get("owner", "").strip()
+    owner = _dll_query_arg("owner").strip()
 
     if owner:
         query = """SELECT session_id, status, app_name, game_name, player_names, bytes_received

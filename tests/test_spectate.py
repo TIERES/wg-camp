@@ -177,6 +177,22 @@ class SpectateWatchTest(unittest.TestCase):
         missing_owner = self.client.get("/spectate/lookup?room=We2002.bin&owner=HostC")
         self.assertEqual(missing_owner.status_code, 404)
 
+    def test_lookup_matches_accented_owner_and_room_sent_by_the_dll(self):
+        # The DLL speaks the Windows code page: the host sends X-Owner-Name
+        # (and the room, inside the KRC1 header) as raw cp1252 bytes, and the
+        # spectator percent-encodes the lobby's owner/room byte by byte - so
+        # "é" arrives as %E9, which isn't valid UTF-8. Seen live 2026-09-28:
+        # owner "pelé x jeff bezos" -> "No live stream found for room".
+        self._ingest("session-accent", build_header(game_name="Pelé WE2002.bin".encode("cp1252")), owner="pelé x jeff bezos")
+
+        dll_style = self.client.get("/spectate/lookup?room=Pel%E9%20WE2002.bin&owner=pel%E9%20x%20jeff%20bezos")
+        self.assertEqual(dll_style.status_code, 200)
+        self.assertEqual(dll_style.get_json()["session_id"], "session-accent")
+
+        utf8_style = self.client.get("/spectate/lookup?room=Pel%C3%A9%20WE2002.bin&owner=pel%C3%A9%20x%20jeff%20bezos")
+        self.assertEqual(utf8_style.status_code, 200)
+        self.assertEqual(utf8_style.get_json()["session_id"], "session-accent")
+
     def test_stream_returns_bytes_from_offset_and_status_headers(self):
         first_body = build_header() + frame_record()
         self._ingest("111-222", first_body)
