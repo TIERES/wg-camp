@@ -77,8 +77,10 @@ class UpdatesTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Emulador RetroArch FFW TIERES 0.3".encode("utf-8"), response.data)
         self.assertIn(b"https://archive.org/download/one-two-iso/RetroArch-1.16.0.FFW.TIERES.0.3.zip", response.data)
-        self.assertIn("Atualização light: TIERES 0.2 para 0.3".encode("utf-8"), response.data)
-        self.assertIn(b"https://archive.org/download/one-two-iso/RetroArch-1.16.0.FFW.TIERES.0.3.light.zip", response.data)
+        self.assertIn("Atualização light: TIERES 0.4".encode("utf-8"), response.data)
+        self.assertIn(b"https://archive.org/download/one-two-iso/RetroArch-1.16.0.FFW.TIERES.0.4.light.zip", response.data)
+        self.assertIn("aplique a atualização light 0.4".encode("utf-8"), response.data)
+        self.assertNotIn(b"RetroArch-1.16.0.FFW.TIERES.0.3.light.zip", response.data)
         self.assertNotIn(b"RetroArch-1.16.0.FFW.TIERES.0.2.zip", response.data)
         self.assertNotIn(b"RetroArch-TIERES-light.zip", response.data)
 
