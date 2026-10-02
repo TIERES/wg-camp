@@ -75,14 +75,42 @@ def upload_zip(identifier, file_path, access_key, secret_key, collection, title,
     return f"https://archive.org/details/{identifier}"
 
 
+def delete_file(identifier, filename, access_key, secret_key):
+    """Deletes one file (and the derivatives archive.org generated from it)
+    from item `identifier`. Raises ArchiveOrgError on any non-2xx response
+    or connection failure."""
+    if not access_key or not secret_key:
+        raise ArchiveOrgError("Chaves do archive.org não configuradas.")
+    headers = {
+        "authorization": f"LOW {access_key}:{secret_key}",
+        "x-archive-cascade-delete": "1",
+    }
+    path = f"/{urllib.parse.quote(identifier)}/{urllib.parse.quote(filename)}"
+    conn = http.client.HTTPSConnection("s3.us.archive.org", timeout=120)
+    try:
+        conn.request("DELETE", path, headers=headers)
+        response = conn.getresponse()
+        body = response.read()
+    except OSError as error:
+        raise ArchiveOrgError(f"Falha de rede ao excluir do archive.org: {error}") from error
+    finally:
+        conn.close()
+    if response.status not in (200, 204):
+        raise ArchiveOrgError(f"archive.org recusou a exclusão ({response.status}): {body[:300].decode('utf-8', 'replace')}")
+
+
 def list_item_files(identifier):
-    """Returns {name: md5} for the item's original files ({} if the item
-    doesn't exist yet). Raises ArchiveOrgError when archive.org can't be
-    reached."""
+    """Returns {name: {"md5", "size", "mtime"}} for the item's original
+    files ({} if the item doesn't exist yet). Raises ArchiveOrgError when
+    archive.org can't be reached."""
     url = f"https://archive.org/metadata/{urllib.parse.quote(identifier)}/files"
     try:
         with urllib.request.urlopen(url, timeout=60) as response:
             data = json.loads(response.read().decode("utf-8"))
     except (OSError, ValueError) as error:
         raise ArchiveOrgError(f"Falha ao consultar os arquivos do archive.org: {error}") from error
-    return {entry["name"]: entry.get("md5") for entry in data.get("result", []) if entry.get("source") == "original"}
+    return {
+        entry["name"]: {"md5": entry.get("md5"), "size": int(entry.get("size") or 0), "mtime": entry.get("mtime")}
+        for entry in data.get("result", [])
+        if entry.get("source") == "original"
+    }

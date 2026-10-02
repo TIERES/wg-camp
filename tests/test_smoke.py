@@ -1,3 +1,4 @@
+import hashlib
 import tempfile
 import unittest
 from io import BytesIO
@@ -90,6 +91,10 @@ class SmokeTest(unittest.TestCase):
         self.assertTrue(second.headers["Location"].endswith("/admin/championships/1/files"))
         with self.app.app_context():
             self.assertEqual(get_db().execute("SELECT COUNT(*) FROM files WHERE championship_id=1").fetchone()[0], 1)
+            self.assertEqual(
+                get_db().execute("SELECT md5 FROM files WHERE championship_id=1").fetchone()[0],
+                hashlib.md5(b"first file").hexdigest(),
+            )
 
 
 if __name__ == "__main__":

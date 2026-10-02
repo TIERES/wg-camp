@@ -30,18 +30,20 @@ def store_upload(upload: FileStorage):
     temp_path = Path(current_app.config["UPLOAD_TMP_DIR"]) / f"{stored_name}.part"
     final_path = Path(current_app.config["DOWNLOADS_DIR"]) / stored_name
     digest = hashlib.sha256()
+    md5 = hashlib.md5()
     size = 0
     try:
         with temp_path.open("xb") as target:
             while chunk := upload.stream.read(1024 * 1024):
                 target.write(chunk)
                 digest.update(chunk)
+                md5.update(chunk)
                 size += len(chunk)
         os.replace(temp_path, final_path)
     except Exception:
         temp_path.unlink(missing_ok=True)
         raise
-    return {"stored_name": stored_name, "original_filename": original, "file_size": size, "sha256": digest.hexdigest()}
+    return {"stored_name": stored_name, "original_filename": original, "file_size": size, "sha256": digest.hexdigest(), "md5": md5.hexdigest()}
 
 
 def delete_stored_file(stored_name):

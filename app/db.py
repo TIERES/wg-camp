@@ -98,7 +98,7 @@ def migrate_db():
     if "state_requested_at" not in live_session_columns:
         database.execute("ALTER TABLE live_sessions ADD COLUMN state_requested_at TEXT")
     file_columns = {column["name"] for column in database.execute("PRAGMA table_info(files)")}
-    for column in ("archive_url", "archive_status", "archive_error", "archive_updated_at"):
+    for column in ("md5", "archive_url", "archive_status", "archive_error", "archive_updated_at"):
         if column not in file_columns:
             database.execute(f"ALTER TABLE files ADD COLUMN {column} TEXT")
     database.execute("CREATE INDEX IF NOT EXISTS live_sessions_game_name_idx ON live_sessions(game_name)")

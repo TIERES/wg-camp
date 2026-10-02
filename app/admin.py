@@ -10,7 +10,7 @@ from pathlib import Path
 from flask import Blueprint, Response, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, send_from_directory, session, url_for
 from werkzeug.security import check_password_hash
 
-from .archive_org import ArchiveOrgError, download_url, list_item_files, upload_file, upload_zip
+from .archive_org import ArchiveOrgError, delete_file, download_url, list_item_files, upload_file, upload_zip
 from .db import get_db, now
 from .arena17_import import import_championship
 from .replays import _download_name
@@ -188,7 +188,7 @@ def file_upload(championship_id):
             raise ValueError("Cada campeonato pode ter apenas um arquivo. Edite ou remova o arquivo atual antes de enviar outro.")
         stored = store_upload(upload)
         display_name = request.form.get("display_name", "").strip() or stored["original_filename"]
-        db.execute("INSERT INTO files (championship_id,display_name,description,stored_name,original_filename,file_type,file_size,sha256,is_published,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)", (championship_id, display_name, request.form.get("description", "").strip(), stored["stored_name"], stored["original_filename"], request.form.get("file_type", "other"), stored["file_size"], stored["sha256"], int("is_published" in request.form), now(), now()))
+        db.execute("INSERT INTO files (championship_id,display_name,description,stored_name,original_filename,file_type,file_size,sha256,md5,is_published,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (championship_id, display_name, request.form.get("description", "").strip(), stored["stored_name"], stored["original_filename"], request.form.get("file_type", "other"), stored["file_size"], stored["sha256"], stored["md5"], int("is_published" in request.form), now(), now()))
         db.commit()
     except (ValueError, OSError, sqlite3.IntegrityError) as error:
         if stored:
@@ -244,8 +244,15 @@ def file_delete(file_id):
 
 # Championship ISOs go into the existing "one-two-iso" item (created by hand
 # on archive.org, alongside the RetroArch zips), under their original file
-# name. The upload runs on a background thread - a ~470 MB PUT would hold one
-# of gunicorn's two threads for minutes - and its progress lives in the
+# name. Each file's MD5 is kept in files.md5 (archive.org lists an md5 per
+# file, not a sha256) so the item's copy can be compared with ours:
+#   - same name, same md5      -> already there, just link it;
+#   - same name, different md5 -> the ISO was updated: ask, then delete the
+#                                 old copy on archive.org and upload ours;
+#   - same md5 under another name (uploaded by hand) -> link that one;
+#   - otherwise                -> upload under the original name.
+# The upload runs on a background thread - a ~470 MB PUT would hold one of
+# gunicorn's two threads for minutes - and its progress lives in the
 # files.archive_* columns. A restart mid-upload leaves status 'uploading'
 # behind, so that status only blocks a new attempt for ISO_ARCHIVE_STALE.
 ISO_ARCHIVE_ITEM_IDENTIFIER = "one-two-iso"
@@ -260,43 +267,50 @@ def _file_md5(path):
     return digest.hexdigest()
 
 
-def _archive_remote_name(entry, existing):
-    """The original file name, unless the item already holds a different
-    file under that name - then it's prefixed with the championship slug
-    so nothing on archive.org gets overwritten."""
+def _local_md5(db, entry):
+    """files.md5, computed (and saved) on first use for files uploaded
+    before the column existed."""
+    if entry["md5"]:
+        return entry["md5"]
+    md5 = _file_md5(Path(current_app.config["DOWNLOADS_DIR"]) / entry["stored_name"])
+    db.execute("UPDATE files SET md5=? WHERE id=?", (md5, entry["id"]))
+    db.commit()
+    return md5
+
+
+def _archive_plan(entry, md5, existing):
+    """Returns (action, remote_name) with action one of "link", "replace",
+    "upload" - see the comment above."""
     name = entry["original_filename"]
-    if name not in existing:
-        return name
-    return f"{entry['slug']}-{name}"
+    if name in existing:
+        return ("link" if existing[name]["md5"] == md5 else "replace"), name
+    same = next((other for other, info in existing.items() if info["md5"] == md5), None)
+    if same:
+        return "link", same
+    return "upload", name
 
 
-def _archive_iso(app, file_id):
+def _archive_iso(app, file_id, remote_name, replace):
     with app.app_context():
         db = get_db()
-        entry = db.execute(
-            "SELECT files.*, championships.slug FROM files JOIN championships ON championships.id = files.championship_id WHERE files.id=?",
-            (file_id,),
-        ).fetchone()
+        entry = db.execute("SELECT * FROM files WHERE id=?", (file_id,)).fetchone()
+        keys = {"access_key": app.config["IA_ACCESS_KEY"], "secret_key": app.config["IA_SECRET_KEY"]}
         try:
-            path = Path(app.config["DOWNLOADS_DIR"]) / entry["stored_name"]
-            md5 = _file_md5(path)
-            existing = list_item_files(ISO_ARCHIVE_ITEM_IDENTIFIER)
-            same = next((name for name, item_md5 in existing.items() if item_md5 == md5), None)
-            if same:
-                # Already on archive.org (e.g. uploaded by hand) - just link it.
-                url = download_url(ISO_ARCHIVE_ITEM_IDENTIFIER, same)
-            else:
-                url = upload_file(
-                    ISO_ARCHIVE_ITEM_IDENTIFIER,
-                    path,
-                    access_key=app.config["IA_ACCESS_KEY"],
-                    secret_key=app.config["IA_SECRET_KEY"],
-                    remote_name=_archive_remote_name(entry, existing),
-                )
+            if replace:
+                delete_file(ISO_ARCHIVE_ITEM_IDENTIFIER, remote_name, **keys)
+            url = upload_file(
+                ISO_ARCHIVE_ITEM_IDENTIFIER,
+                Path(app.config["DOWNLOADS_DIR"]) / entry["stored_name"],
+                remote_name=remote_name,
+                **keys,
+            )
         except (ArchiveOrgError, OSError) as error:
+            message = str(error)
+            if replace:
+                message += " (a ISO antiga pode já ter sido excluída do archive.org - envie novamente)"
             db.execute(
                 "UPDATE files SET archive_status='error', archive_error=?, archive_updated_at=? WHERE id=?",
-                (str(error), now(), file_id),
+                (message, now(), file_id),
             )
         else:
             db.execute(
@@ -327,17 +341,52 @@ def file_archive(file_id):
     if _archive_upload_in_progress(entry):
         flash("O envio para o archive.org já está em andamento.", "error")
         return back
+
+    try:
+        md5 = _local_md5(db, entry)
+        existing = list_item_files(ISO_ARCHIVE_ITEM_IDENTIFIER)
+    except (ArchiveOrgError, OSError) as error:
+        flash(f"Não foi possível comparar com o archive.org: {error}", "error")
+        return back
+    action, remote_name = _archive_plan(entry, md5, existing)
+
+    if action == "link":
+        url = download_url(ISO_ARCHIVE_ITEM_IDENTIFIER, remote_name)
+        db.execute(
+            "UPDATE files SET archive_status='done', archive_url=?, archive_error=NULL, archive_updated_at=? WHERE id=?",
+            (url, now(), file_id),
+        )
+        db.commit()
+        flash(f"Esta ISO já está no archive.org, com o mesmo conteúdo: {url}", "success")
+        return back
+
+    if action == "replace" and request.form.get("replace") != "yes":
+        mtime = existing[remote_name]["mtime"]
+        return render_template(
+            "admin/file_archive_confirm.html",
+            remote_date=datetime.fromtimestamp(int(mtime), timezone.utc).isoformat() if mtime else None,
+            file=entry,
+            remote_name=remote_name,
+            remote=existing[remote_name],
+            local_md5=md5,
+            item=ISO_ARCHIVE_ITEM_IDENTIFIER,
+        )
+
     db.execute(
         "UPDATE files SET archive_status='uploading', archive_error=NULL, archive_updated_at=? WHERE id=?",
         (now(), file_id),
     )
     db.commit()
     app = current_app._get_current_object()
+    args = (app, file_id, remote_name, action == "replace")
     if app.config.get("TESTING"):
-        _archive_iso(app, file_id)
+        _archive_iso(*args)
     else:
-        threading.Thread(target=_archive_iso, args=(app, file_id), daemon=True).start()
-    flash("Envio para o archive.org iniciado. Atualize esta página em alguns minutos para ver o link.", "success")
+        threading.Thread(target=_archive_iso, args=args, daemon=True).start()
+    if action == "replace":
+        flash("Substituição iniciada: a ISO antiga será excluída do archive.org e a nova enviada. Atualize esta página em alguns minutos para ver o link.", "success")
+    else:
+        flash("Envio para o archive.org iniciado. Atualize esta página em alguns minutos para ver o link.", "success")
     return back
 
 

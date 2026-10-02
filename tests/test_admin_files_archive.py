@@ -9,6 +9,11 @@ from app.archive_org import ArchiveOrgError
 from app.db import get_db, init_db, now
 
 ISO_BYTES = b"iso de teste" * 100
+ISO_MD5 = hashlib.md5(ISO_BYTES).hexdigest()
+
+
+def remote(md5):
+    return {"md5": md5, "size": 474431328, "mtime": "1786825765"}
 
 
 class AdminFilesArchiveTest(unittest.TestCase):
@@ -49,15 +54,15 @@ class AdminFilesArchiveTest(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def _archive(self):
-        return self.client.post("/admin/files/1/archive", data={"csrf_token": "test-csrf-token"})
+    def _archive(self, **form):
+        return self.client.post("/admin/files/1/archive", data={"csrf_token": "test-csrf-token", **form})
 
     def _file(self):
         with self.app.app_context():
             return dict(get_db().execute("SELECT * FROM files WHERE id=1").fetchone())
 
     @mock.patch("app.admin.upload_file", return_value="https://archive.org/download/one-two-iso/Copa%20Teste.bin")
-    @mock.patch("app.admin.list_item_files", return_value={"outro.bin": "123"})
+    @mock.patch("app.admin.list_item_files", return_value={"outro.bin": remote("123")})
     def test_uploads_under_original_name_and_stores_url(self, _list, upload):
         response = self._archive()
         self.assertEqual(response.status_code, 302)
@@ -67,6 +72,7 @@ class AdminFilesArchiveTest(unittest.TestCase):
         entry = self._file()
         self.assertEqual(entry["archive_status"], "done")
         self.assertEqual(entry["archive_url"], "https://archive.org/download/one-two-iso/Copa%20Teste.bin")
+        self.assertEqual(entry["md5"], ISO_MD5)
 
         page = self.client.get("/admin/championships/1/files")
         self.assertIn(b"https://archive.org/download/one-two-iso/Copa%20Teste.bin", page.data)
@@ -74,18 +80,62 @@ class AdminFilesArchiveTest(unittest.TestCase):
         self.assertIn(b"pelo archive.org", public.data)
 
     @mock.patch("app.admin.upload_file")
-    @mock.patch("app.admin.list_item_files")
-    def test_same_md5_already_on_archive_is_linked_without_upload(self, list_files, upload):
-        list_files.return_value = {"Nome Antigo.bin": hashlib.md5(ISO_BYTES).hexdigest()}
+    @mock.patch("app.admin.list_item_files", return_value={"Copa Teste.bin": remote(ISO_MD5)})
+    def test_same_name_same_md5_is_linked_without_upload(self, _list, upload):
+        self._archive()
+        upload.assert_not_called()
+        entry = self._file()
+        self.assertEqual(entry["archive_status"], "done")
+        self.assertEqual(entry["archive_url"], "https://archive.org/download/one-two-iso/Copa%20Teste.bin")
+
+    @mock.patch("app.admin.upload_file")
+    @mock.patch("app.admin.list_item_files", return_value={"Nome Antigo.bin": remote(ISO_MD5)})
+    def test_same_md5_under_other_name_is_linked_without_upload(self, _list, upload):
         self._archive()
         upload.assert_not_called()
         self.assertEqual(self._file()["archive_url"], "https://archive.org/download/one-two-iso/Nome%20Antigo.bin")
 
-    @mock.patch("app.admin.upload_file", return_value="url")
-    @mock.patch("app.admin.list_item_files", return_value={"Copa Teste.bin": "outro-md5"})
-    def test_name_taken_by_different_file_gets_slug_prefix(self, _list, upload):
-        self._archive()
-        self.assertEqual(upload.call_args.kwargs["remote_name"], "copa-teste-Copa Teste.bin")
+    @mock.patch("app.admin.delete_file")
+    @mock.patch("app.admin.upload_file")
+    @mock.patch("app.admin.list_item_files", return_value={"Copa Teste.bin": remote("md5-antigo")})
+    def test_same_name_different_md5_asks_before_replacing(self, _list, upload, delete):
+        response = self._archive()
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Substituir ISO no archive.org", response.data)
+        self.assertIn(b"md5-antigo", response.data)
+        self.assertIn(ISO_MD5.encode(), response.data)
+        upload.assert_not_called()
+        delete.assert_not_called()
+        self.assertIsNone(self._file()["archive_status"])
+
+    @mock.patch("app.admin.delete_file")
+    @mock.patch("app.admin.upload_file", return_value="https://archive.org/download/one-two-iso/Copa%20Teste.bin")
+    @mock.patch("app.admin.list_item_files", return_value={"Copa Teste.bin": remote("md5-antigo")})
+    def test_confirmed_replace_deletes_old_then_uploads_same_name(self, _list, upload, delete):
+        calls = []
+        delete.side_effect = lambda *a, **k: calls.append("delete")
+        upload.side_effect = lambda *a, **k: calls.append("upload") or "https://archive.org/download/one-two-iso/Copa%20Teste.bin"
+        response = self._archive(replace="yes")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(calls, ["delete", "upload"])
+        self.assertEqual(delete.call_args.args[:2], ("one-two-iso", "Copa Teste.bin"))
+        self.assertEqual(upload.call_args.kwargs["remote_name"], "Copa Teste.bin")
+        self.assertEqual(self._file()["archive_status"], "done")
+
+    @mock.patch("app.admin.delete_file")
+    @mock.patch("app.admin.upload_file", side_effect=ArchiveOrgError("archive.org retornou 500: falhou"))
+    @mock.patch("app.admin.list_item_files", return_value={"Copa Teste.bin": remote("md5-antigo")})
+    def test_replace_upload_failure_warns_old_copy_may_be_gone(self, _list, _upload, _delete):
+        self._archive(replace="yes")
+        entry = self._file()
+        self.assertEqual(entry["archive_status"], "error")
+        self.assertIn("antiga pode já ter sido excluída", entry["archive_error"])
+
+    @mock.patch("app.admin.list_item_files", side_effect=ArchiveOrgError("timeout"))
+    def test_metadata_failure_does_not_start_upload(self, _list):
+        response = self._archive()
+        self.assertEqual(response.status_code, 302)
+        self.assertIsNone(self._file()["archive_status"])
 
     @mock.patch("app.admin.upload_file", side_effect=ArchiveOrgError("archive.org retornou 403: negado"))
     @mock.patch("app.admin.list_item_files", return_value={})

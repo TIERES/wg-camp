@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS files (
     file_type TEXT NOT NULL CHECK (file_type IN ('iso', 'rom', 'patch', 'update', 'other')),
     file_size INTEGER NOT NULL CHECK (file_size >= 0),
     sha256 TEXT,
+    md5 TEXT,
     is_published INTEGER NOT NULL DEFAULT 1 CHECK (is_published IN (0, 1)),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,

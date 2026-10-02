@@ -1,0 +1,19 @@
+{% extends 'base.html' %}{% block content %}
+<div class="page-title"><h1>Substituir ISO no archive.org?</h1><a href="{{ url_for('admin.files', championship_id=file.championship_id) }}">Voltar</a></div>
+<p class="notice">Já existe no archive.org (<a href="https://archive.org/details/{{ item }}" rel="noopener noreferrer" target="_blank">{{ item }}</a>) um arquivo chamado <strong>{{ remote_name }}</strong>, mas com conteúdo diferente desta ISO. Isso indica que a ISO foi atualizada.</p>
+<table>
+<thead><tr><th></th><th>No archive.org (antiga)</th><th>Neste servidor (nova)</th></tr></thead>
+<tbody>
+<tr><th scope="row">Tamanho</th><td>{{ remote.size | filesize }}</td><td>{{ file.file_size | filesize }}</td></tr>
+<tr><th scope="row">Enviada em</th><td>{{ remote_date | localtime('%Y-%m-%d %H:%M') if remote_date else '—' }}</td><td>{{ file.created_at | localtime('%Y-%m-%d %H:%M') }}</td></tr>
+<tr><th scope="row">MD5</th><td><code>{{ remote.md5 }}</code></td><td><code>{{ local_md5 }}</code></td></tr>
+</tbody>
+</table>
+<p>Ao confirmar, a ISO antiga é <strong>excluída do archive.org</strong> e a nova é enviada com o mesmo nome, mantendo o mesmo link de download.</p>
+<form method="post" action="{{ url_for('admin.file_archive', file_id=file.id) }}" class="delete">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<input type="hidden" name="replace" value="yes">
+<button class="danger">Sim, substituir a ISO no archive.org</button>
+<a href="{{ url_for('admin.files', championship_id=file.championship_id) }}">Não, cancelar</a>
+</form>
+{% endblock %}
