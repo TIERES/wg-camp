@@ -1,6 +1,6 @@
 {% extends 'base.html' %}{% block content %}
 <div class="page-title"><h1>Limpeza de replays: {{ label }}</h1><a href="{{ url_for('admin.replays_list') }}">Voltar</a></div>
-<p>{{ manifest.session_ids | length }} replay(s) · {{ zip_size | filesize }} · gerado em {{ manifest.created_at[:16] | replace('T', ' ') }}</p>
+<p>{{ manifest.session_ids | length }} replay(s) · {{ zip_size | filesize }} · gerado em {{ manifest.created_at | localtime('%Y-%m-%d %H:%M') }}</p>
 
 {% if manifest.deleted_from_server %}
 <p class="notice success">Esses replays já foram removidos do servidor. O backup abaixo é a única cópia restante - baixe/envie para o archive.org antes de descartar.</p>

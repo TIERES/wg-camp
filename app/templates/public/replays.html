@@ -10,7 +10,7 @@
         {% for replay in replays %}
           <tr>
             <td>{{ replay.player_names or '—' }}</td>
-            <td>{{ replay.started_at[8:10] }}-{{ replay.started_at[5:7] }}-{{ replay.started_at[0:4] }} {{ replay.started_at[11:16] }}</td>
+            <td>{{ replay.started_at|localtime }}</td>
             <td>{{ replay.game_name or '—' }}</td>
             <td>{{ replay.duration_seconds|duration }}</td>
             <td><a class="button download-button" href="{{ url_for('replays.download', session_id=replay.session_id) }}">Baixar</a></td>

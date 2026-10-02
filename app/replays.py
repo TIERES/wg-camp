@@ -6,6 +6,7 @@ from werkzeug.utils import secure_filename
 
 from .db import get_db
 from .spectate import reap_stale_live_sessions
+from .timeutil import format_local
 
 bp = Blueprint("replays", __name__, url_prefix="/replays")
 
@@ -47,7 +48,7 @@ def list_txt():
     library - a tab-separated line per replay is far simpler to parse in C
     than a JSON array. One line per replay, newest first:
 
-        session_id\tstarted_at (DD-MM-YYYY HH:MM)\tgame_name\tplayer_names\tduration_seconds\tdownload_name\tbytes_received
+        session_id\tstarted_at (DD-MM-YYYY HH:MM, America/Sao_Paulo)\tgame_name\tplayer_names\tduration_seconds\tdownload_name\tbytes_received
 
     Tabs/newlines in free-text fields (game_name/player_names, both
     attacker-controlled via the recording header) are stripped so a row
@@ -74,8 +75,7 @@ def list_txt():
 
     lines = []
     for entry in rows:
-        started_at = entry["started_at"] or ""
-        when = f"{started_at[8:10]}-{started_at[5:7]}-{started_at[0:4]} {started_at[11:16]}" if len(started_at) >= 16 else started_at
+        when = format_local(entry["started_at"])
         lines.append("\t".join([
             entry["session_id"],
             when,

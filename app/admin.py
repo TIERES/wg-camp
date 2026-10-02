@@ -14,6 +14,7 @@ from .arena17_import import import_championship
 from .replays import _download_name
 from .security import login_required, validate_csrf
 from .storage import delete_stored_file, store_upload
+from .timeutil import format_local
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -268,8 +269,8 @@ def _stale_replays(db):
 
 
 def _date_range_label(rows):
-    oldest = rows[0]["started_at"][:10]
-    newest = rows[-1]["started_at"][:10]
+    oldest = format_local(rows[0]["started_at"], "%Y-%m-%d")
+    newest = format_local(rows[-1]["started_at"], "%Y-%m-%d")
     return f"{oldest}_a_{newest}"
 
 

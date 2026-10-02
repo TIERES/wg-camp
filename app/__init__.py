@@ -55,6 +55,8 @@ def create_app(test_config=None):
     init_template_helpers(app)
     from .storage import human_size
     app.jinja_env.filters["filesize"] = human_size
+    from .timeutil import format_local
+    app.jinja_env.filters["localtime"] = format_local
 
     def format_duration(seconds):
         seconds = int(seconds or 0)
