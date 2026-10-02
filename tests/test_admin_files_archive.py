@@ -32,6 +32,8 @@ class AdminFilesArchiveTest(unittest.TestCase):
             "SERVE_DOWNLOADS_LOCALLY": True,
             "IA_ACCESS_KEY": "access",
             "IA_SECRET_KEY": "secret",
+            "ARCHIVE_VERIFY_INTERVAL": 0,
+            "ARCHIVE_VERIFY_TIMEOUT": 0,
         })
         with self.app.app_context():
             init_db()
@@ -41,11 +43,11 @@ class AdminFilesArchiveTest(unittest.TestCase):
                 (now(), now()),
             )
             db.execute(
-                "INSERT INTO files (id,championship_id,display_name,stored_name,original_filename,file_type,file_size,is_published,created_at,updated_at) VALUES (1,1,'Copa','abc.bin','Copa Teste.bin','iso',?,1,?,?)",
+                "INSERT INTO files (id,championship_id,display_name,stored_name,original_filename,file_type,file_size,is_published,created_at,updated_at) VALUES (1,1,'Copa','0123456789abcdef0123456789abcdef.bin','Copa Teste.bin','iso',?,1,?,?)",
                 (len(ISO_BYTES), now(), now()),
             )
             db.commit()
-        (self.downloads / "abc.bin").write_bytes(ISO_BYTES)
+        (self.downloads / "0123456789abcdef0123456789abcdef.bin").write_bytes(ISO_BYTES)
         self.client = self.app.test_client()
         with self.client.session_transaction() as session:
             session["user_id"] = 1
@@ -161,6 +163,60 @@ class AdminFilesArchiveTest(unittest.TestCase):
         response = self._archive()
         self.assertEqual(response.status_code, 302)
         self.assertIsNone(self._file()["archive_status"])
+
+
+    @mock.patch("app.admin.upload_file", return_value="https://archive.org/download/one-two-iso/Copa%20Teste.bin")
+    @mock.patch("app.admin.list_item_files")
+    def test_migration_removes_local_copy_once_md5_is_confirmed(self, list_files, _upload):
+        # Comparison before upload, then the first poll doesn't list it yet, the second does.
+        list_files.side_effect = [{}, {}, {"Copa Teste.bin": remote(ISO_MD5)}]
+        self.app.config["ARCHIVE_VERIFY_TIMEOUT"] = 60
+        self._archive(remove_local="yes")
+        entry = self._file()
+        self.assertEqual(entry["archive_status"], "done")
+        self.assertIsNotNone(entry["local_removed_at"])
+        self.assertIsNone(entry["archive_error"])
+        self.assertFalse((self.downloads / "0123456789abcdef0123456789abcdef.bin").exists())
+
+        download = self.client.get("/download/1")
+        self.assertEqual(download.status_code, 302)
+        self.assertEqual(download.headers["Location"], "https://archive.org/download/one-two-iso/Copa%20Teste.bin")
+        page = self.client.get("/admin/championships/1/files")
+        self.assertIn("Migrada".encode(), page.data)
+
+    @mock.patch("app.admin.upload_file", return_value="url")
+    @mock.patch("app.admin.list_item_files")
+    def test_migration_keeps_local_copy_when_md5_never_matches(self, list_files, _upload):
+        list_files.side_effect = [{}, {"Copa Teste.bin": remote("md5-corrompido")}]
+        self._archive(remove_local="yes")
+        entry = self._file()
+        self.assertEqual(entry["archive_status"], "done")
+        self.assertIsNone(entry["local_removed_at"])
+        self.assertIn("foi mantida", entry["archive_error"])
+        self.assertTrue((self.downloads / "0123456789abcdef0123456789abcdef.bin").exists())
+
+    @mock.patch("app.admin.upload_file")
+    @mock.patch("app.admin.list_item_files", return_value={"Copa Teste.bin": remote(ISO_MD5)})
+    def test_already_on_archive_with_same_md5_removes_local_right_away(self, _list, upload):
+        self._archive(remove_local="yes")
+        upload.assert_not_called()
+        self.assertIsNotNone(self._file()["local_removed_at"])
+        self.assertFalse((self.downloads / "0123456789abcdef0123456789abcdef.bin").exists())
+
+    @mock.patch("app.admin.upload_file", return_value="url")
+    @mock.patch("app.admin.list_item_files", return_value={})
+    def test_without_remove_local_the_copy_stays(self, _list, _upload):
+        self._archive()
+        self.assertIsNone(self._file()["local_removed_at"])
+        self.assertTrue((self.downloads / "0123456789abcdef0123456789abcdef.bin").exists())
+
+    @mock.patch("app.admin.list_item_files")
+    def test_migrated_file_cannot_be_archived_again(self, list_files):
+        with self.app.app_context():
+            get_db().execute("UPDATE files SET local_removed_at=?, archive_url='u' WHERE id=1", (now(),))
+            get_db().commit()
+        self._archive(remove_local="yes")
+        list_files.assert_not_called()
 
 
 if __name__ == "__main__":

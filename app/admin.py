@@ -3,6 +3,7 @@ import json
 import re
 import sqlite3
 import threading
+import time
 import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -290,7 +291,32 @@ def _archive_plan(entry, md5, existing):
     return "upload", name
 
 
-def _archive_iso(app, file_id, remote_name, replace):
+def _remove_local_copy(db, entry, reason):
+    """Deletes this server's copy of an ISO already confirmed on
+    archive.org - from then on public.download redirects to archive_url."""
+    delete_stored_file(entry["stored_name"])
+    db.execute("UPDATE files SET local_removed_at=?, archive_error=? WHERE id=?", (now(), reason, entry["id"]))
+
+
+def _wait_for_archive_md5(app, remote_name, md5):
+    """Polls the item's file list until `remote_name` shows up with our md5.
+    archive.org answers the PUT before the file reaches its listing (it's
+    processed by a queued task), so this can take a few minutes."""
+    deadline = time.monotonic() + app.config.get("ARCHIVE_VERIFY_TIMEOUT", 45 * 60)
+    interval = app.config.get("ARCHIVE_VERIFY_INTERVAL", 30)
+    while True:
+        try:
+            remote = list_item_files(ISO_ARCHIVE_ITEM_IDENTIFIER).get(remote_name)
+        except ArchiveOrgError:
+            remote = None
+        if remote and remote["md5"] == md5:
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(interval)
+
+
+def _archive_iso(app, file_id, remote_name, replace, remove_local):
     with app.app_context():
         db = get_db()
         entry = db.execute("SELECT * FROM files WHERE id=?", (file_id,)).fetchone()
@@ -312,16 +338,38 @@ def _archive_iso(app, file_id, remote_name, replace):
                 "UPDATE files SET archive_status='error', archive_error=?, archive_updated_at=? WHERE id=?",
                 (message, now(), file_id),
             )
-        else:
+            db.commit()
+            return
+
+        if not remove_local:
             db.execute(
                 "UPDATE files SET archive_status='done', archive_url=?, archive_error=NULL, archive_updated_at=? WHERE id=?",
                 (url, now(), file_id),
             )
+            db.commit()
+            return
+
+        db.execute(
+            "UPDATE files SET archive_status='verifying', archive_url=?, archive_error=NULL, archive_updated_at=? WHERE id=?",
+            (url, now(), file_id),
+        )
+        db.commit()
+        if _wait_for_archive_md5(app, remote_name, entry["md5"]):
+            try:
+                _remove_local_copy(db, entry, None)
+            except (ValueError, OSError) as error:
+                db.execute("UPDATE files SET archive_error=? WHERE id=?", (f"Confirmada no archive.org, mas a cópia local não pôde ser removida: {error}", file_id))
+        else:
+            db.execute(
+                "UPDATE files SET archive_error=? WHERE id=?",
+                ("Enviada, mas o archive.org ainda não lista o arquivo com o mesmo MD5 - a cópia deste servidor foi mantida. Clique em enviar de novo mais tarde para conferir e remover.", file_id),
+            )
+        db.execute("UPDATE files SET archive_status='done', archive_updated_at=? WHERE id=?", (now(), file_id))
         db.commit()
 
 
 def _archive_upload_in_progress(entry):
-    if entry["archive_status"] != "uploading" or not entry["archive_updated_at"]:
+    if entry["archive_status"] not in ("uploading", "verifying") or not entry["archive_updated_at"]:
         return False
     return datetime.now(timezone.utc) - datetime.fromisoformat(entry["archive_updated_at"]) < ISO_ARCHIVE_STALE
 
@@ -335,12 +383,16 @@ def file_archive(file_id):
     if not entry:
         return ("Não encontrado", 404)
     back = redirect(url_for("admin.files", championship_id=entry["championship_id"]))
+    if entry["local_removed_at"]:
+        flash("Esta ISO já foi migrada para o archive.org e não existe mais neste servidor.", "error")
+        return back
     if not (current_app.config.get("IA_ACCESS_KEY") and current_app.config.get("IA_SECRET_KEY")):
         flash("Chaves do archive.org não configuradas.", "error")
         return back
     if _archive_upload_in_progress(entry):
         flash("O envio para o archive.org já está em andamento.", "error")
         return back
+    remove_local = request.form.get("remove_local") == "yes"
 
     try:
         md5 = _local_md5(db, entry)
@@ -356,8 +408,14 @@ def file_archive(file_id):
             "UPDATE files SET archive_status='done', archive_url=?, archive_error=NULL, archive_updated_at=? WHERE id=?",
             (url, now(), file_id),
         )
+        if remove_local:
+            # The listing already shows this exact md5 - nothing to wait for.
+            _remove_local_copy(db, entry, None)
         db.commit()
-        flash(f"Esta ISO já está no archive.org, com o mesmo conteúdo: {url}", "success")
+        if remove_local:
+            flash(f"Esta ISO já estava no archive.org, com o mesmo conteúdo: {url}. A cópia deste servidor foi removida.", "success")
+        else:
+            flash(f"Esta ISO já está no archive.org, com o mesmo conteúdo: {url}", "success")
         return back
 
     if action == "replace" and request.form.get("replace") != "yes":
@@ -370,6 +428,7 @@ def file_archive(file_id):
             remote=existing[remote_name],
             local_md5=md5,
             item=ISO_ARCHIVE_ITEM_IDENTIFIER,
+            remove_local=remove_local,
         )
 
     db.execute(
@@ -378,7 +437,7 @@ def file_archive(file_id):
     )
     db.commit()
     app = current_app._get_current_object()
-    args = (app, file_id, remote_name, action == "replace")
+    args = (app, file_id, remote_name, action == "replace", remove_local)
     if app.config.get("TESTING"):
         _archive_iso(*args)
     else:

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from flask import Blueprint, Response, abort, current_app, render_template, send_from_directory
+from flask import Blueprint, Response, abort, current_app, redirect, render_template, send_from_directory
 
 from .db import get_db
 
@@ -39,6 +39,10 @@ def download(file_id):
     ).fetchone()
     if not entry:
         abort(404)
+    if entry["local_removed_at"]:
+        if not entry["archive_url"]:
+            abort(404)
+        return redirect(entry["archive_url"])
     if current_app.config["SERVE_DOWNLOADS_LOCALLY"]:
         return send_from_directory(current_app.config["DOWNLOADS_DIR"], entry["stored_name"], as_attachment=True, download_name=entry["original_filename"])
     response = Response()

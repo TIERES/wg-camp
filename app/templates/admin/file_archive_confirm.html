@@ -9,10 +9,11 @@
 <tr><th scope="row">MD5</th><td><code>{{ remote.md5 }}</code></td><td><code>{{ local_md5 }}</code></td></tr>
 </tbody>
 </table>
-<p>Ao confirmar, a ISO antiga é <strong>excluída do archive.org</strong> e a nova é enviada com o mesmo nome, mantendo o mesmo link de download.</p>
+<p>Ao confirmar, a ISO antiga é <strong>excluída do archive.org</strong> e a nova é enviada com o mesmo nome, mantendo o mesmo link de download.{% if remove_local %} Depois de confirmada no archive.org (mesmo MD5), a cópia deste servidor é removida.{% endif %}</p>
 <form method="post" action="{{ url_for('admin.file_archive', file_id=file.id) }}" class="delete">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 <input type="hidden" name="replace" value="yes">
+{% if remove_local %}<input type="hidden" name="remove_local" value="yes">{% endif %}
 <button class="danger">Sim, substituir a ISO no archive.org</button>
 <a href="{{ url_for('admin.files', championship_id=file.championship_id) }}">Não, cancelar</a>
 </form>
