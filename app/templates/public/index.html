@@ -58,6 +58,7 @@
                     {% if championship.description %}<span class="description">{{ championship.description }}</span>{% else %}<span class="period">Nenhuma descrição informada.</span>{% endif %}
                     {% if championship.arena17_url %}<a href="{{ championship.arena17_url }}" rel="noopener noreferrer" target="_blank">Ver campeonato no Arena17</a>{% endif %}
                     {% if file and file.description %}<span class="period">{{ file.description }}</span>{% endif %}
+                    {% if file and file.archive_url %}<a href="{{ file.archive_url }}" rel="noopener noreferrer" target="_blank">Baixar {{ file.file_type|upper }} pelo archive.org</a>{% endif %}
                   </div>
                 </td>
               </tr>

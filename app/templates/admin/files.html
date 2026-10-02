@@ -6,5 +6,14 @@
 {% else %}
 <p class="notice">Este campeonato já possui um arquivo. Edite ou remova o arquivo atual antes de enviar outro.</p>
 {% endif %}
-<section><h2>Arquivos cadastrados</h2>{% for file in files %}<article class="file"><strong>{{ file.display_name }}</strong><br><small>{{ file.file_type|upper }} · {{ file.file_size | filesize }} · {{ 'Publicado' if file.is_published else 'Oculto' }}</small><a href="{{ url_for('admin.file_edit', file_id=file.id) }}">Editar informações</a><form method="post" action="{{ url_for('admin.file_delete', file_id=file.id) }}" class="delete"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label class="check"><input type="checkbox" name="confirm" value="delete"> Confirmo a exclusão permanente</label><button class="danger">Excluir arquivo</button></form></article>{% else %}<p>Nenhum arquivo enviado.</p>{% endfor %}</section>
+<section><h2>Arquivos cadastrados</h2>{% for file in files %}<article class="file"><strong>{{ file.display_name }}</strong><br><small>{{ file.file_type|upper }} · {{ file.file_size | filesize }} · {{ 'Publicado' if file.is_published else 'Oculto' }}</small><a href="{{ url_for('admin.file_edit', file_id=file.id) }}">Editar informações</a>
+<div class="archive-status"><strong>archive.org:</strong>
+{% if file.archive_url %}<a href="{{ file.archive_url }}" rel="noopener noreferrer" target="_blank">{{ file.archive_url }}</a>{% endif %}
+{% if file.id in archive_busy %}<small>Enviando desde {{ file.archive_updated_at | localtime('%Y-%m-%d %H:%M') }} - atualize a página para acompanhar.</small>
+{% elif file.archive_status in ('error', 'uploading') %}<small class="error">Falhou em {{ file.archive_updated_at | localtime('%Y-%m-%d %H:%M') }}: {{ file.archive_error or 'envio interrompido (servidor reiniciado?)' }}</small>
+{% elif not file.archive_url %}<small>Ainda não enviado.</small>{% endif %}
+{% if file.id not in archive_busy %}<form method="post" action="{{ url_for('admin.file_archive', file_id=file.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{% if archive_configured %}<button>{{ 'Enviar novamente para o archive.org' if file.archive_url else 'Enviar para o archive.org' }}</button>{% else %}<button disabled title="Configure ARENA17_IA_ACCESS_KEY / ARENA17_IA_SECRET_KEY no servidor">Enviar para o archive.org (não configurado)</button>{% endif %}
+</form>{% endif %}
+</div><form method="post" action="{{ url_for('admin.file_delete', file_id=file.id) }}" class="delete"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label class="check"><input type="checkbox" name="confirm" value="delete"> Confirmo a exclusão permanente</label><button class="danger">Excluir arquivo</button></form></article>{% else %}<p>Nenhum arquivo enviado.</p>{% endfor %}</section>
 {% endblock %}

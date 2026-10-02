@@ -2,38 +2,48 @@
 (https://archive.org/developers/ias3.html) - a single PUT with an
 Authorization header. No extra dependency needed (this app has none beyond
 Flask/gunicorn): http.client streams a file object in chunks on its own, so
-this never loads the backup zip into memory.
+this never loads the file into memory.
 """
 import http.client
+import json
 import os
 import urllib.parse
+import urllib.request
 
 
 class ArchiveOrgError(Exception):
     pass
 
 
-def upload_zip(identifier, file_path, access_key, secret_key, collection, title, description=""):
-    """Uploads file_path to archive.org as a new item `identifier`
-    (created automatically on first upload). Returns the item's public
-    URL. Raises ArchiveOrgError on any non-2xx response or connection
-    failure."""
+def download_url(identifier, filename):
+    return f"https://archive.org/download/{urllib.parse.quote(identifier)}/{urllib.parse.quote(filename)}"
+
+
+def upload_file(identifier, file_path, access_key, secret_key, remote_name=None,
+                content_type="application/octet-stream", item_metadata=None):
+    """PUTs file_path into item `identifier` as `remote_name` (defaults to
+    the local basename). With `item_metadata` ({"collection":..,
+    "title":.., ...}) the item is created on first upload; without it the
+    item must already exist, and its metadata is left untouched. Returns
+    the file's direct download URL. Raises ArchiveOrgError on any non-2xx
+    response or connection failure."""
     if not access_key or not secret_key:
         raise ArchiveOrgError("Chaves do archive.org não configuradas.")
 
-    filename = os.path.basename(file_path)
+    filename = remote_name or os.path.basename(file_path)
     size = os.path.getsize(file_path)
 
     headers = {
         "authorization": f"LOW {access_key}:{secret_key}",
-        "x-archive-auto-make-bucket": "1",
-        "x-archive-meta-mediatype": "data",
-        "x-archive-meta-collection": collection,
-        "x-archive-meta-title": title,
-        "x-archive-meta-description": description,
+        "x-archive-size-hint": str(size),
         "Content-Length": str(size),
-        "Content-Type": "application/zip",
+        "Content-Type": content_type,
     }
+    if item_metadata is not None:
+        headers["x-archive-auto-make-bucket"] = "1"
+        headers["x-archive-meta-mediatype"] = "data"
+        for key, value in item_metadata.items():
+            headers[f"x-archive-meta-{key}"] = value
     path = f"/{urllib.parse.quote(identifier)}/{urllib.parse.quote(filename)}"
 
     conn = http.client.HTTPSConnection("s3.us.archive.org", timeout=300)
@@ -50,4 +60,29 @@ def upload_zip(identifier, file_path, access_key, secret_key, collection, title,
     if response.status not in (200, 201):
         raise ArchiveOrgError(f"archive.org retornou {response.status}: {body[:300].decode('utf-8', 'replace')}")
 
+    return download_url(identifier, filename)
+
+
+def upload_zip(identifier, file_path, access_key, secret_key, collection, title, description=""):
+    """Uploads file_path to archive.org as a new item `identifier`
+    (created automatically on first upload). Returns the item's public
+    URL."""
+    upload_file(
+        identifier, file_path, access_key, secret_key,
+        content_type="application/zip",
+        item_metadata={"collection": collection, "title": title, "description": description},
+    )
     return f"https://archive.org/details/{identifier}"
+
+
+def list_item_files(identifier):
+    """Returns {name: md5} for the item's original files ({} if the item
+    doesn't exist yet). Raises ArchiveOrgError when archive.org can't be
+    reached."""
+    url = f"https://archive.org/metadata/{urllib.parse.quote(identifier)}/files"
+    try:
+        with urllib.request.urlopen(url, timeout=60) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except (OSError, ValueError) as error:
+        raise ArchiveOrgError(f"Falha ao consultar os arquivos do archive.org: {error}") from error
+    return {entry["name"]: entry.get("md5") for entry in data.get("result", []) if entry.get("source") == "original"}

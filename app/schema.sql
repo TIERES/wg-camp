@@ -35,7 +35,11 @@ CREATE TABLE IF NOT EXISTS files (
     sha256 TEXT,
     is_published INTEGER NOT NULL DEFAULT 1 CHECK (is_published IN (0, 1)),
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    archive_url TEXT,
+    archive_status TEXT,
+    archive_error TEXT,
+    archive_updated_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS files_championship_idx ON files(championship_id);

@@ -1,6 +1,8 @@
+import hashlib
 import json
 import re
 import sqlite3
+import threading
 import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -8,7 +10,7 @@ from pathlib import Path
 from flask import Blueprint, Response, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, send_from_directory, session, url_for
 from werkzeug.security import check_password_hash
 
-from .archive_org import ArchiveOrgError, upload_zip
+from .archive_org import ArchiveOrgError, download_url, list_item_files, upload_file, upload_zip
 from .db import get_db, now
 from .arena17_import import import_championship
 from .replays import _download_name
@@ -160,7 +162,13 @@ def files(championship_id):
     if not championship:
         return ("Não encontrado", 404)
     entries = db.execute("SELECT * FROM files WHERE championship_id=? ORDER BY id DESC", (championship_id,)).fetchall()
-    return render_template("admin/files.html", championship=championship, files=entries)
+    return render_template(
+        "admin/files.html",
+        championship=championship,
+        files=entries,
+        archive_busy={entry["id"] for entry in entries if _archive_upload_in_progress(entry)},
+        archive_configured=bool(current_app.config.get("IA_ACCESS_KEY") and current_app.config.get("IA_SECRET_KEY")),
+    )
 
 
 @bp.post("/championships/<int:championship_id>/files")
@@ -232,6 +240,105 @@ def file_delete(file_id):
     db.commit()
     flash("Arquivo removido permanentemente.", "success")
     return redirect(url_for("admin.files", championship_id=entry["championship_id"]))
+
+
+# Championship ISOs go into the existing "one-two-iso" item (created by hand
+# on archive.org, alongside the RetroArch zips), under their original file
+# name. The upload runs on a background thread - a ~470 MB PUT would hold one
+# of gunicorn's two threads for minutes - and its progress lives in the
+# files.archive_* columns. A restart mid-upload leaves status 'uploading'
+# behind, so that status only blocks a new attempt for ISO_ARCHIVE_STALE.
+ISO_ARCHIVE_ITEM_IDENTIFIER = "one-two-iso"
+ISO_ARCHIVE_STALE = timedelta(hours=3)
+
+
+def _file_md5(path):
+    digest = hashlib.md5()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _archive_remote_name(entry, existing):
+    """The original file name, unless the item already holds a different
+    file under that name - then it's prefixed with the championship slug
+    so nothing on archive.org gets overwritten."""
+    name = entry["original_filename"]
+    if name not in existing:
+        return name
+    return f"{entry['slug']}-{name}"
+
+
+def _archive_iso(app, file_id):
+    with app.app_context():
+        db = get_db()
+        entry = db.execute(
+            "SELECT files.*, championships.slug FROM files JOIN championships ON championships.id = files.championship_id WHERE files.id=?",
+            (file_id,),
+        ).fetchone()
+        try:
+            path = Path(app.config["DOWNLOADS_DIR"]) / entry["stored_name"]
+            md5 = _file_md5(path)
+            existing = list_item_files(ISO_ARCHIVE_ITEM_IDENTIFIER)
+            same = next((name for name, item_md5 in existing.items() if item_md5 == md5), None)
+            if same:
+                # Already on archive.org (e.g. uploaded by hand) - just link it.
+                url = download_url(ISO_ARCHIVE_ITEM_IDENTIFIER, same)
+            else:
+                url = upload_file(
+                    ISO_ARCHIVE_ITEM_IDENTIFIER,
+                    path,
+                    access_key=app.config["IA_ACCESS_KEY"],
+                    secret_key=app.config["IA_SECRET_KEY"],
+                    remote_name=_archive_remote_name(entry, existing),
+                )
+        except (ArchiveOrgError, OSError) as error:
+            db.execute(
+                "UPDATE files SET archive_status='error', archive_error=?, archive_updated_at=? WHERE id=?",
+                (str(error), now(), file_id),
+            )
+        else:
+            db.execute(
+                "UPDATE files SET archive_status='done', archive_url=?, archive_error=NULL, archive_updated_at=? WHERE id=?",
+                (url, now(), file_id),
+            )
+        db.commit()
+
+
+def _archive_upload_in_progress(entry):
+    if entry["archive_status"] != "uploading" or not entry["archive_updated_at"]:
+        return False
+    return datetime.now(timezone.utc) - datetime.fromisoformat(entry["archive_updated_at"]) < ISO_ARCHIVE_STALE
+
+
+@bp.post("/files/<int:file_id>/archive")
+@login_required
+def file_archive(file_id):
+    validate_csrf()
+    db = get_db()
+    entry = db.execute("SELECT * FROM files WHERE id=?", (file_id,)).fetchone()
+    if not entry:
+        return ("Não encontrado", 404)
+    back = redirect(url_for("admin.files", championship_id=entry["championship_id"]))
+    if not (current_app.config.get("IA_ACCESS_KEY") and current_app.config.get("IA_SECRET_KEY")):
+        flash("Chaves do archive.org não configuradas.", "error")
+        return back
+    if _archive_upload_in_progress(entry):
+        flash("O envio para o archive.org já está em andamento.", "error")
+        return back
+    db.execute(
+        "UPDATE files SET archive_status='uploading', archive_error=NULL, archive_updated_at=? WHERE id=?",
+        (now(), file_id),
+    )
+    db.commit()
+    app = current_app._get_current_object()
+    if app.config.get("TESTING"):
+        _archive_iso(app, file_id)
+    else:
+        threading.Thread(target=_archive_iso, args=(app, file_id), daemon=True).start()
+    flash("Envio para o archive.org iniciado. Atualize esta página em alguns minutos para ver o link.", "success")
+    return back
 
 
 ###############################################################################
