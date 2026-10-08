@@ -1,0 +1,16 @@
+{% extends 'base.html' %}{% block title %}Cadastro · Campeonatos WE 2002{% endblock %}{% block content %}
+<section class="login account-form">
+  <h1>Criar conta</h1>
+  <p>A conta é necessária para usar o <strong>Memory Card online</strong> nas partidas pelo Kaillera.</p>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Usuário (o seu nick do Kaillera)<input name="username" value="{{ form.username }}" autocomplete="username" maxlength="31" required></label>
+    <label>E-mail<input type="email" name="email" value="{{ form.email }}" autocomplete="email" required></label>
+    <label>Senha (mínimo 8 caracteres)<input type="password" name="password" autocomplete="new-password" minlength="8" required></label>
+    <label>Repita a senha<input type="password" name="password_confirm" autocomplete="new-password" minlength="8" required></label>
+    <label class="check"><input type="checkbox" name="accept" required><span>Entendo que o usuário deve ser exatamente o meu nick no Kaillera e que <strong>ele não poderá ser alterado</strong> depois.</span></label>
+    <button>Cadastrar</button>
+  </form>
+  <p>Já tem conta? <a href="{{ url_for('players.login') }}">Entrar</a></p>
+</section>
+{% endblock %}

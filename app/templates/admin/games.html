@@ -1,0 +1,25 @@
+{% extends 'base.html' %}{% block title %}Jogos · Administração{% endblock %}{% block content %}
+<div class="page-title"><h1>Jogos do Memory Card online</h1><a href="{{ url_for('admin.players_list') }}">Jogadores</a></div>
+<p>Cada jogo é identificado pelo conteúdo da ISO (<code>CRC32:TAMANHO</code>, o mesmo do anti-desync). Jogos novos são cadastrados sozinhos na primeira partida com Memory Card online; aqui você pode cadastrá-los antes (para os jogadores enviarem seus cartões) e dar nomes amigáveis.</p>
+<table>
+  <thead><tr><th>Nome</th><th>Identificador</th><th>Memory Cards</th><th>Renomear</th></tr></thead>
+  <tbody>
+    {% for game in games %}
+    <tr>
+      <td>{{ game.name }}</td>
+      <td><code>{{ game.content_id }}</code></td>
+      <td>{{ game.cards }}</td>
+      <td><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="game_id" value="{{ game.id }}"><input name="name" value="{{ game.name }}" maxlength="128" required> <button>Salvar</button></form></td>
+    </tr>
+    {% else %}<tr><td colspan="4">Nenhum jogo cadastrado.</td></tr>{% endfor %}
+  </tbody>
+</table>
+<h2>Cadastrar jogo</h2>
+<form method="post" class="form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label>Nome<input name="name" maxlength="128" required placeholder="Winning Eleven 2002"></label>
+  <label>Identificador (CRC32:TAMANHO)<input name="content_id" required placeholder="1A2B3C4D:2A3B4C00"></label>
+  <p><small>No servidor: <code>flask --app wsgi register-game caminho/do/jogo.cue "Nome"</code> calcula e cadastra.</small></p>
+  <button>Cadastrar</button>
+</form>
+{% endblock %}

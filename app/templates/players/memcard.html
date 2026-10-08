@@ -1,0 +1,28 @@
+{% extends 'base.html' %}{% block title %}Memory Card · Campeonatos WE 2002{% endblock %}{% block content %}
+<section class="intro">
+  <h1>Memory Card · {{ card.game_name }}</h1>
+  <p>Versão atual: <strong>{{ card.current_version }}</strong>. <a href="{{ url_for('players.account') }}">Voltar para Minha conta</a></p>
+</section>
+<table>
+  <caption class="visually-hidden">Histórico de versões</caption>
+  <thead><tr><th scope="col">Versão</th><th scope="col">Data</th><th scope="col">Origem</th><th scope="col">Ações</th></tr></thead>
+  <tbody>
+    {% for version in versions %}
+    <tr>
+      <td>{{ version.version }}{% if version.version == card.current_version %} (atual){% endif %}</td>
+      <td>{{ version.created_at|localtime }}</td>
+      <td>{{ version.note }}</td>
+      <td>
+        <a class="button" href="{{ url_for('players.download_card', memcard_id=card.id, versao=version.version) }}">Baixar</a>
+        {% if version.version != card.current_version %}
+        <form method="post" action="{{ url_for('players.restore_card', memcard_id=card.id) }}" style="display:inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="version" value="{{ version.version }}">
+          <button>Restaurar</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -100,3 +100,46 @@ Playback sem precisar de um parser de JSON em C. `limit` é opcional (padrão
 e `/replays/<id>/download` também precisam estar liberados no listener
 `http://:8080` do Caddy (ver `deploy/Caddyfile`), do mesmo jeito que
 `/spectate/*`.
+
+## Contas de jogadores e Memory Card online
+
+Jogadores se cadastram em `/conta/cadastro` (usuário = nick do Kaillera, que
+**não pode ser alterado** depois, e-mail e senha). O cadastro só é ativado pelo
+link de confirmação enviado por e-mail (válido por 48 h; cadastros nunca
+confirmados liberam o nome/e-mail depois disso). Pelo mesmo e-mail o jogador
+recupera o usuário e redefine a senha (`/conta/recuperar`, link válido por 1 h).
+Configure o SMTP com as variáveis `ARENA17_SMTP_*`, `ARENA17_MAIL_FROM` e
+`ARENA17_PUBLIC_URL` (ver `deploy/arena17-downloads.env.example`).
+
+Em `/conta/` o jogador vê seus Memory Cards (um por jogo), envia um `.mcd`/
+`.mcr`/`.srm` de 128 KB, baixa qualquer versão e restaura versões antigas.
+Os jogos são identificados por `CRC32:TAMANHO` do conteúdo, o mesmo valor que
+o anti-desync do retroarch-k3-ffw calcula; o admin cadastra/renomeia em
+`/admin/jogos` (ou `flask --app wsgi register-game caminho.cue "Nome"`), e um
+jogo novo também é cadastrado sozinho na primeira partida.
+
+API do `kailleraclient.dll` (`/api/mc/*`, respostas `chave=valor` em texto):
+**somente pelo site HTTPS** - leva senha e token, então não é liberada no
+listener `http://:8080` do Caddy.
+
+- `POST /api/mc/login` (`username`, `password`) → `token`. Só contas confirmadas.
+  Trocar a senha desconecta todos os tokens.
+- `GET /api/mc/whoami`, `POST /api/mc/logout` (header `Authorization: Bearer`).
+- `POST /api/mc/checkout` (`content_id`, `game_name`, `players` = nicks na
+  ordem 1P,2P,... separados por vírgula) → dono, versão e `sha256` dos cartões
+  dos slots 1 e 2 (cria um cartão formatado para quem não tem). Todos os
+  donos precisam ter conta confirmada (`409 missing_account`).
+- `POST /api/mc/ticket` (`room` = id da sala no Kaillera) → `ticket`: ingresso
+  curto, de uso único, válido por 5 min. Numa sala "Só logados WE Camp", o DLL
+  de quem entra o manda no chat da sala; `POST /api/mc/verify-ticket`
+  (`ticket`, `room`, token do host) → `username` da conta, e o DLL do host
+  expulsa quem não tem ingresso válido ou cujo nick não é o da conta.
+- `GET /api/mc/card/<sha256>` → conteúdo (token do jogador ou `X-Api-Key` do
+  DLL, para replays/Ao Vivo).
+- `POST /api/mc/commit?content_id=&slot_player=&base_sha256=&players=` (corpo =
+  128 KB) → todos os PCs terminam com os mesmos cartões, então o primeiro
+  envio válido grava a nova versão (`committed`, anotando quem enviou); o DLL
+  do host envia na hora e os outros só alguns segundos depois, caso o host
+  tenha caído. Um envio com o mesmo conteúdo já gravado devolve `already`;
+  um envio diferente, ou de uma base que não é mais a atual, devolve
+  `conflict` (409) sem sobrescrever.

@@ -1,0 +1,75 @@
+{% extends 'base.html' %}{% block title %}Minha conta · Campeonatos WE 2002{% endblock %}{% block content %}
+<section class="intro">
+  <h1>Minha conta</h1>
+  <p>Usuário: <strong>{{ player.username }}</strong> · E-mail: {{ player.email }}</p>
+  <p>Use este mesmo usuário como nick no Kaillera e entre com sua senha na tela de servidores do Kaillera para usar o <strong>Memory Card online</strong>.</p>
+  <form method="post" action="{{ url_for('players.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Sair</button></form>
+</section>
+
+<section>
+  <h2>Meus Memory Cards</h2>
+  <p>Um Memory Card por jogo (ISO). Nas partidas com Memory Card online, o cartão do 1P vai no slot 1 e o do 2P no slot 2 de todos os PCs. Ao fim da partida, o cartão é atualizado aqui automaticamente.</p>
+  {% if cards %}
+  <table>
+    <caption class="visually-hidden">Seus Memory Cards</caption>
+    <thead><tr><th scope="col">Jogo (ISO)</th><th scope="col">Versão</th><th scope="col">Última alteração</th><th scope="col">Origem</th><th scope="col">Ações</th></tr></thead>
+    <tbody>
+      {% for card in cards %}
+      <tr>
+        <td>{{ card.game_name }}</td>
+        <td>{{ card.current_version }}</td>
+        <td>{{ card.updated_at|localtime }}</td>
+        <td>{{ card.note }}</td>
+        <td><a class="button" href="{{ url_for('players.download_card', memcard_id=card.id) }}">Baixar</a> <a href="{{ url_for('players.card_history', memcard_id=card.id) }}">Histórico</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p>Você ainda não tem Memory Cards. Eles são criados na primeira partida com Memory Card online, ou enviando um arquivo abaixo.</p>{% endif %}
+
+  <h3>Enviar um Memory Card</h3>
+  {% if games %}
+  <form method="post" action="{{ url_for('players.upload_card') }}" enctype="multipart/form-data" class="account-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Jogo (ISO)
+      <select name="game_id" required>
+        <option value="">Escolha...</option>
+        {% for game in games %}<option value="{{ game.id }}">{{ game.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Arquivo (.mcd, .mcr ou .srm de 128 KB)<input type="file" name="file" accept=".mcd,.mcr,.srm" required></label>
+    <p>O arquivo vira a versão atual do seu cartão desse jogo (as anteriores ficam no histórico). Não envie durante uma partida: o salvamento dela seria descartado.</p>
+    <button>Enviar</button>
+  </form>
+  {% else %}<p>Nenhum jogo cadastrado ainda.</p>{% endif %}
+</section>
+
+<section>
+  <h2>Senha</h2>
+  <form method="post" action="{{ url_for('players.change_password') }}" class="account-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Senha atual<input type="password" name="current_password" autocomplete="current-password" required></label>
+    <label>Nova senha<input type="password" name="password" autocomplete="new-password" minlength="8" required></label>
+    <label>Repita a nova senha<input type="password" name="password_confirm" autocomplete="new-password" minlength="8" required></label>
+    <button>Alterar senha</button>
+  </form>
+</section>
+
+<section>
+  <h2>PCs conectados no Kaillera</h2>
+  {% if tokens %}
+  <table>
+    <thead><tr><th scope="col">Conectado em</th><th scope="col">Último uso</th><th scope="col"></th></tr></thead>
+    <tbody>
+      {% for token in tokens %}
+      <tr>
+        <td>{{ token.created_at|localtime }}</td>
+        <td>{{ token.last_used_at|localtime if token.last_used_at else '—' }}</td>
+        <td><form method="post" action="{{ url_for('players.revoke_token', token_id=token.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Desconectar</button></form></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p>Nenhum PC conectado.</p>{% endif %}
+</section>
+{% endblock %}

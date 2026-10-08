@@ -1,0 +1,13 @@
+{% extends 'base.html' %}{% block title %}Entrar · Campeonatos WE 2002{% endblock %}{% block content %}
+<section class="login account-form">
+  <h1>Entrar</h1>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Usuário ou e-mail<input name="username" autocomplete="username" required></label>
+    <label>Senha<input type="password" name="password" autocomplete="current-password" required></label>
+    <button>Entrar</button>
+  </form>
+  <p><a href="{{ url_for('players.forgot') }}">Esqueci minha senha ou usuário</a> · <a href="{{ url_for('players.resend') }}">Reenviar confirmação</a></p>
+  <p>Ainda não tem conta? <a href="{{ url_for('players.register') }}">Cadastre-se</a></p>
+</section>
+{% endblock %}

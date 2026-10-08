@@ -1,0 +1,11 @@
+{% extends 'base.html' %}{% block title %}Recuperar acesso · Campeonatos WE 2002{% endblock %}{% block content %}
+<section class="login account-form">
+  <h1>Recuperar acesso</h1>
+  <p>Informe o e-mail do cadastro. Enviaremos o seu usuário e um link para criar uma nova senha.</p>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>E-mail<input type="email" name="email" autocomplete="email" required></label>
+    <button>Enviar</button>
+  </form>
+</section>
+{% endblock %}

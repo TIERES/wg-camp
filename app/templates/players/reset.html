@@ -1,0 +1,12 @@
+{% extends 'base.html' %}{% block title %}Nova senha · Campeonatos WE 2002{% endblock %}{% block content %}
+<section class="login account-form">
+  <h1>Nova senha</h1>
+  <p>Usuário: <strong>{{ username }}</strong></p>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Nova senha (mínimo 8 caracteres)<input type="password" name="password" autocomplete="new-password" minlength="8" required></label>
+    <label>Repita a nova senha<input type="password" name="password_confirm" autocomplete="new-password" minlength="8" required></label>
+    <button>Salvar</button>
+  </form>
+</section>
+{% endblock %}

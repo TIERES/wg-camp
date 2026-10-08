@@ -1,0 +1,9 @@
+{% extends 'base.html' %}{% block title %}{{ title }} · Campeonatos WE 2002{% endblock %}{% block content %}
+<section class="login account-form">
+  <h1>{{ title }}</h1>
+  <p>{{ message }}</p>
+  {% if resend %}<p><a href="{{ url_for('players.resend') }}">Reenviar confirmação</a></p>{% endif %}
+  {% if forgot %}<p><a href="{{ url_for('players.forgot') }}">Esqueci minha senha</a></p>{% endif %}
+  <p><a href="{{ url_for('players.login') }}">Entrar</a></p>
+</section>
+{% endblock %}

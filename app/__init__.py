@@ -26,6 +26,17 @@ def create_app(test_config=None):
         IA_ACCESS_KEY=os.environ.get("ARENA17_IA_ACCESS_KEY", ""),
         IA_SECRET_KEY=os.environ.get("ARENA17_IA_SECRET_KEY", ""),
         IA_COLLECTION=os.environ.get("ARENA17_IA_COLLECTION", "opensource_media"),
+        MEMCARDS_DIR=os.environ.get("ARENA17_MEMCARDS_DIR", str(root / "storage" / "memcards")),
+        # Base dos links enviados por e-mail (confirmação, nova senha), ex.
+        # "https://we2002.wgs.dev.br" - atrás do Caddy o Flask só vê http.
+        PUBLIC_URL=os.environ.get("ARENA17_PUBLIC_URL", ""),
+        SMTP_HOST=os.environ.get("ARENA17_SMTP_HOST", ""),
+        SMTP_PORT=int(os.environ.get("ARENA17_SMTP_PORT", "587")),
+        SMTP_USER=os.environ.get("ARENA17_SMTP_USER", ""),
+        SMTP_PASSWORD=os.environ.get("ARENA17_SMTP_PASSWORD", ""),
+        # "starttls" (porta 587), "ssl" (porta 465) ou "none".
+        SMTP_SECURITY=os.environ.get("ARENA17_SMTP_SECURITY", "starttls"),
+        MAIL_FROM=os.environ.get("ARENA17_MAIL_FROM", ""),
     )
     if test_config:
         app.config.update(test_config)
@@ -36,6 +47,7 @@ def create_app(test_config=None):
     Path(app.config["LIVE_DIR"]).mkdir(parents=True, exist_ok=True)
     Path(app.config["UPDATES_DIR"]).mkdir(parents=True, exist_ok=True)
     Path(app.config["REPLAY_BACKUPS_DIR"]).mkdir(parents=True, exist_ok=True)
+    Path(app.config["MEMCARDS_DIR"]).mkdir(parents=True, exist_ok=True)
 
     db.init_app(app)
     # migrate_db() is idempotent (checks column/table existence before every
@@ -72,9 +84,13 @@ def create_app(test_config=None):
     from .spectate import bp as spectate_bp
     from .replays import bp as replays_bp
     from .updates import bp as updates_bp
+    from .players import bp as players_bp
+    from .memcards import api_bp as memcards_api_bp
     app.register_blueprint(public_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(spectate_bp)
     app.register_blueprint(replays_bp)
     app.register_blueprint(updates_bp)
+    app.register_blueprint(players_bp)
+    app.register_blueprint(memcards_api_bp)
     return app

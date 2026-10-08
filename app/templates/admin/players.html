@@ -1,0 +1,18 @@
+{% extends 'base.html' %}{% block title %}Jogadores · Administração{% endblock %}{% block content %}
+<div class="page-title"><h1>Jogadores cadastrados</h1><a href="{{ url_for('admin.games_list') }}">Jogos do Memory Card</a></div>
+<table>
+  <thead><tr><th>Usuário</th><th>E-mail</th><th>Confirmado</th><th>Memory Cards</th><th>Cadastro</th><th>Último acesso</th></tr></thead>
+  <tbody>
+    {% for player in players %}
+    <tr>
+      <td>{{ player.username }}</td>
+      <td>{{ player.email }}</td>
+      <td>{{ player.email_verified_at|localtime if player.email_verified_at else 'Não' }}</td>
+      <td>{{ player.cards }}</td>
+      <td>{{ player.created_at|localtime }}</td>
+      <td>{{ player.last_login_at|localtime if player.last_login_at else '—' }}</td>
+    </tr>
+    {% else %}<tr><td colspan="6">Nenhum jogador cadastrado.</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% endblock %}

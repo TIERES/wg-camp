@@ -709,3 +709,54 @@ def replays_cleanup_discard(label):
     else:
         flash(f"Backup {label}.zip descartado. Os replays continuam no servidor.", "success")
     return redirect(url_for("admin.replays_list"))
+
+
+# ---------------------------------------------------------------------------
+# Jogadores e jogos do Memory Card online (app/players.py, app/memcards.py)
+# ---------------------------------------------------------------------------
+
+@bp.get("/jogadores")
+@login_required
+def players_list():
+    players = get_db().execute(
+        "SELECT p.*, (SELECT COUNT(*) FROM memcards m WHERE m.player_id = p.id) AS cards "
+        "FROM players p ORDER BY p.username COLLATE NOCASE"
+    ).fetchall()
+    return render_template("admin/players.html", players=players)
+
+
+@bp.route("/jogos", methods=("GET", "POST"))
+@login_required
+def games_list():
+    from .memcards import normalize_content_id
+
+    db = get_db()
+    if request.method == "POST":
+        validate_csrf()
+        game_id = request.form.get("game_id", type=int)
+        name = request.form.get("name", "").strip()[:128]
+        if not name:
+            flash("Informe o nome do jogo.", "error")
+        elif game_id:
+            db.execute("UPDATE games SET name = ?, updated_at = ? WHERE id = ?", (name, now(), game_id))
+            db.commit()
+            flash("Jogo renomeado.", "success")
+        else:
+            content_id = normalize_content_id(request.form.get("content_id"))
+            if not content_id:
+                flash("Identificador inválido. Use CRC32:TAMANHO em hexadecimal, como no log kaillera_sync.log "
+                      "(ou o comando flask register-game).", "error")
+            else:
+                try:
+                    db.execute("INSERT INTO games (content_id, name, created_at, updated_at) VALUES (?, ?, ?, ?)",
+                               (content_id, name, now(), now()))
+                    db.commit()
+                    flash("Jogo cadastrado.", "success")
+                except sqlite3.IntegrityError:
+                    flash("Este identificador já está cadastrado.", "error")
+        return redirect(url_for("admin.games_list"))
+    games = db.execute(
+        "SELECT g.*, (SELECT COUNT(*) FROM memcards m WHERE m.game_id = g.id) AS cards "
+        "FROM games g ORDER BY g.name COLLATE NOCASE"
+    ).fetchall()
+    return render_template("admin/games.html", games=games)
