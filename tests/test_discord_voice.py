@@ -111,6 +111,16 @@ class DiscordVoiceTest(PlayersTestBase):
         self.client.post("/conta/discord/desvincular", data={"csrf_token": "csrf"})
         self.assertIn("Vincular Discord", self.client.get("/conta/").get_data(as_text=True))
 
+    def test_login_and_whoami_tell_the_dll_about_discord(self):
+        self.register()
+        response = self.client.post("/api/mc/login", data={"username": "pele@example.com", "password": "segredo123"})
+        self.assertIn("discord_linked=0", response.get_data(as_text=True))
+        self.link_discord("Pele", "111", "Pelé\nRei")
+        token = self.api_token("Pele")
+        reply = self.client.get("/api/mc/whoami", headers={"Authorization": f"Bearer {token}"}).get_data(as_text=True)
+        self.assertIn("discord_linked=1\n", reply)
+        self.assertIn("discord_name=Pelé Rei\n", reply)
+
     def test_callback_rejects_wrong_state(self):
         self.register()
         self.web_login()
