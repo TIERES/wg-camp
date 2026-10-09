@@ -139,11 +139,23 @@ class DiscordVoiceTest(PlayersTestBase):
             row = get_db().execute("SELECT discord_id FROM players WHERE username = 'Zico'").fetchone()
         self.assertIsNone(row["discord_id"])
 
-    def test_join_creates_private_channel_and_moves_only_caller(self):
+    def start_channel(self, first, second, players="Pele,Zico"):
+        """Os dois pedem: o primeiro espera, o segundo cria o canal."""
+        _, waiting = self.join(first, players)
+        self.assertEqual(waiting["status"], "waiting")
+        _, reply = self.join(second, players)
+        return reply
+
+    def test_channel_needs_two_players_and_moves_both(self):
         pele, zico = self.two_linked_players()
         self.fake.voice = {"111": "lobby", "222": "lobby"}
         response, reply = self.join(pele, "Pele,Zico")
         self.assertEqual(response.status_code, 200, reply)
+        self.assertEqual(reply, {"ok": "1", "status": "waiting"})
+        self.assertEqual(self.fake.channels, {})
+        self.assertEqual(self.fake.voice, {"111": "lobby", "222": "lobby"})
+
+        response, reply = self.join(zico, "Pele,Zico")
         self.assertEqual(reply["status"], "moved")
         channel = reply["channel_id"]
         self.assertEqual(reply["url"], f"https://discord.com/channels/{GUILD}/{channel}")
@@ -155,28 +167,55 @@ class DiscordVoiceTest(PlayersTestBase):
         self.assertEqual(allowed, {BOT_ID, "111", "222"})
         everyone = next(o for o in body["permission_overwrites"] if o["id"] == GUILD)
         self.assertEqual(int(everyone["deny"]), discord.VIEW_CHANNEL | discord.CONNECT)
-        # Só quem chamou foi movido - o outro decide por si (o DLL dele chama).
-        self.assertEqual(self.fake.voice, {"111": channel, "222": "lobby"})
-
-        response, reply = self.join(zico, "Pele,Zico")
-        self.assertEqual(reply["channel_id"], channel)
-        self.assertEqual(len(self.fake.channels), 1)
+        # Quem esperava também pediu para entrar: os dois foram movidos.
         self.assertEqual(self.fake.voice, {"111": channel, "222": channel})
+
+        # A próxima pergunta do DLL do primeiro já encontra o canal.
+        _, reply = self.join(pele, "Pele,Zico")
+        self.assertEqual((reply["status"], reply["channel_id"]), ("moved", channel))
+        self.assertEqual(len(self.fake.channels), 1)
+
+    def test_one_player_alone_never_gets_a_channel(self):
+        pele, zico = self.two_linked_players()
+        for _ in range(3):
+            _, reply = self.join(pele, "Pele,Zico")
+            self.assertEqual(reply["status"], "waiting")
+        self.assertEqual(self.fake.channels, {})
+        # Um pedido antigo (de outra partida) não conta mais.
+        with self.app.app_context():
+            old = (discord.utcnow() - timedelta(minutes=10)).isoformat()
+            get_db().execute("UPDATE voice_requests SET requested_at = ?", (old,))
+            get_db().commit()
+        _, reply = self.join(zico, "Pele,Zico")
+        self.assertEqual(reply["status"], "waiting")
+        self.assertEqual(self.fake.channels, {})
+
+    def test_player_who_is_not_asking_is_not_moved(self):
+        self.register("Pele", "pele@example.com")
+        self.register("Zico", "zico@example.com")
+        self.register("Romario", "romario@example.com")
+        for name, discord_id in (("Pele", "111"), ("Zico", "222"), ("Romario", "333")):
+            self.link_discord(name, discord_id)
+        self.fake.voice = {"111": "lobby", "222": "lobby", "333": "lobby"}
+        reply = self.start_channel(self.api_token("Pele"), self.api_token("Zico"), "Pele,Zico,Romario")
+        channel = reply["channel_id"]
+        # Romario está na sala mas desmarcou a chamada (o DLL dele não pede).
+        self.assertEqual(self.fake.voice, {"111": channel, "222": channel, "333": "lobby"})
 
     def test_rematch_in_another_room_order_reuses_channel(self):
         pele, zico = self.two_linked_players()
-        _, first = self.join(pele, "Pele,Zico")
+        first = self.start_channel(pele, zico)
         _, second = self.join(zico, "zico,PELE")
         self.assertEqual(first["channel_id"], second["channel_id"])
 
     def test_not_in_voice_gets_link(self):
-        pele, _ = self.two_linked_players()
-        _, reply = self.join(pele, "Pele,Zico")
+        pele, zico = self.two_linked_players()
+        reply = self.start_channel(pele, zico)
         self.assertEqual(reply["status"], "link")
 
     def test_deleted_channel_is_recreated(self):
-        pele, _ = self.two_linked_players()
-        _, first = self.join(pele, "Pele,Zico")
+        pele, zico = self.two_linked_players()
+        first = self.start_channel(pele, zico)
         self.fake.channels.clear()
         _, second = self.join(pele, "Pele,Zico")
         self.assertNotEqual(first["channel_id"], second["channel_id"])
@@ -206,12 +245,13 @@ class DiscordVoiceTest(PlayersTestBase):
     def test_late_linked_player_is_still_moved(self):
         self.register("Pele", "pele@example.com")
         self.register("Zico", "zico@example.com")
+        self.register("Romario", "romario@example.com")
         self.link_discord("Pele", "111")
-        pele = self.api_token("Pele")
-        _, first = self.join(pele, "Pele,Zico")
+        self.link_discord("Romario", "333")
+        first = self.start_channel(self.api_token("Pele"), self.api_token("Romario"), "Pele,Zico,Romario")
         self.link_discord("Zico", "222")
         self.fake.voice = {"222": "lobby"}
-        _, reply = self.join(self.api_token("Zico"), "Pele,Zico")
+        _, reply = self.join(self.api_token("Zico"), "Pele,Zico,Romario")
         self.assertEqual(reply["status"], "moved")
         self.assertEqual(self.fake.voice["222"], first["channel_id"])
 
@@ -226,10 +266,10 @@ class DiscordVoiceTest(PlayersTestBase):
             return discord.reap_voice_channels(get_db())
 
     def test_reaper_keeps_new_and_occupied_channels_and_removes_empty(self):
-        pele, _ = self.two_linked_players()
+        pele, zico = self.two_linked_players()
         self.fake.voice = {"111": "lobby"}
-        _, reply = self.join(pele, "Pele,Zico")
-        channel = reply["channel_id"]
+        channel = self.start_channel(pele, zico)["channel_id"]
+        self.fake.voice["111"] = channel
         self.assertEqual(self.reap(), 0)          # ainda no tempo de tolerância
         self.age_channels(10)
         self.assertEqual(self.reap(), 0)          # Pele está no canal
@@ -240,9 +280,9 @@ class DiscordVoiceTest(PlayersTestBase):
             self.assertIsNone(get_db().execute("SELECT 1 FROM voice_channels").fetchone())
 
     def test_reaper_removes_very_old_channel_even_if_occupied(self):
-        pele, _ = self.two_linked_players()
+        pele, zico = self.two_linked_players()
         self.fake.voice = {"111": "lobby"}
-        self.join(pele, "Pele,Zico")
+        self.start_channel(pele, zico)
         self.age_channels(13 * 60)
         self.assertEqual(self.reap(), 1)
 

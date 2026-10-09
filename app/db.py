@@ -102,6 +102,14 @@ CREATE TABLE IF NOT EXISTS room_tickets (
     verified_by INTEGER REFERENCES players(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS voice_requests (
+    id INTEGER PRIMARY KEY,
+    room_key TEXT NOT NULL,
+    discord_id TEXT NOT NULL,
+    requested_at TEXT NOT NULL,
+    UNIQUE (room_key, discord_id)
+);
+
 CREATE TABLE IF NOT EXISTS voice_channels (
     id INTEGER PRIMARY KEY,
     room_key TEXT NOT NULL UNIQUE,
