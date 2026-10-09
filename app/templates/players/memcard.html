@@ -12,15 +12,15 @@
       <td>{{ version.version }}{% if version.version == card.current_version %} (atual){% endif %}</td>
       <td>{{ version.created_at|localtime }}</td>
       <td>{{ version.note }}</td>
-      <td>
+      <td><div class="card-actions">
         <a class="button" href="{{ url_for('players.download_card', memcard_id=card.id, versao=version.version) }}">Baixar</a>
         {% if version.version != card.current_version %}
-        <form method="post" action="{{ url_for('players.restore_card', memcard_id=card.id) }}" style="display:inline">
+        <form method="post" action="{{ url_for('players.restore_card', memcard_id=card.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="version" value="{{ version.version }}">
           <button>Restaurar</button>
         </form>
         {% endif %}
-      </td>
+      </div></td>
     </tr>
     {% endfor %}
   </tbody>

@@ -5,7 +5,9 @@ confirmado pelo link enviado por e-mail - é por esse e-mail que o jogador
 recupera o nome de usuário e redefine a senha. O nome de usuário (= nick do
 Kaillera) não pode ser alterado depois.
 """
+import io
 import sqlite3
+import zipfile
 from functools import wraps
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, session, url_for
@@ -16,10 +18,16 @@ from .accounts import (email_error, external_url, find_token, issue_token, passw
 from .db import get_db, now
 from .mailer import MailError, send_mail
 from .memcards import (add_version, card_error, card_path, championship_isos, get_or_create_game,
-                       get_or_create_memcard, normalize_content_id)
+                       get_or_create_memcard, normalize_content_id, srm_basename)
 from .security import validate_csrf
 
 bp = Blueprint("players", __name__, url_prefix="/conta")
+
+# Vai junto do .srm no zip do "Baixar" (CRLF para o Bloco de Notas).
+CARD_ZIP_README = (
+    "Basta extrair esse arquivo na pasta do emulador RetroArch-1.16.0.FFW.TIERES.0.x "
+    "e substituir os arquivos, se necessário.\r\n"
+)
 
 
 def player_required(view):
@@ -362,9 +370,15 @@ def download_card(memcard_id):
     if not version or not card_path(version["sha256"]).exists():
         abort(404)
     player = current_player()
+    srm_name = srm_basename(db, card["content_id"], card["game_name"])
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(f"saves/PCSX-ReARMed/{srm_name}.srm", card_path(version["sha256"]).read_bytes())
+        archive.writestr("LEIA-ME.txt", CARD_ZIP_README.encode("utf-8-sig"))
+    buffer.seek(0)
     safe_game = "".join(ch if ch.isalnum() else "_" for ch in card["game_name"])[:60]
-    return send_file(card_path(version["sha256"]), mimetype="application/octet-stream", as_attachment=True,
-                     download_name=f"{player['username']}_{safe_game}_v{version_number}.mcd")
+    return send_file(buffer, mimetype="application/zip", as_attachment=True,
+                     download_name=f"{player['username']}_{safe_game}_v{version_number}.zip")
 
 
 @bp.post("/memory-cards/<int:memcard_id>/restaurar")

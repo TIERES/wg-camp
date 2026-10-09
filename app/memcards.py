@@ -205,6 +205,29 @@ def championship_isos(db):
     return list(isos.values())
 
 
+# Extensões tiradas do nome do jogo para chegar ao nome do .srm: o RetroArch
+# salva o cartão como saves\<núcleo>\<nome do conteúdo sem extensão>.srm.
+CONTENT_EXTENSIONS = GAME_FILE_EXTENSIONS | {"cue", "m3u", "pbp", "zip", "7z"}
+SRM_INVALID_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+
+def srm_basename(db, content_id, game_name):
+    """Nome (sem extensão) do .srm que o PCSX ReARMed do RetroArch lê para
+    este jogo: o nome da ISO do campeonato com esse conteúdo, se houver; senão
+    o nome que o jogo tem em `games` (o que a DLL mandou ou a ISO do envio)."""
+    row = db.execute(
+        "SELECT original_filename FROM files WHERE file_type = 'iso' AND content_id = ? COLLATE NOCASE "
+        "ORDER BY is_published DESC, id DESC LIMIT 1", (content_id,)
+    ).fetchone()
+    name = (row["original_filename"] if row else game_name) or ""
+    name = name.replace("\\", "/").rsplit("/", 1)[-1]
+    stem, dot, ext = name.rpartition(".")
+    if dot and stem and ext.lower() in CONTENT_EXTENSIONS:
+        name = stem
+    name = SRM_INVALID_CHARS.sub("_", name).strip(" .")
+    return name or "Memory Card"
+
+
 def get_or_create_game(db, content_id, name):
     game = db.execute("SELECT * FROM games WHERE content_id = ?", (content_id,)).fetchone()
     if game:

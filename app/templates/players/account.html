@@ -2,7 +2,7 @@
 <section class="intro">
   <h1>Minha conta</h1>
   <p>Usuário: <strong>{{ player.username }}</strong> · E-mail: {{ player.email }}</p>
-  <p>Use este mesmo usuário como nick no Kaillera e entre com sua senha na tela de servidores do Kaillera para usar o <strong>Memory Card online</strong>.</p>
+  <p>Use este mesmo usuário como nick no Kaillera e entre com sua senha no botão "M. Card Online" da tela inicial do Kaillera para usar o <strong>Memory Card online</strong>.</p>
   <form method="post" action="{{ url_for('players.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Sair</button></form>
 </section>
 
@@ -20,7 +20,7 @@
         <td>{{ card.current_version }}</td>
         <td>{{ card.updated_at|localtime }}</td>
         <td>{{ card.note }}</td>
-        <td><a class="button" href="{{ url_for('players.download_card', memcard_id=card.id) }}">Baixar</a> <a href="{{ url_for('players.card_history', memcard_id=card.id) }}">Histórico</a></td>
+        <td><div class="card-actions"><a class="button" href="{{ url_for('players.download_card', memcard_id=card.id) }}">Baixar</a><a class="button" href="{{ url_for('players.card_history', memcard_id=card.id) }}">Histórico</a></div></td>
       </tr>
       {% endfor %}
     </tbody>

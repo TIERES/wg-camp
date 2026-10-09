@@ -2,6 +2,7 @@ import hashlib
 import re
 import tempfile
 import unittest
+import zipfile
 from io import BytesIO
 from pathlib import Path
 
@@ -11,6 +12,17 @@ from app.memcards import MCD_SIZE, blank_card, content_id_for_path
 from app.mailer import outbox
 
 CONTENT_ID = "1A2B3C4D:2A3B4C00"
+
+
+def zip_entries(response):
+    with zipfile.ZipFile(BytesIO(response.data)) as archive:
+        return {name: archive.read(name) for name in archive.namelist()}
+
+
+def downloaded_card(response):
+    cards = [data for name, data in zip_entries(response).items() if name.endswith(".srm")]
+    assert len(cards) == 1, cards
+    return cards[0]
 
 
 def card_with(byte):
@@ -323,13 +335,28 @@ class AccountPagesTest(PlayersTestBase):
         page = self.client.get("/conta/").get_data(as_text=True)
         self.assertIn("WE2002", page)
 
-        self.assertEqual(self.client.get("/conta/memory-cards/1/baixar").data, saved)
-        self.assertEqual(self.client.get("/conta/memory-cards/1/baixar?versao=1").data, blank_card())
+        self.assertEqual(downloaded_card(self.client.get("/conta/memory-cards/1/baixar")), saved)
+        self.assertEqual(downloaded_card(self.client.get("/conta/memory-cards/1/baixar?versao=1")), blank_card())
 
         self.client.post("/conta/memory-cards/1/restaurar", data={"csrf_token": "csrf", "version": "1"})
-        self.assertEqual(self.client.get("/conta/memory-cards/1/baixar").data, blank_card())
+        self.assertEqual(downloaded_card(self.client.get("/conta/memory-cards/1/baixar")), blank_card())
         history = self.client.get("/conta/memory-cards/1").get_data(as_text=True)
         self.assertIn("Restaurada a versão 1", history)
+
+    def test_download_is_a_zip_ready_to_extract_into_retroarch(self):
+        response = self.client.post("/conta/memory-cards/enviar", data={
+            "csrf_token": "csrf", "game_id": "1", "file": (BytesIO(card_with(0x55)), "we2002_1p.srm"),
+        })
+        self.assertEqual(response.status_code, 302)
+        response = self.client.get("/conta/memory-cards/1/baixar")
+        self.assertEqual(response.mimetype, "application/zip")
+        self.assertIn(".zip", response.headers["Content-Disposition"])
+        entries = zip_entries(response)
+        self.assertEqual(sorted(entries), ["LEIA-ME.txt", "saves/PCSX-ReARMed/WE2002.srm"])
+        self.assertEqual(entries["saves/PCSX-ReARMed/WE2002.srm"], card_with(0x55))
+        readme = entries["LEIA-ME.txt"].decode("utf-8-sig")
+        self.assertIn("RetroArch-1.16.0.FFW.TIERES.0.x", readme)
+        self.assertIn("substituir os arquivos, se necessário.", readme)
 
     def test_upload_rejects_non_card_files(self):
         self.client.post("/conta/memory-cards/enviar", data={
@@ -384,6 +411,26 @@ class ChampionshipIsosTest(PlayersTestBase):
             "csrf_token": "csrf", "content_id": content_id, "file": (BytesIO(data), "cartao.mcd"),
         })
 
+    def card_for(self, content_id, data):
+        self.assertEqual(self.upload(content_id, data).status_code, 302)
+        with self.app.app_context():
+            return get_db().execute("SELECT m.id FROM memcards m JOIN games g ON g.id = m.game_id "
+                                    "WHERE g.content_id = ?", (content_id,)).fetchone()["id"]
+
+    def test_srm_takes_the_championship_iso_name_over_the_match_name(self):
+        card = self.card_for(CONTENT_ID, card_with(0x11))  # games.name = "WE2002 da partida"
+        entries = zip_entries(self.client.get(f"/conta/memory-cards/{card}/baixar"))
+        self.assertEqual(entries["saves/PCSX-ReARMed/WE2002.srm"], card_with(0x11))
+
+    def test_srm_of_a_game_without_iso_uses_its_name_without_extension(self):
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE games SET name = 'BR Turbo 2025 by Prof Denis Erivelton.bin' WHERE content_id = 'EEEE5555:10'")
+            db.commit()
+        card = self.card_for("EEEE5555:10", card_with(0x22))
+        entries = zip_entries(self.client.get(f"/conta/memory-cards/{card}/baixar"))
+        self.assertEqual(entries["saves/PCSX-ReARMed/BR Turbo 2025 by Prof Denis Erivelton.srm"], card_with(0x22))
+
     def test_account_lists_isos_of_published_championships(self):
         page = self.client.get("/conta/").get_data(as_text=True)
         master = page.index("Master Liga 12 — MasterLeague12.bin")
@@ -404,7 +451,8 @@ class ChampionshipIsosTest(PlayersTestBase):
             game = get_db().execute("SELECT * FROM games WHERE content_id = 'AAAA1111:1C478C60'").fetchone()
             self.assertEqual(game["name"], "MasterLeague12.bin")
             card = get_db().execute("SELECT * FROM memcards WHERE game_id = ?", (game["id"],)).fetchone()
-        self.assertEqual(self.client.get(f"/conta/memory-cards/{card['id']}/baixar").data, saved)
+        response = self.client.get(f"/conta/memory-cards/{card['id']}/baixar")
+        self.assertEqual(zip_entries(response)["saves/PCSX-ReARMed/MasterLeague12.srm"], saved)
         # A partida com essa ISO usa o cartão enviado.
         _, fields = self.api_login()
         response = self.client.post("/api/mc/checkout", headers={"Authorization": f"Bearer {fields['token']}"}, data={
