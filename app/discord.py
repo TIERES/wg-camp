@@ -7,14 +7,17 @@ feito pelo próprio Flask com o token do bot, só quando algo acontece.
    (o ID do Discord, verificado) e guilds.join (o bot já coloca o jogador no
    servidor da WE Camp, onde ficam os canais).
  - /api/voice/join: o kailleraclient.dll de cada jogador chama no início de
-   uma partida com a lista de nicks da sala. A primeira chamada de um grupo
-   de jogadores cria um canal de voz privado na categoria "Partidas", aberto
-   só para os Discords vinculados dessa lista; as seguintes reaproveitam o
-   canal (inclusive na revanche). Cada chamada move SÓ quem chamou - e só se
-   ele já estiver em algum canal de voz do servidor (o Discord não deixa
-   ninguém entrar numa chamada sozinho); senão o DLL mostra o link.
-   Ninguém consegue puxar outra pessoa para uma chamada: a lista de nicks
-   só dá permissão de ver o canal.
+   uma partida com a lista de nicks da sala - só quando o jogador marcou
+   "Participar da chamada de voz". O canal de voz privado (categoria
+   "Partidas", aberto só para os Discords vinculados dessa lista) só é
+   criado quando 2 jogadores do grupo pediram: o primeiro recebe
+   status=waiting e o DLL dele pergunta de novo; na criação, todos que
+   pediram são movidos. Depois o canal é reaproveitado (inclusive na
+   revanche) e cada chamada move quem chamou. Só é movido quem já está em
+   algum canal de voz do servidor (o Discord não deixa ninguém entrar numa
+   chamada sozinho); senão o DLL mostra o link. Ninguém consegue puxar
+   outra pessoa para uma chamada: só quem pediu é movido, e a lista de
+   nicks só dá permissão de ver o canal.
  - Faxina (reap_voice_channels): canais sem nenhum dos jogadores dentro são
    apagados depois de alguns minutos.
 
@@ -61,6 +64,9 @@ REAP_GRACE = timedelta(minutes=5)
 # Discord aberto na sala).
 REAP_MAX_AGE = timedelta(hours=12)
 REAP_INTERVAL_SECONDS = 120
+# Um pedido vale por isso esperando o segundo jogador (o DLL pergunta de
+# novo por ~2 minutos).
+REQUEST_TTL = timedelta(minutes=3)
 
 bp = Blueprint("discord", __name__)
 api_bp = Blueprint("voice_api", __name__, url_prefix="/api/voice")
@@ -290,10 +296,25 @@ def _channel_alive(channel_id):
         raise
 
 
+def _request(db, key, discord_id):
+    """Registra (ou renova) o pedido de quem chamou; devolve os Discords que
+    pediram este canal nos últimos REQUEST_TTL, na ordem dos pedidos."""
+    db.execute("DELETE FROM voice_requests WHERE requested_at < ?", ((utcnow() - timedelta(days=1)).isoformat(),))
+    db.execute("DELETE FROM voice_requests WHERE room_key = ? AND discord_id = ?", (key, discord_id))
+    db.execute("INSERT INTO voice_requests (room_key, discord_id, requested_at) VALUES (?, ?, ?)",
+               (key, discord_id, now()))
+    return [r["discord_id"] for r in db.execute(
+        "SELECT discord_id FROM voice_requests WHERE room_key = ? AND requested_at >= ? ORDER BY requested_at, id",
+        (key, (utcnow() - REQUEST_TTL).isoformat()))]
+
+
 def ensure_channel(db, names, caller_discord_id):
-    """O canal deste grupo (criado se preciso). Devolve o ID do canal."""
+    """O canal deste grupo. Devolve (channel_id, quem_mover_tambem):
+    (None, []) enquanto só um jogador pediu; na criação, os outros que
+    pediram também são movidos (eles mesmos pediram para entrar)."""
     key = room_key(names)
     with _create_lock:
+        requesters = _request(db, key, caller_discord_id)
         row = db.execute("SELECT * FROM voice_channels WHERE room_key = ?", (key,)).fetchone()
         if row and _channel_alive(row["channel_id"]):
             members = _members(row)
@@ -310,16 +331,18 @@ def ensure_channel(db, names, caller_discord_id):
             db.execute("UPDATE voice_channels SET member_ids = ?, last_join_at = ? WHERE id = ?",
                        (",".join(members), now(), row["id"]))
             db.commit()
-            return row["channel_id"]
+            return row["channel_id"], []
         if row:
             db.execute("DELETE FROM voice_channels WHERE id = ?", (row["id"],))
+        if len(requesters) < 2:
+            db.commit()
+            return None, []
 
         placeholders = ",".join("?" * len(names))
         linked = [r["discord_id"] for r in db.execute(
             f"SELECT discord_id FROM players WHERE username COLLATE NOCASE IN ({placeholders}) "
             "AND email_verified_at IS NOT NULL AND discord_id IS NOT NULL", names)]
-        if caller_discord_id not in linked:
-            linked.append(caller_discord_id)
+        linked += [member for member in requesters if member not in linked]
         channel_id = _create_channel(names, linked)
         db.execute(
             "INSERT INTO voice_channels (room_key, channel_id, name, member_ids, created_at, last_join_at) "
@@ -327,7 +350,7 @@ def ensure_channel(db, names, caller_discord_id):
             (key, channel_id, channel_name(names), ",".join(linked), now(), now()),
         )
         db.commit()
-        return channel_id
+        return channel_id, [member for member in requesters if member != caller_discord_id]
 
 
 def move_to(discord_id, channel_id):
@@ -426,8 +449,9 @@ def _maybe_reap():
 def api_join():
     """Início de partida. Form: players (nicks da sala separados por
     vírgula, incluindo o de quem chama), game_name (opcional).
-    Responde ok, status (moved / link), channel_id, url (https) e app_url
-    (discord://, abre direto o app)."""
+    Responde ok, status (moved / link / waiting), channel_id, url (https) e
+    app_url (discord://, abre direto o app). waiting = ninguém mais da sala
+    pediu ainda - o DLL pergunta de novo em alguns segundos."""
     from .memcards import _api_player, _error, _player_list, _reply
     player = _api_player()
     if not player:
@@ -444,7 +468,14 @@ def api_join():
 
     db = get_db()
     try:
-        channel_id = ensure_channel(db, names, player["discord_id"])
+        channel_id, others = ensure_channel(db, names, player["discord_id"])
+        if not channel_id:
+            return _reply(ok=1, status="waiting")
+        for other in others:
+            try:
+                move_to(other, channel_id)
+            except DiscordError as error:
+                current_app.logger.info("Discord: não movi %s: %s", other, error)
         moved = move_to(player["discord_id"], channel_id)
     except DiscordError as error:
         current_app.logger.warning("Discord: canal de voz para %s falhou: %s", ",".join(names), error)
