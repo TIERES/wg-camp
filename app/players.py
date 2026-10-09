@@ -15,7 +15,8 @@ from .accounts import (email_error, external_url, find_token, issue_token, passw
                        purge_stale_unverified, recently_sent, revoke_api_tokens, username_error)
 from .db import get_db, now
 from .mailer import MailError, send_mail
-from .memcards import add_version, card_error, card_path, get_or_create_memcard
+from .memcards import (add_version, card_error, card_path, championship_isos, get_or_create_game,
+                       get_or_create_memcard, normalize_content_id)
 from .security import validate_csrf
 
 bp = Blueprint("players", __name__, url_prefix="/conta")
@@ -236,13 +237,18 @@ def account():
         "WHERE m.player_id = ? ORDER BY g.name COLLATE NOCASE",
         (player["id"],),
     ).fetchall()
-    games = db.execute("SELECT id, name, content_id FROM games ORDER BY name COLLATE NOCASE").fetchall()
+    # "Enviar um Memory Card": the championships' ISOs first, then any other
+    # game already registered (e.g. created by a match).
+    isos = championship_isos(db)
+    iso_ids = {iso["content_id"] for iso in isos}
+    games = [game for game in db.execute("SELECT id, name, content_id FROM games ORDER BY name COLLATE NOCASE")
+             if game["content_id"].upper() not in iso_ids]
     tokens = db.execute(
         "SELECT id, created_at, last_used_at FROM player_tokens "
         "WHERE player_id = ? AND kind = 'api' AND used_at IS NULL ORDER BY id DESC",
         (player["id"],),
     ).fetchall()
-    return render_template("players/account.html", player=player, cards=cards, games=games, tokens=tokens)
+    return render_template("players/account.html", player=player, cards=cards, isos=isos, games=games, tokens=tokens)
 
 
 @bp.post("/senha")
@@ -292,14 +298,29 @@ def _own_card(memcard_id):
     return card
 
 
+def _upload_game(db):
+    """The game picked in "Enviar um Memory Card": (game, None); or (None,
+    (content_id, name)) for a championship ISO no match registered yet - the
+    game is created when the card is saved; or (None, None)."""
+    content_id = normalize_content_id(request.form.get("content_id"))
+    if not content_id:
+        # A page opened before the championships' ISOs were listed.
+        return db.execute("SELECT * FROM games WHERE id = ?", (request.form.get("game_id", type=int),)).fetchone(), None
+    game = db.execute("SELECT * FROM games WHERE content_id = ?", (content_id,)).fetchone()
+    if game:
+        return game, None
+    iso = next((iso for iso in championship_isos(db) if iso["content_id"] == content_id), None)
+    return None, ((content_id, iso["name"]) if iso else None)
+
+
 @bp.post("/memory-cards/enviar")
 @player_required
 def upload_card():
     validate_csrf()
     db = get_db()
-    game = db.execute("SELECT * FROM games WHERE id = ?", (request.form.get("game_id", type=int),)).fetchone()
+    game, new_game = _upload_game(db)
     upload = request.files.get("file")
-    if not game:
+    if not game and not new_game:
         flash("Escolha o jogo (ISO) deste Memory Card.", "error")
         return redirect(url_for("players.account"))
     if not upload or not upload.filename:
@@ -310,6 +331,8 @@ def upload_card():
     if error:
         flash(error, "error")
         return redirect(url_for("players.account"))
+    if not game:
+        game = get_or_create_game(db, *new_game)
     card = get_or_create_memcard(db, session["player_id"], game["id"])
     version = add_version(db, card["id"], data, "upload", f"Enviado pelo site: {upload.filename[:100]}")
     db.commit()

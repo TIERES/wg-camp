@@ -100,7 +100,7 @@ def delete_file(identifier, filename, access_key, secret_key):
 
 
 def list_item_files(identifier):
-    """Returns {name: {"md5", "size", "mtime"}} for the item's original
+    """Returns {name: {"md5", "crc32", "size", "mtime"}} for the item's original
     files ({} if the item doesn't exist yet). Raises ArchiveOrgError when
     archive.org can't be reached."""
     url = f"https://archive.org/metadata/{urllib.parse.quote(identifier)}/files"
@@ -110,7 +110,8 @@ def list_item_files(identifier):
     except (OSError, ValueError) as error:
         raise ArchiveOrgError(f"Falha ao consultar os arquivos do archive.org: {error}") from error
     return {
-        entry["name"]: {"md5": entry.get("md5"), "size": int(entry.get("size") or 0), "mtime": entry.get("mtime")}
+        entry["name"]: {"md5": entry.get("md5"), "crc32": entry.get("crc32"), "size": int(entry.get("size") or 0),
+                        "mtime": entry.get("mtime")}
         for entry in data.get("result", [])
         if entry.get("source") == "original"
     }

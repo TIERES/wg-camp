@@ -14,6 +14,25 @@
     {% else %}<tr><td colspan="4">Nenhum jogo cadastrado.</td></tr>{% endfor %}
   </tbody>
 </table>
+<h2>ISOs dos campeonatos</h2>
+<p>As ISOs identificadas de campeonatos publicados aparecem para os jogadores em "Enviar um Memory Card", na página da conta. ISOs novas (.bin, .iso, .img, .chd) são identificadas no envio; as enviadas antes disso, por este botão - pela cópia deste servidor ou pelo CRC32 que o archive.org lista para as migradas.</p>
+<table>
+  <thead><tr><th>Campeonato</th><th>Arquivo</th><th>Identificador</th><th>Para os jogadores</th></tr></thead>
+  <tbody>
+    {% for iso in isos %}
+    <tr>
+      <td>{{ iso.championship_name }}</td>
+      <td>{{ iso.display_name }}{% if iso.display_name != iso.original_filename %}<br><small>{{ iso.original_filename }}</small>{% endif %}</td>
+      <td>{% if iso.content_id %}<code>{{ iso.content_id }}</code>{% else %}<small class="error">não identificada</small>{% endif %}</td>
+      <td>{{ 'Sim' if iso.content_id and iso.is_published and iso.championship_published else 'Não' }}</td>
+    </tr>
+    {% else %}<tr><td colspan="4">Nenhuma ISO de campeonato.</td></tr>{% endfor %}
+  </tbody>
+</table>
+<form method="post" action="{{ url_for('admin.games_identify_isos') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{% if identifying %}<button disabled>Identificando ISOs...</button>{% else %}<button>Identificar ISOs sem identificador</button>{% endif %}
+</form>
+
 <h2>Cadastrar jogo</h2>
 <form method="post" class="form">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

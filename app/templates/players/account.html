@@ -28,13 +28,18 @@
   {% else %}<p>Você ainda não tem Memory Cards. Eles são criados na primeira partida com Memory Card online, ou enviando um arquivo abaixo.</p>{% endif %}
 
   <h3>Enviar um Memory Card</h3>
-  {% if games %}
+  {% if isos or games %}
   <form method="post" action="{{ url_for('players.upload_card') }}" enctype="multipart/form-data" class="account-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>Jogo (ISO)
-      <select name="game_id" required>
+      <select name="content_id" required>
         <option value="">Escolha...</option>
-        {% for game in games %}<option value="{{ game.id }}">{{ game.name }}</option>{% endfor %}
+        {% if isos %}<optgroup label="Campeonatos">
+          {% for iso in isos %}<option value="{{ iso.content_id }}">{{ iso.label }}</option>{% endfor %}
+        </optgroup>{% endif %}
+        {% if games %}<optgroup label="Outros jogos">
+          {% for game in games %}<option value="{{ game.content_id }}">{{ game.name }}</option>{% endfor %}
+        </optgroup>{% endif %}
       </select>
     </label>
     <label>Arquivo (.mcd, .mcr ou .srm de 128 KB)<input type="file" name="file" accept=".mcd,.mcr,.srm" required></label>

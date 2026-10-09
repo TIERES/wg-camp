@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS files (
     archive_status TEXT,
     archive_error TEXT,
     archive_updated_at TEXT,
-    local_removed_at TEXT
+    local_removed_at TEXT,
+    content_id TEXT
 );
 
 CREATE INDEX IF NOT EXISTS files_championship_idx ON files(championship_id);

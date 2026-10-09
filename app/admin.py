@@ -189,7 +189,10 @@ def file_upload(championship_id):
             raise ValueError("Cada campeonato pode ter apenas um arquivo. Edite ou remova o arquivo atual antes de enviar outro.")
         stored = store_upload(upload)
         display_name = request.form.get("display_name", "").strip() or stored["original_filename"]
-        db.execute("INSERT INTO files (championship_id,display_name,description,stored_name,original_filename,file_type,file_size,sha256,md5,is_published,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (championship_id, display_name, request.form.get("description", "").strip(), stored["stored_name"], stored["original_filename"], request.form.get("file_type", "other"), stored["file_size"], stored["sha256"], stored["md5"], int("is_published" in request.form), now(), now()))
+        # Identifies the ISO for the Memory Card online (players' account page).
+        from .memcards import content_id_from, is_game_file
+        content_id = content_id_from(stored["crc32"], stored["file_size"]) if is_game_file(stored["stored_name"]) else None
+        db.execute("INSERT INTO files (championship_id,display_name,description,stored_name,original_filename,file_type,file_size,sha256,md5,content_id,is_published,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", (championship_id, display_name, request.form.get("description", "").strip(), stored["stored_name"], stored["original_filename"], request.form.get("file_type", "other"), stored["file_size"], stored["sha256"], stored["md5"], content_id, int("is_published" in request.form), now(), now()))
         db.commit()
     except (ValueError, OSError, sqlite3.IntegrityError) as error:
         if stored:
@@ -759,4 +762,49 @@ def games_list():
         "SELECT g.*, (SELECT COUNT(*) FROM memcards m WHERE m.game_id = g.id) AS cards "
         "FROM games g ORDER BY g.name COLLATE NOCASE"
     ).fetchall()
-    return render_template("admin/games.html", games=games)
+    isos = db.execute(
+        "SELECT f.display_name, f.original_filename, f.content_id, f.is_published, "
+        "c.name AS championship_name, c.is_published AS championship_published "
+        "FROM files f JOIN championships c ON c.id = f.championship_id "
+        "WHERE f.file_type = 'iso' ORDER BY c.start_date DESC, c.created_at DESC, f.id DESC"
+    ).fetchall()
+    return render_template("admin/games.html", games=games, isos=isos, identifying=_identify_isos_lock.locked())
+
+
+# Championship ISOs uploaded before files.content_id existed: CRC32 of the
+# local copy (a few seconds per ISO - hence the thread) or, for the ones
+# migrated to archive.org, the crc32 its file list has.
+_identify_isos_lock = threading.Lock()
+
+
+def _identify_isos(app):
+    if not _identify_isos_lock.acquire(blocking=False):
+        return None
+    try:
+        with app.app_context():
+            from .memcards import fill_championship_content_ids
+            return fill_championship_content_ids(get_db())
+    except Exception:
+        app.logger.exception("Falha ao identificar as ISOs dos campeonatos")
+        return None
+    finally:
+        _identify_isos_lock.release()
+
+
+@bp.post("/jogos/identificar-isos")
+@login_required
+def games_identify_isos():
+    validate_csrf()
+    app = current_app._get_current_object()
+    if app.config.get("TESTING"):
+        result = _identify_isos(app)
+        if result:
+            found, missing = result
+            flash(f"{found} ISO(s) identificada(s)." + (f" Sem identificação: {', '.join(missing)}." if missing else ""),
+                  "success" if not missing else "error")
+    elif _identify_isos_lock.locked():
+        flash("A identificação das ISOs já está em andamento.", "error")
+    else:
+        threading.Thread(target=_identify_isos, args=(app,), daemon=True).start()
+        flash("Identificação das ISOs iniciada. Atualize esta página em alguns segundos.", "success")
+    return redirect(url_for("admin.games_list"))

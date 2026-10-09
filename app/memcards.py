@@ -90,6 +90,10 @@ def normalize_content_id(value):
     return f"{match.group(1).upper()}:{int(match.group(2), 16):X}"
 
 
+def content_id_from(crc32, size):
+    return f"{crc32 & 0xFFFFFFFF:08X}:{size:X}"
+
+
 def content_id_for_path(path):
     """"CRC32:TAMANHO" de um arquivo de jogo, como o anti-desync do
     retroarch-k3-ffw calcula (kaillera_sync.c, ksync_hash_content): .cue e
@@ -125,7 +129,80 @@ def content_id_for_path(path):
                 size += len(chunk)
 
     add_file(Path(path))
-    return f"{crc & 0xFFFFFFFF:08X}:{size:X}"
+    return content_id_from(crc, size)
+
+
+# ISOs dos campeonatos (tabela files): o "Enviar um Memory Card" da conta
+# lista as publicadas. files.content_id é o mesmo CRC32:TAMANHO de games -
+# calculado no envio do arquivo (admin.file_upload) ou depois por
+# fill_championship_content_ids(). Só imagens de disco cruas: o RetroArch lê
+# o .bin/.chd inteiro; um .zip/.7z teria de ser descompactado antes.
+GAME_FILE_EXTENSIONS = {"bin", "iso", "img", "chd"}
+
+
+def is_game_file(filename):
+    return filename.rsplit(".", 1)[-1].lower() in GAME_FILE_EXTENSIONS
+
+
+def fill_championship_content_ids(db):
+    """Identifica as ISOs de campeonato ainda sem content_id: pela cópia
+    deste servidor ou, nas migradas, pelo crc32 que o archive.org lista.
+    Devolve (quantas identificou, nomes das que não deu)."""
+    from urllib.parse import unquote, urlparse
+
+    from .archive_org import ArchiveOrgError, list_item_files
+
+    rows = db.execute("SELECT * FROM files WHERE file_type = 'iso' AND content_id IS NULL ORDER BY id").fetchall()
+    listings = {}
+    found, missing = 0, []
+    for entry in rows:
+        content_id = None
+        local = Path(current_app.config["DOWNLOADS_DIR"]) / entry["stored_name"]
+        if is_game_file(entry["stored_name"]):
+            if not entry["local_removed_at"] and local.is_file():
+                content_id = content_id_for_path(local)
+            elif entry["archive_url"]:
+                # https://archive.org/download/<item>/<arquivo> (archive_org.download_url)
+                parts = urlparse(entry["archive_url"]).path.split("/", 3)
+                if len(parts) == 4 and parts[1] == "download":
+                    identifier, name = unquote(parts[2]), unquote(parts[3])
+                    if identifier not in listings:
+                        try:
+                            listings[identifier] = list_item_files(identifier)
+                        except ArchiveOrgError:
+                            listings[identifier] = {}
+                    info = listings[identifier].get(name)
+                    if info and info.get("crc32") and info.get("size"):
+                        content_id = content_id_from(int(info["crc32"], 16), info["size"])
+        if content_id:
+            db.execute("UPDATE files SET content_id = ? WHERE id = ?", (content_id, entry["id"]))
+            db.commit()
+            found += 1
+        else:
+            missing.append(entry["display_name"])
+    return found, missing
+
+
+def championship_isos(db):
+    """ISOs identificadas dos campeonatos publicados, uma por conteúdo (dois
+    campeonatos com a mesma ISO dividem o cartão), dos campeonatos mais novos
+    para os mais antigos: [{"content_id", "name", "label"}]."""
+    rows = db.execute(
+        "SELECT f.content_id, f.original_filename, c.name AS championship_name "
+        "FROM files f JOIN championships c ON c.id = f.championship_id "
+        "WHERE f.file_type = 'iso' AND f.is_published = 1 AND c.is_published = 1 AND f.content_id IS NOT NULL "
+        "ORDER BY c.start_date DESC, c.created_at DESC, f.id DESC"
+    ).fetchall()
+    isos = {}
+    for row in rows:
+        iso = isos.setdefault(row["content_id"].upper(), {
+            "content_id": row["content_id"].upper(), "name": row["original_filename"], "championships": [],
+        })
+        if row["championship_name"] not in iso["championships"]:
+            iso["championships"].append(row["championship_name"])
+    for iso in isos.values():
+        iso["label"] = f"{' / '.join(iso['championships'])} — {iso['name']}"
+    return list(isos.values())
 
 
 def get_or_create_game(db, content_id, name):

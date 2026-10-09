@@ -2,6 +2,7 @@ import hashlib
 import os
 import re
 import uuid
+import zlib
 from pathlib import Path
 
 from flask import current_app
@@ -31,6 +32,7 @@ def store_upload(upload: FileStorage):
     final_path = Path(current_app.config["DOWNLOADS_DIR"]) / stored_name
     digest = hashlib.sha256()
     md5 = hashlib.md5()
+    crc32 = 0
     size = 0
     try:
         with temp_path.open("xb") as target:
@@ -38,12 +40,13 @@ def store_upload(upload: FileStorage):
                 target.write(chunk)
                 digest.update(chunk)
                 md5.update(chunk)
+                crc32 = zlib.crc32(chunk, crc32)
                 size += len(chunk)
         os.replace(temp_path, final_path)
     except Exception:
         temp_path.unlink(missing_ok=True)
         raise
-    return {"stored_name": stored_name, "original_filename": original, "file_size": size, "sha256": digest.hexdigest(), "md5": md5.hexdigest()}
+    return {"stored_name": stored_name, "original_filename": original, "file_size": size, "sha256": digest.hexdigest(), "md5": md5.hexdigest(), "crc32": crc32}
 
 
 def delete_stored_file(stored_name):

@@ -1,6 +1,8 @@
 import hashlib
 import tempfile
 import unittest
+import zlib
+from io import BytesIO
 from pathlib import Path
 from unittest import mock
 
@@ -209,6 +211,42 @@ class AdminFilesArchiveTest(unittest.TestCase):
         self._archive()
         self.assertIsNone(self._file()["local_removed_at"])
         self.assertTrue((self.downloads / "0123456789abcdef0123456789abcdef.bin").exists())
+
+    def test_iso_upload_is_identified_for_memory_cards(self):
+        with self.app.app_context():
+            get_db().execute("INSERT INTO championships (id,slug,name,is_published,created_at,updated_at) VALUES (2,'copa-2','Copa 2',1,?,?)", (now(), now()))
+            get_db().commit()
+        data = b"outra iso" * 50
+        response = self.client.post("/admin/championships/2/files", data={
+            "csrf_token": "test-csrf-token", "file_type": "iso", "is_published": "on", "file": (BytesIO(data), "Copa 2.bin"),
+        })
+        self.assertEqual(response.status_code, 302)
+        with self.app.app_context():
+            entry = get_db().execute("SELECT * FROM files WHERE championship_id=2").fetchone()
+        self.assertEqual(entry["content_id"], f"{zlib.crc32(data):08X}:{len(data):X}")
+
+    @mock.patch("app.archive_org.list_item_files", return_value={
+        "WE Legends 2005.chd": {"md5": "x", "crc32": "f8131957", "size": 474431328, "mtime": None}})
+    def test_identify_isos_from_local_copy_and_archive_org(self, list_files):
+        with self.app.app_context():
+            db = get_db()
+            for cid, name, stored, url in ((2, "Legends", "1" * 32 + ".chd", "https://archive.org/download/one-two-iso/WE%20Legends%202005.chd"),
+                                           (3, "Compactada", "2" * 32 + ".7z", None)):
+                db.execute("INSERT INTO championships (id,slug,name,is_published,created_at,updated_at) VALUES (?,?,?,1,?,?)", (cid, f"c{cid}", name, now(), now()))
+                db.execute("INSERT INTO files (id,championship_id,display_name,stored_name,original_filename,file_type,file_size,is_published,created_at,updated_at,archive_url,local_removed_at) "
+                           "VALUES (?,?,?,?,?,'iso',1,1,?,?,?,?)", (cid, cid, name, stored, name, now(), now(), url, now() if url else None))
+            db.commit()
+        response = self.client.post("/admin/jogos/identificar-isos", data={"csrf_token": "test-csrf-token"})
+        self.assertEqual(response.status_code, 302)
+        with self.app.app_context():
+            ids = {row["id"]: row["content_id"] for row in get_db().execute("SELECT id, content_id FROM files")}
+        self.assertEqual(ids[1], f"{zlib.crc32(ISO_BYTES):08X}:{len(ISO_BYTES):X}")  # cópia local
+        self.assertEqual(ids[2], "F8131957:1C473F60")  # migrada: crc32 do archive.org
+        self.assertIsNone(ids[3])  # .7z: o RetroArch lê o conteúdo descompactado
+        list_files.assert_called_once_with("one-two-iso")
+        page = self.client.get("/admin/jogos").get_data(as_text=True)
+        self.assertIn("F8131957:1C473F60", page)
+        self.assertIn("não identificada", page)
 
     @mock.patch("app.admin.list_item_files")
     def test_migrated_file_cannot_be_archived_again(self, list_files):

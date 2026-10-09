@@ -351,6 +351,84 @@ class AccountPagesTest(PlayersTestBase):
         self.assertEqual(other.get("/conta/").status_code, 302)
 
 
+class ChampionshipIsosTest(PlayersTestBase):
+    """"Enviar um Memory Card" lista as ISOs identificadas dos campeonatos publicados."""
+
+    def setUp(self):
+        super().setUp()
+        self.register()
+        self.web_login()
+        with self.app.app_context():
+            db = get_db()
+            championships = [
+                # id, nome, publicado, início, (tipo, arquivo, content_id, arquivo publicado)
+                (1, "Master Liga 12", 1, "2026-09-01", ("iso", "MasterLeague12.bin", "AAAA1111:1C478C60", 1)),
+                (2, "Copa Antiga", 1, "2026-01-01", ("iso", "WE2002.bin", CONTENT_ID, 1)),
+                (3, "Rascunho", 0, "2026-10-01", ("iso", "Rascunho.bin", "BBBB2222:10", 1)),
+                (4, "Arquivo Oculto", 1, "2026-10-01", ("iso", "Oculto.bin", "CCCC3333:10", 0)),
+                (5, "So Patch", 1, "2026-10-01", ("patch", "Patch.bin", "DDDD4444:10", 1)),
+                (6, "Compactada", 1, "2026-10-01", ("iso", "Compactada.7z", None, 1)),
+            ]
+            for cid, name, published, start, (file_type, filename, content_id, file_published) in championships:
+                db.execute("INSERT INTO championships (id, slug, name, is_published, start_date, created_at, updated_at) "
+                           "VALUES (?, ?, ?, ?, ?, 'x', 'x')", (cid, f"c{cid}", name, published, start))
+                db.execute("INSERT INTO files (championship_id, display_name, stored_name, original_filename, file_type, "
+                           "file_size, content_id, is_published, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?, 'x', 'x')",
+                           (cid, filename, f"{cid:032x}.bin", filename, file_type, content_id, file_published))
+            db.execute("INSERT INTO games (content_id, name, created_at, updated_at) VALUES (?, 'WE2002 da partida', 'x', 'x')", (CONTENT_ID,))
+            db.execute("INSERT INTO games (content_id, name, created_at, updated_at) VALUES ('EEEE5555:10', 'Outro Jogo', 'x', 'x')")
+            db.commit()
+
+    def upload(self, content_id, data):
+        return self.client.post("/conta/memory-cards/enviar", data={
+            "csrf_token": "csrf", "content_id": content_id, "file": (BytesIO(data), "cartao.mcd"),
+        })
+
+    def test_account_lists_isos_of_published_championships(self):
+        page = self.client.get("/conta/").get_data(as_text=True)
+        master = page.index("Master Liga 12 — MasterLeague12.bin")
+        copa = page.index("Copa Antiga — WE2002.bin")
+        self.assertLess(master, copa)  # campeonatos mais novos primeiro
+        self.assertLess(copa, page.index('label="Outros jogos"'))
+        self.assertIn("Outro Jogo", page)
+        # O jogo já cadastrado com o conteúdo de uma ISO de campeonato não se repete em "Outros jogos".
+        self.assertEqual(page.count(f'value="{CONTENT_ID}"'), 1)
+        self.assertNotIn("WE2002 da partida", page)
+        for hidden in ("Rascunho", "Oculto.bin", "Patch.bin", "Compactada"):
+            self.assertNotIn(hidden, page)
+
+    def test_upload_to_a_championship_iso_creates_its_game(self):
+        saved = card_with(0x66)
+        self.assertEqual(self.upload("aaaa1111:1c478c60", saved).status_code, 302)
+        with self.app.app_context():
+            game = get_db().execute("SELECT * FROM games WHERE content_id = 'AAAA1111:1C478C60'").fetchone()
+            self.assertEqual(game["name"], "MasterLeague12.bin")
+            card = get_db().execute("SELECT * FROM memcards WHERE game_id = ?", (game["id"],)).fetchone()
+        self.assertEqual(self.client.get(f"/conta/memory-cards/{card['id']}/baixar").data, saved)
+        # A partida com essa ISO usa o cartão enviado.
+        _, fields = self.api_login()
+        response = self.client.post("/api/mc/checkout", headers={"Authorization": f"Bearer {fields['token']}"}, data={
+            "content_id": "AAAA1111:1C478C60", "game_name": "MasterLeague12.bin", "players": "Pele",
+        })
+        self.assertEqual(self.kv(response)["slot1_sha256"], hashlib.sha256(saved).hexdigest())
+
+    def test_upload_to_an_iso_already_played_uses_the_existing_game(self):
+        self.assertEqual(self.upload(CONTENT_ID, card_with(0x67)).status_code, 302)
+        with self.app.app_context():
+            db = get_db()
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM games").fetchone()[0], 2)
+            self.assertEqual(db.execute("SELECT g.name FROM memcards m JOIN games g ON g.id = m.game_id").fetchone()[0],
+                             "WE2002 da partida")
+
+    def test_upload_rejects_isos_not_listed(self):
+        for content_id in ("BBBB2222:10", "CCCC3333:10", "DDDD4444:10", "lixo"):
+            self.upload(content_id, card_with(0x68))
+        with self.app.app_context():
+            db = get_db()
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM memcards").fetchone()[0], 0)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM games").fetchone()[0], 2)
+
+
 class ContentIdTest(unittest.TestCase):
     def test_cue_resolves_to_the_bin_like_retroarch(self):
         import zlib
