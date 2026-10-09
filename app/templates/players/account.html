@@ -7,6 +7,17 @@
 </section>
 
 <section>
+  <h2>Discord</h2>
+  {% if player.discord_id %}
+  <p>Vinculado a <strong>{{ player.discord_name }}</strong>. No início de cada partida no Kaillera (Server ou P2P), o WE Camp cria um canal de voz só para os jogadores da sala no servidor Discord da WE Camp. Se você já estiver em algum canal de voz do servidor (por exemplo, "Aguardando partida"), entra nele automaticamente; senão, o Kaillera mostra o link.</p>
+  <form method="post" action="{{ url_for('discord.unlink') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Desvincular Discord</button></form>
+  {% else %}
+  <p>Vincule sua conta do Discord para conversar por voz com os outros jogadores durante as partidas. Ao vincular, você também entra no servidor Discord da WE Camp.</p>
+  <form method="post" action="{{ url_for('discord.link') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Vincular Discord</button></form>
+  {% endif %}
+</section>
+
+<section>
   <h2>Meus Memory Cards</h2>
   <p>Um Memory Card por jogo (ISO). Nas partidas com Memory Card online, o cartão do 1P vai no slot 1 e o do 2P no slot 2 de todos os PCs. Ao fim da partida, o cartão é atualizado aqui automaticamente.</p>
   {% if cards %}
