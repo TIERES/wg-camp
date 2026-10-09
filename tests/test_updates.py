@@ -80,6 +80,8 @@ class UpdatesTest(unittest.TestCase):
         self.assertIn("Atualização light: TIERES 0.5".encode("utf-8"), response.data)
         self.assertIn(b"https://archive.org/download/one-two-iso/RetroArch-1.16.0.FFW.TIERES.0.5.light.zip", response.data)
         self.assertIn(b'href="/conta/cadastro"', response.data)
+        self.assertIn("Novo: chamada de voz no Discord.".encode("utf-8"), response.data)
+        self.assertIn(b'href="/conta/"', response.data)
         self.assertNotIn(b"RetroArch-1.16.0.FFW.TIERES.0.4.light.zip", response.data)
         self.assertNotIn(b"RetroArch-1.16.0.FFW.TIERES.0.3.zip", response.data)
         self.assertNotIn(b"RetroArch-1.16.0.FFW.TIERES.0.3.light.zip", response.data)
