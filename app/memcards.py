@@ -308,6 +308,13 @@ def _api_player():
     return row
 
 
+def _discord_fields(player):
+    """Discord vinculado (app/discord.py), para o DLL ligar sozinho a
+    chamada de voz na primeira vez. O nome vai numa linha só."""
+    name = " ".join((player["discord_name"] or "").split())
+    return {"discord_linked": 1 if player["discord_id"] else 0, "discord_name": name}
+
+
 def _player_list(value):
     names = [name.strip() for name in (value or "").split(",")]
     return [name for name in names if name]
@@ -330,7 +337,7 @@ def api_login():
     token = issue_token(db, player["id"], "api")
     db.execute("UPDATE players SET last_login_at = ? WHERE id = ?", (now(), player["id"]))
     db.commit()
-    return _reply(ok=1, token=token, username=player["username"], email=player["email"])
+    return _reply(ok=1, token=token, username=player["username"], email=player["email"], **_discord_fields(player))
 
 
 @api_bp.get("/whoami")
@@ -338,7 +345,7 @@ def api_whoami():
     player = _api_player()
     if not player:
         return _error(401, "invalid_token", "Faca login novamente.")
-    return _reply(ok=1, username=player["username"])
+    return _reply(ok=1, username=player["username"], **_discord_fields(player))
 
 
 @api_bp.post("/logout")

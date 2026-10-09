@@ -101,7 +101,27 @@ CREATE TABLE IF NOT EXISTS room_tickets (
     used_at TEXT,
     verified_by INTEGER REFERENCES players(id) ON DELETE SET NULL
 );
+
+CREATE TABLE IF NOT EXISTS voice_channels (
+    id INTEGER PRIMARY KEY,
+    room_key TEXT NOT NULL UNIQUE,
+    channel_id TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    member_ids TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    last_join_at TEXT NOT NULL
+);
 """
+
+
+def ensure_player_columns(database):
+    """Discord vinculado (app/discord.py) - colunas novas de players."""
+    columns = {column["name"] for column in database.execute("PRAGMA table_info(players)")}
+    for column in ("discord_id", "discord_name", "discord_linked_at"):
+        if column not in columns:
+            database.execute(f"ALTER TABLE players ADD COLUMN {column} TEXT")
+    database.execute("CREATE UNIQUE INDEX IF NOT EXISTS players_discord_idx ON players(discord_id) "
+                     "WHERE discord_id IS NOT NULL")
 
 
 def init_db():
@@ -109,6 +129,7 @@ def init_db():
     with current_app.open_resource("schema.sql") as schema:
         db.executescript(schema.read().decode("utf-8"))
     db.executescript(PLAYERS_DDL)
+    ensure_player_columns(db)
     db.commit()
 
 
@@ -196,6 +217,7 @@ def migrate_db():
         if column not in file_columns:
             database.execute(f"ALTER TABLE files ADD COLUMN {column} TEXT")
     database.executescript(PLAYERS_DDL)
+    ensure_player_columns(database)
     database.execute("CREATE INDEX IF NOT EXISTS live_sessions_game_name_idx ON live_sessions(game_name)")
     database.execute("CREATE INDEX IF NOT EXISTS live_sessions_replay_idx ON live_sessions(status, duration_seconds)")
     rows = database.execute(

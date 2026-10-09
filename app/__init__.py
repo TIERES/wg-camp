@@ -37,6 +37,18 @@ def create_app(test_config=None):
         # "starttls" (porta 587), "ssl" (porta 465) ou "none".
         SMTP_SECURITY=os.environ.get("ARENA17_SMTP_SECURITY", "starttls"),
         MAIL_FROM=os.environ.get("ARENA17_MAIL_FROM", ""),
+        # Discord da WE Camp (app/discord.py). Sem o token do bot, o canal de
+        # voz das partidas fica desligado; sem o client secret, o "Vincular
+        # Discord" também. IDs não são segredo - os do servidor real são o
+        # padrão.
+        DISCORD_BOT_TOKEN=os.environ.get("ARENA17_DISCORD_BOT_TOKEN", ""),
+        DISCORD_CLIENT_ID=os.environ.get("ARENA17_DISCORD_CLIENT_ID", "1558201328315011092"),
+        DISCORD_CLIENT_SECRET=os.environ.get("ARENA17_DISCORD_CLIENT_SECRET", ""),
+        DISCORD_GUILD_ID=os.environ.get("ARENA17_DISCORD_GUILD_ID", "1558204659556950156"),
+        DISCORD_CATEGORY_ID=os.environ.get("ARENA17_DISCORD_CATEGORY_ID", "1558205982511865927"),
+        DISCORD_WAITING_CHANNEL_ID=os.environ.get("ARENA17_DISCORD_WAITING_CHANNEL_ID", "1558206188015849492"),
+        # Padrão: PUBLIC_URL + /discord/callback (cadastrado no Discord).
+        DISCORD_REDIRECT_URI=os.environ.get("ARENA17_DISCORD_REDIRECT_URI", ""),
     )
     if test_config:
         app.config.update(test_config)
@@ -93,4 +105,7 @@ def create_app(test_config=None):
     app.register_blueprint(updates_bp)
     app.register_blueprint(players_bp)
     app.register_blueprint(memcards_api_bp)
+    from .discord import bp as discord_bp, api_bp as voice_api_bp
+    app.register_blueprint(discord_bp)
+    app.register_blueprint(voice_api_bp)
     return app
