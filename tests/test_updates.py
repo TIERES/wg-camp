@@ -88,6 +88,16 @@ class UpdatesTest(unittest.TestCase):
         self.assertNotIn(b"RetroArch-1.16.0.FFW.TIERES.0.2.zip", response.data)
         self.assertNotIn(b"RetroArch-TIERES-light.zip", response.data)
 
+    def test_public_page_links_the_graphics_packs(self):
+        response = self.app.test_client().get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Pack de Gráficos".encode("utf-8"), response.data)
+        self.assertIn(b"https://archive.org/download/one-two-iso/RetroArch-TIERES-Graficos-PC-Antigo.zip", response.data)
+        self.assertIn(b"https://archive.org/download/one-two-iso/RetroArch-TIERES-Graficos-PC-Moderno.zip", response.data)
+        self.assertIn(b"Baixar PC Antigo (VGA onboard)", response.data)
+        self.assertIn(b"Baixar PC Moderno (VGA dedicada)", response.data)
+        self.assertNotIn(b"Casanova", response.data)
+
     def test_public_page_links_the_tutorial_pdf(self):
         response = self.app.test_client().get("/")
         self.assertEqual(response.status_code, 200)
