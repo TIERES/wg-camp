@@ -225,6 +225,29 @@ class AdminFilesArchiveTest(unittest.TestCase):
             entry = get_db().execute("SELECT * FROM files WHERE championship_id=2").fetchone()
         self.assertEqual(entry["content_id"], f"{zlib.crc32(data):08X}:{len(data):X}")
 
+    def test_iso_upload_keeps_spaces_and_accents_in_the_name(self):
+        for cid, name, expected in ((10, "Winning Eleven 2002 Edição BR.bin", "Winning Eleven 2002 Edição BR.bin"),
+                                    (11, "C:\\Jogos\\WE: 2002?  final .bin", "WE 2002 final .bin")):
+            with self.app.app_context():
+                get_db().execute("INSERT INTO championships (id,slug,name,is_published,created_at,updated_at) VALUES (?,?,?,1,?,?)",
+                                 (cid, f"copa-{cid}", f"Copa {cid}", now(), now()))
+                get_db().commit()
+            response = self.client.post(f"/admin/championships/{cid}/files", data={
+                "csrf_token": "test-csrf-token", "file_type": "iso", "is_published": "on", "file": (BytesIO(b"iso"), name),
+            })
+            self.assertEqual(response.status_code, 302)
+            with self.app.app_context():
+                entry = get_db().execute("SELECT * FROM files WHERE championship_id=?", (cid,)).fetchone()
+            self.assertEqual(entry["original_filename"], expected)
+            self.assertEqual(entry["display_name"], expected)
+
+    def test_download_header_carries_the_utf8_name(self):
+        from app.storage import attachment_header
+        header = attachment_header("Winning Eleven 2002 Edição BR.bin")
+        self.assertEqual(header, "attachment; filename=\"Winning Eleven 2002 Edicao BR.bin\"; "
+                                 "filename*=UTF-8''Winning%20Eleven%202002%20Edi%C3%A7%C3%A3o%20BR.bin")
+        header.encode("latin-1")  # HTTP headers must be latin-1
+
     @mock.patch("app.archive_org.list_item_files", return_value={
         "WE Legends 2005.chd": {"md5": "x", "crc32": "f8131957", "size": 474431328, "mtime": None}})
     def test_identify_isos_from_local_copy_and_archive_org(self, list_files):

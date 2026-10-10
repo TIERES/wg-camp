@@ -3,6 +3,7 @@ from pathlib import Path
 from flask import Blueprint, Response, abort, current_app, redirect, render_template, send_from_directory
 
 from .db import get_db
+from .storage import attachment_header
 
 bp = Blueprint("public", __name__)
 
@@ -47,5 +48,5 @@ def download(file_id):
         return send_from_directory(current_app.config["DOWNLOADS_DIR"], entry["stored_name"], as_attachment=True, download_name=entry["original_filename"])
     response = Response()
     response.headers["X-Accel-Redirect"] = f"/_protected_downloads/{entry['stored_name']}"
-    response.headers["Content-Disposition"] = f'attachment; filename="{entry["original_filename"]}"'
+    response.headers["Content-Disposition"] = attachment_header(entry["original_filename"])
     return response

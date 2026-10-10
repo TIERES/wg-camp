@@ -1,13 +1,38 @@
 import hashlib
 import os
 import re
+import unicodedata
 import uuid
 import zlib
 from pathlib import Path
+from urllib.parse import quote
 
 from flask import current_app
 from werkzeug.datastructures import FileStorage
-from werkzeug.utils import secure_filename
+
+# What Windows can't have in a file name (and control characters).
+_WINDOWS_INVALID = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+
+def clean_original_filename(name):
+    """The uploaded file's own name, as players see it on archive.org and in
+    their download folder: spaces and accents kept (werkzeug's
+    secure_filename turned "WE 2002.bin" into "WE_2002.bin"). Only the path
+    and what Windows can't have in a file name go away."""
+    name = (name or "").replace("\\", "/").rsplit("/", 1)[-1]
+    name = _WINDOWS_INVALID.sub("", unicodedata.normalize("NFC", name))
+    name = " ".join(name.split()).strip(" .")
+    if len(name) > 200:
+        stem, dot, extension = name.rpartition(".")
+        name = (stem[:199 - len(extension)].rstrip(" .") + dot + extension) if dot else name[:200]
+    return name
+
+
+def attachment_header(name):
+    """Content-Disposition for a name with spaces/accents (RFC 6266): an
+    ASCII fallback for old clients plus the UTF-8 name."""
+    fallback = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii").replace('"', "")
+    return f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{quote(name, safe='')}"
 
 
 def human_size(size):
@@ -20,7 +45,7 @@ def human_size(size):
 
 
 def store_upload(upload: FileStorage):
-    original = secure_filename(upload.filename or "")
+    original = clean_original_filename(upload.filename)
     if not original or "." not in original:
         raise ValueError("Informe um arquivo com extensão permitida.")
     extension = original.rsplit(".", 1)[1].lower()
