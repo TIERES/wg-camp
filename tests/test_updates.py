@@ -75,8 +75,9 @@ class UpdatesTest(unittest.TestCase):
     def test_public_page_links_full_and_light_retroarch_downloads(self):
         response = self.app.test_client().get("/")
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Emulador RetroArch FFW TIERES 0.4".encode("utf-8"), response.data)
-        self.assertIn(b"https://archive.org/download/one-two-iso/RetroArch-1.16.0.FFW.TIERES.0.4.zip", response.data)
+        self.assertIn("Emulador RetroArch FFW TIERES 0.5".encode("utf-8"), response.data)
+        self.assertIn(b"https://archive.org/download/one-two-iso/RetroArch-1.16.0.FFW.TIERES.0.5.zip", response.data)
+        self.assertNotIn(b"RetroArch-1.16.0.FFW.TIERES.0.4.zip", response.data)
         self.assertIn("Atualização light: TIERES 0.5".encode("utf-8"), response.data)
         self.assertIn(b"https://archive.org/download/one-two-iso/RetroArch-1.16.0.FFW.TIERES.0.5.light.zip", response.data)
         self.assertIn(b'href="/conta/cadastro"', response.data)
