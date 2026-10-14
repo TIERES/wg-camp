@@ -759,7 +759,8 @@ def games_list():
                     flash("Este identificador já está cadastrado.", "error")
         return redirect(url_for("admin.games_list"))
     games = db.execute(
-        "SELECT g.*, (SELECT COUNT(*) FROM memcards m WHERE m.game_id = g.id) AS cards "
+        "SELECT g.*, (SELECT COUNT(*) FROM memcards m WHERE m.game_id = g.id AND m.player_id IS NOT NULL) AS cards, "
+        "(SELECT m.current_version FROM memcards m WHERE m.game_id = g.id AND m.player_id IS NULL) AS iso_version "
         "FROM games g ORDER BY g.name COLLATE NOCASE"
     ).fetchall()
     isos = db.execute(
@@ -769,6 +770,122 @@ def games_list():
         "WHERE f.file_type = 'iso' ORDER BY c.start_date DESC, c.created_at DESC, f.id DESC"
     ).fetchall()
     return render_template("admin/games.html", games=games, isos=isos, identifying=_identify_isos_lock.locked())
+
+
+# "M. Card da ISO": o cartão do jogo, sem dono, que todos usam numa sala com
+# essa opção (ex.: a Master League, uma partida por vez, salva pelo host no
+# fim de cada uma). Aqui o administrador vê o histórico, baixa, restaura e
+# envia um cartão - para um jogo já cadastrado ou para uma ISO de campeonato
+# identificada que ainda não teve partida (o jogo é criado no envio).
+
+def _iso_card_game(content_id, create=False):
+    from .memcards import get_or_create_game, normalize_content_id
+
+    content_id = normalize_content_id(content_id)
+    if not content_id:
+        abort(404)
+    db = get_db()
+    game = db.execute("SELECT * FROM games WHERE content_id = ?", (content_id,)).fetchone()
+    if game:
+        return game
+    iso = db.execute(
+        "SELECT original_filename FROM files WHERE file_type = 'iso' AND content_id = ? COLLATE NOCASE "
+        "ORDER BY is_published DESC, id DESC LIMIT 1", (content_id,)
+    ).fetchone()
+    if not iso:
+        abort(404)
+    if not create:
+        return {"id": None, "content_id": content_id, "name": iso["original_filename"]}
+    return get_or_create_game(db, content_id, iso["original_filename"])
+
+
+def _iso_card(game):
+    if not game["id"]:
+        return None
+    return get_db().execute(
+        "SELECT m.*, g.name AS game_name, g.content_id FROM memcards m JOIN games g ON g.id = m.game_id "
+        "WHERE m.player_id IS NULL AND m.game_id = ?", (game["id"],)
+    ).fetchone()
+
+
+@bp.get("/jogos/<content_id>/memory-card")
+@login_required
+def iso_card(content_id):
+    game = _iso_card_game(content_id)
+    card = _iso_card(game)
+    versions = get_db().execute(
+        "SELECT * FROM memcard_versions WHERE memcard_id = ? ORDER BY version DESC", (card["id"],)
+    ).fetchall() if card else []
+    return render_template("admin/iso_memcard.html", game=game, card=card, versions=versions)
+
+
+@bp.post("/jogos/<content_id>/memory-card/enviar")
+@login_required
+def iso_card_upload(content_id):
+    from .memcards import add_version, card_error, get_or_create_iso_memcard
+
+    validate_csrf()
+    upload = request.files.get("file")
+    if not upload or not upload.filename:
+        flash("Escolha o arquivo do Memory Card.", "error")
+        return redirect(url_for("admin.iso_card", content_id=content_id))
+    data = upload.read(256 * 1024 + 1)
+    error = card_error(data)
+    if error:
+        flash(error, "error")
+        return redirect(url_for("admin.iso_card", content_id=content_id))
+    db = get_db()
+    game = _iso_card_game(content_id, create=True)
+    card = get_or_create_iso_memcard(db, game["id"])
+    version = add_version(db, card["id"], data, "upload", f"Enviado pelo admin: {upload.filename[:100]}")
+    db.commit()
+    flash(f"M. Card da ISO de {game['name']} atualizado (versão {version}).", "success")
+    return redirect(url_for("admin.iso_card", content_id=game["content_id"]))
+
+
+@bp.get("/jogos/<content_id>/memory-card/baixar")
+@login_required
+def iso_card_download(content_id):
+    from .memcards import card_path
+    from .players import card_zip_response
+
+    card = _iso_card(_iso_card_game(content_id))
+    if not card:
+        abort(404)
+    db = get_db()
+    version = db.execute(
+        "SELECT * FROM memcard_versions WHERE memcard_id = ? AND version = ?",
+        (card["id"], request.args.get("versao", type=int) or card["current_version"]),
+    ).fetchone()
+    if not version or not card_path(version["sha256"]).exists():
+        abort(404)
+    return card_zip_response(db, card, version, "ISO")
+
+
+@bp.post("/jogos/<content_id>/memory-card/restaurar")
+@login_required
+def iso_card_restore(content_id):
+    from .memcards import add_version, card_path
+
+    validate_csrf()
+    card = _iso_card(_iso_card_game(content_id))
+    if not card:
+        abort(404)
+    db = get_db()
+    version = db.execute(
+        "SELECT * FROM memcard_versions WHERE memcard_id = ? AND version = ?",
+        (card["id"], request.form.get("version", type=int)),
+    ).fetchone()
+    if not version or not card_path(version["sha256"]).exists():
+        abort(404)
+    if version["version"] == card["current_version"]:
+        flash("Esta já é a versão atual.", "error")
+    else:
+        new_version = add_version(db, card["id"], card_path(version["sha256"]).read_bytes(), "restore",
+                                  f"Restaurada a versão {version['version']}")
+        db.commit()
+        flash(f"Versão {version['version']} restaurada como versão {new_version}.", "success")
+    return redirect(url_for("admin.iso_card", content_id=card["content_id"]))
 
 
 # Championship ISOs uploaded before files.content_id existed: CRC32 of the

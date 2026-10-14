@@ -34,6 +34,8 @@ def close_db(_error=None):
 #    do retroarch-k3-ffw calcula do conteúdo (.cue/.m3u resolvidos);
 #  - cada versão de um cartão aponta para o arquivo pelo SHA-256 do conteúdo
 #    (MEMCARDS_DIR/<sha256>.mcd), então versões iguais compartilham o arquivo;
+#  - um memcard sem player_id é o "M. Card da ISO": um cartão só do jogo,
+#    usado por todos que jogam nesse modo (no máximo um por jogo);
 #  - room_tickets são os "ingressos" de uso único que provam, ao host de uma
 #    sala "Só logados", que quem entrou é mesmo o dono da conta.
 PLAYERS_DDL = """
@@ -71,13 +73,15 @@ CREATE TABLE IF NOT EXISTS games (
 
 CREATE TABLE IF NOT EXISTS memcards (
     id INTEGER PRIMARY KEY,
-    player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    player_id INTEGER REFERENCES players(id) ON DELETE CASCADE,
     game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE RESTRICT,
     current_version INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     UNIQUE (player_id, game_id)
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS memcards_iso_idx ON memcards(game_id) WHERE player_id IS NULL;
 
 CREATE TABLE IF NOT EXISTS memcard_versions (
     id INTEGER PRIMARY KEY,
@@ -130,6 +134,40 @@ def ensure_player_columns(database):
             database.execute(f"ALTER TABLE players ADD COLUMN {column} TEXT")
     database.execute("CREATE UNIQUE INDEX IF NOT EXISTS players_discord_idx ON players(discord_id) "
                      "WHERE discord_id IS NOT NULL")
+
+
+def allow_iso_memcards(database):
+    """Bancos de antes do "M. Card da ISO" têm memcards.player_id NOT NULL.
+    O SQLite não muda a restrição de uma coluna, então a tabela é refeita com
+    os mesmos ids - memcard_versions continua apontando para ela pelo nome."""
+    columns = {column["name"]: column for column in database.execute("PRAGMA table_info(memcards)")}
+    if "player_id" not in columns or not columns["player_id"]["notnull"]:
+        return
+    database.commit()
+    database.execute("PRAGMA foreign_keys = OFF")
+    try:
+        database.executescript("""
+            BEGIN;
+            CREATE TABLE memcards_new (
+                id INTEGER PRIMARY KEY,
+                player_id INTEGER REFERENCES players(id) ON DELETE CASCADE,
+                game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE RESTRICT,
+                current_version INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE (player_id, game_id)
+            );
+            INSERT INTO memcards_new (id, player_id, game_id, current_version, created_at, updated_at)
+                SELECT id, player_id, game_id, current_version, created_at, updated_at FROM memcards;
+            DROP TABLE memcards;
+            ALTER TABLE memcards_new RENAME TO memcards;
+            COMMIT;
+        """)
+    finally:
+        database.execute("PRAGMA foreign_keys = ON")
+    broken = database.execute("PRAGMA foreign_key_check").fetchall()
+    if broken:
+        raise RuntimeError(f"memcards: {len(broken)} referência(s) quebrada(s) depois de refazer a tabela")
 
 
 def init_db():
@@ -224,6 +262,8 @@ def migrate_db():
                    "content_id"):
         if column not in file_columns:
             database.execute(f"ALTER TABLE files ADD COLUMN {column} TEXT")
+    # Antes do PLAYERS_DDL, que cria o memcards_iso_idx na tabela refeita.
+    allow_iso_memcards(database)
     database.executescript(PLAYERS_DDL)
     ensure_player_columns(database)
     database.execute("CREATE INDEX IF NOT EXISTS live_sessions_game_name_idx ON live_sessions(game_name)")

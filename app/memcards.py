@@ -3,6 +3,8 @@
 Cada jogador cadastrado tem, por jogo, um cartão com histórico de versões.
 Numa partida, o slot 1 do console recebe o cartão do 1P e o slot 2 o do 2P
 - em todos os PCs, igual a um PS1 de verdade onde cada amigo traz o seu.
+No "M. Card da ISO" é o contrário: um cartão só do jogo, sem dono, no slot 1
+de todos (ex.: a Master League de um campeonato, uma partida por vez).
 
 API para o kailleraclient.dll (só no site HTTPS - leva senha e token):
 respostas em texto "chave=valor" por linha, como /replays/list.txt, para o
@@ -273,6 +275,25 @@ def get_or_create_memcard(db, player_id, game_id):
     return db.execute("SELECT * FROM memcards WHERE id = ?", (card["id"],)).fetchone()
 
 
+def get_or_create_iso_memcard(db, game_id):
+    """O "M. Card da ISO" do jogo: um cartão sem dono, o mesmo para todos que
+    jogam nesse modo (ex.: a Master League de um campeonato)."""
+    card = db.execute(
+        "SELECT * FROM memcards WHERE player_id IS NULL AND game_id = ?", (game_id,)
+    ).fetchone()
+    if card:
+        return card
+    db.execute(
+        "INSERT INTO memcards (player_id, game_id, created_at, updated_at) VALUES (NULL, ?, ?, ?)",
+        (game_id, now(), now()),
+    )
+    card = db.execute(
+        "SELECT * FROM memcards WHERE player_id IS NULL AND game_id = ?", (game_id,)
+    ).fetchone()
+    add_version(db, card["id"], blank_card(), "blank", "Cartão novo, formatado")
+    return db.execute("SELECT * FROM memcards WHERE id = ?", (card["id"],)).fetchone()
+
+
 def current_version(db, memcard_id):
     return db.execute(
         "SELECT v.* FROM memcard_versions v JOIN memcards m ON m.id = v.memcard_id "
@@ -306,6 +327,16 @@ def _api_player():
     db.execute("UPDATE player_tokens SET last_used_at = ? WHERE id = ?", (now(), row["token_id"]))
     db.commit()
     return row
+
+
+def _api_key_ok():
+    """A chave compartilhada do DLL (X-Api-Key) - replays, Ao Vivo e os
+    convidados sem login de uma sala "M. Card da ISO"."""
+    expected = current_app.config.get("SPECTATE_API_KEY", "")
+    return bool(expected) and request.headers.get("X-Api-Key", "") == expected
+
+
+ISO_SLOT_PLAYER = "ISO"
 
 
 def _discord_fields(player):
@@ -398,10 +429,12 @@ def api_ticket():
 
 @api_bp.post("/verify-ticket")
 def api_verify_ticket():
-    """O host (logado) confere o ingresso de quem entrou na sala dele.
-    Uso único: um ingresso visto no chat não serve para mais ninguém."""
+    """O host confere o ingresso de quem entrou na sala dele - logado, ou com
+    a chave do DLL (no M. Card Online basta um jogador com conta, então um
+    host sem conta também confere a do convidado). Uso único: um ingresso
+    visto no chat não serve para mais ninguém."""
     host = _api_player()
-    if not host:
+    if not host and not _api_key_ok():
         return _error(401, "invalid_token", "Faca login novamente.")
     ticket = (request.form.get("ticket") or "").strip()
     room = (request.form.get("room") or "").strip()
@@ -422,7 +455,7 @@ def api_verify_ticket():
         return _error(409, "expired_ticket", "Ingresso expirado.")
     db.execute(
         "UPDATE room_tickets SET used_at = datetime('now'), verified_by = ? WHERE id = ?",
-        (host["id"], row["id"]),
+        (host["id"] if host else None, row["id"]),
     )
     db.commit()
     return _reply(ok=1, username=row["username"])
@@ -433,21 +466,51 @@ def api_checkout():
     """Início de partida. Form: content_id ("CRC32:TAMANHO"), game_name,
     players (nicks na ordem 1P,2P,... separados por vírgula). Devolve, para
     os slots 1 e 2, o dono e o SHA-256 do cartão atual (criando um cartão
-    formatado para quem ainda não tem um desse jogo)."""
+    formatado para quem ainda não tem um desse jogo).
+
+    mode=iso ("M. Card da ISO"): um slot só, com o cartão do jogo, igual para
+    todos. Só o host precisa estar logado - os convidados sem conta usam a
+    chave do DLL (X-Api-Key) e recebem o mesmo cartão.
+
+    accounts (nicks com a conta confirmada na sala, separados por vírgula):
+    basta um jogador com conta - quem não está nessa lista fica com o slot
+    vazio (slotN_player e slotN_sha256 em branco), sem cartão e sem nada
+    para salvar. Como os PCs sem login também pedem (com a chave do DLL),
+    todos recebem os mesmos slots. Sem esse campo (DLL antigo), os dois
+    jogadores precisam ter conta, como antes."""
+    iso = request.form.get("mode") == "iso"
+    accounts_field = request.form.get("accounts")
     player = _api_player()
-    if not player:
+    if not player and not ((iso or accounts_field is not None) and _api_key_ok()):
         return _error(401, "invalid_token", "Faca login novamente.")
     content_id = normalize_content_id(request.form.get("content_id"))
     if not content_id:
         return _error(400, "bad_content_id")
     names = _player_list(request.form.get("players"))
-    if not names or player["username"].lower() not in (name.lower() for name in names):
+    if not names or (player and player["username"].lower() not in (name.lower() for name in names)):
         return _error(400, "not_in_players", "Voce nao esta na lista de jogadores.")
 
     db = get_db()
+    if iso:
+        game = get_or_create_game(db, content_id, request.form.get("game_name", ""))
+        card = get_or_create_iso_memcard(db, game["id"])
+        version = current_version(db, card["id"])
+        db.commit()
+        return _reply(ok=1, mode="iso", game_id=game["id"], game_name=game["name"], slots=1,
+                      slot1_player=ISO_SLOT_PLAYER, slot1_version=version["version"],
+                      slot1_sha256=version["sha256"])
+
+    accounts = None
+    if accounts_field is not None:
+        accounts = {name.lower() for name in _player_list(accounts_field)}
+        if not accounts & {name.lower() for name in names[:2]}:
+            return _error(409, "no_account", "Nenhum dos jogadores 1 e 2 tem conta WE Camp confirmada na sala.")
     owners = []
     missing = []
     for name in names[:2]:
+        if accounts is not None and name.lower() not in accounts:
+            owners.append(None)  # sem conta confirmada: slot vazio
+            continue
         owner = db.execute(
             "SELECT * FROM players WHERE username = ? COLLATE NOCASE AND email_verified_at IS NOT NULL",
             (name,),
@@ -460,7 +523,14 @@ def api_checkout():
 
     game = get_or_create_game(db, content_id, request.form.get("game_name", ""))
     fields = {"ok": 1, "game_id": game["id"], "game_name": game["name"], "slots": len(owners)}
+    if accounts is not None:
+        fields["rule"] = "accounts"  # o DLL confere que o servidor entendeu o campo
     for slot, owner in enumerate(owners, start=1):
+        if not owner:
+            fields[f"slot{slot}_player"] = ""
+            fields[f"slot{slot}_version"] = 0
+            fields[f"slot{slot}_sha256"] = ""
+            continue
         card = get_or_create_memcard(db, owner["id"], game["id"])
         version = current_version(db, card["id"])
         fields[f"slot{slot}_player"] = owner["username"]
@@ -474,10 +544,7 @@ def api_checkout():
 def api_card(sha):
     """Conteúdo de uma versão de cartão pelo SHA-256 - para os jogadores e,
     com a chave do DLL (X-Api-Key), para replays e o Ao Vivo."""
-    expected = current_app.config.get("SPECTATE_API_KEY", "")
-    provided = request.headers.get("X-Api-Key", "")
-    key_ok = bool(expected) and provided == expected
-    if not key_ok and not _api_player():
+    if not _api_key_ok() and not _api_player():
         return _error(401, "invalid_token")
     if not SHA256_RE.match(sha):
         abort(404)
@@ -502,18 +569,28 @@ def api_commit():
     não mudam nada ("already"). Um envio diferente do que já foi gravado a
     partir da mesma base (PC dessincronizado) ou de uma base que já não é a
     atual (upload pelo site, outra partida) é recusado ("conflict") em vez de
-    sobrescrever - e o dono sempre pode restaurar uma versão pelo histórico."""
-    reporter = _api_player()
-    if not reporter:
+    sobrescrever - e o dono sempre pode restaurar uma versão pelo histórico.
+
+    mode=iso: o "M. Card da ISO" do jogo (slot_player não é usado). Quem não
+    tem login envia com a chave do DLL e diz quem é em `reporter`. Duas
+    partidas ao mesmo tempo com o mesmo cartão: a segunda a terminar recebe
+    "conflict" e não apaga o que a primeira gravou."""
+    iso = request.args.get("mode") == "iso"
+    player = _api_player()
+    if player:
+        reporter = player["username"]
+    elif iso and _api_key_ok():
+        reporter = (request.args.get("reporter") or "").strip()
+    else:
         return _error(401, "invalid_token", "Faca login novamente.")
     content_id = normalize_content_id(request.args.get("content_id"))
     base = (request.args.get("base_sha256") or "").lower()
     slot_player = (request.args.get("slot_player") or "").strip()
     names = _player_list(request.args.get("players"))
     lowered = [name.lower() for name in names]
-    if not content_id or not SHA256_RE.match(base) or not slot_player:
+    if not content_id or not SHA256_RE.match(base) or not (slot_player or iso):
         return _error(400, "bad_request")
-    if reporter["username"].lower() not in lowered or slot_player.lower() not in lowered[:2]:
+    if reporter.lower() not in lowered or not (iso or slot_player.lower() in lowered[:2]):
         return _error(400, "not_in_players")
 
     data = request.get_data()
@@ -523,10 +600,17 @@ def api_commit():
 
     db = get_db()
     game = db.execute("SELECT * FROM games WHERE content_id = ?", (content_id,)).fetchone()
-    owner = db.execute("SELECT * FROM players WHERE username = ? COLLATE NOCASE", (slot_player,)).fetchone()
-    card = owner and game and db.execute(
-        "SELECT * FROM memcards WHERE player_id = ? AND game_id = ?", (owner["id"], game["id"])
-    ).fetchone()
+    if iso:
+        card_name = ISO_SLOT_PLAYER
+        card = game and db.execute(
+            "SELECT * FROM memcards WHERE player_id IS NULL AND game_id = ?", (game["id"],)
+        ).fetchone()
+    else:
+        owner = db.execute("SELECT * FROM players WHERE username = ? COLLATE NOCASE", (slot_player,)).fetchone()
+        card_name = owner["username"] if owner else slot_player
+        card = owner and game and db.execute(
+            "SELECT * FROM memcards WHERE player_id = ? AND game_id = ?", (owner["id"], game["id"])
+        ).fetchone()
     if not card:
         return _error(404, "unknown_card")
     current = current_version(db, card["id"])
@@ -538,11 +622,11 @@ def api_commit():
     if current["sha256"] != base:
         current_app.logger.warning(
             "Memory Card %s/%s: envio de %s recusado (base %s, atual %s, enviado %s)",
-            owner["username"], game["content_id"], reporter["username"], base[:12],
+            card_name, game["content_id"], reporter, base[:12],
             current["sha256"][:12], new_sha[:12])
         return _reply(409, ok=0, status="conflict", version=current["version"])
 
-    note = f"Partida: {', '.join(names)} · enviado por {reporter['username']}"
+    note = f"Partida: {', '.join(names)} · enviado por {reporter}"
     version = add_version(db, card["id"], data, "match", note)
     db.commit()
     return _reply(ok=1, status="committed", version=version)

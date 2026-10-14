@@ -1,23 +1,24 @@
 {% extends 'base.html' %}{% block title %}Jogos · Administração{% endblock %}{% block content %}
 <div class="page-title"><h1>Jogos do Memory Card online</h1><a href="{{ url_for('admin.players_list') }}">Jogadores</a></div>
-<p>Cada jogo é identificado pelo conteúdo da ISO (<code>CRC32:TAMANHO</code>, o mesmo do anti-desync). Jogos novos são cadastrados sozinhos na primeira partida com Memory Card online; aqui você pode cadastrá-los antes (para os jogadores enviarem seus cartões) e dar nomes amigáveis.</p>
+<p>Cada jogo é identificado pelo conteúdo da ISO (<code>CRC32:TAMANHO</code>, o mesmo do anti-desync). Jogos novos são cadastrados sozinhos na primeira partida com Memory Card online; aqui você pode cadastrá-los antes (para os jogadores enviarem seus cartões) e dar nomes amigáveis. A coluna <strong>M. Card da ISO</strong> abre o cartão único do jogo, usado nas salas com essa opção.</p>
 <table>
-  <thead><tr><th>Nome</th><th>Identificador</th><th>Memory Cards</th><th>Renomear</th></tr></thead>
+  <thead><tr><th>Nome</th><th>Identificador</th><th>Memory Cards</th><th>M. Card da ISO</th><th>Renomear</th></tr></thead>
   <tbody>
     {% for game in games %}
     <tr>
       <td>{{ game.name }}</td>
       <td><code>{{ game.content_id }}</code></td>
       <td>{{ game.cards }}</td>
+      <td><a href="{{ url_for('admin.iso_card', content_id=game.content_id) }}">{% if game.iso_version %}Versão {{ game.iso_version }}{% else %}Criar{% endif %}</a></td>
       <td><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="game_id" value="{{ game.id }}"><input name="name" value="{{ game.name }}" maxlength="128" required> <button>Salvar</button></form></td>
     </tr>
-    {% else %}<tr><td colspan="4">Nenhum jogo cadastrado.</td></tr>{% endfor %}
+    {% else %}<tr><td colspan="5">Nenhum jogo cadastrado.</td></tr>{% endfor %}
   </tbody>
 </table>
 <h2>ISOs dos campeonatos</h2>
 <p>As ISOs identificadas de campeonatos publicados aparecem para os jogadores em "Enviar um Memory Card", na página da conta. ISOs novas (.bin, .iso, .img, .chd) são identificadas no envio; as enviadas antes disso, por este botão - pela cópia deste servidor ou pelo CRC32 que o archive.org lista para as migradas.</p>
 <table>
-  <thead><tr><th>Campeonato</th><th>Arquivo</th><th>Identificador</th><th>Para os jogadores</th></tr></thead>
+  <thead><tr><th>Campeonato</th><th>Arquivo</th><th>Identificador</th><th>Para os jogadores</th><th>M. Card da ISO</th></tr></thead>
   <tbody>
     {% for iso in isos %}
     <tr>
@@ -25,8 +26,9 @@
       <td>{{ iso.display_name }}{% if iso.display_name != iso.original_filename %}<br><small>{{ iso.original_filename }}</small>{% endif %}</td>
       <td>{% if iso.content_id %}<code>{{ iso.content_id }}</code>{% else %}<small class="error">não identificada</small>{% endif %}</td>
       <td>{{ 'Sim' if iso.content_id and iso.is_published and iso.championship_published else 'Não' }}</td>
+      <td>{% if iso.content_id %}<a href="{{ url_for('admin.iso_card', content_id=iso.content_id) }}">Abrir</a>{% endif %}</td>
     </tr>
-    {% else %}<tr><td colspan="4">Nenhuma ISO de campeonato.</td></tr>{% endfor %}
+    {% else %}<tr><td colspan="5">Nenhuma ISO de campeonato.</td></tr>{% endfor %}
   </tbody>
 </table>
 <form method="post" action="{{ url_for('admin.games_identify_isos') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -1,0 +1,38 @@
+{% extends 'base.html' %}{% block title %}M. Card da ISO · Administração{% endblock %}{% block content %}
+<div class="page-title"><h1>M. Card da ISO · {{ game.name }}</h1><a href="{{ url_for('admin.games_list') }}">Jogos do Memory Card</a></div>
+<p>Identificador <code>{{ game.content_id }}</code>. É o cartão que todos usam numa sala com <strong>"M. Card da ISO"</strong>: ele vai no slot 1 de todos os PCs, e no fim de cada partida o host (ou, se ele cair, um convidado) envia o cartão de volta como uma nova versão. Duas partidas ao mesmo tempo com este cartão não se sobrescrevem: a segunda a terminar é recusada.</p>
+{% if card %}
+<p>Versão atual: <strong>{{ card.current_version }}</strong>.</p>
+<table>
+  <caption class="visually-hidden">Histórico de versões</caption>
+  <thead><tr><th scope="col">Versão</th><th scope="col">Data</th><th scope="col">Origem</th><th scope="col">Ações</th></tr></thead>
+  <tbody>
+    {% for version in versions %}
+    <tr>
+      <td>{{ version.version }}{% if version.version == card.current_version %} (atual){% endif %}</td>
+      <td>{{ version.created_at|localtime }}</td>
+      <td>{{ version.note }}</td>
+      <td><div class="card-actions">
+        <a class="button" href="{{ url_for('admin.iso_card_download', content_id=game.content_id, versao=version.version) }}">Baixar</a>
+        {% if version.version != card.current_version %}
+        <form method="post" action="{{ url_for('admin.iso_card_restore', content_id=game.content_id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="version" value="{{ version.version }}">
+          <button>Restaurar</button>
+        </form>
+        {% endif %}
+      </div></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>Este jogo ainda não tem M. Card da ISO. Ele é criado formatado na primeira partida nesse modo, ou agora, enviando um cartão abaixo.</p>
+{% endif %}
+<h2>Enviar um cartão</h2>
+<form method="post" action="{{ url_for('admin.iso_card_upload', content_id=game.content_id) }}" enctype="multipart/form-data" class="form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label>Arquivo do Memory Card (.srm, .mcd ou .mcr de 128 KB)<input type="file" name="file" required></label>
+  <p><small>Vira a versão atual; as anteriores continuam no histórico (os replays precisam delas).</small></p>
+  <button>Enviar</button>
+</form>
+{% endblock %}

@@ -477,6 +477,274 @@ class ChampionshipIsosTest(PlayersTestBase):
             self.assertEqual(db.execute("SELECT COUNT(*) FROM games").fetchone()[0], 2)
 
 
+class OneAccountOnlineTest(PlayersTestBase):
+    """M. Card Online com só um jogador com conta: o outro slot fica vazio."""
+
+    def setUp(self):
+        super().setUp()
+        self.register("Pele", "pele@example.com")
+        self.pele = self.api_login("Pele")[1]["token"]
+
+    def checkout(self, headers, players="SemConta,Pele", accounts="Pele"):
+        return self.client.post("/api/mc/checkout", headers=headers, data={
+            "content_id": CONTENT_ID, "game_name": "WE2002.bin", "players": players, "accounts": accounts})
+
+    def test_player_without_account_gets_an_empty_slot_on_every_pc(self):
+        logged = self.kv(self.checkout({"Authorization": f"Bearer {self.pele}"}))
+        self.assertEqual(logged["slots"], "2")
+        self.assertEqual((logged["slot1_player"], logged["slot1_sha256"]), ("", ""))
+        self.assertEqual(logged["slot2_player"], "Pele")
+        self.assertEqual(logged["slot2_sha256"], hashlib.sha256(blank_card()).hexdigest())
+        # O PC sem login (host ou convidado) pede com a chave do DLL e recebe o mesmo.
+        guest = self.kv(self.checkout({"X-Api-Key": "dll-key"}))
+        self.assertEqual(guest, logged)
+        with self.app.app_context():
+            self.assertEqual(get_db().execute("SELECT COUNT(*) FROM memcards").fetchone()[0], 1)
+
+    def test_a_registered_player_not_confirmed_in_the_room_also_gets_an_empty_slot(self):
+        # "Pele" tem conta, mas quem está com esse nick na sala não provou que é ele.
+        fields = self.kv(self.checkout({"X-Api-Key": "dll-key"}, players="Pele,SemConta", accounts=""))
+        self.assertEqual(fields["error"], "no_account")
+        self.register("Mtgamess", "mt@example.com")
+        fields = self.kv(self.checkout({"X-Api-Key": "dll-key"}, players="Pele,Mtgamess", accounts="Mtgamess"))
+        self.assertEqual(fields["slot1_sha256"], "")
+        self.assertEqual(fields["slot2_player"], "Mtgamess")
+
+    def test_only_the_player_with_the_account_saves_its_card(self):
+        base = self.kv(self.checkout({"Authorization": f"Bearer {self.pele}"}))["slot2_sha256"]
+        saved = card_with(0x21)
+        result = self.client.post("/api/mc/commit", headers={"Authorization": f"Bearer {self.pele}"}, data=saved,
+                                  query_string={"content_id": CONTENT_ID, "slot_player": "Pele", "base_sha256": base,
+                                                "players": "SemConta,Pele"})
+        self.assertEqual(self.kv(result)["status"], "committed")
+        # Sem token não se grava o M. Card Online (só o da ISO aceita a chave).
+        keyed = self.client.post("/api/mc/commit", headers={"X-Api-Key": "dll-key"}, data=card_with(0x22),
+                                 query_string={"content_id": CONTENT_ID, "slot_player": "Pele", "base_sha256": base,
+                                               "players": "SemConta,Pele", "reporter": "SemConta"})
+        self.assertEqual(keyed.status_code, 401)
+
+    def test_old_dll_without_accounts_still_needs_both_accounts(self):
+        response = self.client.post("/api/mc/checkout", headers={"Authorization": f"Bearer {self.pele}"}, data={
+            "content_id": CONTENT_ID, "players": "SemConta,Pele"})
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(self.kv(response)["error"], "missing_account")
+        keyed = self.client.post("/api/mc/checkout", headers={"X-Api-Key": "dll-key"}, data={
+            "content_id": CONTENT_ID, "players": "SemConta,Pele"})
+        self.assertEqual(keyed.status_code, 401)
+
+    def test_host_without_account_verifies_the_guests_ticket_with_the_dll_key(self):
+        ticket = self.kv(self.client.post("/api/mc/ticket", headers={"Authorization": f"Bearer {self.pele}"},
+                                          data={"room": "77"}))["ticket"]
+        self.assertEqual(self.client.post("/api/mc/verify-ticket", data={"ticket": ticket, "room": "77"}).status_code, 401)
+        verified = self.client.post("/api/mc/verify-ticket", headers={"X-Api-Key": "dll-key"},
+                                    data={"ticket": ticket, "room": "77"})
+        self.assertEqual(self.kv(verified)["username"], "Pele")
+
+
+class IsoMemcardTest(PlayersTestBase):
+    """"M. Card da ISO": um cartão só do jogo, o mesmo para todos da sala."""
+
+    def setUp(self):
+        super().setUp()
+        self.register("Pele", "pele@example.com")
+        self.pele = self.api_login("Pele")[1]["token"]
+
+    def checkout(self, headers, players="Pele,Convidado", content_id=CONTENT_ID):
+        return self.client.post("/api/mc/checkout", headers=headers, data={
+            "mode": "iso", "content_id": content_id, "game_name": "WE2002.bin", "players": players})
+
+    def commit(self, headers, base, data, players="Pele,Convidado", reporter=""):
+        return self.client.post("/api/mc/commit", headers=headers, data=data, query_string={
+            "mode": "iso", "content_id": CONTENT_ID, "base_sha256": base, "players": players, "reporter": reporter})
+
+    def host(self):
+        return {"Authorization": f"Bearer {self.pele}"}
+
+    def key(self):
+        return {"X-Api-Key": "dll-key"}
+
+    def test_host_and_guest_without_account_get_the_same_single_card(self):
+        host = self.kv(self.checkout(self.host()))
+        self.assertEqual(host["mode"], "iso")
+        self.assertEqual(host["slots"], "1")
+        self.assertEqual(host["slot1_player"], "ISO")
+        self.assertEqual(host["slot1_sha256"], hashlib.sha256(blank_card()).hexdigest())
+        self.assertNotIn("slot2_sha256", host)
+        guest = self.kv(self.checkout(self.key()))
+        self.assertEqual(guest["slot1_sha256"], host["slot1_sha256"])
+        with self.app.app_context():
+            db = get_db()
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM memcards").fetchone()[0], 1)
+            self.assertIsNone(db.execute("SELECT player_id FROM memcards").fetchone()[0])
+
+    def test_iso_card_is_not_any_players_card(self):
+        self.checkout(self.host())
+        players_card = self.client.post("/api/mc/checkout", headers=self.host(), data={
+            "content_id": CONTENT_ID, "game_name": "WE2002.bin", "players": "Pele"})
+        self.assertEqual(self.kv(players_card)["slot1_player"], "Pele")
+        with self.app.app_context():
+            ids = [row[0] for row in get_db().execute("SELECT id FROM memcards ORDER BY player_id IS NULL")]
+        self.assertEqual(len(ids), 2)
+        self.web_login()
+        self.assertEqual(self.client.get(f"/conta/memory-cards/{ids[0]}").status_code, 200)
+        self.assertEqual(self.client.get(f"/conta/memory-cards/{ids[1]}").status_code, 404)
+
+    def test_host_commits_and_the_next_match_starts_from_it(self):
+        base = self.kv(self.checkout(self.host()))["slot1_sha256"]
+        saved = card_with(0x31)
+        first = self.kv(self.commit(self.host(), base, saved))
+        self.assertEqual(first["status"], "committed")
+        self.assertEqual(first["version"], "2")
+        # O convidado (sem conta) enviando depois o mesmo cartão não muda nada.
+        self.assertEqual(self.kv(self.commit(self.key(), base, saved, reporter="Convidado"))["status"], "already")
+        self.assertEqual(self.kv(self.checkout(self.key()))["slot1_sha256"], hashlib.sha256(saved).hexdigest())
+        with self.app.app_context():
+            note = get_db().execute("SELECT note FROM memcard_versions WHERE version = 2").fetchone()[0]
+        self.assertIn("enviado por Pele", note)
+
+    def test_guest_saves_when_the_host_did_not(self):
+        base = self.kv(self.checkout(self.key()))["slot1_sha256"]
+        result = self.kv(self.commit(self.key(), base, card_with(0x32), reporter="Convidado"))
+        self.assertEqual(result["status"], "committed")
+        with self.app.app_context():
+            note = get_db().execute("SELECT note FROM memcard_versions WHERE version = 2").fetchone()[0]
+        self.assertIn("enviado por Convidado", note)
+
+    def test_two_matches_at_once_do_not_overwrite_each_other(self):
+        base = self.kv(self.checkout(self.host()))["slot1_sha256"]
+        other_base = self.kv(self.checkout(self.key(), players="A,B"))["slot1_sha256"]
+        self.assertEqual(base, other_base)
+        self.assertEqual(self.kv(self.commit(self.host(), base, card_with(0x01)))["status"], "committed")
+        late = self.commit(self.key(), other_base, card_with(0x02), players="A,B", reporter="A")
+        self.assertEqual(late.status_code, 409)
+        self.assertEqual(self.kv(late)["status"], "conflict")
+
+    def test_key_only_works_for_the_iso_mode_and_needs_a_reporter_in_the_match(self):
+        normal = self.client.post("/api/mc/checkout", headers=self.key(), data={
+            "content_id": CONTENT_ID, "players": "Pele,Convidado"})
+        self.assertEqual(normal.status_code, 401)
+        self.assertEqual(self.checkout({}).status_code, 401)
+        base = self.kv(self.checkout(self.key()))["slot1_sha256"]
+        self.assertEqual(self.commit(self.key(), base, card_with(0x03), reporter="Intruso").status_code, 400)
+        self.assertEqual(self.commit({"X-Api-Key": "errada"}, base, card_with(0x03), reporter="Convidado").status_code, 401)
+        # Com token, quem envia tem de estar na partida.
+        self.assertEqual(self.commit(self.host(), base, card_with(0x03), players="A,B").status_code, 400)
+
+    def test_replays_fetch_the_iso_card_versions(self):
+        base = self.kv(self.checkout(self.host()))["slot1_sha256"]
+        self.commit(self.host(), base, card_with(0x44))
+        sha = hashlib.sha256(card_with(0x44)).hexdigest()
+        self.assertEqual(self.client.get(f"/api/mc/card/{sha}", headers=self.key()).data, card_with(0x44))
+        self.assertEqual(self.client.get(f"/api/mc/card/{base}", headers=self.key()).data, blank_card())
+
+
+class AdminIsoMemcardTest(PlayersTestBase):
+    def setUp(self):
+        super().setUp()
+        with self.app.app_context():
+            db = get_db()
+            db.execute("INSERT INTO championships (id, slug, name, is_published, start_date, created_at, updated_at) "
+                       "VALUES (1, 'ml', 'Master Liga 12', 1, '2026-09-01', 'x', 'x')")
+            db.execute("INSERT INTO files (championship_id, display_name, stored_name, original_filename, file_type, "
+                       "file_size, content_id, is_published, created_at, updated_at) "
+                       "VALUES (1, 'ML12', 'a.bin', 'MasterLeague12.bin', 'iso', 1, 'AAAA1111:1C478C60', 1, 'x', 'x')")
+            db.commit()
+        with self.client.session_transaction() as session:
+            session["user_id"] = 1
+
+    def upload(self, data, content_id="AAAA1111:1C478C60"):
+        return self.client.post(f"/admin/jogos/{content_id}/memory-card/enviar", data={
+            "csrf_token": "csrf", "file": (BytesIO(data), "ml.srm")})
+
+    def test_upload_for_a_championship_iso_creates_the_game_and_the_card(self):
+        page = self.client.get("/admin/jogos").get_data(as_text=True)
+        self.assertIn("/admin/jogos/AAAA1111:1C478C60/memory-card", page)
+        self.assertIn("ainda não tem M. Card da ISO", self.client.get("/admin/jogos/AAAA1111:1C478C60/memory-card")
+                      .get_data(as_text=True))
+        self.assertEqual(self.upload(card_with(0x10)).status_code, 302)
+        with self.app.app_context():
+            db = get_db()
+            self.assertEqual(db.execute("SELECT name FROM games").fetchone()[0], "MasterLeague12.bin")
+            # A versão 1 já é o cartão enviado, mais a formatada antes dela.
+            row = db.execute("SELECT current_version, player_id FROM memcards").fetchone()
+            self.assertEqual(tuple(row), (2, None))
+        self.register()
+        token = self.api_login()[1]["token"]
+        fields = self.kv(self.client.post("/api/mc/checkout", headers={"Authorization": f"Bearer {token}"}, data={
+            "mode": "iso", "content_id": "AAAA1111:1C478C60", "players": "Pele"}))
+        self.assertEqual(fields["slot1_sha256"], hashlib.sha256(card_with(0x10)).hexdigest())
+
+    def test_download_and_restore(self):
+        self.upload(card_with(0x10))
+        self.upload(card_with(0x20))
+        entries = zip_entries(self.client.get("/admin/jogos/AAAA1111:1C478C60/memory-card/baixar?versao=2"))
+        self.assertEqual(entries["saves/PCSX-ReARMed/MasterLeague12.srm"], card_with(0x10))
+        self.client.post("/admin/jogos/AAAA1111:1C478C60/memory-card/restaurar", data={"csrf_token": "csrf", "version": 2})
+        entries = zip_entries(self.client.get("/admin/jogos/AAAA1111:1C478C60/memory-card/baixar"))
+        self.assertEqual(entries["saves/PCSX-ReARMed/MasterLeague12.srm"], card_with(0x10))
+        history = self.client.get("/admin/jogos/AAAA1111:1C478C60/memory-card").get_data(as_text=True)
+        self.assertIn("Restaurada a versão 2", history)
+
+    def test_requires_admin_and_a_known_iso(self):
+        self.assertEqual(self.upload(b"x" * MCD_SIZE).status_code, 302)  # cartão inválido: volta com erro
+        self.assertEqual(self.client.get("/admin/jogos/FFFF0000:10/memory-card").status_code, 404)
+        with self.client.session_transaction() as session:
+            session.pop("user_id")
+        self.assertEqual(self.client.get("/admin/jogos/AAAA1111:1C478C60/memory-card").status_code, 302)
+        with self.app.app_context():
+            self.assertEqual(get_db().execute("SELECT COUNT(*) FROM memcards").fetchone()[0], 0)
+
+
+class MigrationTest(unittest.TestCase):
+    def test_old_memcards_table_is_rebuilt_keeping_cards_and_versions(self):
+        import sqlite3
+        from app.db import migrate_db
+        with tempfile.TemporaryDirectory() as folder:
+            app = create_app({"TESTING": True, "SECRET_KEY": "t", "DATABASE": str(Path(folder) / "a.db"),
+                              "DOWNLOADS_DIR": str(Path(folder) / "d"), "UPLOAD_TMP_DIR": str(Path(folder) / "t"),
+                              "MEMCARDS_DIR": str(Path(folder) / "mc")})
+            with app.app_context():
+                init_db()
+                db = get_db()
+                db.executescript("""
+                    DROP INDEX memcards_iso_idx;
+                    DROP TABLE memcard_versions;
+                    DROP TABLE memcards;
+                    CREATE TABLE memcards (id INTEGER PRIMARY KEY,
+                        player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+                        game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE RESTRICT,
+                        current_version INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL, UNIQUE (player_id, game_id));
+                    CREATE TABLE memcard_versions (id INTEGER PRIMARY KEY,
+                        memcard_id INTEGER NOT NULL REFERENCES memcards(id) ON DELETE CASCADE,
+                        version INTEGER NOT NULL, sha256 TEXT NOT NULL, size INTEGER NOT NULL,
+                        source TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL,
+                        UNIQUE (memcard_id, version));
+                    INSERT INTO players (id, username, email, password_hash, created_at, updated_at)
+                        VALUES (7, 'Pele', 'p@x', 'h', 'x', 'x');
+                    INSERT INTO games (id, content_id, name, created_at, updated_at) VALUES (3, 'AA:1', 'WE', 'x', 'x');
+                    INSERT INTO memcards (id, player_id, game_id, current_version, created_at, updated_at)
+                        VALUES (5, 7, 3, 2, 'x', 'x');
+                    INSERT INTO memcard_versions (memcard_id, version, sha256, size, source, created_at)
+                        VALUES (5, 1, 'a', 1, 'blank', 'x'), (5, 2, 'b', 1, 'match', 'x');
+                """)
+                db.commit()
+                migrate_db()
+                migrate_db()  # idempotente
+                db = get_db()
+                columns = {c["name"]: c for c in db.execute("PRAGMA table_info(memcards)")}
+                self.assertEqual(columns["player_id"]["notnull"], 0)
+                self.assertEqual(tuple(db.execute("SELECT id, player_id, current_version FROM memcards").fetchone()),
+                                 (5, 7, 2))
+                self.assertEqual(db.execute("SELECT COUNT(*) FROM memcard_versions WHERE memcard_id = 5").fetchone()[0], 2)
+                db.execute("INSERT INTO memcards (player_id, game_id, created_at, updated_at) VALUES (NULL, 3, 'x', 'x')")
+                with self.assertRaises(sqlite3.IntegrityError):
+                    db.execute("INSERT INTO memcards (player_id, game_id, created_at, updated_at) VALUES (NULL, 3, 'x', 'x')")
+                # Apagar o jogador ainda apaga o cartão dele e as versões (ON DELETE CASCADE).
+                db.execute("DELETE FROM players WHERE id = 7")
+                self.assertEqual(db.execute("SELECT COUNT(*) FROM memcard_versions").fetchone()[0], 0)
+
+
 class ContentIdTest(unittest.TestCase):
     def test_cue_resolves_to_the_bin_like_retroarch(self):
         import zlib

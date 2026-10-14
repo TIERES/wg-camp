@@ -370,6 +370,12 @@ def download_card(memcard_id):
     if not version or not card_path(version["sha256"]).exists():
         abort(404)
     player = current_player()
+    return card_zip_response(db, card, version, player["username"])
+
+
+def card_zip_response(db, card, version, prefix):
+    """O "Baixar" de um cartão (o do jogador, ou o da ISO no admin): um zip
+    com o .srm onde o RetroArch o procura e o LEIA-ME."""
     srm_name = srm_basename(db, card["content_id"], card["game_name"])
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -378,7 +384,7 @@ def download_card(memcard_id):
     buffer.seek(0)
     safe_game = "".join(ch if ch.isalnum() else "_" for ch in card["game_name"])[:60]
     return send_file(buffer, mimetype="application/zip", as_attachment=True,
-                     download_name=f"{player['username']}_{safe_game}_v{version_number}.zip")
+                     download_name=f"{prefix}_{safe_game}_v{version['version']}.zip")
 
 
 @bp.post("/memory-cards/<int:memcard_id>/restaurar")
