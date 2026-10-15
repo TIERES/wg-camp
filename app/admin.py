@@ -760,7 +760,8 @@ def games_list():
         return redirect(url_for("admin.games_list"))
     games = db.execute(
         "SELECT g.*, (SELECT COUNT(*) FROM memcards m WHERE m.game_id = g.id AND m.player_id IS NOT NULL) AS cards, "
-        "(SELECT m.current_version FROM memcards m WHERE m.game_id = g.id AND m.player_id IS NULL) AS iso_version "
+        "(SELECT m.current_version FROM memcards m WHERE m.game_id = g.id AND m.player_id IS NULL AND m.iso_slot = 1) AS iso_version, "
+        "(SELECT m.current_version FROM memcards m WHERE m.game_id = g.id AND m.player_id IS NULL AND m.iso_slot = 2) AS iso2_version "
         "FROM games g ORDER BY g.name COLLATE NOCASE"
     ).fetchall()
     isos = db.execute(
@@ -772,11 +773,12 @@ def games_list():
     return render_template("admin/games.html", games=games, isos=isos, identifying=_identify_isos_lock.locked())
 
 
-# "M. Card da ISO": o cartão do jogo, sem dono, que todos usam numa sala com
-# essa opção (ex.: a Master League, uma partida por vez, salva pelo host no
-# fim de cada uma). Aqui o administrador vê o histórico, baixa, restaura e
-# envia um cartão - para um jogo já cadastrado ou para uma ISO de campeonato
-# identificada que ainda não teve partida (o jogo é criado no envio).
+# "M. Card da ISO": os cartões do jogo, sem dono, que todos usam numa sala com
+# essa opção - um no slot 1 e outro no slot 2 (ex.: a Master League, uma
+# partida por vez, salva pelo host no fim de cada uma). Aqui o administrador
+# vê o histórico, baixa, restaura e envia um cartão de cada slot - para um
+# jogo já cadastrado ou para uma ISO de campeonato identificada que ainda não
+# teve partida (o jogo é criado no envio).
 
 def _iso_card_game(content_id, create=False):
     from .memcards import get_or_create_game, normalize_content_id
@@ -799,24 +801,41 @@ def _iso_card_game(content_id, create=False):
     return get_or_create_game(db, content_id, iso["original_filename"])
 
 
-def _iso_card(game):
+def _iso_slot(value):
+    from .memcards import ISO_CARD_SLOTS
+
+    try:
+        slot = int(value or 1)
+    except (TypeError, ValueError):
+        abort(404)
+    if slot not in ISO_CARD_SLOTS:
+        abort(404)
+    return slot
+
+
+def _iso_card(game, slot=1):
     if not game["id"]:
         return None
     return get_db().execute(
         "SELECT m.*, g.name AS game_name, g.content_id FROM memcards m JOIN games g ON g.id = m.game_id "
-        "WHERE m.player_id IS NULL AND m.game_id = ?", (game["id"],)
+        "WHERE m.player_id IS NULL AND m.game_id = ? AND m.iso_slot = ?", (game["id"], slot)
     ).fetchone()
 
 
 @bp.get("/jogos/<content_id>/memory-card")
 @login_required
 def iso_card(content_id):
+    from .memcards import ISO_CARD_SLOTS
+
     game = _iso_card_game(content_id)
-    card = _iso_card(game)
-    versions = get_db().execute(
-        "SELECT * FROM memcard_versions WHERE memcard_id = ? ORDER BY version DESC", (card["id"],)
-    ).fetchall() if card else []
-    return render_template("admin/iso_memcard.html", game=game, card=card, versions=versions)
+    slots = []
+    for slot in ISO_CARD_SLOTS:
+        card = _iso_card(game, slot)
+        versions = get_db().execute(
+            "SELECT * FROM memcard_versions WHERE memcard_id = ? ORDER BY version DESC", (card["id"],)
+        ).fetchall() if card else []
+        slots.append({"slot": slot, "card": card, "versions": versions})
+    return render_template("admin/iso_memcard.html", game=game, slots=slots)
 
 
 @bp.post("/jogos/<content_id>/memory-card/enviar")
@@ -825,6 +844,7 @@ def iso_card_upload(content_id):
     from .memcards import add_version, card_error, get_or_create_iso_memcard
 
     validate_csrf()
+    slot = _iso_slot(request.form.get("slot"))
     upload = request.files.get("file")
     if not upload or not upload.filename:
         flash("Escolha o arquivo do Memory Card.", "error")
@@ -836,10 +856,10 @@ def iso_card_upload(content_id):
         return redirect(url_for("admin.iso_card", content_id=content_id))
     db = get_db()
     game = _iso_card_game(content_id, create=True)
-    card = get_or_create_iso_memcard(db, game["id"])
+    card = get_or_create_iso_memcard(db, game["id"], slot)
     version = add_version(db, card["id"], data, "upload", f"Enviado pelo admin: {upload.filename[:100]}")
     db.commit()
-    flash(f"M. Card da ISO de {game['name']} atualizado (versão {version}).", "success")
+    flash(f"M. Card da ISO de {game['name']}, slot {slot}, atualizado (versão {version}).", "success")
     return redirect(url_for("admin.iso_card", content_id=game["content_id"]))
 
 
@@ -849,7 +869,8 @@ def iso_card_download(content_id):
     from .memcards import card_path
     from .players import card_zip_response
 
-    card = _iso_card(_iso_card_game(content_id))
+    slot = _iso_slot(request.args.get("slot"))
+    card = _iso_card(_iso_card_game(content_id), slot)
     if not card:
         abort(404)
     db = get_db()
@@ -859,7 +880,10 @@ def iso_card_download(content_id):
     ).fetchone()
     if not version or not card_path(version["sha256"]).exists():
         abort(404)
-    return card_zip_response(db, card, version, "ISO")
+    if slot == 1:
+        return card_zip_response(db, card, version, "ISO")
+    # O slot 2 do pacote TIERES é o pcsx-card2.mcd (pcsx_rearmed_memcard2 = "shared").
+    return card_zip_response(db, card, version, f"ISO-slot{slot}", f"saves/PCSX-ReARMed/pcsx-card{slot}.mcd")
 
 
 @bp.post("/jogos/<content_id>/memory-card/restaurar")
@@ -868,7 +892,8 @@ def iso_card_restore(content_id):
     from .memcards import add_version, card_path
 
     validate_csrf()
-    card = _iso_card(_iso_card_game(content_id))
+    slot = _iso_slot(request.form.get("slot"))
+    card = _iso_card(_iso_card_game(content_id), slot)
     if not card:
         abort(404)
     db = get_db()
@@ -884,7 +909,7 @@ def iso_card_restore(content_id):
         new_version = add_version(db, card["id"], card_path(version["sha256"]).read_bytes(), "restore",
                                   f"Restaurada a versão {version['version']}")
         db.commit()
-        flash(f"Versão {version['version']} restaurada como versão {new_version}.", "success")
+        flash(f"Slot {slot}: versão {version['version']} restaurada como versão {new_version}.", "success")
     return redirect(url_for("admin.iso_card", content_id=card["content_id"]))
 
 

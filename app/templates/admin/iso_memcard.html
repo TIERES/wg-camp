@@ -1,22 +1,24 @@
 {% extends 'base.html' %}{% block title %}M. Card da ISO · Administração{% endblock %}{% block content %}
 <div class="page-title"><h1>M. Card da ISO · {{ game.name }}</h1><a href="{{ url_for('admin.games_list') }}">Jogos do Memory Card</a></div>
-<p>Identificador <code>{{ game.content_id }}</code>. É o cartão que todos usam numa sala com <strong>"M. Card da ISO"</strong>: ele vai no slot 1 de todos os PCs, e no fim de cada partida o host (ou, se ele cair, um convidado) envia o cartão de volta como uma nova versão. Duas partidas ao mesmo tempo com este cartão não se sobrescrevem: a segunda a terminar é recusada.</p>
-{% if card %}
-<p>Versão atual: <strong>{{ card.current_version }}</strong>.</p>
+<p>Identificador <code>{{ game.content_id }}</code>. São os cartões que todos usam numa sala com <strong>"M. Card da ISO"</strong>: um vai no slot 1 e o outro no slot 2 de todos os PCs. No fim de cada partida o host (ou, se ele cair, um convidado) envia de volta, como uma nova versão, cada cartão que mudou. Duas partidas ao mesmo tempo com estes cartões não se sobrescrevem: a segunda a terminar é recusada.</p>
+{% for item in slots %}
+<h2>Slot {{ item.slot }}</h2>
+{% if item.card %}
+<p>Versão atual: <strong>{{ item.card.current_version }}</strong>.</p>
 <table>
-  <caption class="visually-hidden">Histórico de versões</caption>
+  <caption class="visually-hidden">Histórico de versões do slot {{ item.slot }}</caption>
   <thead><tr><th scope="col">Versão</th><th scope="col">Data</th><th scope="col">Origem</th><th scope="col">Ações</th></tr></thead>
   <tbody>
-    {% for version in versions %}
+    {% for version in item.versions %}
     <tr>
-      <td>{{ version.version }}{% if version.version == card.current_version %} (atual){% endif %}</td>
+      <td>{{ version.version }}{% if version.version == item.card.current_version %} (atual){% endif %}</td>
       <td>{{ version.created_at|localtime }}</td>
       <td>{{ version.note }}</td>
       <td><div class="card-actions">
-        <a class="button" href="{{ url_for('admin.iso_card_download', content_id=game.content_id, versao=version.version) }}">Baixar</a>
-        {% if version.version != card.current_version %}
+        <a class="button" href="{{ url_for('admin.iso_card_download', content_id=game.content_id, versao=version.version, slot=item.slot) }}">Baixar</a>
+        {% if version.version != item.card.current_version %}
         <form method="post" action="{{ url_for('admin.iso_card_restore', content_id=game.content_id) }}">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="version" value="{{ version.version }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="slot" value="{{ item.slot }}"><input type="hidden" name="version" value="{{ version.version }}">
           <button>Restaurar</button>
         </form>
         {% endif %}
@@ -26,13 +28,13 @@
   </tbody>
 </table>
 {% else %}
-<p>Este jogo ainda não tem M. Card da ISO. Ele é criado formatado na primeira partida nesse modo, ou agora, enviando um cartão abaixo.</p>
+<p>Este jogo ainda não tem M. Card da ISO no slot {{ item.slot }}. Ele é criado formatado na primeira partida nesse modo, ou agora, enviando um cartão abaixo.</p>
 {% endif %}
-<h2>Enviar um cartão</h2>
 <form method="post" action="{{ url_for('admin.iso_card_upload', content_id=game.content_id) }}" enctype="multipart/form-data" class="form">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <label>Arquivo do Memory Card (.srm, .mcd ou .mcr de 128 KB)<input type="file" name="file" required></label>
-  <p><small>Vira a versão atual; as anteriores continuam no histórico (os replays precisam delas).</small></p>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="slot" value="{{ item.slot }}">
+  <label>Enviar um cartão para o slot {{ item.slot }} (.srm, .mcd ou .mcr de 128 KB)<input type="file" name="file" required></label>
+  <p><small>Vira a versão atual do slot {{ item.slot }}; as anteriores continuam no histórico (os replays precisam delas).</small></p>
   <button>Enviar</button>
 </form>
+{% endfor %}
 {% endblock %}

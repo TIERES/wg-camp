@@ -275,21 +275,27 @@ def get_or_create_memcard(db, player_id, game_id):
     return db.execute("SELECT * FROM memcards WHERE id = ?", (card["id"],)).fetchone()
 
 
-def get_or_create_iso_memcard(db, game_id):
-    """O "M. Card da ISO" do jogo: um cartão sem dono, o mesmo para todos que
-    jogam nesse modo (ex.: a Master League de um campeonato)."""
-    card = db.execute(
-        "SELECT * FROM memcards WHERE player_id IS NULL AND game_id = ?", (game_id,)
+ISO_CARD_SLOTS = (1, 2)
+
+
+def get_iso_memcard(db, game_id, slot=1):
+    return db.execute(
+        "SELECT * FROM memcards WHERE player_id IS NULL AND game_id = ? AND iso_slot = ?", (game_id, slot)
     ).fetchone()
+
+
+def get_or_create_iso_memcard(db, game_id, slot=1):
+    """O "M. Card da ISO" do jogo: cartões sem dono, os mesmos para todos que
+    jogam nesse modo (ex.: a Master League de um campeonato) - um para o slot
+    1 e outro para o slot 2."""
+    card = get_iso_memcard(db, game_id, slot)
     if card:
         return card
     db.execute(
-        "INSERT INTO memcards (player_id, game_id, created_at, updated_at) VALUES (NULL, ?, ?, ?)",
-        (game_id, now(), now()),
+        "INSERT INTO memcards (player_id, game_id, iso_slot, created_at, updated_at) VALUES (NULL, ?, ?, ?, ?)",
+        (game_id, slot, now(), now()),
     )
-    card = db.execute(
-        "SELECT * FROM memcards WHERE player_id IS NULL AND game_id = ?", (game_id,)
-    ).fetchone()
+    card = get_iso_memcard(db, game_id, slot)
     add_version(db, card["id"], blank_card(), "blank", "Cartão novo, formatado")
     return db.execute("SELECT * FROM memcards WHERE id = ?", (card["id"],)).fetchone()
 
@@ -468,9 +474,11 @@ def api_checkout():
     os slots 1 e 2, o dono e o SHA-256 do cartão atual (criando um cartão
     formatado para quem ainda não tem um desse jogo).
 
-    mode=iso ("M. Card da ISO"): um slot só, com o cartão do jogo, igual para
-    todos. Só o host precisa estar logado - os convidados sem conta usam a
-    chave do DLL (X-Api-Key) e recebem o mesmo cartão.
+    mode=iso ("M. Card da ISO"): os cartões do jogo, iguais para todos. Só o
+    host precisa estar logado - os convidados sem conta usam a chave do DLL
+    (X-Api-Key) e recebem os mesmos cartões. Com iso_slots=2 (DLL que usa os
+    dois slots) vêm os cartões dos slots 1 e 2; sem ele, só o do slot 1 - um
+    DLL que não conhece o slot 2 o enviaria de volta como se fosse o 1.
 
     accounts (nicks com a conta confirmada na sala, separados por vírgula):
     basta um jogador com conta - quem não está nessa lista fica com o slot
@@ -493,12 +501,16 @@ def api_checkout():
     db = get_db()
     if iso:
         game = get_or_create_game(db, content_id, request.form.get("game_name", ""))
-        card = get_or_create_iso_memcard(db, game["id"])
-        version = current_version(db, card["id"])
+        slots = ISO_CARD_SLOTS if request.form.get("iso_slots") == "2" else ISO_CARD_SLOTS[:1]
+        fields = {"ok": 1, "mode": "iso", "game_id": game["id"], "game_name": game["name"], "slots": len(slots)}
+        for slot in slots:
+            card = get_or_create_iso_memcard(db, game["id"], slot)
+            version = current_version(db, card["id"])
+            fields[f"slot{slot}_player"] = ISO_SLOT_PLAYER
+            fields[f"slot{slot}_version"] = version["version"]
+            fields[f"slot{slot}_sha256"] = version["sha256"]
         db.commit()
-        return _reply(ok=1, mode="iso", game_id=game["id"], game_name=game["name"], slots=1,
-                      slot1_player=ISO_SLOT_PLAYER, slot1_version=version["version"],
-                      slot1_sha256=version["sha256"])
+        return _reply(**fields)
 
     accounts = None
     if accounts_field is not None:
@@ -571,11 +583,13 @@ def api_commit():
     atual (upload pelo site, outra partida) é recusado ("conflict") em vez de
     sobrescrever - e o dono sempre pode restaurar uma versão pelo histórico.
 
-    mode=iso: o "M. Card da ISO" do jogo (slot_player não é usado). Quem não
-    tem login envia com a chave do DLL e diz quem é em `reporter`. Duas
-    partidas ao mesmo tempo com o mesmo cartão: a segunda a terminar recebe
-    "conflict" e não apaga o que a primeira gravou."""
+    mode=iso: um "M. Card da ISO" do jogo - o do slot 1, ou o do `slot` 2
+    (slot_player não é usado). Quem não tem login envia com a chave do DLL e
+    diz quem é em `reporter`. Duas partidas ao mesmo tempo com o mesmo
+    cartão: a segunda a terminar recebe "conflict" e não apaga o que a
+    primeira gravou."""
     iso = request.args.get("mode") == "iso"
+    iso_slot = request.args.get("slot", "1")
     player = _api_player()
     if player:
         reporter = player["username"]
@@ -590,6 +604,8 @@ def api_commit():
     lowered = [name.lower() for name in names]
     if not content_id or not SHA256_RE.match(base) or not (slot_player or iso):
         return _error(400, "bad_request")
+    if iso and iso_slot not in {str(slot) for slot in ISO_CARD_SLOTS}:
+        return _error(400, "bad_slot")
     if reporter.lower() not in lowered or not (iso or slot_player.lower() in lowered[:2]):
         return _error(400, "not_in_players")
 
@@ -601,10 +617,8 @@ def api_commit():
     db = get_db()
     game = db.execute("SELECT * FROM games WHERE content_id = ?", (content_id,)).fetchone()
     if iso:
-        card_name = ISO_SLOT_PLAYER
-        card = game and db.execute(
-            "SELECT * FROM memcards WHERE player_id IS NULL AND game_id = ?", (game["id"],)
-        ).fetchone()
+        card_name = f"{ISO_SLOT_PLAYER} slot {iso_slot}"
+        card = game and get_iso_memcard(db, game["id"], int(iso_slot))
     else:
         owner = db.execute("SELECT * FROM players WHERE username = ? COLLATE NOCASE", (slot_player,)).fetchone()
         card_name = owner["username"] if owner else slot_player

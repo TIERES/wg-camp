@@ -549,13 +549,17 @@ class IsoMemcardTest(PlayersTestBase):
         self.register("Pele", "pele@example.com")
         self.pele = self.api_login("Pele")[1]["token"]
 
-    def checkout(self, headers, players="Pele,Convidado", content_id=CONTENT_ID):
-        return self.client.post("/api/mc/checkout", headers=headers, data={
-            "mode": "iso", "content_id": content_id, "game_name": "WE2002.bin", "players": players})
+    def checkout(self, headers, players="Pele,Convidado", content_id=CONTENT_ID, iso_slots=None):
+        data = {"mode": "iso", "content_id": content_id, "game_name": "WE2002.bin", "players": players}
+        if iso_slots:
+            data["iso_slots"] = iso_slots
+        return self.client.post("/api/mc/checkout", headers=headers, data=data)
 
-    def commit(self, headers, base, data, players="Pele,Convidado", reporter=""):
-        return self.client.post("/api/mc/commit", headers=headers, data=data, query_string={
-            "mode": "iso", "content_id": CONTENT_ID, "base_sha256": base, "players": players, "reporter": reporter})
+    def commit(self, headers, base, data, players="Pele,Convidado", reporter="", slot=None):
+        query = {"mode": "iso", "content_id": CONTENT_ID, "base_sha256": base, "players": players, "reporter": reporter}
+        if slot:
+            query["slot"] = slot
+        return self.client.post("/api/mc/commit", headers=headers, data=data, query_string=query)
 
     def host(self):
         return {"Authorization": f"Bearer {self.pele}"}
@@ -630,6 +634,42 @@ class IsoMemcardTest(PlayersTestBase):
         # Com token, quem envia tem de estar na partida.
         self.assertEqual(self.commit(self.host(), base, card_with(0x03), players="A,B").status_code, 400)
 
+    def test_dll_with_two_slots_gets_both_iso_cards(self):
+        host = self.kv(self.checkout(self.host(), iso_slots="2"))
+        self.assertEqual(host["slots"], "2")
+        self.assertEqual((host["slot1_player"], host["slot2_player"]), ("ISO", "ISO"))
+        blank = hashlib.sha256(blank_card()).hexdigest()
+        self.assertEqual((host["slot1_sha256"], host["slot2_sha256"]), (blank, blank))
+        guest = self.kv(self.checkout(self.key(), iso_slots="2"))
+        self.assertEqual((guest["slot1_sha256"], guest["slot2_sha256"]), (blank, blank))
+        with self.app.app_context():
+            rows = get_db().execute("SELECT player_id, iso_slot FROM memcards ORDER BY iso_slot").fetchall()
+        self.assertEqual([tuple(row) for row in rows], [(None, 1), (None, 2)])
+
+    def test_slot2_commit_only_changes_the_slot2_card(self):
+        fields = self.kv(self.checkout(self.host(), iso_slots="2"))
+        saved = card_with(0x52)
+        result = self.kv(self.commit(self.host(), fields["slot2_sha256"], saved, slot="2"))
+        self.assertEqual(result["status"], "committed")
+        self.assertEqual(result["version"], "2")
+        again = self.kv(self.checkout(self.key(), iso_slots="2"))
+        self.assertEqual(again["slot2_sha256"], hashlib.sha256(saved).hexdigest())
+        self.assertEqual(again["slot1_sha256"], fields["slot1_sha256"])
+        # O DLL que só conhece o slot 1 continua vendo e salvando só ele.
+        old = self.kv(self.checkout(self.key()))
+        self.assertEqual(old["slots"], "1")
+        self.assertNotIn("slot2_sha256", old)
+        self.assertEqual(self.kv(self.commit(self.host(), old["slot1_sha256"], card_with(0x11)))["status"], "committed")
+        self.assertEqual(self.kv(self.checkout(self.key(), iso_slots="2"))["slot2_sha256"],
+                         hashlib.sha256(saved).hexdigest())
+
+    def test_slot2_conflict_and_bad_slot(self):
+        fields = self.kv(self.checkout(self.host(), iso_slots="2"))
+        self.commit(self.host(), fields["slot2_sha256"], card_with(0x61), slot="2")
+        late = self.commit(self.key(), fields["slot2_sha256"], card_with(0x62), reporter="Convidado", slot="2")
+        self.assertEqual(self.kv(late)["status"], "conflict")
+        self.assertEqual(self.commit(self.host(), fields["slot1_sha256"], card_with(0x63), slot="3").status_code, 400)
+
     def test_replays_fetch_the_iso_card_versions(self):
         base = self.kv(self.checkout(self.host()))["slot1_sha256"]
         self.commit(self.host(), base, card_with(0x44))
@@ -685,6 +725,30 @@ class AdminIsoMemcardTest(PlayersTestBase):
         history = self.client.get("/admin/jogos/AAAA1111:1C478C60/memory-card").get_data(as_text=True)
         self.assertIn("Restaurada a versão 2", history)
 
+    def test_slot2_upload_download_and_restore(self):
+        base = "/admin/jogos/AAAA1111:1C478C60/memory-card"
+        self.upload(card_with(0x10))
+        self.client.post(f"{base}/enviar", data={"csrf_token": "csrf", "slot": "2",
+                                                 "file": (BytesIO(card_with(0x21)), "slot2.mcd")})
+        self.client.post(f"{base}/enviar", data={"csrf_token": "csrf", "slot": "2",
+                                                 "file": (BytesIO(card_with(0x22)), "slot2.mcd")})
+        with self.app.app_context():
+            rows = get_db().execute("SELECT iso_slot, current_version FROM memcards ORDER BY iso_slot").fetchall()
+        self.assertEqual([tuple(row) for row in rows], [(1, 2), (2, 3)])
+        entries = zip_entries(self.client.get(f"{base}/baixar?slot=2&versao=2"))
+        self.assertEqual(entries["saves/PCSX-ReARMed/pcsx-card2.mcd"], card_with(0x21))
+        entries = zip_entries(self.client.get(f"{base}/baixar"))
+        self.assertEqual(entries["saves/PCSX-ReARMed/MasterLeague12.srm"], card_with(0x10))
+        self.client.post(f"{base}/restaurar", data={"csrf_token": "csrf", "slot": "2", "version": 2})
+        entries = zip_entries(self.client.get(f"{base}/baixar?slot=2"))
+        self.assertEqual(entries["saves/PCSX-ReARMed/pcsx-card2.mcd"], card_with(0x21))
+        page = self.client.get(base).get_data(as_text=True)
+        self.assertIn("Slot 2", page)
+        self.assertIn("Restaurada a versão 2", page)
+        self.assertEqual(self.client.get(f"{base}/baixar?slot=3").status_code, 404)
+        listing = self.client.get("/admin/jogos").get_data(as_text=True)
+        self.assertIn("Slot 1: versão 2 · slot 2: versão 4", listing)
+
     def test_requires_admin_and_a_known_iso(self):
         self.assertEqual(self.upload(b"x" * MCD_SIZE).status_code, 302)  # cartão inválido: volta com erro
         self.assertEqual(self.client.get("/admin/jogos/FFFF0000:10/memory-card").status_code, 404)
@@ -707,7 +771,7 @@ class MigrationTest(unittest.TestCase):
                 init_db()
                 db = get_db()
                 db.executescript("""
-                    DROP INDEX memcards_iso_idx;
+                    DROP INDEX IF EXISTS memcards_iso_slot_idx;
                     DROP TABLE memcard_versions;
                     DROP TABLE memcards;
                     CREATE TABLE memcards (id INTEGER PRIMARY KEY,
@@ -743,6 +807,53 @@ class MigrationTest(unittest.TestCase):
                 # Apagar o jogador ainda apaga o cartão dele e as versões (ON DELETE CASCADE).
                 db.execute("DELETE FROM players WHERE id = 7")
                 self.assertEqual(db.execute("SELECT COUNT(*) FROM memcard_versions").fetchone()[0], 0)
+
+
+class IsoSlotMigrationTest(unittest.TestCase):
+    def test_existing_iso_card_becomes_slot1_and_slot2_can_be_added(self):
+        import sqlite3
+        from app.db import migrate_db
+        with tempfile.TemporaryDirectory() as folder:
+            app = create_app({"TESTING": True, "SECRET_KEY": "t", "DATABASE": str(Path(folder) / "a.db"),
+                              "DOWNLOADS_DIR": str(Path(folder) / "d"), "UPLOAD_TMP_DIR": str(Path(folder) / "t"),
+                              "MEMCARDS_DIR": str(Path(folder) / "mc")})
+            with app.app_context():
+                init_db()
+                db = get_db()
+                # Banco de 14/10/2026: player_id já aceita NULL, sem iso_slot, um cartão da ISO por jogo.
+                db.executescript("""
+                    DROP INDEX IF EXISTS memcards_iso_slot_idx;
+                    DROP TABLE memcard_versions;
+                    DROP TABLE memcards;
+                    CREATE TABLE memcards (id INTEGER PRIMARY KEY,
+                        player_id INTEGER REFERENCES players(id) ON DELETE CASCADE,
+                        game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE RESTRICT,
+                        current_version INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL, UNIQUE (player_id, game_id));
+                    CREATE UNIQUE INDEX memcards_iso_idx ON memcards(game_id) WHERE player_id IS NULL;
+                    CREATE TABLE memcard_versions (id INTEGER PRIMARY KEY,
+                        memcard_id INTEGER NOT NULL REFERENCES memcards(id) ON DELETE CASCADE,
+                        version INTEGER NOT NULL, sha256 TEXT NOT NULL, size INTEGER NOT NULL,
+                        source TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL,
+                        UNIQUE (memcard_id, version));
+                    INSERT INTO games (id, content_id, name, created_at, updated_at) VALUES (3, 'AA:1', 'WE', 'x', 'x');
+                    INSERT INTO memcards (id, player_id, game_id, current_version, created_at, updated_at)
+                        VALUES (9, NULL, 3, 4, 'x', 'x');
+                """)
+                db.commit()
+                migrate_db()
+                migrate_db()  # idempotente
+                db = get_db()
+                self.assertEqual(tuple(db.execute("SELECT id, iso_slot, current_version FROM memcards").fetchone()),
+                                 (9, 1, 4))
+                indexes = {row[1] for row in db.execute("PRAGMA index_list(memcards)")}
+                self.assertIn("memcards_iso_slot_idx", indexes)
+                self.assertNotIn("memcards_iso_idx", indexes)
+                db.execute("INSERT INTO memcards (player_id, game_id, iso_slot, created_at, updated_at) "
+                           "VALUES (NULL, 3, 2, 'x', 'x')")
+                with self.assertRaises(sqlite3.IntegrityError):
+                    db.execute("INSERT INTO memcards (player_id, game_id, iso_slot, created_at, updated_at) "
+                               "VALUES (NULL, 3, 2, 'x', 'x')")
 
 
 class ContentIdTest(unittest.TestCase):

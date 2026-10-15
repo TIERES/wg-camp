@@ -78,10 +78,11 @@ CREATE TABLE IF NOT EXISTS memcards (
     current_version INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
+    iso_slot INTEGER NOT NULL DEFAULT 1,
     UNIQUE (player_id, game_id)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS memcards_iso_idx ON memcards(game_id) WHERE player_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS memcards_iso_slot_idx ON memcards(game_id, iso_slot) WHERE player_id IS NULL;
 
 CREATE TABLE IF NOT EXISTS memcard_versions (
     id INTEGER PRIMARY KEY,
@@ -168,6 +169,19 @@ def allow_iso_memcards(database):
     broken = database.execute("PRAGMA foreign_key_check").fetchall()
     if broken:
         raise RuntimeError(f"memcards: {len(broken)} referência(s) quebrada(s) depois de refazer a tabela")
+
+
+def add_iso_card_slots(database):
+    """O "M. Card da ISO" passou a ter dois cartões por jogo, um para cada
+    slot: memcards.iso_slot (1 ou 2; nos cartões dos jogadores é sempre 1 e
+    não quer dizer nada). O cartão da ISO que já existia fica no slot 1, e o
+    índice único de um cartão da ISO por jogo vira um por jogo e slot."""
+    columns = {column["name"] for column in database.execute("PRAGMA table_info(memcards)")}
+    if not columns:
+        return  # banco sem memory cards ainda - o PLAYERS_DDL cria a tabela já com a coluna
+    if "iso_slot" not in columns:
+        database.execute("ALTER TABLE memcards ADD COLUMN iso_slot INTEGER NOT NULL DEFAULT 1")
+    database.execute("DROP INDEX IF EXISTS memcards_iso_idx")
 
 
 def init_db():
@@ -262,8 +276,9 @@ def migrate_db():
                    "content_id"):
         if column not in file_columns:
             database.execute(f"ALTER TABLE files ADD COLUMN {column} TEXT")
-    # Antes do PLAYERS_DDL, que cria o memcards_iso_idx na tabela refeita.
+    # Antes do PLAYERS_DDL, que cria o memcards_iso_slot_idx na tabela refeita.
     allow_iso_memcards(database)
+    add_iso_card_slots(database)
     database.executescript(PLAYERS_DDL)
     ensure_player_columns(database)
     database.execute("CREATE INDEX IF NOT EXISTS live_sessions_game_name_idx ON live_sessions(game_name)")

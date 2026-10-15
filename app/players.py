@@ -373,13 +373,15 @@ def download_card(memcard_id):
     return card_zip_response(db, card, version, player["username"])
 
 
-def card_zip_response(db, card, version, prefix):
+def card_zip_response(db, card, version, prefix, entry=None):
     """O "Baixar" de um cartão (o do jogador, ou o da ISO no admin): um zip
-    com o .srm onde o RetroArch o procura e o LEIA-ME."""
-    srm_name = srm_basename(db, card["content_id"], card["game_name"])
+    com o .srm onde o RetroArch o procura e o LEIA-ME. `entry`: outro
+    caminho dentro do zip (o slot 2 do M. Card da ISO)."""
+    if not entry:
+        entry = f"saves/PCSX-ReARMed/{srm_basename(db, card['content_id'], card['game_name'])}.srm"
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr(f"saves/PCSX-ReARMed/{srm_name}.srm", card_path(version["sha256"]).read_bytes())
+        archive.writestr(entry, card_path(version["sha256"]).read_bytes())
         archive.writestr("LEIA-ME.txt", CARD_ZIP_README.encode("utf-8-sig"))
     buffer.seek(0)
     safe_game = "".join(ch if ch.isalnum() else "_" for ch in card["game_name"])[:60]
