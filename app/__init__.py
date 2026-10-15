@@ -52,6 +52,12 @@ def create_app(test_config=None):
     )
     if test_config:
         app.config.update(test_config)
+    # Pacote do atualizador do RetroArch TIERES (app/updates.py): ao lado da
+    # pasta updates (/var/www/arena17/pacote em produção), legível pelo Caddy,
+    # que serve os arquivos direto. Não é criada aqui: quem cria é o
+    # deploy/publish_pacote.sh (root).
+    if not app.config.get("PACOTE_DIR"):
+        app.config["PACOTE_DIR"] = os.environ.get("ARENA17_PACOTE_DIR") or str(Path(app.config["UPDATES_DIR"]).parent / "pacote")
 
     Path(app.instance_path).mkdir(parents=True, exist_ok=True)
     Path(app.config["DOWNLOADS_DIR"]).mkdir(parents=True, exist_ok=True)

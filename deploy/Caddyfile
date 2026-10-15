@@ -2,8 +2,24 @@
     email admin@wgs.dev.br
 }
 
+# Pacote do atualizador do RetroArch TIERES (manifesto + arquivos pelo
+# sha256, deploy/publish_pacote.sh): servido direto da pasta, sem passar pelo
+# gunicorn - são uns 25 MB por jogador, e o app só tem 2 threads.
+(pacote_tieres) {
+    handle /updates/pacote/* {
+        uri strip_prefix /updates/pacote
+        root * /var/www/arena17/pacote
+        @manifesto path *.txt
+        header @manifesto Cache-Control "no-cache"
+        file_server
+    }
+}
+
 we2002.wgs.dev.br {
-    reverse_proxy 127.0.0.1:8000
+    import pacote_tieres
+    handle {
+        reverse_proxy 127.0.0.1:8000
+    }
 }
 
 # Plain HTTP listener for the kaillera-client endpoints (ingest from the
@@ -32,6 +48,9 @@ http://:8080 {
     handle /replays/* {
         reverse_proxy 127.0.0.1:8000
     }
+    # O DLL rodando no Wine baixa o pacote por aqui (o HTTPS do Wine trava em
+    # algumas versões).
+    import pacote_tieres
     handle /updates/* {
         reverse_proxy 127.0.0.1:8000
     }

@@ -1,3 +1,4 @@
+import re
 import zlib
 from pathlib import Path
 
@@ -68,3 +69,47 @@ def download(arch):
         _updates_dir(), _dll_path(arch).name, mimetype="application/octet-stream",
         as_attachment=True, download_name="kailleraclient.dll",
     )
+
+
+# Pacote completo do RetroArch TIERES (o mesmo conteúdo da versão light:
+# retroarch.exe, kailleraclient.dll, núcleo): o DLL x64, rodando dentro do
+# retroarch.exe TIERES, baixa só os arquivos que mudaram, troca todos e
+# reinicia o RetroArch (common/n02_update.cpp, repo kaillera-client).
+#
+# PACOTE_DIR/x64.txt é o manifesto, linhas separadas por tab:
+#
+#     versao   v.TIERES.0.25                      (versão do DLL do pacote)
+#     pacote   RetroArch-1.16.0.FFW.TIERES.0.6    (nome do zip light)
+#     arquivo  <sha256>  <bytes>  retroarch.exe   (um por arquivo)
+#
+# e PACOTE_DIR/arquivos/<sha256> são os arquivos, pelo conteúdo: publicar uma
+# versão só acrescenta os que ainda não existem e troca o manifesto por
+# último, então quem baixa no meio da publicação nunca pega metade de cada.
+# Quem publica é o deploy/publish_pacote.sh, a partir da task "Publish release
+# to updater" do kaillera-client (sem zip: o servidor só copia arquivos).
+#
+# Em produção o Caddy serve /updates/pacote/* direto da pasta (são uns 25 MB
+# por jogador, e o gunicorn só tem 2 threads); estas rotas são o mesmo
+# caminho para o desenvolvimento, os testes e o caso do Caddy sem a regra.
+PACOTE_ARCHES = ("x64",)
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+
+
+def _pacote_dir():
+    return Path(current_app.config["PACOTE_DIR"])
+
+
+@bp.get("/pacote/<arch>.txt")
+def pacote_manifesto(arch):
+    if arch not in PACOTE_ARCHES or not (_pacote_dir() / f"{arch}.txt").is_file():
+        abort(404)
+    response = send_from_directory(_pacote_dir(), f"{arch}.txt", mimetype="text/plain", max_age=0)
+    response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
+@bp.get("/pacote/arquivos/<sha256>")
+def pacote_arquivo(sha256):
+    if not _SHA256.fullmatch(sha256):
+        abort(404)
+    return send_from_directory(_pacote_dir() / "arquivos", sha256, mimetype="application/octet-stream")
