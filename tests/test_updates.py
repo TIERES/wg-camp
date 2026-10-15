@@ -1,3 +1,4 @@
+import hashlib
 import tempfile
 import unittest
 import zlib
@@ -104,6 +105,55 @@ class UpdatesTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Tutorial RetroArch FFW TIERES 0.2 (PDF)", response.data)
         self.assertIn(b"https://archive.org/download/one-two-iso/Tutorial_RetroArch_FFW_TIERES_0.2.pdf", response.data)
+
+    def _publish_pacote(self, files, version="v.TIERES.0.25"):
+        pacote = self.updates_dir.parent / "pacote"
+        (pacote / "arquivos").mkdir(parents=True, exist_ok=True)
+        lines = [f"versao\t{version}", "pacote\tRetroArch-1.16.0.FFW.TIERES.0.6"]
+        for path, data in files.items():
+            sha = hashlib.sha256(data).hexdigest()
+            (pacote / "arquivos" / sha).write_bytes(data)
+            lines.append(f"arquivo\t{sha}\t{len(data)}\t{path}")
+        manifest = "\n".join(lines) + "\n"
+        (pacote / "x64.txt").write_bytes(manifest.encode("utf-8"))
+        return manifest
+
+    def test_pacote_dir_defaults_next_to_updates_dir(self):
+        # /var/www/arena17/pacote in production, which Caddy serves directly
+        self.assertEqual(Path(self.app.config["PACOTE_DIR"]), self.updates_dir.parent / "pacote")
+
+    def test_pacote_manifest_is_served_uncached(self):
+        manifest = self._publish_pacote({"retroarch.exe": b"exe", "kailleraclient.dll": b"dll"})
+        response = self.app.test_client().get("/updates/pacote/x64.txt")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data.decode("utf-8"), manifest)
+        self.assertEqual(response.mimetype, "text/plain")
+        self.assertEqual(response.headers["Cache-Control"], "no-cache")
+        response.close()
+
+    def test_pacote_manifest_404_when_not_published_or_other_arch(self):
+        client = self.app.test_client()
+        self.assertEqual(client.get("/updates/pacote/x64.txt").status_code, 404)
+        self._publish_pacote({"retroarch.exe": b"exe"})
+        self.assertEqual(client.get("/updates/pacote/x86.txt").status_code, 404)
+
+    def test_pacote_file_is_served_by_its_sha256(self):
+        self._publish_pacote({"cores/pcsx_rearmed_libretro.dll": b"core-bytes"})
+        sha = hashlib.sha256(b"core-bytes").hexdigest()
+        response = self.app.test_client().get(f"/updates/pacote/arquivos/{sha}")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, b"core-bytes")
+        self.assertEqual(response.mimetype, "application/octet-stream")
+        response.close()
+
+    def test_pacote_file_only_answers_sha256_names(self):
+        self._publish_pacote({"retroarch.exe": b"exe"})
+        client = self.app.test_client()
+        sha = hashlib.sha256(b"exe").hexdigest()
+        self.assertEqual(client.get(f"/updates/pacote/arquivos/{sha.upper()}").status_code, 404)
+        self.assertEqual(client.get("/updates/pacote/arquivos/x64.txt").status_code, 404)
+        self.assertEqual(client.get("/updates/pacote/arquivos/..%2Fx64.txt").status_code, 404)
+        self.assertEqual(client.get(f"/updates/pacote/arquivos/{'0' * 64}").status_code, 404)
 
 
 if __name__ == "__main__":
