@@ -670,6 +670,36 @@ class IsoMemcardTest(PlayersTestBase):
         self.assertEqual(self.kv(late)["status"], "conflict")
         self.assertEqual(self.commit(self.host(), fields["slot1_sha256"], card_with(0x63), slot="3").status_code, 400)
 
+    def test_saves_during_the_match_and_the_guest_fallback_after_the_host_dropped(self):
+        fields = self.kv(self.checkout(self.host(), iso_slots="2"))
+        self.assertEqual(fields["multi_base"], "1")
+        start = fields["slot1_sha256"]
+        first_save, second_save = card_with(0x71), card_with(0x72)
+        first_sha = hashlib.sha256(first_save).hexdigest()
+        second_sha = hashlib.sha256(second_save).hexdigest()
+        # O host envia o primeiro save logo que o jogo grava...
+        self.assertEqual(self.kv(self.commit(self.host(), start, first_save))["status"], "committed")
+        # ...e cai antes do segundo. O convidado, no fim, cita o cartão do início
+        # e o save que viu - e o segundo save não se perde.
+        bases = f"{start},{first_sha}"
+        result = self.kv(self.commit(self.key(), bases, second_save, reporter="Convidado"))
+        self.assertEqual(result["status"], "committed")
+        self.assertEqual(result["version"], "3")
+        self.assertEqual(self.kv(self.checkout(self.key(), iso_slots="2"))["slot1_sha256"], second_sha)
+        # Reenviar o que já viu salvo não muda nada.
+        again = self.commit(self.host(), f"{start},{first_sha},{second_sha}", second_save)
+        self.assertEqual(self.kv(again)["status"], "unchanged")
+
+    def test_a_list_of_bases_still_refuses_a_card_changed_elsewhere(self):
+        start = self.kv(self.checkout(self.host()))["slot1_sha256"]
+        self.commit(self.host(), start, card_with(0x73))
+        other = hashlib.sha256(card_with(0x99)).hexdigest()
+        late = self.commit(self.key(), f"{other},{start[:-1]}0" if start[-1] != "0" else f"{other},{start[:-1]}1",
+                           card_with(0x74), reporter="Convidado")
+        self.assertEqual(late.status_code, 409)
+        self.assertEqual(self.commit(self.host(), ",".join([start] * 33), card_with(0x75)).status_code, 400)
+        self.assertEqual(self.commit(self.host(), f"{start},xyz", card_with(0x75)).status_code, 400)
+
     def test_replays_fetch_the_iso_card_versions(self):
         base = self.kv(self.checkout(self.host()))["slot1_sha256"]
         self.commit(self.host(), base, card_with(0x44))

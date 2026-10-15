@@ -344,6 +344,9 @@ def _api_key_ok():
 
 ISO_SLOT_PLAYER = "ISO"
 
+# Bases que um envio pode citar (o cartão do checkout + os saves da partida).
+MAX_COMMIT_BASES = 32
+
 
 def _discord_fields(player):
     """Discord vinculado (app/discord.py), para o DLL ligar sozinho a
@@ -480,6 +483,9 @@ def api_checkout():
     dois slots) vêm os cartões dos slots 1 e 2; sem ele, só o do slot 1 - um
     DLL que não conhece o slot 2 o enviaria de volta como se fosse o 1.
 
+    multi_base=1 na resposta: o commit aceita uma lista de bases (o DLL envia
+    cada save durante a partida, ver api_commit).
+
     accounts (nicks com a conta confirmada na sala, separados por vírgula):
     basta um jogador com conta - quem não está nessa lista fica com o slot
     vazio (slotN_player e slotN_sha256 em branco), sem cartão e sem nada
@@ -502,7 +508,8 @@ def api_checkout():
     if iso:
         game = get_or_create_game(db, content_id, request.form.get("game_name", ""))
         slots = ISO_CARD_SLOTS if request.form.get("iso_slots") == "2" else ISO_CARD_SLOTS[:1]
-        fields = {"ok": 1, "mode": "iso", "game_id": game["id"], "game_name": game["name"], "slots": len(slots)}
+        fields = {"ok": 1, "mode": "iso", "game_id": game["id"], "game_name": game["name"], "slots": len(slots),
+                  "multi_base": 1}
         for slot in slots:
             card = get_or_create_iso_memcard(db, game["id"], slot)
             version = current_version(db, card["id"])
@@ -534,7 +541,7 @@ def api_checkout():
         return _error(409, "missing_account", ",".join(missing))
 
     game = get_or_create_game(db, content_id, request.form.get("game_name", ""))
-    fields = {"ok": 1, "game_id": game["id"], "game_name": game["name"], "slots": len(owners)}
+    fields = {"ok": 1, "game_id": game["id"], "game_name": game["name"], "slots": len(owners), "multi_base": 1}
     if accounts is not None:
         fields["rule"] = "accounts"  # o DLL confere que o servidor entendeu o campo
     for slot, owner in enumerate(owners, start=1):
@@ -574,6 +581,13 @@ def api_commit():
     Query: content_id, slot_player (dono do cartão), base_sha256 (o que o
     checkout entregou), players (a mesma lista do checkout). Corpo: os 128 KB.
 
+    base_sha256 também pode ser uma lista separada por vírgulas: o cartão do
+    checkout e cada versão que o PC viu o jogo salvar durante a partida. O DLL
+    envia cada save logo que o jogo termina de gravar, e o envio vale se a
+    versão atual do WE Camp é qualquer uma dessas - assim o convidado que
+    envia no fim (o host caiu) não perde o save só porque o host já tinha
+    gravado uma versão intermediária.
+
     Como a emulação é determinística, todos os PCs terminam com os mesmos
     cartões - basta um envio. O DLL do host envia na hora e os outros só
     depois de alguns segundos (se o host caiu); o primeiro envio válido grava
@@ -598,11 +612,12 @@ def api_commit():
     else:
         return _error(401, "invalid_token", "Faca login novamente.")
     content_id = normalize_content_id(request.args.get("content_id"))
-    base = (request.args.get("base_sha256") or "").lower()
+    bases = [value.strip() for value in (request.args.get("base_sha256") or "").lower().split(",")]
     slot_player = (request.args.get("slot_player") or "").strip()
     names = _player_list(request.args.get("players"))
     lowered = [name.lower() for name in names]
-    if not content_id or not SHA256_RE.match(base) or not (slot_player or iso):
+    if (not content_id or not (slot_player or iso) or len(bases) > MAX_COMMIT_BASES
+            or not all(SHA256_RE.match(value) for value in bases)):
         return _error(400, "bad_request")
     if iso and iso_slot not in {str(slot) for slot in ISO_CARD_SLOTS}:
         return _error(400, "bad_slot")
@@ -631,12 +646,12 @@ def api_commit():
     new_sha = sha256_of(data)
     if current["sha256"] == new_sha:
         # Nada mudou nesta partida, ou outro jogador já enviou este conteúdo.
-        status = "unchanged" if new_sha == base else "already"
+        status = "unchanged" if new_sha in bases else "already"
         return _reply(ok=1, status=status, version=current["version"])
-    if current["sha256"] != base:
+    if current["sha256"] not in bases:
         current_app.logger.warning(
             "Memory Card %s/%s: envio de %s recusado (base %s, atual %s, enviado %s)",
-            card_name, game["content_id"], reporter, base[:12],
+            card_name, game["content_id"], reporter, ",".join(value[:12] for value in bases),
             current["sha256"][:12], new_sha[:12])
         return _reply(409, ok=0, status="conflict", version=current["version"])
 
