@@ -1,6 +1,10 @@
 {% extends 'base.html' %}{% block content %}
 <div class="page-title"><h1>Campeonatos</h1><a class="button" href="{{ url_for('admin.championship_new') }}">Novo campeonato</a></div>
 <p><a href="{{ url_for('admin.players_list') }}">Jogadores cadastrados</a> · <a href="{{ url_for('admin.games_list') }}">Jogos do Memory Card online</a></p>
+<section class="notice">
+<p>Página inicial: cards "Atualização light" e "kailleraclient.dll" <strong>{{ 'visíveis' if mostrar_atualizacao_manual else 'ocultos' }}</strong>. Dentro do RetroArch TIERES o próprio plugin baixa a versão nova e reinicia, então eles só são necessários se a atualização automática falhar.</p>
+<form method="post" action="{{ url_for('admin.manual_update_cards') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="mostrar" value="{{ '0' if mostrar_atualizacao_manual else '1' }}"><button>{{ 'Ocultar os cards' if mostrar_atualizacao_manual else 'Mostrar os cards' }}</button></form>
+</section>
 <table><thead><tr><th>Campeonato</th><th>Liga</th><th>Status</th><th>Ações</th></tr></thead><tbody>{% for championship in championships %}<tr><td>{{ championship.name }}</td><td>{{ championship.league_name or '—' }}</td><td>{{ 'Publicado' if championship.is_published else 'Oculto' }}</td><td><a href="{{ url_for('admin.championship_edit', championship_id=championship.id) }}">Editar</a> · <a href="{{ url_for('admin.files', championship_id=championship.id) }}">Arquivos</a></td></tr>{% else %}<tr><td colspan="4">Nenhum campeonato cadastrado.</td></tr>{% endfor %}</tbody></table>
 <form class="logout" method="post" action="{{ url_for('admin.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Encerrar sessão</button></form>
 {% endblock %}

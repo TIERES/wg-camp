@@ -1,22 +1,27 @@
 {% extends 'base.html' %}
 {% block content %}
+  {# mostrar_atualizacao_manual: cards "Atualização light" e "kailleraclient.dll", ligados e
+     desligados no painel da administração (ocultos por padrão desde 2026-10-15: dentro do
+     RetroArch TIERES o próprio DLL baixa o pacote novo e reinicia). #}
   <section class="emulator-download" aria-labelledby="emulator-title">
     <div>
-      <h2 id="emulator-title">Emulador RetroArch FFW TIERES 0.5</h2>
-      <p>Baixe o RetroArch FFW TIERES 0.5 completo, já configurado com o plugin Kaillera netplay (Memory Card Online, MultiTap e chamada de voz no Discord) para jogos online e acompanhamento de partidas ao vivo! Já vem com o gráfico PC Antigo (VGA onboard); se você tem placa de vídeo dedicada, instale o PC Moderno do Pack de Gráficos abaixo. Ideal para quem ainda não tem o RetroArch.</p>
+      <h2 id="emulator-title">Emulador RetroArch FFW TIERES 0.6</h2>
+      <p>Baixe o RetroArch FFW TIERES 0.6 completo, já configurado com o plugin Kaillera netplay (Memory Card Online, MultiTap e chamada de voz no Discord) para jogos online e acompanhamento de partidas ao vivo! Já vem com o gráfico PC Antigo (VGA onboard); se você tem placa de vídeo dedicada, instale o PC Moderno do Pack de Gráficos abaixo. Ideal para quem ainda não tem o RetroArch. Depois de instalado, ele se atualiza sozinho: quando sai uma versão nova, o Kaillera avisa ao abrir, baixa só o que mudou e reinicia o RetroArch.</p>
     </div>
-    <a class="button" href="https://archive.org/download/one-two-iso/RetroArch-1.16.0.FFW.TIERES.0.5.zip" rel="noopener noreferrer" target="_blank">Baixar RetroArch (x64)</a>
+    <a class="button" href="https://archive.org/download/one-two-iso/RetroArch-1.16.0.FFW.TIERES.0.6.zip" rel="noopener noreferrer" target="_blank">Baixar RetroArch (x64)</a>
   </section>
+  {% if mostrar_atualizacao_manual %}
   <section class="emulator-download" aria-labelledby="emulator-light-title">
     <div>
-      <h2 id="emulator-light-title">Atualização light: TIERES 0.5</h2>
-      <p>Já tem o RetroArch FFW TIERES (0.1 a 0.4)? Baixe só a atualização e extraia na pasta do TIERES, substituindo os arquivos. Ela não mexe nos seus controles, gráficos e configurações; para trocar o visual, use o Pack de Gráficos abaixo. Novidades: MultiTap para partidas de 3 a 8 jogadores, Memory Card Online (o cartão de memória de cada jogador fica guardado no WE Camp e é o mesmo em todos os PCs da partida, nos replays e no Acompanhar ao vivo), TAB abre o chat durante a partida e o Rebobinar ficou mais preciso.</p>
+      <h2 id="emulator-light-title">Atualização light: TIERES 0.6</h2>
+      <p>Já tem o RetroArch FFW TIERES (0.1 a 0.5)? Baixe só a atualização e extraia na pasta do TIERES, substituindo os arquivos. Ela não mexe nos seus controles, gráficos e configurações; para trocar o visual, use o Pack de Gráficos abaixo. Novidades: atualização automática (ao abrir o Kaillera, o RetroArch TIERES avisa quando sai uma versão nova, baixa só os arquivos que mudaram e reinicia sozinho), M. Card da ISO (um cartão de memória do WE Camp por jogo, o mesmo para todos que jogam nesse modo; só o host precisa de conta), o Memory Card Online funciona com só um jogador com conta e guarda cada save no WE Camp durante a partida, e a verificação de sincronia percebe quando um PC tem um .cue/.bin ao lado do jogo.</p>
       <p>Para usar o Memory Card Online, <a href="{{ url_for('players.register') }}">crie sua conta no WE Camp</a> e entre com ela pelo botão "M. Card Online" da tela inicial do Kaillera.</p>
-      <p><strong>Novo: chamada de voz no Discord.</strong> <a href="{{ url_for('players.account') }}">Vincule seu Discord na sua conta do WE Camp</a> (você também entra no servidor Discord da WE Camp). No início de cada partida no Kaillera (Server ou P2P) com 2 ou mais jogadores vinculados, o WE Camp cria um canal de voz só para a sala: quem estiver no canal "Aguardando partida" entra sozinho; para os outros, o canal abre no Discord, é só clicar em "Entrar". Para ficar fora da chamada, desmarque "Participar da chamada de voz no Discord nas partidas" no botão "M. Card Online". Quem já baixou a 0.5 antes só precisa baixar e extrair de novo.</p>
-      <p><strong>Só quem estiver na 0.5 pode jogar com quem está na 0.5.</strong> Para continuar jogando também com quem ainda não atualizou, faça uma cópia da sua pasta "RetroArch-1.16.0.FFW.TIERES.0.x" e extraia a atualização light na cópia.</p>
+      <p><strong>Chamada de voz no Discord.</strong> <a href="{{ url_for('players.account') }}">Vincule seu Discord na sua conta do WE Camp</a> (você também entra no servidor Discord da WE Camp). No início de cada partida no Kaillera (Server ou P2P) com 2 ou mais jogadores vinculados, o WE Camp cria um canal de voz só para a sala: quem estiver no canal "Aguardando partida" entra sozinho; para os outros, o canal abre no Discord, é só clicar em "Entrar". Para ficar fora da chamada, desmarque "Participar da chamada de voz no Discord nas partidas" no botão "M. Card Online".</p>
+      <p><strong>Jogue com quem está na mesma versão:</strong> com versões diferentes, o Kaillera avisa que a partida pode dessincronizar.</p>
     </div>
-    <a class="button" href="https://archive.org/download/one-two-iso/RetroArch-1.16.0.FFW.TIERES.0.5.light.zip" rel="noopener noreferrer" target="_blank">Baixar atualização light (x64)</a>
+    <a class="button" href="https://archive.org/download/one-two-iso/RetroArch-1.16.0.FFW.TIERES.0.6.light.zip" rel="noopener noreferrer" target="_blank">Baixar atualização light (x64)</a>
   </section>
+  {% endif %}
   <section class="emulator-download" aria-labelledby="graphics-title">
     <div>
       <h2 id="graphics-title">Pack de Gráficos</h2>
@@ -34,7 +39,7 @@
     </div>
     <a class="button" href="https://archive.org/download/one-two-iso/Tutorial_RetroArch_FFW_TIERES_0.2.pdf" rel="noopener noreferrer" target="_blank">Baixar tutorial (PDF)</a>
   </section>
-  {% if kailleraclient_available %}
+  {% if mostrar_atualizacao_manual and kailleraclient_available %}
     <section class="emulator-download" aria-labelledby="kailleraclient-title">
       <div>
         <h2 id="kailleraclient-title">Plugin de netplay (kailleraclient.dll)</h2>
