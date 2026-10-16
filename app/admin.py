@@ -12,8 +12,9 @@ from flask import Blueprint, Response, abort, current_app, flash, jsonify, redir
 from werkzeug.security import check_password_hash
 
 from .archive_org import ArchiveOrgError, delete_file, download_url, list_item_files, upload_file, upload_zip
-from .db import get_db, now
+from .db import get_db, now, set_setting
 from .arena17_import import import_championship
+from .public import SETTING_MANUAL_UPDATE_CARDS, manual_update_cards_visible
 from .replays import _download_name
 from .security import login_required, validate_csrf
 from .storage import delete_stored_file, store_upload
@@ -72,7 +73,20 @@ def logout():
 @login_required
 def dashboard():
     championships = get_db().execute("SELECT * FROM championships ORDER BY is_published DESC, start_date DESC, created_at DESC").fetchall()
-    return render_template("admin/dashboard.html", championships=championships)
+    return render_template("admin/dashboard.html", championships=championships,
+                           mostrar_atualizacao_manual=manual_update_cards_visible())
+
+
+@bp.post("/pagina-inicial/atualizacao-manual")
+@login_required
+def manual_update_cards():
+    """Mostra ou oculta, na página inicial, os cards "Atualização light" e
+    "kailleraclient.dll" (public.SETTING_MANUAL_UPDATE_CARDS)."""
+    validate_csrf()
+    show = request.form.get("mostrar") == "1"
+    set_setting(SETTING_MANUAL_UPDATE_CARDS, "1" if show else "0")
+    flash("Cards de atualização manual " + ("visíveis" if show else "ocultos") + " na página inicial.", "success")
+    return redirect(url_for("admin.dashboard"))
 
 
 @bp.route("/championships/new", methods=("GET", "POST"))

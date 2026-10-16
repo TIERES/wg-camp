@@ -1,5 +1,8 @@
 {% extends 'base.html' %}
 {% block content %}
+  {# mostrar_atualizacao_manual: cards "Atualização light" e "kailleraclient.dll", ligados e
+     desligados no painel da administração (ocultos por padrão desde 2026-10-15: dentro do
+     RetroArch TIERES o próprio DLL baixa o pacote novo e reinicia). #}
   <section class="emulator-download" aria-labelledby="emulator-title">
     <div>
       <h2 id="emulator-title">Emulador RetroArch FFW TIERES 0.5</h2>
@@ -7,6 +10,7 @@
     </div>
     <a class="button" href="https://archive.org/download/one-two-iso/RetroArch-1.16.0.FFW.TIERES.0.5.zip" rel="noopener noreferrer" target="_blank">Baixar RetroArch (x64)</a>
   </section>
+  {% if mostrar_atualizacao_manual %}
   <section class="emulator-download" aria-labelledby="emulator-light-title">
     <div>
       <h2 id="emulator-light-title">Atualização light: TIERES 0.5</h2>
@@ -17,6 +21,7 @@
     </div>
     <a class="button" href="https://archive.org/download/one-two-iso/RetroArch-1.16.0.FFW.TIERES.0.5.light.zip" rel="noopener noreferrer" target="_blank">Baixar atualização light (x64)</a>
   </section>
+  {% endif %}
   <section class="emulator-download" aria-labelledby="graphics-title">
     <div>
       <h2 id="graphics-title">Pack de Gráficos</h2>
@@ -34,7 +39,7 @@
     </div>
     <a class="button" href="https://archive.org/download/one-two-iso/Tutorial_RetroArch_FFW_TIERES_0.2.pdf" rel="noopener noreferrer" target="_blank">Baixar tutorial (PDF)</a>
   </section>
-  {% if kailleraclient_available %}
+  {% if mostrar_atualizacao_manual and kailleraclient_available %}
     <section class="emulator-download" aria-labelledby="kailleraclient-title">
       <div>
         <h2 id="kailleraclient-title">Plugin de netplay (kailleraclient.dll)</h2>

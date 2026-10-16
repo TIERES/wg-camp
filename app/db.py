@@ -184,11 +184,36 @@ def add_iso_card_slots(database):
     database.execute("DROP INDEX IF EXISTS memcards_iso_idx")
 
 
+SITE_SETTINGS_DDL = """
+CREATE TABLE IF NOT EXISTS site_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
+
+
+def get_setting(key, default=None):
+    """Ajuste do site feito pela administração (site_settings), ou default."""
+    try:
+        row = get_db().execute("SELECT value FROM site_settings WHERE key = ?", (key,)).fetchone()
+    except sqlite3.OperationalError:
+        return default  # banco ainda sem a tabela
+    return row["value"] if row else default
+
+
+def set_setting(key, value):
+    db = get_db()
+    db.execute("INSERT OR REPLACE INTO site_settings (key, value, updated_at) VALUES (?, ?, ?)", (key, value, now()))
+    db.commit()
+
+
 def init_db():
     db = get_db()
     with current_app.open_resource("schema.sql") as schema:
         db.executescript(schema.read().decode("utf-8"))
     db.executescript(PLAYERS_DDL)
+    db.executescript(SITE_SETTINGS_DDL)
     ensure_player_columns(db)
     db.commit()
 
@@ -280,6 +305,7 @@ def migrate_db():
     allow_iso_memcards(database)
     add_iso_card_slots(database)
     database.executescript(PLAYERS_DDL)
+    database.executescript(SITE_SETTINGS_DDL)
     ensure_player_columns(database)
     database.execute("CREATE INDEX IF NOT EXISTS live_sessions_game_name_idx ON live_sessions(game_name)")
     database.execute("CREATE INDEX IF NOT EXISTS live_sessions_replay_idx ON live_sessions(status, duration_seconds)")

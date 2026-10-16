@@ -2,10 +2,19 @@ from pathlib import Path
 
 from flask import Blueprint, Response, abort, current_app, redirect, render_template, send_from_directory
 
-from .db import get_db
+from .db import get_db, get_setting
 from .storage import attachment_header
 
 bp = Blueprint("public", __name__)
+
+# Ajuste da administração (painel): mostra os cards de atualização manual
+# ("Atualização light" e "kailleraclient.dll"). Ocultos por padrão desde
+# 2026-10-15 - dentro do RetroArch TIERES o DLL baixa o pacote sozinho.
+SETTING_MANUAL_UPDATE_CARDS = "mostrar_atualizacao_manual"
+
+
+def manual_update_cards_visible():
+    return get_setting(SETTING_MANUAL_UPDATE_CARDS, "0") == "1"
 
 
 @bp.get("/")
@@ -27,6 +36,7 @@ def index():
         files_by_championship=files_by_championship,
         kailleraclient_version=kailleraclient_version,
         kailleraclient_available=kailleraclient_available,
+        mostrar_atualizacao_manual=manual_update_cards_visible(),
     )
 
 
