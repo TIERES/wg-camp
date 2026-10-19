@@ -79,15 +79,16 @@ class UpdatesTest(unittest.TestCase):
     def test_public_page_links_full_retroarch_download_and_hides_the_light(self):
         response = self.app.test_client().get("/")
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Emulador RetroArch FFW TIERES 0.6".encode("utf-8"), response.data)
-        self.assertIn(b"https://archive.org/download/one-two-iso/RetroArch-1.16.0.FFW.TIERES.0.6.zip", response.data)
+        self.assertIn("Emulador RetroArch FFW TIERES 0.7".encode("utf-8"), response.data)
+        self.assertIn(b"https://archive.org/download/one-two-iso/RetroArch-1.16.0.FFW.TIERES.0.7.zip", response.data)
+        self.assertNotIn(b"RetroArch-1.16.0.FFW.TIERES.0.6.zip", response.data)
         self.assertIn("ele se atualiza sozinho".encode("utf-8"), response.data)
         self.assertNotIn(b"RetroArch-1.16.0.FFW.TIERES.0.5.zip", response.data)
         self.assertNotIn(b"RetroArch-1.16.0.FFW.TIERES.0.4.zip", response.data)
         # light card hidden (mostrar_atualizacao_manual): the DLL updates the package
         self.assertNotIn("Atualização light".encode("utf-8"), response.data)
         self.assertNotIn(b"Baixar atualiza", response.data)
-        self.assertNotIn(b"RetroArch-1.16.0.FFW.TIERES.0.6.light.zip", response.data)
+        self.assertNotIn(b"RetroArch-1.16.0.FFW.TIERES.0.7.light.zip", response.data)
         self.assertNotIn("Chamada de voz no Discord.".encode("utf-8"), response.data)
         # signing up is still one click away, in the header
         self.assertIn(b'href="/conta/cadastro"', response.data)
@@ -133,8 +134,9 @@ class UpdatesTest(unittest.TestCase):
         self.assertIn("<strong>visíveis</strong>", response.data.decode("utf-8"))
         self.assertIn("Ocultar os cards", response.data.decode("utf-8"))
         page = self.app.test_client().get("/").data
-        self.assertIn("Atualização light: TIERES 0.6".encode("utf-8"), page)
-        self.assertIn(b"https://archive.org/download/one-two-iso/RetroArch-1.16.0.FFW.TIERES.0.6.light.zip", page)
+        self.assertIn("Atualização light: TIERES 0.7".encode("utf-8"), page)
+        self.assertIn(b"https://archive.org/download/one-two-iso/RetroArch-1.16.0.FFW.TIERES.0.7.light.zip", page)
+        self.assertNotIn(b"RetroArch-1.16.0.FFW.TIERES.0.6.light.zip", page)
         self.assertNotIn(b"RetroArch-1.16.0.FFW.TIERES.0.5.light.zip", page)
         self.assertIn(b"kailleraclient.dll (x64)", page)
         self.assertIn(b"v.TIERES.0.24", page)
