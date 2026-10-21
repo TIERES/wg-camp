@@ -708,6 +708,106 @@ class IsoMemcardTest(PlayersTestBase):
         self.assertEqual(self.client.get(f"/api/mc/card/{base}", headers=self.key()).data, blank_card())
 
 
+class IsoMemcardLockTest(PlayersTestBase):
+    """Uma partida por vez com o M. Card da ISO de um jogo."""
+
+    def setUp(self):
+        super().setUp()
+        self.register("Pele", "pele@example.com")
+        self.pele = self.api_login("Pele")[1]["token"]
+
+    checkout = IsoMemcardTest.checkout
+    host = IsoMemcardTest.host
+    key = IsoMemcardTest.key
+
+    def lock_checkout(self, headers, players="Pele,Convidado", room_game="WE2002 (PCSX)", server="Goias"):
+        return self.client.post("/api/mc/checkout", headers=headers, data={
+            "mode": "iso", "iso_slots": "2", "lock": "1", "content_id": CONTENT_ID, "game_name": "WE2002.bin",
+            "players": players, "room_game": room_game, "server": server})
+
+    def lock(self, action, players="Pele,Convidado", headers=None, **fields):
+        data = {"action": action, "players": players, **fields}
+        return self.client.post("/api/mc/iso-lock", headers=headers or self.key(), data=data)
+
+    def expire_locks(self):
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE iso_card_locks SET expires_at = datetime('now', '-1 seconds')")
+            db.commit()
+
+    def test_second_match_is_refused_while_the_first_holds_the_card(self):
+        first = self.kv(self.lock_checkout(self.host()))
+        self.assertEqual(first["lock"], "1")
+        # O convidado da mesma partida (mesma lista de jogadores) recebe os cartões.
+        self.assertEqual(self.lock_checkout(self.key()).status_code, 200)
+        other = self.lock_checkout(self.key(), players="A,B", server="SP")
+        self.assertEqual(other.status_code, 409)
+        fields = self.kv(other)
+        self.assertEqual(fields["error"], "iso_in_use")
+        self.assertEqual(fields["lock_players"], "Pele, Convidado")
+        self.assertEqual(fields["lock_server"], "Goias")
+        self.assertIn("Pele, Convidado", fields["message"])
+
+    def test_status_before_start_by_room_game_name(self):
+        self.lock_checkout(self.host())
+        busy = self.kv(self.lock("status", players="A,B", room_game="we2002 (pcsx)"))
+        self.assertEqual(busy["busy"], "1")
+        self.assertEqual(busy["lock_players"], "Pele, Convidado")
+        # A própria partida (ou a mesma sala de novo) não se bloqueia.
+        self.assertEqual(self.kv(self.lock("status", room_game="WE2002 (PCSX)"))["busy"], "0")
+        self.assertEqual(self.kv(self.lock("status", players="A,B", room_game="Outro jogo"))["busy"], "0")
+        self.assertEqual(self.lock("status", players="A,B").status_code, 400)
+        self.assertEqual(self.lock("status", players="A,B", room_game="x", headers={"X-Api-Key": "errada"}).status_code, 401)
+
+    def test_release_frees_the_card_for_the_next_match(self):
+        self.lock_checkout(self.host())
+        # Só a partida dona solta a trava.
+        self.lock("release", players="A,B", content_id=CONTENT_ID)
+        self.assertEqual(self.lock_checkout(self.key(), players="A,B").status_code, 409)
+        self.assertEqual(self.kv(self.lock("release", content_id=CONTENT_ID))["ok"], "1")
+        self.assertEqual(self.kv(self.lock("status", players="A,B", room_game="WE2002 (PCSX)"))["busy"], "0")
+        self.assertEqual(self.lock_checkout(self.key(), players="A,B").status_code, 200)
+
+    def test_lock_expires_without_renewal_and_renew_keeps_it(self):
+        self.lock_checkout(self.host())
+        self.assertEqual(self.kv(self.lock("renew", content_id=CONTENT_ID))["ok"], "1")
+        self.assertEqual(self.lock_checkout(self.key(), players="A,B").status_code, 409)
+        self.expire_locks()
+        self.assertEqual(self.lock_checkout(self.key(), players="A,B", server="SP").status_code, 200)
+        # A primeira partida, renovando depois de perder a trava, fica sabendo.
+        late = self.lock("renew", content_id=CONTENT_ID)
+        self.assertEqual(late.status_code, 409)
+        self.assertEqual(self.kv(late)["lock_server"], "SP")
+        self.assertEqual(self.lock("renew", content_id="DEADBEEF:10").status_code, 404)
+
+    def test_renew_keeps_the_start_time(self):
+        self.lock_checkout(self.host())
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE iso_card_locks SET started_at = '2026-01-01 00:00:00'")
+            db.commit()
+        self.lock("renew", content_id=CONTENT_ID, room_game="", server="")
+        with self.app.app_context():
+            row = get_db().execute("SELECT started_at, room_game, server FROM iso_card_locks").fetchone()
+        self.assertEqual(tuple(row), ("2026-01-01 00:00:00", "WE2002 (PCSX)", "Goias"))
+
+    def test_checkout_without_lock_ignores_it(self):
+        self.lock_checkout(self.host())
+        # DLL antigo (sem lock=1): continua como antes - a recusa vem no commit.
+        old = self.kv(self.checkout(self.key(), players="A,B"))
+        self.assertEqual(old["ok"], "1")
+        self.assertNotIn("lock", old)
+
+    def test_admin_sees_and_releases_the_lock(self):
+        self.lock_checkout(self.host())
+        with self.client.session_transaction() as session:
+            session["user_id"] = 1
+        page = self.client.get(f"/admin/jogos/{CONTENT_ID}/memory-card")
+        self.assertIn("Pele, Convidado", page.get_data(as_text=True))
+        self.client.post(f"/admin/jogos/{CONTENT_ID}/memory-card/liberar", data={"csrf_token": "csrf"})
+        self.assertEqual(self.lock_checkout(self.key(), players="A,B").status_code, 200)
+
+
 class AdminIsoMemcardTest(PlayersTestBase):
     def setUp(self):
         super().setUp()

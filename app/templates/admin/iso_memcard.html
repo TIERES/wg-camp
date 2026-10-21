@@ -1,6 +1,15 @@
 {% extends 'base.html' %}{% block title %}M. Card da ISO · Administração{% endblock %}{% block content %}
 <div class="page-title"><h1>M. Card da ISO · {{ game.name }}</h1><a href="{{ url_for('admin.games_list') }}">Jogos do Memory Card</a></div>
-<p>Identificador <code>{{ game.content_id }}</code>. São os cartões que todos usam numa sala com <strong>"M. Card da ISO"</strong>: um vai no slot 1 e o outro no slot 2 de todos os PCs. No fim de cada partida o host (ou, se ele cair, um convidado) envia de volta, como uma nova versão, cada cartão que mudou. Duas partidas ao mesmo tempo com estes cartões não se sobrescrevem: a segunda a terminar é recusada.</p>
+<p>Identificador <code>{{ game.content_id }}</code>. São os cartões que todos usam numa sala com <strong>"M. Card da ISO"</strong>: um vai no slot 1 e o outro no slot 2 de todos os PCs. No fim de cada partida o host (ou, se ele cair, um convidado) envia de volta, como uma nova versão, cada cartão que mudou. Só uma partida por vez usa estes cartões: enquanto uma está em andamento, o Start de outra sala com "M. Card da ISO" neste jogo fica bloqueado.</p>
+{% if lock %}
+<div class="card-actions">
+  <p>Em uso agora pela partida de <strong>{{ lock.players }}</strong>{% if lock.server %} ({{ lock.server }}){% endif %}, desde {{ lock.started_at|localtime }}. A trava expira sozinha alguns minutos depois que a partida para de renová-la.</p>
+  <form method="post" action="{{ url_for('admin.iso_card_unlock', content_id=game.content_id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button>Liberar agora</button>
+  </form>
+</div>
+{% endif %}
 {% for item in slots %}
 <h2>Slot {{ item.slot }}</h2>
 {% if item.card %}
