@@ -296,6 +296,10 @@ def migrate_db():
         database.execute("ALTER TABLE live_sessions ADD COLUMN duration_seconds INTEGER")
     if "state_requested_at" not in live_session_columns:
         database.execute("ALTER TABLE live_sessions ADD COLUMN state_requested_at TEXT")
+    if "last_sequence" not in live_session_columns:
+        database.execute("ALTER TABLE live_sessions ADD COLUMN last_sequence INTEGER NOT NULL DEFAULT -1")
+    if "lost_batches" not in live_session_columns:
+        database.execute("ALTER TABLE live_sessions ADD COLUMN lost_batches INTEGER NOT NULL DEFAULT 0")
     file_columns = {column["name"] for column in database.execute("PRAGMA table_info(files)")}
     for column in ("md5", "archive_url", "archive_status", "archive_error", "archive_updated_at", "local_removed_at",
                    "content_id"):

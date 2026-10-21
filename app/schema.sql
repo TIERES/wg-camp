@@ -61,7 +61,11 @@ CREATE TABLE IF NOT EXISTS live_sessions (
     updated_at TEXT NOT NULL,
     ended_at TEXT,
     duration_seconds INTEGER,
-    state_requested_at TEXT
+    state_requested_at TEXT,
+    -- X-Sequence of the last batch written (-1 = none yet) and how many
+    -- sequences were skipped (lost on the way) - see spectate.ingest().
+    last_sequence INTEGER NOT NULL DEFAULT -1,
+    lost_batches INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS live_sessions_game_name_idx ON live_sessions(game_name);

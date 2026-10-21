@@ -198,11 +198,43 @@ def ingest():
 
     db = get_db()
     reap_stale_live_sessions(db, exclude_session_id=session_id)
+    # This INSERT opens the write transaction, and SQLite lets only one
+    # writer in at a time: a second request for the same batch (the host
+    # retrying while this one is still running on the other thread) waits
+    # here until this one commits, then sees its last_sequence below.
     _ensure_session_row(db, session_id, stored_name, owner_name)
+    row = db.execute(
+        "SELECT stored_name, bytes_received, last_sequence FROM live_sessions WHERE session_id = ?",
+        (session_id,),
+    ).fetchone()
+
+    # The host resends a batch it got no 2xx for (n02_stream.cpp) - one that
+    # did land here but whose reply got lost would otherwise be appended
+    # twice. A late duplicate of sequence 0 would even truncate the file.
+    if sequence <= row["last_sequence"]:
+        db.execute("UPDATE live_sessions SET updated_at = ? WHERE session_id = ?", (now(), session_id))
+        db.commit()
+        return ("", 204, {"X-Duplicate": "1"})
+
+    # A sequence that skips ahead = batches lost on the way (an older DLL
+    # counted a batch as sent whatever the reply). Every spectator, replay
+    # and "Ir ao vivo!" is shifted from here on, so leave a trace of it.
+    # last_sequence -1 with a sequence > 0: a session that started before
+    # this column existed - nothing to compare against.
+    gap = sequence - row["last_sequence"] - 1 if row["last_sequence"] >= 0 else 0
+    if gap > 0:
+        current_app.logger.warning("spectate ingest %s: %d lote(s) perdido(s) antes da sequencia %d", session_id, gap, sequence)
+
+    # Written at bytes_received, not appended: bytes a failed earlier attempt
+    # left on disk past it (written, then the commit failed) get overwritten
+    # instead of shifting everything after them.
+    offset = 0 if sequence == 0 else row["bytes_received"]
+    with file_path.open("r+b" if file_path.exists() else "wb") as f:
+        f.seek(offset)
+        f.write(body)
+        f.truncate()
 
     if sequence == 0:
-        with file_path.open("wb") as f:
-            f.write(body)
         header = _parse_header(body)
         if header:
             db.execute(
@@ -210,16 +242,13 @@ def ingest():
                    WHERE session_id=?""",
                 (header["app_name"], header["game_name"], header["player_names"], now(), session_id),
             )
-    else:
-        # A missing sequence 0 (e.g. server restarted mid-session) just means
-        # we lose the header/metadata for this session - still append so we
-        # don't lose the frame data itself.
-        with file_path.open("ab") as f:
-            f.write(body)
+    # A missing sequence 0 (e.g. server restarted mid-session) just means we
+    # lose the header/metadata for this session - the frame data is still kept.
 
     db.execute(
-        "UPDATE live_sessions SET bytes_received = bytes_received + ?, updated_at = ? WHERE session_id = ?",
-        (len(body), now(), session_id),
+        """UPDATE live_sessions SET bytes_received = ?, last_sequence = ?, lost_batches = lost_batches + ?, updated_at = ?
+           WHERE session_id = ?""",
+        (offset + len(body), sequence, gap, now(), session_id),
     )
 
     if session_end:
