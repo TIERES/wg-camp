@@ -84,6 +84,7 @@ class UpdatesTest(unittest.TestCase):
         self.assertNotIn(b"RetroArch-1.16.0.FFW.TIERES.0.7.zip", response.data)
         self.assertNotIn(b"RetroArch-1.16.0.FFW.TIERES.0.6.zip", response.data)
         self.assertIn("ele se atualiza sozinho".encode("utf-8"), response.data)
+        self.assertIn(b"plugin Kaillera netplay v.TIERES.0.30", response.data)
         self.assertNotIn(b"RetroArch-1.16.0.FFW.TIERES.0.5.zip", response.data)
         self.assertNotIn(b"RetroArch-1.16.0.FFW.TIERES.0.4.zip", response.data)
         # light card hidden (mostrar_atualizacao_manual): the DLL updates the package
@@ -138,6 +139,7 @@ class UpdatesTest(unittest.TestCase):
         self.assertIn("Atualização light: TIERES 0.8".encode("utf-8"), page)
         self.assertIn(b"https://archive.org/download/one-two-iso/RetroArch-1.16.0.FFW.TIERES.0.8.light.zip", page)
         self.assertIn("cada jogador escolhe o memory card do próprio slot".encode("utf-8"), page)
+        self.assertIn("M. Card da ISO vale para uma partida por vez em cada jogo".encode("utf-8"), page)
         self.assertNotIn(b"RetroArch-1.16.0.FFW.TIERES.0.7.light.zip", page)
         self.assertNotIn(b"RetroArch-1.16.0.FFW.TIERES.0.6.light.zip", page)
         self.assertNotIn(b"RetroArch-1.16.0.FFW.TIERES.0.5.light.zip", page)
