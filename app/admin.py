@@ -839,7 +839,7 @@ def _iso_card(game, slot=1):
 @bp.get("/jogos/<content_id>/memory-card")
 @login_required
 def iso_card(content_id):
-    from .memcards import ISO_CARD_SLOTS
+    from .memcards import ISO_CARD_SLOTS, iso_lock
 
     game = _iso_card_game(content_id)
     slots = []
@@ -849,7 +849,21 @@ def iso_card(content_id):
             "SELECT * FROM memcard_versions WHERE memcard_id = ? ORDER BY version DESC", (card["id"],)
         ).fetchall() if card else []
         slots.append({"slot": slot, "card": card, "versions": versions})
-    return render_template("admin/iso_memcard.html", game=game, slots=slots)
+    lock = iso_lock(get_db(), game["id"]) if game["id"] else None
+    return render_template("admin/iso_memcard.html", game=game, slots=slots, lock=lock)
+
+
+@bp.post("/jogos/<content_id>/memory-card/liberar")
+@login_required
+def iso_card_unlock(content_id):
+    validate_csrf()
+    game = _iso_card_game(content_id)
+    if game["id"]:
+        db = get_db()
+        db.execute("DELETE FROM iso_card_locks WHERE game_id = ?", (game["id"],))
+        db.commit()
+        flash("M. Card da ISO liberado: uma nova partida já pode usá-lo.", "success")
+    return redirect(url_for("admin.iso_card", content_id=game["content_id"]))
 
 
 @bp.post("/jogos/<content_id>/memory-card/enviar")

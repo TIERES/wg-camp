@@ -36,6 +36,8 @@ def close_db(_error=None):
 #    (MEMCARDS_DIR/<sha256>.mcd), então versões iguais compartilham o arquivo;
 #  - um memcard sem player_id é o "M. Card da ISO": um cartão só do jogo,
 #    usado por todos que jogam nesse modo (no máximo um por jogo);
+#  - iso_card_locks: a partida que está usando o M. Card da ISO de um jogo
+#    (uma por vez - holder = os nicks dela; expira se o DLL parar de renovar);
 #  - room_tickets são os "ingressos" de uso único que provam, ao host de uma
 #    sala "Só logados", que quem entrou é mesmo o dono da conta.
 PLAYERS_DDL = """
@@ -106,6 +108,18 @@ CREATE TABLE IF NOT EXISTS room_tickets (
     used_at TEXT,
     verified_by INTEGER REFERENCES players(id) ON DELETE SET NULL
 );
+
+CREATE TABLE IF NOT EXISTS iso_card_locks (
+    game_id INTEGER PRIMARY KEY REFERENCES games(id) ON DELETE CASCADE,
+    holder TEXT NOT NULL,
+    players TEXT NOT NULL DEFAULT '',
+    room_game TEXT NOT NULL DEFAULT '',
+    server TEXT NOT NULL DEFAULT '',
+    started_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS iso_card_locks_room_game_idx ON iso_card_locks(room_game COLLATE NOCASE);
 
 CREATE TABLE IF NOT EXISTS voice_requests (
     id INTEGER PRIMARY KEY,

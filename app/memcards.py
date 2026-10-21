@@ -347,6 +347,64 @@ ISO_SLOT_PLAYER = "ISO"
 # Bases que um envio pode citar (o cartão do checkout + os saves da partida).
 MAX_COMMIT_BASES = 32
 
+# M. Card da ISO: uma partida por vez. O checkout (mode=iso, lock=1) prende
+# os cartões do jogo para a partida - identificada pela lista de jogadores,
+# a mesma em todos os PCs dela -, o DLL renova a cada minuto (iso-lock
+# action=renew) e solta no fim (action=release). Um PC que fechou sem soltar
+# deixa a trava expirar sozinha. Antes do Start, o DLL pergunta pelo nome do
+# jogo da sala (action=status) - o content_id só existe depois que o
+# RetroArch abre o jogo -, e o checkout confere de novo pelo content_id.
+ISO_LOCK_TTL_SECONDS = 5 * 60
+
+
+def _lock_holder(names):
+    return ",".join(name.lower() for name in names)
+
+
+def iso_lock(db, game_id):
+    """A trava em vigor do M. Card da ISO do jogo, ou None."""
+    return db.execute(
+        "SELECT * FROM iso_card_locks WHERE game_id = ? AND expires_at > datetime('now')", (game_id,)
+    ).fetchone()
+
+
+def take_iso_lock(db, game_id, names, room_game="", server=""):
+    """Prende (ou renova) o M. Card da ISO do jogo para a partida de `names`.
+    Devolve None, ou a trava da outra partida que está com ele."""
+    holder = _lock_holder(names)
+    current = iso_lock(db, game_id)
+    if current and current["holder"] != holder:
+        return current
+    renewing = current is not None
+    db.execute(
+        "INSERT INTO iso_card_locks (game_id, holder, players, room_game, server, started_at, expires_at) "
+        "VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now', ?)) "
+        "ON CONFLICT(game_id) DO UPDATE SET holder = excluded.holder, players = excluded.players, "
+        "room_game = CASE WHEN excluded.room_game != '' OR NOT ? THEN excluded.room_game ELSE room_game END, "
+        "server = CASE WHEN excluded.server != '' OR NOT ? THEN excluded.server ELSE server END, "
+        "started_at = CASE WHEN ? THEN started_at ELSE excluded.started_at END, "
+        "expires_at = excluded.expires_at",
+        (game_id, holder, ", ".join(names), room_game[:200], server[:200], f"+{ISO_LOCK_TTL_SECONDS} seconds",
+         renewing, renewing, renewing),
+    )
+    return None
+
+
+def release_iso_lock(db, game_id, names):
+    db.execute("DELETE FROM iso_card_locks WHERE game_id = ? AND holder = ?", (game_id, _lock_holder(names)))
+
+
+def _lock_busy_fields(lock):
+    """A outra partida, para o DLL avisar a sala (texto sem acentos, como as
+    mensagens do DLL)."""
+    where = f" no servidor {lock['server']}" if lock["server"] else ""
+    return {
+        "lock_players": lock["players"],
+        "lock_server": lock["server"],
+        "lock_started_at": lock["started_at"],
+        "message": f"O M. Card da ISO deste jogo esta em uso na partida de {lock['players']}{where}.",
+    }
+
 
 def _discord_fields(player):
     """Discord vinculado (app/discord.py), para o DLL ligar sozinho a
@@ -491,7 +549,13 @@ def api_checkout():
     vazio (slotN_player e slotN_sha256 em branco), sem cartão e sem nada
     para salvar. Como os PCs sem login também pedem (com a chave do DLL),
     todos recebem os mesmos slots. Sem esse campo (DLL antigo), os dois
-    jogadores precisam ter conta, como antes."""
+    jogadores precisam ter conta, como antes.
+
+    mode=iso com lock=1 (e room_game = nome do jogo da sala, server = onde
+    ela está): prende os cartões do jogo para esta partida (ver
+    take_iso_lock). Se outra partida já está com eles: 409 iso_in_use, com
+    quem está jogando (lock_players / lock_server) - e a resposta normal traz
+    lock=1."""
     iso = request.form.get("mode") == "iso"
     accounts_field = request.form.get("accounts")
     player = _api_player()
@@ -507,9 +571,19 @@ def api_checkout():
     db = get_db()
     if iso:
         game = get_or_create_game(db, content_id, request.form.get("game_name", ""))
+        locking = request.form.get("lock") == "1"
+        if locking:
+            busy = take_iso_lock(db, game["id"], names, (request.form.get("room_game") or "").strip(),
+                                 (request.form.get("server") or "").strip())
+            if busy:
+                db.commit()
+                return _reply(409, ok=0, error="iso_in_use", **_lock_busy_fields(busy))
         slots = ISO_CARD_SLOTS if request.form.get("iso_slots") == "2" else ISO_CARD_SLOTS[:1]
         fields = {"ok": 1, "mode": "iso", "game_id": game["id"], "game_name": game["name"], "slots": len(slots),
                   "multi_base": 1}
+        if locking:
+            fields["lock"] = 1  # o DLL renova e solta a trava (iso-lock)
+            fields["lock_ttl"] = ISO_LOCK_TTL_SECONDS
         for slot in slots:
             card = get_or_create_iso_memcard(db, game["id"], slot)
             version = current_version(db, card["id"])
@@ -557,6 +631,52 @@ def api_checkout():
         fields[f"slot{slot}_sha256"] = version["sha256"]
     db.commit()
     return _reply(**fields)
+
+
+@api_bp.post("/iso-lock")
+def api_iso_lock():
+    """A trava do M. Card da ISO (ver take_iso_lock). Form: action, players
+    (nicks da partida, na ordem 1P,2P,...) e:
+      - status: room_game - o host pergunta antes do Start se outra partida
+        do jogo com esse nome está com o M. Card da ISO (busy=1 + quem);
+      - renew: content_id (+ room_game, server) - durante a partida, a cada
+        minuto; 409 iso_in_use se a trava expirou e outra partida pegou;
+      - release: content_id - fim da partida.
+    Com o token de quem está logado ou a chave do DLL."""
+    if not _api_player() and not _api_key_ok():
+        return _error(401, "invalid_token", "Faca login novamente.")
+    action = request.form.get("action", "")
+    names = _player_list(request.form.get("players"))
+    if not names or action not in {"status", "renew", "release"}:
+        return _error(400, "bad_request")
+    db = get_db()
+    if action == "status":
+        room_game = (request.form.get("room_game") or "").strip()
+        if not room_game:
+            return _error(400, "bad_request")
+        lock = db.execute(
+            "SELECT * FROM iso_card_locks WHERE room_game = ? COLLATE NOCASE AND holder != ? "
+            "AND expires_at > datetime('now') ORDER BY started_at LIMIT 1",
+            (room_game, _lock_holder(names)),
+        ).fetchone()
+        if not lock:
+            return _reply(ok=1, busy=0)
+        return _reply(ok=1, busy=1, **_lock_busy_fields(lock))
+
+    content_id = normalize_content_id(request.form.get("content_id"))
+    game = content_id and db.execute("SELECT * FROM games WHERE content_id = ?", (content_id,)).fetchone()
+    if not game:
+        return _error(404, "unknown_game")
+    if action == "release":
+        release_iso_lock(db, game["id"], names)
+        db.commit()
+        return _reply(ok=1)
+    busy = take_iso_lock(db, game["id"], names, (request.form.get("room_game") or "").strip(),
+                         (request.form.get("server") or "").strip())
+    db.commit()
+    if busy:
+        return _reply(409, ok=0, error="iso_in_use", **_lock_busy_fields(busy))
+    return _reply(ok=1, lock_ttl=ISO_LOCK_TTL_SECONDS)
 
 
 @api_bp.get("/card/<sha>")
