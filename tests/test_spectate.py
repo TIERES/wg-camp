@@ -110,6 +110,116 @@ class SpectateIngestTest(unittest.TestCase):
         self.assertEqual(with_key.status_code, 204)
 
 
+class SpectateIngestSequenceTest(SpectateIngestTest):
+    """The host resends a batch until it gets a 2xx (n02_stream.cpp), so the
+    same X-Sequence can arrive more than once - and an older DLL could skip
+    one (a 502 it never noticed). Inherits the setUp and the basic tests."""
+
+    def _post(self, sequence, body, end=False, client=None):
+        headers = {"X-Session-Id": "111-222", "X-Sequence": str(sequence)}
+        if end:
+            headers["X-Session-End"] = "true"
+        return (client or self.client).post("/spectate/ingest", data=body, headers=headers,
+                                             content_type="application/octet-stream")
+
+    def _row(self):
+        with self.app.app_context():
+            return get_db().execute("SELECT * FROM live_sessions WHERE session_id = ?", ("111-222",)).fetchone()
+
+    def _part(self):
+        return (self.live_dir / "111-222.krec.part").read_bytes()
+
+    def test_resent_batch_is_written_once(self):
+        first = build_header() + frame_record()
+        second = frame_record(b"\x03\x04")
+        self.assertEqual(self._post(0, first).status_code, 204)
+        self.assertEqual(self._post(1, second).status_code, 204)
+        again = self._post(1, second)  # its reply got lost - the host sends it again
+        self.assertEqual(again.status_code, 204)
+        self.assertEqual(again.headers.get("X-Duplicate"), "1")
+        self.assertEqual(self._post(2, frame_record(b"\x05\x06")).status_code, 204)
+
+        self.assertEqual(self._part(), first + second + frame_record(b"\x05\x06"))
+        row = self._row()
+        self.assertEqual(row["bytes_received"], len(self._part()))
+        self.assertEqual(row["last_sequence"], 2)
+        self.assertEqual(row["lost_batches"], 0)
+
+    def test_late_duplicate_of_first_batch_does_not_truncate(self):
+        first = build_header() + frame_record()
+        self._post(0, first)
+        self._post(1, frame_record(b"\x03\x04"))
+        self.assertEqual(self._post(0, first).headers.get("X-Duplicate"), "1")
+        self.assertEqual(self._part(), first + frame_record(b"\x03\x04"))
+
+    def test_resent_final_batch_keeps_the_finished_replay(self):
+        first = build_header() + frame_record()
+        last = frame_record(b"\x03\x04")
+        self._post(0, first)
+        self._post(1, last, end=True)
+        self.assertEqual(self._post(1, last, end=True).status_code, 204)
+        self.assertEqual((self.live_dir / "111-222.krec").read_bytes(), first + last)
+        self.assertFalse((self.live_dir / "111-222.krec.part").exists())
+        self.assertEqual(self._row()["status"], "finished")
+
+    def test_skipped_sequence_is_counted_and_data_kept(self):
+        first = build_header() + frame_record()
+        self._post(0, first)
+        self._post(1, frame_record(b"\x03\x04"))
+        with self.assertLogs(self.app.logger, level="WARNING") as logs:
+            self._post(4, frame_record(b"\x09\x09"))  # 2 and 3 never arrived
+        self.assertIn("2 lote(s) perdido(s)", logs.output[0])
+        row = self._row()
+        self.assertEqual(row["lost_batches"], 2)
+        self.assertEqual(row["last_sequence"], 4)
+        self.assertEqual(self._part(), first + frame_record(b"\x03\x04") + frame_record(b"\x09\x09"))
+
+    def test_session_from_before_the_sequence_column_is_not_a_gap(self):
+        first = build_header() + frame_record()
+        self._post(0, first)
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE live_sessions SET last_sequence = -1 WHERE session_id = '111-222'")
+            db.commit()
+        self._post(37, frame_record(b"\x03\x04"))
+        row = self._row()
+        self.assertEqual(row["lost_batches"], 0)
+        self.assertEqual(row["last_sequence"], 37)
+
+    def test_bytes_past_bytes_received_are_overwritten(self):
+        """A batch written to disk whose commit then failed leaves bytes past
+        bytes_received; its resend must land on top of them, not after."""
+        first = build_header() + frame_record()
+        self._post(0, first)
+        with (self.live_dir / "111-222.krec.part").open("ab") as f:
+            f.write(b"\x12\x02\x00\xAA")  # the failed attempt's (partial) bytes
+        self._post(1, frame_record(b"\x03\x04"))
+        self.assertEqual(self._part(), first + frame_record(b"\x03\x04"))
+        self.assertEqual(self._row()["bytes_received"], len(self._part()))
+
+    def test_same_batch_on_two_threads_at_once_is_written_once(self):
+        import threading
+        first = build_header() + frame_record()
+        self._post(0, first)
+        body = frame_record(b"\x07" * 400)
+        barrier = threading.Barrier(2)
+        codes = []
+
+        def send():
+            client = self.app.test_client()
+            barrier.wait()
+            codes.append(self._post(1, body, client=client).status_code)
+
+        threads = [threading.Thread(target=send) for _ in range(2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(codes, [204, 204])
+        self.assertEqual(self._part(), first + body)
+        self.assertEqual(self._row()["bytes_received"], len(first + body))
+
+
 class SpectateWatchTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
