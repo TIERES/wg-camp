@@ -2,6 +2,19 @@
     email admin@wgs.dev.br
 }
 
+# O app (gunicorn), sem reaproveitar conexões: com keep-alive o Caddy às
+# vezes escrevia um POST numa conexão que o gunicorn tinha acabado de fechar
+# (o keep-alive dele é de 2 s), e um POST não é reenviado - virava 502. Era
+# assim que lotes do Stream ao vivo (/spectate/ingest) se perdiam e quem
+# acompanhava a partida dessincronizava.
+(gunicorn) {
+    reverse_proxy 127.0.0.1:8000 {
+        transport http {
+            keepalive off
+        }
+    }
+}
+
 # Pacote do atualizador do RetroArch TIERES (manifesto + arquivos pelo
 # sha256, deploy/publish_pacote.sh): servido direto da pasta, sem passar pelo
 # gunicorn - são uns 25 MB por jogador, e o app só tem 2 threads.
@@ -18,7 +31,7 @@
 we2002.wgs.dev.br {
     import pacote_tieres
     handle {
-        reverse_proxy 127.0.0.1:8000
+        import gunicorn
     }
 }
 
@@ -29,30 +42,30 @@ we2002.wgs.dev.br {
 # Scoped to only these paths; everything else 404s.
 http://:8080 {
     handle /spectate/ingest {
-        reverse_proxy 127.0.0.1:8000
+        import gunicorn
     }
     handle /spectate/lookup {
-        reverse_proxy 127.0.0.1:8000
+        import gunicorn
     }
     handle /spectate/stream/* {
-        reverse_proxy 127.0.0.1:8000
+        import gunicorn
     }
     # "Ir direto para o Ao Vivo!" (Watch Live toolbar) - state hand-off
     # between a spectator and the host, per session id.
     handle /spectate/*/state-request {
-        reverse_proxy 127.0.0.1:8000
+        import gunicorn
     }
     handle /spectate/*/state {
-        reverse_proxy 127.0.0.1:8000
+        import gunicorn
     }
     handle /replays/* {
-        reverse_proxy 127.0.0.1:8000
+        import gunicorn
     }
     # O DLL rodando no Wine baixa o pacote por aqui (o HTTPS do Wine trava em
     # algumas versões).
     import pacote_tieres
     handle /updates/* {
-        reverse_proxy 127.0.0.1:8000
+        import gunicorn
     }
     handle {
         respond 404
