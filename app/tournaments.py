@@ -12,6 +12,7 @@ import json
 import re
 import secrets
 import sqlite3
+import time
 from functools import wraps
 from pathlib import Path
 from unicodedata import normalize
@@ -23,7 +24,7 @@ from markupsafe import Markup
 from .db import get_db, now
 from .players import player_required
 from .security import login_required, validate_csrf
-from .tournament import engine, formats, store
+from .tournament import engine, formats, reports, store
 from .tournament.store import TournamentError
 from .tournament.teams import KINDS as TEAM_KINDS, TEAM_MODES, generated_badge
 from .wallet import (KINDS, MONEY_SETTINGS, SETTING_LABELS, InsufficientFunds, ensure_wallet, format_cents,
@@ -233,6 +234,13 @@ def show(slug):
     pool = store.prize_pool(db, tournament["id"])
     split = engine.parse_split(tournament["prize_split"])
     names = _names(db, tournament)
+    my_pending = []
+    if my_entry and tournament["status"] == "running":
+        my_pending = db.execute(
+            "SELECT m.* FROM tournament_matches m JOIN tournament_stages s ON s.id = m.stage_id "
+            "WHERE s.tournament_id = ? AND s.status = 'running' AND m.status != 'confirmed' "
+            "AND ? IN (m.home_entry_id, m.away_entry_id) ORDER BY m.round, m.leg, m.id",
+            (tournament["id"], my_entry["id"])).fetchall()
     # Times da lista (modos choose/draw): todos, com o dono quando já tem.
     team_list = [dict(row, image=team_image(row, tournament["team_display"])) for row in db.execute(
         "SELECT t.*, p.username AS owner FROM tournament_teams tt JOIN teams t ON t.id = tt.team_id "
@@ -241,7 +249,7 @@ def show(slug):
         (tournament["id"],))]
     return render_template(
         "tournaments/show.html", t=tournament, entries=entries, my_entry=my_entry, stages=stages, tab=tab,
-        team_list=team_list, team_modes=TEAM_MODES, crests=_crests(names),
+        team_list=team_list, team_modes=TEAM_MODES, crests=_crests(names), my_pending=my_pending,
         names=names, can_manage=can_manage(tournament),
         format_label=formats.FORMATS[tournament["format"]], summary=formats.describe(tournament["format"], config),
         status_labels=STATUS_LABELS, pool=pool, split=split,
@@ -402,7 +410,14 @@ def manage(slug):
         complete = store.stage_complete(db, current["stage"])
         next_stage = store.has_next_stage(tournament, current["stage"])
         can_advance, can_finish = complete and next_stage, complete and not next_stage
+    open_reports = db.execute(
+        "SELECT m.* FROM tournament_matches m JOIN tournament_stages s ON s.id = m.stage_id "
+        "WHERE s.tournament_id = ? AND m.status IN ('disputed', 'reported') ORDER BY m.status = 'reported', m.id",
+        (tournament["id"],)).fetchall()
+    my_entry = db.execute("SELECT id FROM tournament_entries WHERE tournament_id = ? AND player_id = ?",
+                          (tournament["id"], session.get("player_id"))).fetchone()
     return render_template("tournaments/manage.html", t=tournament, entries=store.entries_of(db, tournament["id"]),
+                           open_reports=open_reports, my_entry_id=None if is_admin() or not my_entry else my_entry[0],
                            current=current, names=_names(db, tournament), decisive=decisive,
                            can_advance=can_advance, can_finish=can_finish, is_admin=is_admin(),
                            status_labels=STATUS_LABELS)
@@ -441,20 +456,144 @@ def remove_entry(tournament, entry_id):
     return redirect(url_for("tournaments.manage", slug=tournament["slug"]))
 
 
+def _score_form():
+    return tuple(_int_or_none(request.form.get(key)) for key in ("home_goals", "away_goals", "home_pens", "away_pens"))
+
+
 @bp.post("/<slug>/partidas/<int:match_id>")
 @manager_required
 def result(tournament, match_id):
+    """Organizador/admin define, corrige ou apaga o resultado."""
+    db = get_db()
+    back = request.form.get("voltar") == "jogo"
+    target = (url_for("tournaments.match", slug=tournament["slug"], match_id=match_id) if back
+              else url_for("tournaments.manage", slug=tournament["slug"]) + f"#jogo-{match_id}")
+    match = db.execute("SELECT * FROM tournament_matches WHERE id = ?", (match_id,)).fetchone()
+    if match and not is_admin() and reports.player_entry(db, tournament, match, session.get("player_id")):
+        flash("Você joga esta partida: reporte o placar como jogador. Contestações dos seus jogos são decididas "
+              "pela administração do WE Camp.", "error")
+        return redirect(target)
+    user_id = session.get("user_id") if is_admin() else None
+    organizer = None if user_id else db.execute(
+        "SELECT * FROM tournament_entries WHERE tournament_id = ? AND player_id = ?",
+        (tournament["id"], session.get("player_id"))).fetchone()
+    comment = request.form.get("comment", "")
     if request.form.get("acao") == "apagar":
-        _run(lambda db, t: store.clear_result(db, t, match_id), tournament, "Resultado apagado.")
+        _run(lambda db, t: reports.clear(db, t, match_id, user_id=user_id, entry=organizer), tournament,
+             "Resultado apagado.")
     else:
         try:
-            values = [_int_or_none(request.form.get(key)) for key in ("home_goals", "away_goals", "home_pens",
-                                                                       "away_pens")]
+            score = _score_form()
         except TournamentError as error:
             flash(str(error), "error")
         else:
-            _run(lambda db, t: store.record_result(db, t, match_id, *values), tournament, "Resultado salvo.")
-    return redirect(url_for("tournaments.manage", slug=tournament["slug"]) + f"#jogo-{match_id}")
+            _run(lambda db, t: reports.resolve(db, t, match_id, score, user_id=user_id, entry=organizer,
+                                               comment=comment), tournament, "Resultado salvo.")
+    return redirect(target)
+
+
+# --- Jogador: reportar, confirmar, contestar ----------------------------------
+
+def _match_or_404(db, tournament, match_id):
+    match = db.execute(
+        "SELECT m.*, s.name AS stage_name, s.status AS stage_status, s.kind AS stage_kind, s.tournament_id "
+        "FROM tournament_matches m JOIN tournament_stages s ON s.id = m.stage_id WHERE m.id = ?",
+        (match_id,)).fetchone()
+    if match is None or match["tournament_id"] != tournament["id"]:
+        abort(404)
+    return match
+
+
+@bp.get("/<slug>/jogos/<int:match_id>")
+def match(slug, match_id):
+    db = get_db()
+    tournament = _load(slug)
+    m = _match_or_404(db, tournament, match_id)
+    names = _names(db, tournament)
+    me = reports.player_entry(db, tournament, m, session.get("player_id")) if session.get("player_id") else None
+    manager = can_manage(tournament) and (is_admin() or me is None)
+    return render_template(
+        "tournaments/match.html", t=tournament, m=m, names=names, me=me, manager=manager,
+        history=reports.history(db, match_id), labels=reports.ACTION_LABELS,
+        reported=reports.last_report(db, match_id) if m["status"] in ("reported", "disputed") else None,
+        deadline=reports.deadline(db, m) if m["status"] == "reported" else None,
+        decisive=store.needs_pens(db, m), open=tournament["status"] == "running" and m["stage_status"] == "running")
+
+
+def _player_action(slug, match_id, action, success):
+    tournament = _load(slug)
+    validate_csrf()
+    _run(lambda db, t: action(db, t), tournament, success)
+    return redirect(url_for("tournaments.match", slug=slug, match_id=match_id))
+
+
+@bp.post("/<slug>/jogos/<int:match_id>/reportar")
+@player_required
+def match_report(slug, match_id):
+    try:
+        score = _score_form()
+    except TournamentError as error:
+        flash(str(error), "error")
+        return redirect(url_for("tournaments.match", slug=slug, match_id=match_id))
+    return _player_action(slug, match_id, lambda db, t: reports.report(
+        db, t, match_id, session["player_id"], score, request.form.get("comment", "")),
+        "Placar enviado. Agora o adversário confirma ou contesta.")
+
+
+@bp.post("/<slug>/jogos/<int:match_id>/confirmar")
+@player_required
+def match_confirm(slug, match_id):
+    return _player_action(slug, match_id, lambda db, t: reports.confirm(db, t, match_id, session["player_id"]),
+                          "Resultado confirmado!")
+
+
+@bp.post("/<slug>/jogos/<int:match_id>/contestar")
+@player_required
+def match_dispute(slug, match_id):
+    try:
+        score = _score_form()
+    except TournamentError as error:
+        flash(str(error), "error")
+        return redirect(url_for("tournaments.match", slug=slug, match_id=match_id))
+    if score[0] is None or score[1] is None:
+        score = None
+    return _player_action(slug, match_id, lambda db, t: reports.dispute(
+        db, t, match_id, session["player_id"], request.form.get("comment", ""), score),
+        "Contestação enviada ao organizador.")
+
+
+@bp.get("/meus-jogos")
+@player_required
+def my_matches():
+    db = get_db()
+    rows = reports.pending_for_player(db, session["player_id"])
+    tournaments = {}
+    for row in rows:
+        if row["tournament_id"] not in tournaments:
+            tournaments[row["tournament_id"]] = store.get_tournament(db, row["tournament_id"])
+    names = {}
+    for tournament in tournaments.values():
+        names.update(_names(db, tournament))
+    return render_template("tournaments/my_matches.html", rows=rows, names=names,
+                           deadlines={r["id"]: reports.deadline(db, r) for r in rows if r["status"] == "reported"})
+
+
+_last_auto_confirm = [0.0]
+
+
+@bp.before_app_request
+def _auto_confirm_reports():
+    """Confirma placares sem resposta no prazo - no máximo uma vez por minuto,
+    a partir das páginas de torneio (não há cron no servidor)."""
+    if not (request.path.startswith("/torneios") or request.path.startswith("/admin/torneios")):
+        return
+    if time.monotonic() - _last_auto_confirm[0] < 60:
+        return
+    _last_auto_confirm[0] = time.monotonic()
+    try:
+        reports.auto_confirm(get_db())
+    except sqlite3.OperationalError:
+        pass  # banco sem as tabelas ainda
 
 
 @bp.post("/<slug>/proxima-fase")
@@ -512,9 +651,12 @@ def admin_settings():
             if key in MONEY_SETTINGS:
                 updates[key] = parse_cents(raw)
             else:
-                updates[key] = int(raw)
+                try:
+                    updates[key] = int(raw)
+                except ValueError:
+                    raise ValueError(f"{SETTING_LABELS[key]}: use um número inteiro.")
                 if updates[key] < 1:
-                    raise ValueError("O limite de torneios em aberto precisa ser pelo menos 1.")
+                    raise ValueError(f"{SETTING_LABELS[key]}: precisa ser pelo menos 1.")
     except ValueError as error:
         flash(f"{error}", "error")
     else:
@@ -710,6 +852,13 @@ def inject_wallet():
         if ensure_wallet(db, player_id):
             db.commit()
         row = db.execute("SELECT wallet_cents FROM players WHERE id = ?", (player_id,)).fetchone()
+        # Jogos esperando uma ação do jogador: sem placar, ou com placar do adversário para confirmar.
+        todo = db.execute(
+            "SELECT COUNT(*) FROM tournament_entries e JOIN tournaments t ON t.id = e.tournament_id "
+            "JOIN tournament_stages s ON s.tournament_id = t.id AND s.status = 'running' "
+            "JOIN tournament_matches m ON m.stage_id = s.id AND (m.home_entry_id = e.id OR m.away_entry_id = e.id) "
+            "WHERE e.player_id = ? AND t.status = 'running' AND (m.status = 'scheduled' OR "
+            "(m.status = 'reported' AND m.reported_by_entry_id != e.id))", (player_id,)).fetchone()[0]
     except sqlite3.OperationalError:
         return {}  # banco ainda sem as colunas da carteira
-    return {"wallet_balance": row["wallet_cents"] if row else None}
+    return {"wallet_balance": row["wallet_cents"] if row else None, "matches_todo": todo}

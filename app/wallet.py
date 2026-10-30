@@ -23,6 +23,7 @@ SETTING_DEFAULTS = {
     "torneios_empate": 25,                #           E W$0,25
     "torneios_derrota": 0,                #           D W$0,00
     "torneios_abertos_por_jogador": 3,    # torneios não encerrados que um jogador pode ter criado
+    "torneios_confirmacao_horas": 24,     # placar reportado sem resposta é confirmado depois disso
 }
 SETTING_LABELS = {
     "torneios_bonus_inicial": "Saldo inicial de cada conta",
@@ -31,6 +32,7 @@ SETTING_LABELS = {
     "torneios_empate": "Prêmio por empate",
     "torneios_derrota": "Prêmio por derrota",
     "torneios_abertos_por_jogador": "Torneios em aberto por criador (quantidade, não W$)",
+    "torneios_confirmacao_horas": "Horas para o adversário responder a um placar reportado (depois, confirma sozinho)",
 }
 MONEY_SETTINGS = ("torneios_bonus_inicial", "torneios_inscricao_max", "torneios_vitoria",
                   "torneios_empate", "torneios_derrota")

@@ -35,6 +35,13 @@
   </div>
 </section>
 
+{% if my_pending %}
+<section class="my-pending">
+  <h2>Seus jogos pendentes</h2>
+  {% for m in my_pending %}{{ match_line(m, names, t.slug) }}{% endfor %}
+</section>
+{% endif %}
+
 <nav class="tabs">
   <a href="?aba=geral" class="{{ 'active' if tab == 'geral' }}">Visão geral</a>
   {% if stages %}<a href="?aba=tabela" class="{{ 'active' if tab == 'tabela' }}">Tabela e chaves</a>
@@ -95,7 +102,7 @@
     {% for rnd in view.rounds %}
     <details class="round" {% if not loop.last or view.stage.status == 'running' %}open{% endif %}>
       <summary>{{ rnd.name }}</summary>
-      {% for m in rnd.matches %}{{ match_line(m, names) }}{% endfor %}
+      {% for m in rnd.matches %}{{ match_line(m, names, t.slug) }}{% endfor %}
     </details>
     {% else %}<p class="muted">Sem jogos.</p>{% endfor %}
   </section>

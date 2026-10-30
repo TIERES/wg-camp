@@ -2,12 +2,16 @@
 {% if m.status == 'confirmed' %}<strong>{{ m.home_goals }} x {{ m.away_goals }}</strong>{% if m.home_pens is not none %} <small>({{ m.home_pens }} x {{ m.away_pens }} pên.)</small>{% endif %}{% else %}<span class="muted">x</span>{% endif %}
 {%- endmacro %}
 
-{% macro match_line(m, names) -%}
-<div class="match-line{% if m.status == 'confirmed' %} done{% endif %}" id="jogo-{{ m.id }}">
+{% macro status_chip(m) -%}
+{% if m.status == 'reported' %}<span class="chip chip-reported">aguardando confirmação</span>{% elif m.status == 'disputed' %}<span class="chip chip-disputed">contestado</span>{% endif %}
+{%- endmacro %}
+
+{% macro match_line(m, names, slug=none) -%}
+<{{ 'a' if slug else 'div' }} class="match-line{% if m.status == 'confirmed' %} done{% endif %}" id="jogo-{{ m.id }}"{% if slug %} href="{{ url_for('tournaments.match', slug=slug, match_id=m.id) }}"{% endif %}>
   <span class="home">{{ names[m.home_entry_id] }}</span>
-  <span class="score">{{ score(m) }}</span>
+  <span class="score">{{ score(m) }}{{ status_chip(m) }}</span>
   <span class="away">{{ names[m.away_entry_id] }}</span>
-</div>
+</{{ 'a' if slug else 'div' }}>
 {%- endmacro %}
 
 {% macro standings(table, names, highlight=0, playoff=0) -%}

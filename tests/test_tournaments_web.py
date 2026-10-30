@@ -88,7 +88,8 @@ class TournamentsWebTest(unittest.TestCase):
                 if not pending:
                     return
                 for row in pending:
-                    owner.post(f"/torneios/{slug}/partidas/{row['id']}", data={
+                    # O organizador joga este torneio: quem lança é a administração.
+                    admin.post(f"/torneios/{slug}/partidas/{row['id']}", data={
                         "csrf_token": CSRF, "home_goals": "2", "away_goals": "1", "acao": "salvar"})
 
         play_all()

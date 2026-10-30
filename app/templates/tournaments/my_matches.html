@@ -1,0 +1,16 @@
+{% extends 'base.html' %}{% block title %}Meus jogos · WE Camp{% endblock %}{% block content %}
+<h1>Meus jogos</h1>
+<p class="muted">Jogos dos seus torneios em andamento que ainda não têm resultado confirmado.</p>
+{% for row in rows %}
+  {% if loop.first or row.tournament_id != loop.previtem.tournament_id %}<h2>{{ row.tournament_name }}</h2>{% endif %}
+  {% set mine_reported = row.status == 'reported' and row.reported_by_entry_id == row.my_entry_id %}
+  <a class="my-match status-{{ row.status }}" href="{{ url_for('tournaments.match', slug=row.slug, match_id=row.id) }}">
+    <span class="match-line"><span class="home">{{ names[row.home_entry_id] }}</span><span class="score">x</span><span class="away">{{ names[row.away_entry_id] }}</span></span>
+    <span class="my-match-status">{{ row.stage_name }} ·
+      {% if row.status == 'scheduled' %}<strong>reporte o placar</strong>
+      {% elif row.status == 'reported' and not mine_reported %}<strong>confirme ou conteste o placar do adversário</strong>
+      {% elif mine_reported %}esperando o adversário (até {{ deadlines[row.id]|localtime }})
+      {% else %}contestado, com o organizador{% endif %}</span>
+  </a>
+{% else %}<p>Nenhum jogo pendente. 🎉</p>{% endfor %}
+{% endblock %}

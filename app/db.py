@@ -298,6 +298,9 @@ CREATE TABLE IF NOT EXISTS tournament_matches (
     -- reported/disputed: confirmação entre os jogadores (fase 2).
     status TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'reported', 'disputed', 'confirmed')),
     result_version INTEGER NOT NULL DEFAULT 0,
+    -- Placar reportado por um jogador, esperando o adversário (app/tournament/reports.py).
+    reported_by_entry_id INTEGER REFERENCES tournament_entries(id) ON DELETE SET NULL,
+    reported_at TEXT,
     confirmed_at TEXT,
     live_session_id INTEGER REFERENCES live_sessions(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL,
@@ -305,6 +308,26 @@ CREATE TABLE IF NOT EXISTS tournament_matches (
 );
 
 CREATE INDEX IF NOT EXISTS tournament_matches_stage_idx ON tournament_matches(stage_id, round);
+CREATE INDEX IF NOT EXISTS tournament_matches_status_idx ON tournament_matches(status, reported_at);
+
+-- Histórico de cada jogo: reporte, confirmação, contestação, decisão do
+-- organizador/admin, confirmação automática e placar apagado.
+CREATE TABLE IF NOT EXISTS match_reports (
+    id INTEGER PRIMARY KEY,
+    match_id INTEGER NOT NULL REFERENCES tournament_matches(id) ON DELETE CASCADE,
+    action TEXT NOT NULL CHECK (action IN ('report', 'confirm', 'dispute', 'resolve', 'auto_confirm', 'clear')),
+    entry_id INTEGER REFERENCES tournament_entries(id) ON DELETE SET NULL,
+    player_id INTEGER REFERENCES players(id) ON DELETE SET NULL,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    home_goals INTEGER,
+    away_goals INTEGER,
+    home_pens INTEGER,
+    away_pens INTEGER,
+    comment TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS match_reports_match_idx ON match_reports(match_id, id);
 CREATE INDEX IF NOT EXISTS tournament_matches_tie_idx ON tournament_matches(tie_id);
 
 CREATE TABLE IF NOT EXISTS wallet_entries (
