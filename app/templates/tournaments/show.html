@@ -10,9 +10,20 @@
         <form method="post" action="{{ url_for('tournaments.leave', slug=t.slug) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Sair do torneio{% if t.entry_fee_cents %} (devolve {{ t.entry_fee_cents|wcash }}){% endif %}</button></form>
       {% elif session.player_id %}
         {% if entries|length < t.max_players %}
-        <form method="post" action="{{ url_for('tournaments.enroll', slug=t.slug) }}" class="inline-form">
+        <form method="post" action="{{ url_for('tournaments.enroll', slug=t.slug) }}" class="enroll-form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input name="team_name" maxlength="60" placeholder="Seu time (opcional)">
+          {% if t.team_mode == 'free' %}
+            <input name="team_name" maxlength="40" minlength="2" required placeholder="Nome do seu time">
+          {% elif t.team_mode == 'choose' %}
+            <p class="muted">Escolha seu time:</p>
+            <div class="team-grid pick">
+            {% for team in team_list if not team.owner %}
+              <label class="team-option"><input type="radio" name="team_id" value="{{ team.id }}" required><img class="crest" src="{{ team.image }}" alt="" loading="lazy"> {{ team.name }}</label>
+            {% endfor %}
+            </div>
+          {% else %}
+            <p class="muted">Seu time será sorteado quando o organizador fechar as inscrições.</p>
+          {% endif %}
           <button>Inscrever-se{% if t.entry_fee_cents %} por {{ t.entry_fee_cents|wcash }}{% else %} (grátis){% endif %}</button>
         </form>
         {% else %}<span class="muted">Vagas esgotadas.</span>{% endif %}
@@ -47,15 +58,24 @@
   </section>
   <section>
     <h2>Inscritos ({{ entries|length }})</h2>
-    {% if entries %}<ol class="entry-list">{% for e in entries %}<li>{{ e.username }}{% if e.team_name %} <span class="muted">· {{ e.team_name }}</span>{% endif %}</li>{% endfor %}</ol>
+    {% if entries %}<ol class="entry-list">{% for e in entries %}<li>{{ names[e.id] }}</li>{% endfor %}</ol>
     {% else %}<p class="muted">Ninguém inscrito ainda.</p>{% endif %}
   </section>
+  {% if team_list %}
+  <section>
+    <h2>Times ({{ team_list|length }})</h2>
+    <p class="muted">{{ team_modes[t.team_mode] }}.</p>
+    <div class="team-grid">
+      {% for team in team_list %}<div class="team-option{% if team.owner %} taken{% endif %}"><img class="crest" src="{{ team.image }}" alt="" loading="lazy"> <span>{{ team.name }}{% if team.owner %}<small>{{ team.owner }}</small>{% endif %}</span></div>{% endfor %}
+    </div>
+  </section>
+  {% endif %}
 
 {% elif tab == 'tabela' %}
   {% for view in stages %}
   <section class="stage">
     <h2>{{ view.stage.name }}</h2>
-    {% if view.stage.kind == 'knockout' %}{{ bracket(view, names) }}
+    {% if view.stage.kind == 'knockout' %}{{ bracket(view, names, crests) }}
     {% else %}
       {% if view.highlight %}<p class="legend"><span class="qualified-dot"></span> classificado{% if view.playoff %} direto · <span class="playoff-dot"></span> playoff{% endif %}</p>{% endif %}
       <div class="groups">
@@ -81,4 +101,5 @@
   </section>
   {% endfor %}
 {% endif %}
+{% include 'tournaments/_credits.html' %}
 {% endblock %}

@@ -28,7 +28,7 @@
 </div>
 {%- endmacro %}
 
-{% macro bracket(view, names) -%}
+{% macro bracket(view, names, crests) -%}
 <div class="bracket">
   {% for rnd in view.bracket %}
   <div class="bracket-round">
@@ -45,7 +45,7 @@
       </div>
       {% endfor %}
       {% if item.legs %}<div class="tie-legs">
-        {% for m in item.legs %}<small>{% if tie.legs == 2 %}{{ m.leg }}º jogo: {% endif %}{{ names[m.home_entry_id] }} {{ score(m) }} {{ names[m.away_entry_id] }}</small>{% endfor %}
+        {% for m in item.legs %}<small class="leg-line">{% if tie.legs == 2 %}<span>{{ m.leg }}º jogo</span>{% endif %}{{ crests[m.home_entry_id] }} {{ score(m) }} {{ crests[m.away_entry_id] }}</small>{% endfor %}
       </div>{% endif %}
     </div>
     {% endfor %}

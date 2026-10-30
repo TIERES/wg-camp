@@ -103,3 +103,27 @@ details.round summary { cursor:pointer; padding:.5rem 0; font-weight:700 }
 @media (max-width:550px) { .hide-sm { display:none } .t-info dl { grid-template-columns:1fr } .t-info dd { margin:0 0 .5rem } }
 .t-form,.t-form label,.t-form .two-columns > * { min-width:0 } .t-form select,.t-form input:not([type=checkbox]),.t-form textarea { width:100%; max-width:100% }
 .page-title { flex-wrap:wrap }
+/* Times: escudo + time + jogador */
+.crest { width:1.5rem; height:1.5rem; object-fit:contain; flex-shrink:0; vertical-align:middle }
+.crest-lg { width:2.25rem; height:2.25rem } .crest-xl { width:3.5rem; height:3.5rem }
+.entry { display:inline-flex; align-items:center; gap:.4rem; min-width:0; vertical-align:middle }
+.entry-name { display:inline-flex; flex-direction:column; line-height:1.15; min-width:0 }
+.entry-name small { color:#9ca3af; font-size:.75em; font-weight:400 }
+.match-line .home .entry { flex-direction:row-reverse; text-align:right } .match-line .home .entry-name { align-items:flex-end }
+.tie-slot .entry,.standings .entry { text-align:left }
+.podium .entry { flex-direction:column; text-align:center } .podium .entry-name { align-items:center } .podium .crest { width:3rem; height:3rem }
+.entry-list li { margin:.3rem 0 }
+.team-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,11rem),1fr)); gap:.35rem .75rem; margin:.5rem 0 }
+.team-option { display:flex; align-items:center; gap:.45rem; padding:.3rem .4rem; border-radius:6px; line-height:1.2 }
+.team-option > span { display:flex; flex-direction:column } .team-option small { color:#9ca3af; font-size:.75rem }
+.team-option input { width:auto; margin:0 } label.team-option { cursor:pointer } label.team-option:hover { background:#273449 }
+.team-option.taken { opacity:.55 }
+.team-grid.pick { max-height:22rem; overflow-y:auto; padding:.25rem; border:1px solid #374151; border-radius:8px }
+.team-groups { display:grid; gap:.4rem; max-height:28rem; overflow-y:auto }
+details.team-group { background:#172333; border-radius:6px; padding:.2rem .6rem }
+details.team-group summary { cursor:pointer; padding:.35rem 0; display:flex; align-items:center; gap:.4rem }
+details.team-group summary .check { display:inline-flex }
+.enroll-form { display:grid; gap:.5rem; width:100%; max-width:none } .enroll-form > input { max-width:22rem }
+.credits { margin-top:2rem; font-size:.75rem; color:#6b7280 } .credits a { color:#9ca3af }
+.leg-line { display:flex; align-items:center; gap:.35rem } .leg-line > span { min-width:3.6rem } .leg-line .crest { width:1.2rem; height:1.2rem }
+[hidden] { display:none !important }

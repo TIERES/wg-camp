@@ -62,6 +62,32 @@
     <p class="muted">Sem a disputa, o 3º lugar é o semifinalista eliminado com a melhor campanha no torneio. Empate no agregado vai para os pênaltis do último jogo.</p>
   </fieldset>
 
+  <fieldset>
+    <legend>Times</legend>
+    {% for key, label in team_modes.items() %}
+    <label class="check"><input type="radio" name="team_mode" value="{{ key }}" {% if form.get('team_mode', 'free') == key %}checked{% endif %}> {{ label }}</label>
+    {% endfor %}
+    <div id="team-picker">
+      <p class="muted">Marque os times disponíveis (pelo menos um por vaga). Marque um grupo inteiro ou abra o grupo para escolher time a time. Marcados: <strong id="team-count">0</strong></p>
+      <label>Seleções aparecem com
+        <select name="team_display"><option value="logo">Escudo da federação</option><option value="flag" {% if form.get('team_display') == 'flag' %}selected{% endif %}>Bandeira do país</option></select>
+      </label>
+      <input type="search" id="team-filter" placeholder="Buscar time..." autocomplete="off">
+      <div class="team-groups">
+      {% for g in catalog %}
+        <details class="team-group">
+          <summary><label class="check" onclick="event.stopPropagation()"><input type="checkbox" class="group-toggle"> {{ g.group.name }}</label> <small class="muted">({{ g.teams|length }})</small></summary>
+          <div class="team-grid">
+          {% for team in g.teams %}
+            <label class="team-option" data-name="{{ team.name|lower }}"><input type="checkbox" name="team_ids" value="{{ team.id }}" {% if team.id in selected %}checked{% endif %}><img class="crest" src="{{ team.image }}" {% if team.kind == 'national' %}data-flag="{{ team.flag_image }}" data-logo="{{ team.image }}"{% endif %} alt="" loading="lazy"> {{ team.name }}</label>
+          {% endfor %}
+          </div>
+        </details>
+      {% endfor %}
+      </div>
+    </div>
+  </fieldset>
+
   <label>Regulamento / observações<textarea name="rules" rows="5" maxlength="5000" placeholder="Horários, regras do jogo, times permitidos...">{{ form.get('rules', '') }}</textarea></label>
   <button>Criar torneio</button>
 </form>
@@ -88,7 +114,63 @@
   }
   select.addEventListener('change', function () { apply(true); });
   apply(!posted.format);
+
+  // Times: lista só nos modos com lista; marcar o grupo marca todos os times dele.
+  var picker = document.getElementById('team-picker');
+  var count = document.getElementById('team-count');
+  function refreshTeams() {
+    var mode = form.querySelector('input[name=team_mode]:checked').value;
+    picker.hidden = mode === 'free';
+    picker.querySelectorAll('input[name=team_ids]').forEach(function (el) { el.disabled = mode === 'free'; });
+    var ids = {};
+    picker.querySelectorAll('input[name=team_ids]:checked').forEach(function (el) { ids[el.value] = 1; });
+    count.textContent = Object.keys(ids).length;
+    picker.querySelectorAll('.team-group').forEach(function (group) {
+      var boxes = group.querySelectorAll('input[name=team_ids]');
+      var checked = group.querySelectorAll('input[name=team_ids]:checked').length;
+      var toggle = group.querySelector('.group-toggle');
+      toggle.checked = checked === boxes.length;
+      toggle.indeterminate = checked > 0 && checked < boxes.length;
+    });
+  }
+  // O mesmo time pode estar em dois grupos: marcar um marca o outro.
+  picker.addEventListener('change', function (e) {
+    if (e.target.classList.contains('group-toggle')) {
+      e.target.closest('.team-group').querySelectorAll('input[name=team_ids]').forEach(function (el) { el.checked = e.target.checked; sync(el); });
+    } else if (e.target.name === 'team_ids') { sync(e.target); }
+    refreshTeams();
+  });
+  function sync(el) {
+    picker.querySelectorAll('input[name=team_ids][value="' + el.value + '"]').forEach(function (o) { o.checked = el.checked; });
+  }
+  form.querySelectorAll('input[name=team_mode]').forEach(function (el) { el.addEventListener('change', refreshTeams); });
+  form.elements.team_display.addEventListener('change', function () {
+    var flag = this.value === 'flag';
+    picker.querySelectorAll('img[data-flag]').forEach(function (img) { img.src = flag ? img.dataset.flag : img.dataset.logo; });
+  });
+  document.getElementById('team-filter').addEventListener('input', function () {
+    var q = this.value.trim().toLowerCase();
+    picker.querySelectorAll('.team-group').forEach(function (group) {
+      var any = false;
+      group.querySelectorAll('.team-option').forEach(function (opt) {
+        var show = !q || opt.dataset.name.indexOf(q) >= 0;
+        opt.hidden = !show; any = any || show;
+      });
+      group.hidden = !any;
+      if (q && any) group.open = true;
+    });
+  });
+  // Ao enviar, um time marcado em dois grupos vai uma vez só.
+  form.addEventListener('submit', function () {
+    var seen = {};
+    picker.querySelectorAll('input[name=team_ids]:checked').forEach(function (el) {
+      if (seen[el.value]) el.disabled = true; seen[el.value] = 1;
+    });
+  });
+  form.elements.team_display.dispatchEvent(new Event('change'));
+  refreshTeams();
 })();
 </script>
 {% endif %}
+{% include 'tournaments/_credits.html' %}
 {% endblock %}

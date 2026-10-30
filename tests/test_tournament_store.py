@@ -52,7 +52,7 @@ class TournamentStoreTest(unittest.TestCase):
              json.dumps(cfg), now(), now())).lastrowid
         t = store.get_tournament(self.db, tid)
         for pid in self.players[:players]:
-            store.enroll(self.db, t, pid)
+            store.enroll(self.db, t, pid, f"Time {pid}")
         store.start(self.db, store.get_tournament(self.db, tid), self.rng)
         self.db.commit()
         return tid
@@ -214,17 +214,17 @@ class TournamentStoreTest(unittest.TestCase):
             "entry_fee_cents, settings_json, created_at, updated_at) "
             "VALUES ('x', 'X', ?, ?, 'knockout', 'registration', 2, 5000, '{}', ?, ?)",
             (self.game, self.players[0], now(), now())).lastrowid
-        store.enroll(self.db, self.t(tid), self.players[1])
+        store.enroll(self.db, self.t(tid), self.players[1], "Time 1")
         self.assertEqual(balance(self.db, self.players[1]), 95000)
         with self.assertRaises(TournamentError):
-            store.enroll(self.db, self.t(tid), self.players[1])
+            store.enroll(self.db, self.t(tid), self.players[1], "Time 1")
         entry = self.db.execute("SELECT * FROM tournament_entries").fetchone()
         store.withdraw(self.db, self.t(tid), entry)
         self.assertEqual(balance(self.db, self.players[1]), 100000)
-        store.enroll(self.db, self.t(tid), self.players[1])
-        store.enroll(self.db, self.t(tid), self.players[2])
+        store.enroll(self.db, self.t(tid), self.players[1], "Time 1")
+        store.enroll(self.db, self.t(tid), self.players[2], "Time 2")
         with self.assertRaises(TournamentError):
-            store.enroll(self.db, self.t(tid), self.players[3])  # lotado
+            store.enroll(self.db, self.t(tid), self.players[3], "Time 3")  # lotado
         self.assertEqual(store.prize_pool(self.db, tid), 10000)
         store.cancel(self.db, self.t(tid))
         self.assertEqual(balance(self.db, self.players[1]), 100000)

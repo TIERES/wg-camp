@@ -70,7 +70,7 @@ class TournamentsWebTest(unittest.TestCase):
         self.assertEqual(anon.get("/torneios/").status_code, 200)
 
         for pid in self.players[:4]:
-            self.client(pid).post(f"/torneios/{slug}/inscrever", data={"csrf_token": CSRF, "team_name": "Brasil"})
+            self.client(pid).post(f"/torneios/{slug}/inscrever", data={"csrf_token": CSRF, "team_name": f"Time {pid}"})
         self.assertEqual(len(self.query("SELECT * FROM tournament_entries")), 4)
         self.assertEqual(self.query("SELECT wallet_cents FROM players WHERE id = ?", self.players[1])[0][0], 99000)
 
@@ -150,7 +150,7 @@ class TournamentsWebTest(unittest.TestCase):
                                            "format": "league", "max_players": "4", "entry_fee": "20",
                                            "prize_split": "60,30,10", "legs": "1"})
         slug = self.query("SELECT slug FROM tournaments")[0]["slug"]
-        self.client(self.players[3]).post(f"/torneios/{slug}/inscrever", data={"csrf_token": CSRF})
+        self.client(self.players[3]).post(f"/torneios/{slug}/inscrever", data={"csrf_token": CSRF, "team_name": "Real Suciedad"})
         owner.post(f"/torneios/{slug}/cancelar", data={"csrf_token": CSRF, "confirmar": "nao"})
         self.assertEqual(self.query("SELECT status FROM tournaments")[0][0], "registration")
         owner.post(f"/torneios/{slug}/cancelar", data={"csrf_token": CSRF, "confirmar": "CANCELAR"})

@@ -1,0 +1,27 @@
+{% extends 'base.html' %}{% block title %}Times · Administração{% endblock %}{% block content %}
+<div class="page-title"><h1>Times dos torneios</h1><a class="button" href="{{ url_for('tournaments_admin.admin_team_edit') }}">Novo time</a></div>
+<p><a href="{{ url_for('tournaments_admin.admin_home') }}">← Torneios: administração</a></p>
+<form method="get" class="filters">
+  <input type="search" name="q" value="{{ query }}" placeholder="Buscar pelo nome">
+  <select name="grupo"><option value="">Todos os grupos</option>{% for g in groups %}<option value="{{ g.id }}" {% if g.id == group_id %}selected{% endif %}>{{ g.name }} ({{ g.size }})</option>{% endfor %}</select>
+  <button>Filtrar</button>
+</form>
+<div class="table-scroll"><table>
+  <thead><tr><th></th><th>Time</th><th>Tipo</th><th>Grupos</th><th>Ativo</th></tr></thead>
+  <tbody>
+  {% for team in teams %}
+    <tr><td><img class="crest crest-lg" src="{{ team.image }}" alt="" loading="lazy"></td>
+      <td><a href="{{ url_for('tournaments_admin.admin_team_edit', team_id=team.id) }}">{{ team.name }}</a>{% if team.logo and team.logo.startswith('upload:') %} <small class="muted">(escudo enviado)</small>{% endif %}</td>
+      <td>{{ kinds[team.kind] }}</td><td><small>{{ team.groups or '—' }}</small></td><td>{{ 'Sim' if team.is_active else 'Não' }}</td></tr>
+  {% else %}<tr><td colspan="5">Nenhum time encontrado.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{% if teams|length == 300 %}<p class="muted">Mostrando os 300 primeiros; use a busca.</p>{% endif %}
+
+<h2>Novo grupo</h2>
+<form method="post" action="{{ url_for('tournaments_admin.admin_team_group_new') }}" class="inline-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input name="name" maxlength="60" required placeholder="Ex.: Clássicos do WE 2002">
+  <button>Criar grupo</button>
+</form>
+{% endblock %}

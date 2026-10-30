@@ -174,6 +174,10 @@ CREATE TABLE IF NOT EXISTS tournaments (
     prize_split TEXT NOT NULL DEFAULT '60,30,10',
     settings_json TEXT NOT NULL DEFAULT '{}',
     rules TEXT NOT NULL DEFAULT '',
+    -- free: o jogador digita o time; choose/draw: times da lista tournament_teams.
+    team_mode TEXT NOT NULL DEFAULT 'free' CHECK (team_mode IN ('free', 'choose', 'draw')),
+    -- Seleções: escudo da federação (logo) ou bandeira (flag).
+    team_display TEXT NOT NULL DEFAULT 'logo' CHECK (team_display IN ('logo', 'flag')),
     started_at TEXT,
     finished_at TEXT,
     created_at TEXT NOT NULL,
@@ -187,10 +191,50 @@ CREATE TABLE IF NOT EXISTS tournament_entries (
     tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
     player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE RESTRICT,
     team_name TEXT NOT NULL DEFAULT '',
+    team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
     fee_ref TEXT,
     final_position INTEGER,
     created_at TEXT NOT NULL,
     UNIQUE (tournament_id, player_id)
+);
+
+-- Um time por jogador e nenhum time repetido no mesmo torneio.
+CREATE UNIQUE INDEX IF NOT EXISTS tournament_entries_team_idx ON tournament_entries(tournament_id, team_id)
+    WHERE team_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS tournament_entries_team_name_idx
+    ON tournament_entries(tournament_id, team_name COLLATE NOCASE) WHERE team_name != '';
+
+CREATE TABLE IF NOT EXISTS teams (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'club' CHECK (kind IN ('club', 'national', 'custom')),
+    country TEXT NOT NULL DEFAULT '',
+    logo TEXT,
+    flag TEXT,
+    source_key TEXT UNIQUE,
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS team_groups (
+    id INTEGER PRIMARY KEY,
+    slug TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    seq INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS team_group_members (
+    group_id INTEGER NOT NULL REFERENCES team_groups(id) ON DELETE CASCADE,
+    team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    PRIMARY KEY (group_id, team_id)
+);
+
+CREATE TABLE IF NOT EXISTS tournament_teams (
+    tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+    team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    PRIMARY KEY (tournament_id, team_id)
 );
 
 CREATE TABLE IF NOT EXISTS tournament_stages (
@@ -377,6 +421,8 @@ def init_db():
     db.executescript(SITE_SETTINGS_DDL)
     ensure_player_columns(db)
     db.executescript(TOURNAMENTS_DDL)
+    from .tournament.teams import seed_teams
+    seed_teams(db)
     db.commit()
 
 
@@ -474,6 +520,8 @@ def migrate_db():
     database.executescript(SITE_SETTINGS_DDL)
     ensure_player_columns(database)
     database.executescript(TOURNAMENTS_DDL)
+    from .tournament.teams import seed_teams
+    seed_teams(database)
     database.execute("CREATE INDEX IF NOT EXISTS live_sessions_game_name_idx ON live_sessions(game_name)")
     database.execute("CREATE INDEX IF NOT EXISTS live_sessions_replay_idx ON live_sessions(status, duration_seconds)")
     rows = database.execute(

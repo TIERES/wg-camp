@@ -27,6 +27,9 @@ def create_app(test_config=None):
         IA_SECRET_KEY=os.environ.get("ARENA17_IA_SECRET_KEY", ""),
         IA_COLLECTION=os.environ.get("ARENA17_IA_COLLECTION", "opensource_media"),
         MEMCARDS_DIR=os.environ.get("ARENA17_MEMCARDS_DIR", str(root / "storage" / "memcards")),
+        # Escudos de times enviados pelo admin (/admin/torneios/times); a base
+        # inicial fica em app/static/teams.
+        TEAM_LOGOS_DIR=os.environ.get("ARENA17_TEAM_LOGOS_DIR", str(root / "storage" / "team-logos")),
         # Base dos links enviados por e-mail (confirmação, nova senha), ex.
         # "https://we2002.wgs.dev.br" - atrás do Caddy o Flask só vê http.
         PUBLIC_URL=os.environ.get("ARENA17_PUBLIC_URL", ""),
@@ -66,6 +69,7 @@ def create_app(test_config=None):
     Path(app.config["UPDATES_DIR"]).mkdir(parents=True, exist_ok=True)
     Path(app.config["REPLAY_BACKUPS_DIR"]).mkdir(parents=True, exist_ok=True)
     Path(app.config["MEMCARDS_DIR"]).mkdir(parents=True, exist_ok=True)
+    Path(app.config["TEAM_LOGOS_DIR"]).mkdir(parents=True, exist_ok=True)
 
     db.init_app(app)
     # migrate_db() is idempotent (checks column/table existence before every

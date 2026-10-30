@@ -1,0 +1,20 @@
+{% extends 'base.html' %}{% block title %}{{ team.name if team else 'Novo time' }} · Administração{% endblock %}{% block content %}
+<p><a href="{{ url_for('tournaments_admin.admin_teams') }}">← Times</a></p>
+<h1>{% if team %}<img class="crest crest-xl" src="{{ image }}" alt=""> {{ team.name }}{% else %}Novo time{% endif %}</h1>
+<form method="post" enctype="multipart/form-data" class="form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="two-columns">
+    <label>Nome<input name="name" value="{{ team.name if team }}" maxlength="60" required></label>
+    <label>Tipo<select name="kind">{% for key, label in kinds.items() %}<option value="{{ key }}" {% if (team.kind if team else 'custom') == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+  </div>
+  <label>País (código, ex. br, ar, gb-eng)<input name="country" value="{{ team.country if team }}" maxlength="10"></label>
+  <label>Escudo (PNG, JPG ou WebP, até 512 KB; de preferência quadrado com fundo transparente)<input type="file" name="logo" accept=".png,.jpg,.jpeg,.webp"></label>
+  {% if team and team.logo %}<label class="check"><input type="checkbox" name="remove_logo"> Remover o escudo (usa o escudo gerado com as iniciais{% if team.flag %} ou a bandeira{% endif %})</label>{% endif %}
+  <label class="check"><input type="checkbox" name="is_active" {% if not team or team.is_active %}checked{% endif %}> Ativo (aparece para escolher nos torneios novos)</label>
+  <fieldset>
+    <legend>Grupos</legend>
+    <div class="team-grid">{% for g in groups %}<label class="check"><input type="checkbox" name="groups" value="{{ g.id }}" {% if g.id in member_of %}checked{% endif %}> {{ g.name }}</label>{% endfor %}</div>
+  </fieldset>
+  <button>Salvar</button>
+</form>
+{% endblock %}

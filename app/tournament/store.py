@@ -47,7 +47,34 @@ def prize_pool(db, tournament_id):
 
 # --- Inscrição ----------------------------------------------------------------
 
-def enroll(db, tournament, player_id, team_name=""):
+def available_teams(db, tournament_id):
+    """Times da lista do torneio que ainda não têm dono."""
+    return db.execute(
+        "SELECT t.* FROM tournament_teams tt JOIN teams t ON t.id = tt.team_id WHERE tt.tournament_id = ? "
+        "AND t.id NOT IN (SELECT team_id FROM tournament_entries WHERE tournament_id = ? AND team_id IS NOT NULL) "
+        "ORDER BY t.name COLLATE NOCASE", (tournament_id, tournament_id)).fetchall()
+
+
+def _entry_team(db, tournament, team_name, team_id):
+    """(team_id, team_name) da inscrição conforme o modo de times do torneio."""
+    mode = tournament["team_mode"]
+    if mode == "draw":
+        return None, ""  # sorteado em start()
+    if mode == "free":
+        name = " ".join((team_name or "").split())[:40]
+        if len(name) < 2:
+            raise TournamentError("Informe o nome do seu time (pelo menos 2 letras).")
+        if db.execute("SELECT 1 FROM tournament_entries WHERE tournament_id = ? AND team_name = ? COLLATE NOCASE",
+                      (tournament["id"], name)).fetchone():
+            raise TournamentError(f"Já existe um time chamado {name} neste torneio. Escolha outro nome.")
+        return None, name
+    team = next((t for t in available_teams(db, tournament["id"]) if t["id"] == team_id), None)
+    if team is None:
+        raise TournamentError("Escolha um time da lista (ele pode ter acabado de ser escolhido por outro jogador).")
+    return team["id"], team["name"]
+
+
+def enroll(db, tournament, player_id, team_name="", team_id=None):
     if tournament["status"] != "registration":
         raise TournamentError("As inscrições deste torneio não estão abertas.")
     count = db.execute("SELECT COUNT(*) FROM tournament_entries WHERE tournament_id = ?",
@@ -57,14 +84,15 @@ def enroll(db, tournament, player_id, team_name=""):
     if db.execute("SELECT 1 FROM tournament_entries WHERE tournament_id = ? AND player_id = ?",
                   (tournament["id"], player_id)).fetchone():
         raise TournamentError("Você já está inscrito neste torneio.")
+    team_id, team_name = _entry_team(db, tournament, team_name, team_id)
     ensure_wallet(db, player_id)
     fee_ref = None
     if tournament["entry_fee_cents"]:
         fee_ref = f"inscricao:{tournament['id']}:{player_id}:{secrets.token_hex(6)}"
         post(db, player_id, -tournament["entry_fee_cents"], "inscricao", fee_ref, tournament_id=tournament["id"],
              note=tournament["name"])
-    db.execute("INSERT INTO tournament_entries (tournament_id, player_id, team_name, fee_ref, created_at) "
-               "VALUES (?, ?, ?, ?, ?)", (tournament["id"], player_id, team_name.strip()[:60], fee_ref, now()))
+    db.execute("INSERT INTO tournament_entries (tournament_id, player_id, team_name, team_id, fee_ref, created_at) "
+               "VALUES (?, ?, ?, ?, ?, ?)", (tournament["id"], player_id, team_name, team_id, fee_ref, now()))
 
 
 def _refund(db, tournament, entry):
@@ -180,6 +208,15 @@ def start(db, tournament, rng=random):
     error = formats.config_error(tournament["format"], config, len(entries))
     if error:
         raise TournamentError(error)
+    if tournament["team_mode"] == "draw":
+        teams = available_teams(db, tournament["id"])
+        if len(teams) < len(entries):
+            raise TournamentError(f"A lista tem {len(teams)} times para {len(entries)} jogadores.")
+        teams = list(teams)
+        rng.shuffle(teams)
+        for entry_id, team in zip(entries, teams):
+            db.execute("UPDATE tournament_entries SET team_id = ?, team_name = ? WHERE id = ?",
+                       (team["id"], team["name"], entry_id))
     rng.shuffle(entries)  # o sorteio: ordem da tabela, grupos, potes e chave
     fmt = tournament["format"]
     if fmt == "league":
