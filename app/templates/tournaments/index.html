@@ -1,0 +1,32 @@
+{% extends 'base.html' %}{% block title %}Torneios · WE Camp{% endblock %}{% block content %}
+<div class="page-title"><h1>Torneios</h1>{% if session.player_id %}<a class="button" href="{{ url_for('tournaments.new') }}">Criar torneio</a>{% else %}<a class="button" href="{{ url_for('players.login', next=url_for('tournaments.new')) }}">Entre para criar um torneio</a>{% endif %}</div>
+
+<form method="get" class="filters">
+  <select name="status" onchange="this.form.submit()">
+    <option value="">Todos os status</option>
+    {% for key, label in status_labels.items() if key != 'draft' %}<option value="{{ key }}" {% if key == status %}selected{% endif %}>{{ label }}</option>{% endfor %}
+  </select>
+  <select name="jogo" onchange="this.form.submit()">
+    <option value="">Todos os jogos</option>
+    {% for g in games %}<option value="{{ g.id }}" {% if g.id == game %}selected{% endif %}>{{ g.name }}</option>{% endfor %}
+  </select>
+  <noscript><button>Filtrar</button></noscript>
+</form>
+
+{% if tournaments %}
+<div class="t-cards">
+  {% for t in tournaments %}
+  <a class="t-card" href="{{ url_for('tournaments.show', slug=t.slug) }}">
+    <span class="badge status-{{ t.status }}">{{ status_labels[t.status] }}</span>
+    <strong class="t-name">{{ t.name }}</strong>
+    <span class="muted">{{ t.game_name }} · {{ format_labels[t.format] }}</span>
+    <span class="t-meta">
+      <span>{{ t.entries }}/{{ t.max_players }} jogadores</span>
+      <span>Inscrição: {{ t.entry_fee_cents|wcash if t.entry_fee_cents else 'grátis' }}</span>
+    </span>
+    <small class="muted">Organizado por {{ t.organizer_name }}</small>
+  </a>
+  {% endfor %}
+</div>
+{% else %}<p>Nenhum torneio por aqui ainda.{% if session.player_id %} Que tal <a href="{{ url_for('tournaments.new') }}">criar o primeiro</a>?{% endif %}</p>{% endif %}
+{% endblock %}

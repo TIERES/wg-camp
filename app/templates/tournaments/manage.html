@@ -1,0 +1,77 @@
+{% extends 'base.html' %}{% block title %}Gerenciar {{ t.name }} · Torneios WE Camp{% endblock %}{% block content %}
+<div class="page-title"><h1>Gerenciar: {{ t.name }}</h1><a href="{{ url_for('tournaments.show', slug=t.slug) }}">Ver página do torneio</a></div>
+<p><span class="badge status-{{ t.status }}">{{ status_labels[t.status] }}</span> {% if is_admin and session.player_id != t.organizer_id %}<small class="muted">Você está gerenciando como administração do WE Camp.</small>{% endif %}</p>
+
+<section class="manage-actions">
+  {% if t.status == 'registration' %}
+    <form method="post" action="{{ url_for('tournaments.start', slug=t.slug) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button {% if entries|length < 2 %}disabled{% endif %}>Fechar inscrições e sortear ({{ entries|length }} inscritos)</button></form>
+    <p class="muted">O sorteio monta a tabela, os grupos, os potes ou a chave com os inscritos atuais. Depois disso ninguém mais entra nem sai.</p>
+  {% endif %}
+  {% if can_advance %}
+    <form method="post" action="{{ url_for('tournaments.advance', slug=t.slug) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Gerar próxima fase (mata-mata)</button></form>
+    <p class="muted">Os resultados da fase atual ficam travados depois disso.</p>
+  {% endif %}
+  {% if can_finish %}
+    <form method="post" action="{{ url_for('tournaments.finish', slug=t.slug) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Encerrar torneio e pagar o prêmio</button></form>
+    <p class="muted">Confira os resultados antes: depois de encerrado, nada mais muda.</p>
+  {% endif %}
+</section>
+
+{% if current and t.status == 'running' %}
+<section>
+  <h2>Resultados: {{ current.stage.name }}</h2>
+  <p class="muted">Lance o placar do tempo normal. No mata-mata, se o confronto terminar empatado (no agregado, no caso de ida e volta), informe também os pênaltis do último jogo. Corrigir um placar já lançado estorna o W$ do resultado anterior.</p>
+  {% for rnd in current.rounds %}
+  <details class="round" {% if rnd.matches|selectattr('status', 'ne', 'confirmed')|list %}open{% endif %}>
+    <summary>{{ rnd.name }} <small class="muted">({{ rnd.matches|selectattr('status', 'eq', 'confirmed')|list|length }}/{{ rnd.matches|length }})</small></summary>
+    {% for m in rnd.matches %}
+    <form method="post" action="{{ url_for('tournaments.result', slug=t.slug, match_id=m.id) }}" class="result-form{% if m.status == 'confirmed' %} done{% endif %}" id="jogo-{{ m.id }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <span class="home">{{ names[m.home_entry_id] }}</span>
+      <span class="goals"><input type="number" name="home_goals" min="0" max="99" value="{{ m.home_goals if m.home_goals is not none }}" required aria-label="Gols de {{ names[m.home_entry_id] }}"> x <input type="number" name="away_goals" min="0" max="99" value="{{ m.away_goals if m.away_goals is not none }}" required aria-label="Gols de {{ names[m.away_entry_id] }}"></span>
+      <span class="away">{{ names[m.away_entry_id] }}</span>
+      {% if m.id in decisive %}<span class="pens">Pênaltis: <input type="number" name="home_pens" min="0" max="99" value="{{ m.home_pens if m.home_pens is not none }}" aria-label="Pênaltis mandante"> x <input type="number" name="away_pens" min="0" max="99" value="{{ m.away_pens if m.away_pens is not none }}" aria-label="Pênaltis visitante"></span>{% endif %}
+      <span class="result-buttons"><button name="acao" value="salvar">{{ 'Corrigir' if m.status == 'confirmed' else 'Salvar' }}</button>{% if m.status == 'confirmed' %}<button name="acao" value="apagar" class="secondary" formnovalidate>Apagar</button>{% endif %}</span>
+    </form>
+    {% endfor %}
+  </details>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section>
+  <h2>Inscritos ({{ entries|length }}/{{ t.max_players }})</h2>
+  {% if entries %}
+  <div class="table-scroll"><table>
+    <thead><tr><th>Jogador</th><th>Time</th><th>Inscrito em</th>{% if t.status == 'registration' %}<th></th>{% endif %}</tr></thead>
+    <tbody>{% for e in entries %}<tr><td>{{ e.username }}</td><td>{{ e.team_name }}</td><td>{{ e.created_at|localtime }}</td>
+      {% if t.status == 'registration' %}<td><form method="post" action="{{ url_for('tournaments.remove_entry', slug=t.slug, entry_id=e.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Remover</button></form></td>{% endif %}</tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="muted">Ninguém inscrito ainda.</p>{% endif %}
+</section>
+
+{% if t.status not in ('finished', 'cancelled') %}
+<section>
+  <h2>Dados do torneio</h2>
+  <form method="post" action="{{ url_for('tournaments.edit', slug=t.slug) }}" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Nome<input name="name" value="{{ t.name }}" maxlength="80" minlength="3" required></label>
+    <label>Regulamento / observações<textarea name="rules" rows="5" maxlength="5000">{{ t.rules }}</textarea></label>
+    <button>Salvar</button>
+  </form>
+</section>
+
+{% if t.status != 'running' or is_admin %}
+<section>
+  <h2>Cancelar torneio</h2>
+  <p>Todas as inscrições são devolvidas aos jogadores. Não dá para desfazer.</p>
+  <form method="post" action="{{ url_for('tournaments.cancel', slug=t.slug) }}" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input name="confirmar" placeholder="Digite CANCELAR" autocomplete="off">
+    <button class="danger">Cancelar torneio</button>
+  </form>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

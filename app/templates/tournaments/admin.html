@@ -1,0 +1,67 @@
+{% extends 'base.html' %}{% block title %}Torneios · Administração{% endblock %}{% block content %}
+<div class="page-title"><h1>Torneios: administração</h1><a href="{{ url_for('tournaments.index') }}">Ver torneios</a></div>
+<p class="muted">Como administração do WE Camp você pode gerenciar qualquer torneio (botão "Gerenciar" na página dele), inclusive cancelar torneios em andamento.</p>
+
+<section>
+  <h2>Valores do W$</h2>
+  <form method="post" action="{{ url_for('tournaments_admin.admin_settings') }}" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% for key, label in labels.items() %}
+    <label>{{ label }}<input name="{{ key }}" required {% if key in money %}inputmode="decimal" value="{{ (values[key]|wcash)[2:] }}"{% else %}type="number" min="1" value="{{ values[key] }}"{% endif %}></label>
+    {% endfor %}
+    <p class="muted">O saldo inicial vale para quem abrir a carteira depois da mudança. Os valores por jogo valem para os resultados lançados depois da mudança. Use 0,00 para não pagar nada.</p>
+    <button>Salvar valores</button>
+  </form>
+</section>
+
+<section>
+  <h2>Jogos dos torneios</h2>
+  <div class="table-scroll"><table>
+    <thead><tr><th>Nome</th><th>Plataforma</th><th>ISO (Downloads)</th><th>Ativo</th><th>Torneios</th><th></th></tr></thead>
+    <tbody>
+    {% for g in games %}{% set f = 'game-' ~ g.id %}
+      <tr>
+        <td><input form="{{ f }}" name="name" value="{{ g.name }}" maxlength="80" required></td>
+        <td><input form="{{ f }}" name="platform" value="{{ g.platform }}" maxlength="40"></td>
+        <td><select form="{{ f }}" name="championship_id"><option value="">—</option>{% for c in championships %}<option value="{{ c.id }}" {% if c.id == g.championship_id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></td>
+        <td><input form="{{ f }}" type="checkbox" name="is_active" {% if g.is_active %}checked{% endif %} aria-label="Ativo"></td>
+        <td>{{ g.used }}</td>
+        <td><button form="{{ f }}">Salvar</button></td>
+      </tr>
+    {% else %}<tr><td colspan="6">Nenhum jogo cadastrado.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {% for g in games %}<form id="game-{{ g.id }}" method="post" action="{{ url_for('tournaments_admin.admin_game_save') }}" hidden><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="game_id" value="{{ g.id }}"></form>{% endfor %}
+  <h3>Cadastrar jogo</h3>
+  <form method="post" action="{{ url_for('tournaments_admin.admin_game_save') }}" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="is_active" value="on">
+    <div class="two-columns">
+      <label>Nome<input name="name" maxlength="80" required placeholder="Winning Eleven 2002"></label>
+      <label>Plataforma<input name="platform" maxlength="40" placeholder="PS1"></label>
+    </div>
+    <label>ISO para download (opcional)<select name="championship_id"><option value="">—</option>{% for c in championships %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></label>
+    <button>Cadastrar</button>
+  </form>
+</section>
+
+<section>
+  <h2>Ajustar saldo de um jogador</h2>
+  <form method="post" action="{{ url_for('tournaments_admin.admin_wallet_adjust') }}" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="two-columns">
+      <label>Usuário<input name="username" required></label>
+      <label>Valor (W$)<input name="amount" inputmode="decimal" required placeholder="10,00"></label>
+    </div>
+    <label>Tipo<select name="direction"><option value="credito">Crédito (adicionar)</option><option value="debito">Débito (retirar)</option></select></label>
+    <label>Motivo<input name="note" maxlength="200" required></label>
+    <button>Lançar</button>
+  </form>
+  {% if recent %}
+  <h3>Últimos ajustes</h3>
+  <div class="table-scroll"><table>
+    <thead><tr><th>Data</th><th>Jogador</th><th>Valor</th><th>Motivo</th></tr></thead>
+    <tbody>{% for r in recent %}<tr><td>{{ r.created_at|localtime }}</td><td>{{ r.username }}</td><td>{{ r.amount_cents|wcash }}</td><td>{{ r.note }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+</section>
+{% endblock %}

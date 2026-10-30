@@ -172,7 +172,7 @@ def login():
             db.execute("UPDATE players SET last_login_at = ? WHERE id = ?", (now(), player["id"]))
             db.commit()
             target = request.args.get("next", "")
-            if not target.startswith("/conta"):
+            if not (target.startswith("/conta") or target.startswith("/torneios")):
                 target = url_for("players.account")
             return redirect(target)
     return render_template("players/login.html")

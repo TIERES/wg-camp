@@ -1,0 +1,84 @@
+{% extends 'base.html' %}{% from 'tournaments/_macros.html' import standings, bracket, match_line %}
+{% block title %}{{ t.name }} · Torneios WE Camp{% endblock %}{% block content %}
+<section class="t-header">
+  <span class="badge status-{{ t.status }}">{{ status_labels[t.status] }}</span>
+  <h1>{{ t.name }}</h1>
+  <p class="muted">{{ t.game_name }}{% if t.platform %} ({{ t.platform }}){% endif %} · {{ format_label }} · organizado por <strong>{{ t.organizer_name }}</strong></p>
+  <div class="t-actions">
+    {% if t.status == 'registration' %}
+      {% if my_entry %}
+        <form method="post" action="{{ url_for('tournaments.leave', slug=t.slug) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Sair do torneio{% if t.entry_fee_cents %} (devolve {{ t.entry_fee_cents|wcash }}){% endif %}</button></form>
+      {% elif session.player_id %}
+        {% if entries|length < t.max_players %}
+        <form method="post" action="{{ url_for('tournaments.enroll', slug=t.slug) }}" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input name="team_name" maxlength="60" placeholder="Seu time (opcional)">
+          <button>Inscrever-se{% if t.entry_fee_cents %} por {{ t.entry_fee_cents|wcash }}{% else %} (grátis){% endif %}</button>
+        </form>
+        {% else %}<span class="muted">Vagas esgotadas.</span>{% endif %}
+      {% else %}
+        <a class="button" href="{{ url_for('players.login', next=request.path) }}">Entre para se inscrever</a>
+      {% endif %}
+    {% endif %}
+    {% if can_manage %}<a class="button secondary" href="{{ url_for('tournaments.manage', slug=t.slug) }}">Gerenciar</a>{% endif %}
+  </div>
+</section>
+
+<nav class="tabs">
+  <a href="?aba=geral" class="{{ 'active' if tab == 'geral' }}">Visão geral</a>
+  {% if stages %}<a href="?aba=tabela" class="{{ 'active' if tab == 'tabela' }}">Tabela e chaves</a>
+  <a href="?aba=jogos" class="{{ 'active' if tab == 'jogos' }}">Jogos</a>{% endif %}
+</nav>
+
+{% if tab == 'geral' %}
+  {% if podium %}
+  <section class="podium">
+    {% for e in podium %}<div class="podium-{{ e.final_position }}"><span>{{ e.final_position }}º</span><strong>{{ names[e.id] }}</strong>{% if prizes and loop.index0 < prizes|length and prizes[loop.index0] %}<small>{{ prizes[loop.index0]|wcash }}</small>{% endif %}</div>{% endfor %}
+  </section>
+  {% endif %}
+  <section class="t-info">
+    <dl>
+      <dt>Formato</dt><dd>{{ summary }}</dd>
+      <dt>Vagas</dt><dd>{{ entries|length }} de {{ t.max_players }}</dd>
+      <dt>Inscrição</dt><dd>{{ t.entry_fee_cents|wcash if t.entry_fee_cents else 'Grátis' }}</dd>
+      <dt>Prêmio</dt><dd>{% if pool %}{{ pool|wcash }} — {% for p in split %}{{ loop.index }}º {{ p }}%{% if prizes and prizes|length >= loop.index %} ({{ prizes[loop.index0]|wcash }}){% endif %}{% if not loop.last %} · {% endif %}{% endfor %}{% else %}Sem prêmio em inscrições{% endif %}</dd>
+    </dl>
+    {% if t.rules %}<h2>Regulamento</h2><div class="description">{{ t.rules }}</div>{% endif %}
+  </section>
+  <section>
+    <h2>Inscritos ({{ entries|length }})</h2>
+    {% if entries %}<ol class="entry-list">{% for e in entries %}<li>{{ e.username }}{% if e.team_name %} <span class="muted">· {{ e.team_name }}</span>{% endif %}</li>{% endfor %}</ol>
+    {% else %}<p class="muted">Ninguém inscrito ainda.</p>{% endif %}
+  </section>
+
+{% elif tab == 'tabela' %}
+  {% for view in stages %}
+  <section class="stage">
+    <h2>{{ view.stage.name }}</h2>
+    {% if view.stage.kind == 'knockout' %}{{ bracket(view, names) }}
+    {% else %}
+      {% if view.highlight %}<p class="legend"><span class="qualified-dot"></span> classificado{% if view.playoff %} direto · <span class="playoff-dot"></span> playoff{% endif %}</p>{% endif %}
+      <div class="groups">
+      {% for g in view.groups %}
+        <div class="group">{% if view.stage.kind == 'groups' %}<h3>{{ g.group.name }}</h3>{% endif %}
+        {{ standings(g.table, names, view.highlight or 0, view.playoff or 0) }}</div>
+      {% endfor %}
+      </div>
+    {% endif %}
+  </section>
+  {% endfor %}
+
+{% else %}
+  {% for view in stages %}
+  <section class="stage">
+    <h2>{{ view.stage.name }}</h2>
+    {% for rnd in view.rounds %}
+    <details class="round" {% if not loop.last or view.stage.status == 'running' %}open{% endif %}>
+      <summary>{{ rnd.name }}</summary>
+      {% for m in rnd.matches %}{{ match_line(m, names) }}{% endfor %}
+    </details>
+    {% else %}<p class="muted">Sem jogos.</p>{% endfor %}
+  </section>
+  {% endfor %}
+{% endif %}
+{% endblock %}

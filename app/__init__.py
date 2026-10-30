@@ -114,4 +114,9 @@ def create_app(test_config=None):
     from .discord import bp as discord_bp, api_bp as voice_api_bp
     app.register_blueprint(discord_bp)
     app.register_blueprint(voice_api_bp)
+    from .tournaments import admin_bp as tournaments_admin_bp, bp as tournaments_bp
+    from .wallet import format_cents
+    app.register_blueprint(tournaments_bp)
+    app.register_blueprint(tournaments_admin_bp)
+    app.jinja_env.filters["wcash"] = format_cents
     return app

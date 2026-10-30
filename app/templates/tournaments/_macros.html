@@ -1,0 +1,56 @@
+{% macro score(m) -%}
+{% if m.status == 'confirmed' %}<strong>{{ m.home_goals }} x {{ m.away_goals }}</strong>{% if m.home_pens is not none %} <small>({{ m.home_pens }} x {{ m.away_pens }} pên.)</small>{% endif %}{% else %}<span class="muted">x</span>{% endif %}
+{%- endmacro %}
+
+{% macro match_line(m, names) -%}
+<div class="match-line{% if m.status == 'confirmed' %} done{% endif %}" id="jogo-{{ m.id }}">
+  <span class="home">{{ names[m.home_entry_id] }}</span>
+  <span class="score">{{ score(m) }}</span>
+  <span class="away">{{ names[m.away_entry_id] }}</span>
+</div>
+{%- endmacro %}
+
+{% macro standings(table, names, highlight=0, playoff=0) -%}
+<div class="table-scroll">
+<table class="standings">
+  <thead><tr><th>#</th><th class="name-col">Jogador</th><th title="Pontos">P</th><th title="Jogos">J</th><th title="Vitórias">V</th><th title="Empates">E</th><th title="Derrotas">D</th><th class="hide-sm" title="Gols pró">GP</th><th class="hide-sm" title="Gols contra">GC</th><th title="Saldo">SG</th><th class="hide-sm">Últimos</th></tr></thead>
+  <tbody>
+  {% for row in table %}
+    <tr class="{% if row.position <= highlight %}qualified{% elif row.position <= highlight + playoff %}playoff{% endif %}">
+      <td>{{ row.position }}</td><td class="name-col">{{ names[row.entry_id] }}</td><td><strong>{{ row.points }}</strong></td>
+      <td>{{ row.played }}</td><td>{{ row.won }}</td><td>{{ row.drawn }}</td><td>{{ row.lost }}</td>
+      <td class="hide-sm">{{ row.goals_for }}</td><td class="hide-sm">{{ row.goals_against }}</td><td>{{ row.goal_diff }}</td>
+      <td class="hide-sm recent">{% for f in row.form %}<span class="f-{{ f }}">{{ f }}</span>{% endfor %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{%- endmacro %}
+
+{% macro bracket(view, names) -%}
+<div class="bracket">
+  {% for rnd in view.bracket %}
+  <div class="bracket-round">
+    <h4>{{ rnd.name }}</h4>
+    <div class="bracket-ties">
+    {# Quem passa direto aparece só na rodada seguinte. #}
+    {% for item in rnd['items'] if not item.tie.is_bye %}{% set tie = item.tie %}
+    <div class="tie{% if tie.is_third_place %} third{% endif %}">
+      {% if item.label %}<div class="tie-label">{{ item.label }}</div>{% endif %}
+      {% for slot in ('a', 'b') %}{% set entry = tie['entry_' ~ slot] %}
+      <div class="tie-slot{% if tie.winner_entry_id and tie.winner_entry_id == entry %} winner{% endif %}">
+        <span>{% if entry %}{{ names[entry] }}{% elif tie.is_bye and slot == 'b' %}<em class="muted">passa direto</em>{% else %}<em class="muted">a definir</em>{% endif %}</span>
+        {% if item.aggregate %}<strong>{{ item.aggregate[entry] }}</strong>{% endif %}
+      </div>
+      {% endfor %}
+      {% if item.legs %}<div class="tie-legs">
+        {% for m in item.legs %}<small>{% if tie.legs == 2 %}{{ m.leg }}º jogo: {% endif %}{{ names[m.home_entry_id] }} {{ score(m) }} {{ names[m.away_entry_id] }}</small>{% endfor %}
+      </div>{% endif %}
+    </div>
+    {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{%- endmacro %}

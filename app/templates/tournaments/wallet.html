@@ -1,0 +1,20 @@
+{% extends 'base.html' %}{% block title %}Carteira W$ · WE Camp{% endblock %}{% block content %}
+<section class="wallet-head">
+  <h1>Carteira W$</h1>
+  <p class="wallet-balance">{{ player.wallet_cents|wcash }}</p>
+  <p class="muted">W$ é o dinheiro dos torneios do WE Camp: paga inscrições e vira prêmio para os 3 primeiros. Cada jogo também rende W$: vitória {{ values.torneios_vitoria|wcash }}, empate {{ values.torneios_empate|wcash }}, derrota {{ values.torneios_derrota|wcash }}. W$ não pode ser trocado por dinheiro de verdade.</p>
+</section>
+<section>
+  <h2>Extrato</h2>
+  {% if entries %}
+  <div class="table-scroll"><table class="ledger">
+    <thead><tr><th>Data</th><th>Descrição</th><th class="num">Valor</th></tr></thead>
+    <tbody>{% for e in entries %}
+      <tr><td>{{ e.created_at|localtime }}</td>
+        <td>{{ kinds.get(e.kind, e.kind) }}{% if e.tournament_name %} · <a href="{{ url_for('tournaments.show', slug=e.slug) }}">{{ e.tournament_name }}</a>{% elif e.note %} · {{ e.note }}{% endif %}</td>
+        <td class="num {{ 'pos' if e.amount_cents > 0 else 'neg' }}">{{ e.amount_cents|wcash }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="muted">Nenhum movimento ainda.</p>{% endif %}
+</section>
+{% endblock %}

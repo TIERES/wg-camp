@@ -1,0 +1,94 @@
+{% extends 'base.html' %}{% block title %}Criar torneio · WE Camp{% endblock %}{% block content %}
+<h1>Criar torneio</h1>
+{% if not games %}<p class="notice error">Nenhum jogo cadastrado para torneios ainda. Peça à administração do WE Camp.</p>{% else %}
+<form method="post" class="form t-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label>Nome do torneio<input name="name" maxlength="80" minlength="3" required value="{{ form.get('name', '') }}" placeholder="Copa WE Camp de Inverno"></label>
+  <div class="two-columns">
+    <label>Jogo
+      <select name="game_title_id" required>
+        <option value="">Escolha...</option>
+        {% for g in games %}<option value="{{ g.id }}" {% if form.get('game_title_id')|int == g.id %}selected{% endif %}>{{ g.name }}{% if g.platform %} ({{ g.platform }}){% endif %}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Formato
+      <select name="format" id="format" required>
+        {% for key, label in format_labels.items() %}<option value="{{ key }}" {% if form.get('format') == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+  </div>
+  <div class="two-columns">
+    <label>Vagas<input type="number" name="max_players" min="{{ min_players }}" max="{{ max_players }}" required value="{{ form.get('max_players', 8) }}"></label>
+    <label>Inscrição (W$, máx. {{ max_fee|wcash }})<input name="entry_fee" inputmode="decimal" value="{{ form.get('entry_fee', '0,00') }}"></label>
+  </div>
+  <label>Divisão do prêmio (1º / 2º / 3º, em %)
+    <select name="prize_split">
+      {% for s in splits %}<option value="{{ s }}" {% if form.get('prize_split') == s %}selected{% endif %}>{{ s.replace(',', ' / ') }}</option>{% endfor %}
+    </select>
+  </label>
+  <p class="muted">Todo o valor das inscrições vira o prêmio, dividido entre os 3 primeiros. Cada jogo também rende W$ para os jogadores (vitória/empate), pago pelo WE Camp.</p>
+
+  <fieldset data-formats="league">
+    <legend>Pontos corridos</legend>
+    <label>Jogos<select name="legs"><option value="2">Turno e returno (ida e volta)</option><option value="1">Turno único</option></select></label>
+  </fieldset>
+
+  <fieldset data-formats="world_cup libertadores">
+    <legend>Fase de grupos</legend>
+    <div class="two-columns">
+      <label>Grupos<input type="number" name="groups" min="1" max="16" value="2"></label>
+      <label>Classificados por grupo<input type="number" name="qualifiers" min="1" max="8" value="2"></label>
+    </div>
+    <label>Jogos nos grupos<select name="group_legs"><option value="1">Jogo único</option><option value="2">Ida e volta</option></select></label>
+  </fieldset>
+
+  <fieldset data-formats="ucl">
+    <legend>Fase de liga (formato novo da Liga dos Campeões)</legend>
+    <p class="muted">Os inscritos são sorteados em potes. Cada um enfrenta adversários de todos os potes (inclusive o seu) e todos ficam numa tabela única. Os primeiros vão direto ao mata-mata; os seguintes (o dobro) disputam o playoff; os demais são eliminados. Oficial: 36 jogadores, 4 potes, 2 por pote, 8 direto.</p>
+    <div class="two-columns">
+      <label>Potes<input type="number" name="pots" min="1" max="8" value="4"></label>
+      <label>Adversários de cada pote<select name="per_pot"><option value="1">1 (um jogo por pote)</option><option value="2">2 (um em casa e um fora)</option></select></label>
+    </div>
+    <label>Classificados direto ao mata-mata<select name="direct">{% for n in (1, 2, 4, 8, 16) %}<option value="{{ n }}" {% if n == 2 %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
+  </fieldset>
+
+  <fieldset data-formats="world_cup libertadores ucl knockout">
+    <legend>Mata-mata</legend>
+    <div class="two-columns">
+      <label>Confrontos<select name="ko_legs"><option value="1">Jogo único</option><option value="2">Ida e volta</option></select></label>
+      <label>Final<select name="final_legs"><option value="1">Jogo único</option><option value="2">Ida e volta</option></select></label>
+    </div>
+    <label class="check"><input type="checkbox" name="third_place"> Disputa de 3º lugar (entre os eliminados nas semifinais)</label>
+    <p class="muted">Sem a disputa, o 3º lugar é o semifinalista eliminado com a melhor campanha no torneio. Empate no agregado vai para os pênaltis do último jogo.</p>
+  </fieldset>
+
+  <label>Regulamento / observações<textarea name="rules" rows="5" maxlength="5000" placeholder="Horários, regras do jogo, times permitidos...">{{ form.get('rules', '') }}</textarea></label>
+  <button>Criar torneio</button>
+</form>
+<script>
+(function () {
+  var defaults = {{ defaults|tojson }};
+  var select = document.getElementById('format');
+  var form = select.form;
+  var posted = {{ (form.to_dict() if form else {})|tojson }};
+  function apply(useDefaults) {
+    var fmt = select.value;
+    form.querySelectorAll('fieldset[data-formats]').forEach(function (fs) {
+      var on = fs.dataset.formats.split(' ').indexOf(fmt) >= 0;
+      fs.hidden = !on;
+      fs.querySelectorAll('input,select').forEach(function (el) { el.disabled = !on; });
+    });
+    var values = useDefaults ? defaults[fmt] : posted;
+    Object.keys(defaults[fmt]).forEach(function (key) {
+      var el = form.elements[key];
+      if (!el) return;
+      if (el.type === 'checkbox') el.checked = useDefaults ? !!values[key] : values[key] === 'on';
+      else if (values[key] !== undefined) el.value = values[key];
+    });
+  }
+  select.addEventListener('change', function () { apply(true); });
+  apply(!posted.format);
+})();
+</script>
+{% endif %}
+{% endblock %}

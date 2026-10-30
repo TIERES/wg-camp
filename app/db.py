@@ -141,6 +141,148 @@ CREATE TABLE IF NOT EXISTS voice_channels (
 """
 
 
+#  Torneios (/torneios - app/tournaments.py, motor em app/tournament/):
+#  - game_titles: catálogo de jogos dos torneios, mantido pelo Admin WE Camp
+#    (não confundir com `games`, que é o conteúdo da ISO do Memory Card);
+#  - um torneio é uma sequência de fases (tournament_stages): liga, grupos,
+#    fase de liga suíça (Liga dos Campeões) ou mata-mata;
+#  - no mata-mata, tournament_ties é o confronto (agrega ida e volta) e aponta
+#    para onde vão o vencedor (next_tie_id) e o perdedor (disputa de 3º);
+#  - wallet_entries é o livro-caixa do W$ (app/wallet.py), ref_key única.
+TOURNAMENTS_DDL = """
+CREATE TABLE IF NOT EXISTS game_titles (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    platform TEXT NOT NULL DEFAULT '',
+    championship_id INTEGER REFERENCES championships(id) ON DELETE SET NULL,
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tournaments (
+    id INTEGER PRIMARY KEY,
+    slug TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    game_title_id INTEGER NOT NULL REFERENCES game_titles(id) ON DELETE RESTRICT,
+    organizer_id INTEGER NOT NULL REFERENCES players(id) ON DELETE RESTRICT,
+    format TEXT NOT NULL CHECK (format IN ('league', 'ucl', 'world_cup', 'libertadores', 'knockout')),
+    status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'registration', 'running', 'finished', 'cancelled')),
+    max_players INTEGER NOT NULL,
+    entry_fee_cents INTEGER NOT NULL DEFAULT 0 CHECK (entry_fee_cents >= 0),
+    prize_split TEXT NOT NULL DEFAULT '60,30,10',
+    settings_json TEXT NOT NULL DEFAULT '{}',
+    rules TEXT NOT NULL DEFAULT '',
+    started_at TEXT,
+    finished_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS tournaments_status_idx ON tournaments(status);
+
+CREATE TABLE IF NOT EXISTS tournament_entries (
+    id INTEGER PRIMARY KEY,
+    tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+    player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE RESTRICT,
+    team_name TEXT NOT NULL DEFAULT '',
+    fee_ref TEXT,
+    final_position INTEGER,
+    created_at TEXT NOT NULL,
+    UNIQUE (tournament_id, player_id)
+);
+
+CREATE TABLE IF NOT EXISTS tournament_stages (
+    id INTEGER PRIMARY KEY,
+    tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+    seq INTEGER NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('league', 'groups', 'swiss', 'knockout')),
+    name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'done')),
+    settings_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    UNIQUE (tournament_id, seq)
+);
+
+CREATE TABLE IF NOT EXISTS tournament_groups (
+    id INTEGER PRIMARY KEY,
+    stage_id INTEGER NOT NULL REFERENCES tournament_stages(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    seq INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tournament_group_members (
+    group_id INTEGER NOT NULL REFERENCES tournament_groups(id) ON DELETE CASCADE,
+    entry_id INTEGER NOT NULL REFERENCES tournament_entries(id) ON DELETE CASCADE,
+    draw_order INTEGER NOT NULL,
+    PRIMARY KEY (group_id, entry_id)
+);
+
+CREATE TABLE IF NOT EXISTS tournament_ties (
+    id INTEGER PRIMARY KEY,
+    stage_id INTEGER NOT NULL REFERENCES tournament_stages(id) ON DELETE CASCADE,
+    round INTEGER NOT NULL,
+    position INTEGER NOT NULL,
+    legs INTEGER NOT NULL DEFAULT 1 CHECK (legs IN (1, 2)),
+    is_third_place INTEGER NOT NULL DEFAULT 0,
+    entry_a INTEGER REFERENCES tournament_entries(id) ON DELETE SET NULL,
+    entry_b INTEGER REFERENCES tournament_entries(id) ON DELETE SET NULL,
+    is_bye INTEGER NOT NULL DEFAULT 0,
+    winner_entry_id INTEGER REFERENCES tournament_entries(id) ON DELETE SET NULL,
+    next_tie_id INTEGER REFERENCES tournament_ties(id) ON DELETE SET NULL,
+    next_slot TEXT CHECK (next_slot IN ('a', 'b')),
+    loser_next_tie_id INTEGER REFERENCES tournament_ties(id) ON DELETE SET NULL,
+    loser_next_slot TEXT CHECK (loser_next_slot IN ('a', 'b'))
+);
+
+CREATE INDEX IF NOT EXISTS tournament_ties_stage_idx ON tournament_ties(stage_id, round, position);
+
+CREATE TABLE IF NOT EXISTS tournament_matches (
+    id INTEGER PRIMARY KEY,
+    stage_id INTEGER NOT NULL REFERENCES tournament_stages(id) ON DELETE CASCADE,
+    group_id INTEGER REFERENCES tournament_groups(id) ON DELETE CASCADE,
+    tie_id INTEGER REFERENCES tournament_ties(id) ON DELETE CASCADE,
+    round INTEGER NOT NULL,
+    leg INTEGER NOT NULL DEFAULT 1,
+    home_entry_id INTEGER NOT NULL REFERENCES tournament_entries(id) ON DELETE CASCADE,
+    away_entry_id INTEGER NOT NULL REFERENCES tournament_entries(id) ON DELETE CASCADE,
+    home_goals INTEGER,
+    away_goals INTEGER,
+    home_pens INTEGER,
+    away_pens INTEGER,
+    -- reported/disputed: confirmação entre os jogadores (fase 2).
+    status TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'reported', 'disputed', 'confirmed')),
+    result_version INTEGER NOT NULL DEFAULT 0,
+    confirmed_at TEXT,
+    live_session_id INTEGER REFERENCES live_sessions(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS tournament_matches_stage_idx ON tournament_matches(stage_id, round);
+CREATE INDEX IF NOT EXISTS tournament_matches_tie_idx ON tournament_matches(tie_id);
+
+CREATE TABLE IF NOT EXISTS wallet_entries (
+    id INTEGER PRIMARY KEY,
+    player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    amount_cents INTEGER NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('bonus_inicial', 'inscricao', 'reembolso', 'premio', 'vitoria', 'empate',
+                                       'derrota', 'estorno', 'ajuste_admin', 'recarga_pix')),
+    ref_key TEXT NOT NULL UNIQUE,
+    tournament_id INTEGER REFERENCES tournaments(id) ON DELETE SET NULL,
+    match_id INTEGER REFERENCES tournament_matches(id) ON DELETE SET NULL,
+    note TEXT NOT NULL DEFAULT '',
+    created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS wallet_entries_player_idx ON wallet_entries(player_id, id);
+CREATE INDEX IF NOT EXISTS wallet_entries_tournament_idx ON wallet_entries(tournament_id, kind);
+CREATE INDEX IF NOT EXISTS wallet_entries_match_idx ON wallet_entries(match_id);
+"""
+
+
 def ensure_player_columns(database):
     """Discord vinculado (app/discord.py) - colunas novas de players."""
     columns = {column["name"] for column in database.execute("PRAGMA table_info(players)")}
@@ -149,6 +291,11 @@ def ensure_player_columns(database):
             database.execute(f"ALTER TABLE players ADD COLUMN {column} TEXT")
     database.execute("CREATE UNIQUE INDEX IF NOT EXISTS players_discord_idx ON players(discord_id) "
                      "WHERE discord_id IS NOT NULL")
+    # Carteira W$ (app/wallet.py): saldo somado e quando o saldo inicial foi creditado.
+    if "wallet_cents" not in columns:
+        database.execute("ALTER TABLE players ADD COLUMN wallet_cents INTEGER NOT NULL DEFAULT 0")
+    if "wallet_started_at" not in columns:
+        database.execute("ALTER TABLE players ADD COLUMN wallet_started_at TEXT")
 
 
 def allow_iso_memcards(database):
@@ -229,6 +376,7 @@ def init_db():
     db.executescript(PLAYERS_DDL)
     db.executescript(SITE_SETTINGS_DDL)
     ensure_player_columns(db)
+    db.executescript(TOURNAMENTS_DDL)
     db.commit()
 
 
@@ -325,6 +473,7 @@ def migrate_db():
     database.executescript(PLAYERS_DDL)
     database.executescript(SITE_SETTINGS_DDL)
     ensure_player_columns(database)
+    database.executescript(TOURNAMENTS_DDL)
     database.execute("CREATE INDEX IF NOT EXISTS live_sessions_game_name_idx ON live_sessions(game_name)")
     database.execute("CREATE INDEX IF NOT EXISTS live_sessions_replay_idx ON live_sessions(status, duration_seconds)")
     rows = database.execute(
