@@ -178,6 +178,9 @@ CREATE TABLE IF NOT EXISTS tournaments (
     team_mode TEXT NOT NULL DEFAULT 'free' CHECK (team_mode IN ('free', 'choose', 'draw')),
     -- Seleções: escudo da federação (logo) ou bandeira (flag).
     team_display TEXT NOT NULL DEFAULT 'logo' CHECK (team_display IN ('logo', 'flag')),
+    -- Datas prováveis de início e fim (AAAA-MM-DD), informadas pelo organizador.
+    starts_on TEXT,
+    ends_on TEXT,
     started_at TEXT,
     finished_at TEXT,
     created_at TEXT NOT NULL,
@@ -185,6 +188,27 @@ CREATE TABLE IF NOT EXISTS tournaments (
 );
 
 CREATE INDEX IF NOT EXISTS tournaments_status_idx ON tournaments(status);
+
+-- ISO do torneio (app/tournament/iso.py): fica em DOWNLOADS_DIR até o
+-- archive.org confirmar a cópia (mesmo MD5); daí a local é apagada e o
+-- download redireciona para archive_url.
+CREATE TABLE IF NOT EXISTS tournament_isos (
+    tournament_id INTEGER PRIMARY KEY REFERENCES tournaments(id) ON DELETE CASCADE,
+    stored_name TEXT NOT NULL,
+    original_filename TEXT NOT NULL,
+    file_size INTEGER NOT NULL CHECK (file_size >= 0),
+    md5 TEXT NOT NULL,
+    archive_name TEXT NOT NULL,
+    archive_status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (archive_status IN ('pending', 'uploading', 'verifying', 'done', 'error')),
+    archive_url TEXT,
+    archive_error TEXT,
+    archive_updated_at TEXT,
+    local_removed_at TEXT,
+    uploaded_by INTEGER REFERENCES players(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS tournament_entries (
     id INTEGER PRIMARY KEY,
@@ -365,6 +389,14 @@ def ensure_player_columns(database):
         database.execute("ALTER TABLE players ADD COLUMN wallet_started_at TEXT")
 
 
+def ensure_tournament_columns(database):
+    """Colunas novas de tournaments (bancos criados antes delas)."""
+    columns = {column["name"] for column in database.execute("PRAGMA table_info(tournaments)")}
+    for column in ("starts_on", "ends_on"):
+        if column not in columns:
+            database.execute(f"ALTER TABLE tournaments ADD COLUMN {column} TEXT")
+
+
 def allow_iso_memcards(database):
     """Bancos de antes do "M. Card da ISO" têm memcards.player_id NOT NULL.
     O SQLite não muda a restrição de uma coluna, então a tabela é refeita com
@@ -444,6 +476,7 @@ def init_db():
     db.executescript(SITE_SETTINGS_DDL)
     ensure_player_columns(db)
     db.executescript(TOURNAMENTS_DDL)
+    ensure_tournament_columns(db)
     from .tournament.teams import seed_teams
     seed_teams(db)
     db.commit()
@@ -543,6 +576,7 @@ def migrate_db():
     database.executescript(SITE_SETTINGS_DDL)
     ensure_player_columns(database)
     database.executescript(TOURNAMENTS_DDL)
+    ensure_tournament_columns(database)
     from .tournament.teams import seed_teams
     seed_teams(database)
     database.execute("CREATE INDEX IF NOT EXISTS live_sessions_game_name_idx ON live_sessions(game_name)")

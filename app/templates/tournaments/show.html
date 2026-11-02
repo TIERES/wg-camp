@@ -57,8 +57,14 @@
   <section class="t-info">
     <dl>
       <dt>Formato</dt><dd>{{ summary }}</dd>
+      {% if t.starts_on or t.ends_on %}<dt>Datas prováveis</dt><dd>{% if t.starts_on %}Início {{ t.starts_on|date_br }}{% endif %}{% if t.starts_on and t.ends_on %} · {% endif %}{% if t.ends_on %}Fim {{ t.ends_on|date_br }}{% endif %}</dd>{% endif %}
       <dt>Vagas</dt><dd>{{ entries|length }} de {{ t.max_players }}</dd>
       <dt>Inscrição</dt><dd>{{ t.entry_fee_cents|wcash if t.entry_fee_cents else 'Grátis' }}</dd>
+      {% if iso %}<dt>ISO</dt><dd>
+        {% if not (session.player_id or session.user_id) %}<a href="{{ url_for('players.login', next=request.path) }}">Entre para baixar a ISO</a>
+        {% elif iso_ready %}<a href="{{ url_for('tournaments.iso_download', slug=t.slug) }}">Baixar {{ iso.original_filename }}</a> <small>({{ iso.file_size|filesize }})</small>
+        {% else %}{{ iso.original_filename }} <small>(sendo enviada para o archive.org; disponível em breve)</small>{% endif %}
+      </dd>{% endif %}
       <dt>Prêmio</dt><dd>{% if pool %}{{ pool|wcash }} — {% for p in split %}{{ loop.index }}º {{ p }}%{% if prizes and prizes|length >= loop.index %} ({{ prizes[loop.index0]|wcash }}){% endif %}{% if not loop.last %} · {% endif %}{% endfor %}{% else %}Sem prêmio em inscrições{% endif %}</dd>
     </dl>
     {% if t.rules %}<h2>Regulamento</h2><div class="description">{{ t.rules }}</div>{% endif %}

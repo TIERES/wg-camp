@@ -1,9 +1,13 @@
 {% extends 'base.html' %}{% block title %}Criar torneio · WE Camp{% endblock %}{% block content %}
 <h1>Criar torneio</h1>
 {% if not games %}<p class="notice error">Nenhum jogo cadastrado para torneios ainda. Peça à administração do WE Camp.</p>{% else %}
-<form method="post" class="form t-form">
+<form method="post" class="form t-form" enctype="multipart/form-data" data-upload="{{ iso_max_bytes }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label>Nome do torneio<input name="name" maxlength="80" minlength="3" required value="{{ form.get('name', '') }}" placeholder="Copa WE Camp de Inverno"></label>
+  <div class="two-columns">
+    <label>Início provável<input type="date" name="starts_on" value="{{ form.get('starts_on', '') }}"></label>
+    <label>Fim provável<input type="date" name="ends_on" value="{{ form.get('ends_on', '') }}"></label>
+  </div>
   <div class="two-columns">
     <label>Jogo
       <select name="game_title_id" required>
@@ -19,7 +23,7 @@
   </div>
   <div class="two-columns">
     <label>Vagas<input type="number" name="max_players" min="{{ min_players }}" max="{{ max_players }}" required value="{{ form.get('max_players', 8) }}"></label>
-    <label>Inscrição (W$, máx. {{ max_fee|wcash }})<input name="entry_fee" inputmode="decimal" value="{{ form.get('entry_fee', '0,00') }}"></label>
+    <label>Inscrição (W$, máx. {{ max_fee|wcash }})<input name="entry_fee" inputmode="numeric" data-wcash value="{{ form.get('entry_fee', '0,00') }}"></label>
   </div>
   <label>Divisão do prêmio (1º / 2º / 3º, em %)
     <select name="prize_split">
@@ -64,9 +68,11 @@
 
   <fieldset>
     <legend>Times</legend>
-    {% for key, label in team_modes.items() %}
-    <label class="check"><input type="radio" name="team_mode" value="{{ key }}" {% if form.get('team_mode', 'free') == key %}checked{% endif %}> {{ label }}</label>
-    {% endfor %}
+    <label>Como os jogadores ficam com os times
+      <select name="team_mode">
+        {% for key, label in team_modes.items() %}<option value="{{ key }}" {% if form.get('team_mode', 'free') == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
     <div id="team-picker">
       <p class="muted">Marque os times disponíveis (pelo menos um por vaga). Marque um grupo inteiro ou abra o grupo para escolher time a time. Marcados: <strong id="team-count">0</strong></p>
       <label>Seleções aparecem com
@@ -88,7 +94,14 @@
     </div>
   </fieldset>
 
+  <fieldset>
+    <legend>ISO do torneio</legend>
+    <label>Arquivo (opcional)<input type="file" name="iso" accept="{{ iso_accept }}"></label>
+    <p class="muted">Vai para o archive.org e fica disponível para download, na página do torneio, para quem estiver logado. Até {{ iso_max_bytes|filesize }} ({{ iso_accept.replace(',', ', ') }}). Dá para enviar ou trocar depois, em Gerenciar.</p>
+  </fieldset>
+
   <label>Regulamento / observações<textarea name="rules" rows="5" maxlength="5000" placeholder="Horários, regras do jogo, times permitidos...">{{ form.get('rules', '') }}</textarea></label>
+  {% include 'tournaments/_upload_progress.html' %}
   <button>Criar torneio</button>
 </form>
 <script>
@@ -119,7 +132,7 @@
   var picker = document.getElementById('team-picker');
   var count = document.getElementById('team-count');
   function refreshTeams() {
-    var mode = form.querySelector('input[name=team_mode]:checked').value;
+    var mode = form.elements.team_mode.value;
     picker.hidden = mode === 'free';
     picker.querySelectorAll('input[name=team_ids]').forEach(function (el) { el.disabled = mode === 'free'; });
     var ids = {};
@@ -143,7 +156,7 @@
   function sync(el) {
     picker.querySelectorAll('input[name=team_ids][value="' + el.value + '"]').forEach(function (o) { o.checked = el.checked; });
   }
-  form.querySelectorAll('input[name=team_mode]').forEach(function (el) { el.addEventListener('change', refreshTeams); });
+  form.elements.team_mode.addEventListener('change', refreshTeams);
   form.elements.team_display.addEventListener('change', function () {
     var flag = this.value === 'flag';
     picker.querySelectorAll('img[data-flag]').forEach(function (img) { img.src = flag ? img.dataset.flag : img.dataset.logo; });
@@ -171,6 +184,8 @@
   refreshTeams();
 })();
 </script>
+<script src="{{ url_for('static', filename='js/upload-progress.js') }}"></script>
+<script src="{{ url_for('static', filename='js/wcash-mask.js') }}"></script>
 {% endif %}
 {% include 'tournaments/_credits.html' %}
 {% endblock %}

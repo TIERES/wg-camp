@@ -23,6 +23,7 @@
     <span class="t-meta">
       <span>{{ t.entries }}/{{ t.max_players }} jogadores</span>
       <span>Inscrição: {{ t.entry_fee_cents|wcash if t.entry_fee_cents else 'grátis' }}</span>
+      {% if t.starts_on %}<span>{{ t.starts_on|date_br }}{% if t.ends_on %} a {{ t.ends_on|date_br }}{% endif %}</span>{% endif %}
     </span>
     <small class="muted">Organizado por {{ t.organizer_name }}</small>
   </a>

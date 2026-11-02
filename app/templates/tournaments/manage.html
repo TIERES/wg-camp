@@ -68,11 +68,45 @@
   <form method="post" action="{{ url_for('tournaments.edit', slug=t.slug) }}" class="form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>Nome<input name="name" value="{{ t.name }}" maxlength="80" minlength="3" required></label>
+    <div class="two-columns">
+      <label>Início provável<input type="date" name="starts_on" value="{{ t.starts_on or '' }}"></label>
+      <label>Fim provável<input type="date" name="ends_on" value="{{ t.ends_on or '' }}"></label>
+    </div>
     <label>Regulamento / observações<textarea name="rules" rows="5" maxlength="5000">{{ t.rules }}</textarea></label>
     <button>Salvar</button>
   </form>
 </section>
 
+{% endif %}
+
+{% if t.status != 'cancelled' %}
+<section>
+  <h2>ISO do torneio</h2>
+  {% if iso %}
+    <p><strong>{{ iso.original_filename }}</strong> <small>({{ iso.file_size|filesize }})</small><br>
+    {% if iso.local_removed_at %}No archive.org: <a href="{{ iso.archive_url }}" rel="noopener">{{ iso.archive_url }}</a>
+    {% elif iso.archive_status == 'uploading' %}Enviando para o archive.org...
+    {% elif iso.archive_status == 'verifying' %}Enviada; esperando o archive.org confirmar a cópia (pode levar alguns minutos).
+    {% elif iso.archive_status == 'error' %}<span class="notice error">Não foi para o archive.org: {{ iso.archive_error }}</span>
+    {% elif archive_configured %}Ainda não foi enviada para o archive.org.
+    {% else %}Só neste servidor (o archive.org não está configurado aqui).{% endif %}</p>
+    {% if not iso.local_removed_at and archive_configured and iso.archive_status in ('pending', 'error') %}
+    <form method="post" action="{{ url_for('tournaments.iso_retry', slug=t.slug) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Enviar para o archive.org de novo</button></form>
+    {% endif %}
+  {% else %}<p class="muted">Nenhuma ISO enviada.</p>{% endif %}
+  {% if not iso_uploading %}
+  <form method="post" action="{{ url_for('tournaments.iso_upload', slug=t.slug) }}" class="form" enctype="multipart/form-data" data-upload="{{ iso_max_bytes }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>{{ 'Trocar a ISO' if iso else 'Enviar a ISO' }}<input type="file" name="iso" accept="{{ iso_accept }}" required></label>
+    <p class="muted">Vai para o archive.org e fica disponível para download, na página do torneio, para quem estiver logado. Até {{ iso_max_bytes|filesize }} ({{ iso_accept.replace(',', ', ') }}).</p>
+    {% include 'tournaments/_upload_progress.html' %}
+    <button>Enviar ISO</button>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if t.status not in ('finished', 'cancelled') %}
 {% if t.status != 'running' or is_admin %}
 <section>
   <h2>Cancelar torneio</h2>
@@ -85,4 +119,5 @@
 </section>
 {% endif %}
 {% endif %}
+<script src="{{ url_for('static', filename='js/upload-progress.js') }}"></script>
 {% endblock %}

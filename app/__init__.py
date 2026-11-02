@@ -30,6 +30,8 @@ def create_app(test_config=None):
         # Escudos de times enviados pelo admin (/admin/torneios/times); a base
         # inicial fica em app/static/teams.
         TEAM_LOGOS_DIR=os.environ.get("ARENA17_TEAM_LOGOS_DIR", str(root / "storage" / "team-logos")),
+        # ISO que o organizador envia para o torneio (vai para o archive.org).
+        TOURNAMENT_ISO_MAX_BYTES=int(os.environ.get("ARENA17_TOURNAMENT_ISO_MAX_BYTES", 1024**3)),
         # Base dos links enviados por e-mail (confirmação, nova senha), ex.
         # "https://we2002.wgs.dev.br" - atrás do Caddy o Flask só vê http.
         PUBLIC_URL=os.environ.get("ARENA17_PUBLIC_URL", ""),

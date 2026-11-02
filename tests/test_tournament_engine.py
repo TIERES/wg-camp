@@ -146,6 +146,10 @@ class PrizeAndMoneyTest(unittest.TestCase):
         self.assertEqual(format_cents(-50), "-W$0,50")
         self.assertEqual(parse_cents("1.000,50"), 100050)
         self.assertEqual(parse_cents("50"), 5000)
+        # Como a máscara dos campos de W$ (static/js/wcash-mask.js) envia.
+        self.assertEqual(parse_cents("W$ 2,00"), 200)
+        self.assertEqual(parse_cents("W$ 1.234,56"), 123456)
+        self.assertEqual(parse_cents("W$ 0,00"), 0)
         self.assertEqual(parse_cents("0,5"), 50)
         self.assertEqual(parse_cents("12.5"), 1250)
         self.assertEqual(parse_cents("1.000"), 100000)

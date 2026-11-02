@@ -13,6 +13,7 @@ import re
 import secrets
 import sqlite3
 import time
+from datetime import date
 from functools import wraps
 from pathlib import Path
 from unicodedata import normalize
@@ -24,7 +25,7 @@ from markupsafe import Markup
 from .db import get_db, now
 from .players import player_required
 from .security import login_required, validate_csrf
-from .tournament import engine, formats, reports, store
+from .tournament import engine, formats, iso, reports, store
 from .tournament.store import TournamentError
 from .tournament.teams import KINDS as TEAM_KINDS, TEAM_MODES, generated_badge
 from .wallet import (KINDS, MONEY_SETTINGS, SETTING_LABELS, InsufficientFunds, ensure_wallet, format_cents,
@@ -55,6 +56,26 @@ def _int_or_none(value):
 
 def is_admin():
     return "user_id" in session
+
+
+def _dates(form):
+    """Datas prováveis de início e fim (AAAA-MM-DD do <input type=date>), opcionais."""
+    values = []
+    for key, label in (("starts_on", "início"), ("ends_on", "fim")):
+        raw = (form.get(key) or "").strip()
+        try:
+            values.append(date.fromisoformat(raw).isoformat() if raw else None)
+        except ValueError:
+            raise TournamentError(f"Data provável de {label} inválida.")
+    if values[0] and values[1] and values[1] < values[0]:
+        raise TournamentError("O fim provável não pode ser antes do início.")
+    return values
+
+
+@bp.app_template_filter("date_br")
+def date_br(value):
+    """AAAA-MM-DD -> DD/MM/AAAA."""
+    return f"{value[8:10]}/{value[5:7]}/{value[:4]}" if value else ""
 
 
 def can_manage(tournament):
@@ -247,10 +268,11 @@ def show(slug):
         "LEFT JOIN tournament_entries e ON e.tournament_id = tt.tournament_id AND e.team_id = t.id "
         "LEFT JOIN players p ON p.id = e.player_id WHERE tt.tournament_id = ? ORDER BY t.name COLLATE NOCASE",
         (tournament["id"],))]
+    iso_row = iso.get(db, tournament["id"])
     return render_template(
         "tournaments/show.html", t=tournament, entries=entries, my_entry=my_entry, stages=stages, tab=tab,
         team_list=team_list, team_modes=TEAM_MODES, crests=_crests(names), my_pending=my_pending,
-        names=names, can_manage=can_manage(tournament),
+        names=names, can_manage=can_manage(tournament), iso=iso_row, iso_ready=iso.downloadable(iso_row, current_app),
         format_label=formats.FORMATS[tournament["format"]], summary=formats.describe(tournament["format"], config),
         status_labels=STATUS_LABELS, pool=pool, split=split,
         prizes=engine.split_prize(pool, split, 3) if pool else [],
@@ -283,9 +305,18 @@ def new():
     db = get_db()
     games = db.execute("SELECT * FROM game_titles WHERE is_active = 1 ORDER BY name").fetchall()
     max_fee = setting(db, "torneios_inscricao_max")
+    if request.method == "POST":
+        try:
+            iso.check_size(request, current_app.config["TOURNAMENT_ISO_MAX_BYTES"])
+        except TournamentError as error:
+            flash(str(error), "error")
+            return redirect(url_for("tournaments.new"))
     form = request.form if request.method == "POST" else {}
     if request.method == "POST":
         validate_csrf()
+        upload = request.files.get("iso")
+        if upload is not None and not upload.filename:
+            upload = None
         try:
             name = form.get("name", "").strip()
             if not 3 <= len(name) <= 80:
@@ -306,6 +337,9 @@ def new():
             error = formats.config_error(fmt, config, max_players)
             if error:
                 raise TournamentError(f"Com {max_players} vagas: {error}")
+            starts_on, ends_on = _dates(form)
+            if upload:
+                iso.check_upload(upload)
             team_mode = form.get("team_mode", "free")
             if team_mode not in TEAM_MODES:
                 raise TournamentError("Escolha como serão os times.")
@@ -328,27 +362,30 @@ def new():
                     raise TournamentError(f"Você já tem {open_count} torneio(s) em aberto (o limite é {limit}). "
                                           "Encerre ou cancele um antes de criar outro.")
         except (TournamentError, ValueError) as error:
-            flash(str(error), "error")
+            # O navegador não preenche o campo de arquivo de novo.
+            flash(str(error) + (" Selecione a ISO de novo." if upload else ""), "error")
         else:
             tournament_id = db.execute(
                 "INSERT INTO tournaments (slug, name, game_title_id, organizer_id, format, status, max_players, "
-                "entry_fee_cents, prize_split, settings_json, rules, team_mode, team_display, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, 'registration', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "entry_fee_cents, prize_split, settings_json, rules, team_mode, team_display, starts_on, ends_on, "
+                "created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'registration', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (f"tmp-{now()}-{session['player_id']}", name, game_id, session["player_id"], fmt, max_players, fee,
-                 split, json.dumps(config), form.get("rules", "").strip()[:5000], team_mode, team_display, now(),
-                 now())).lastrowid
+                 split, json.dumps(config), form.get("rules", "").strip()[:5000], team_mode, team_display, starts_on,
+                 ends_on, now(), now())).lastrowid
             slug = f"{slugify(name)}-{tournament_id}"
             db.execute("UPDATE tournaments SET slug = ? WHERE id = ?", (slug, tournament_id))
             db.executemany("INSERT INTO tournament_teams (tournament_id, team_id) VALUES (?, ?)",
                            [(tournament_id, team_id) for team_id in team_ids])
             db.commit()
             flash("Torneio criado com inscrições abertas. Divulgue o link!", "success")
+            if upload:
+                _save_iso(store.get_tournament(db, tournament_id), upload)
             return redirect(url_for("tournaments.show", slug=slug))
     selected = {int(v) for v in form.getlist("team_ids") if v.isdigit()} if form else set()
     return render_template("tournaments/new.html", games=games, form=form, max_fee=max_fee,
                            format_labels=formats.FORMATS, defaults=formats.DEFAULTS, splits=PRIZE_SPLITS,
                            min_players=formats.MIN_PLAYERS, max_players=formats.MAX_PLAYERS,
-                           team_modes=TEAM_MODES, catalog=_team_catalog(db), selected=selected)
+                           team_modes=TEAM_MODES, catalog=_team_catalog(db), selected=selected, **_iso_limits())
 
 
 @bp.post("/<slug>/inscrever")
@@ -416,26 +453,115 @@ def manage(slug):
         (tournament["id"],)).fetchall()
     my_entry = db.execute("SELECT id FROM tournament_entries WHERE tournament_id = ? AND player_id = ?",
                           (tournament["id"], session.get("player_id"))).fetchone()
+    iso_row = iso.get(db, tournament["id"])
     return render_template("tournaments/manage.html", t=tournament, entries=store.entries_of(db, tournament["id"]),
                            open_reports=open_reports, my_entry_id=None if is_admin() or not my_entry else my_entry[0],
                            current=current, names=_names(db, tournament), decisive=decisive,
                            can_advance=can_advance, can_finish=can_finish, is_admin=is_admin(),
-                           status_labels=STATUS_LABELS)
+                           status_labels=STATUS_LABELS, iso=iso_row, iso_uploading=iso.uploading(iso_row),
+                           archive_configured=iso.archive_configured(current_app), **_iso_limits())
 
 
 @bp.post("/<slug>/editar")
 @manager_required
 def edit(tournament):
     name = request.form.get("name", "").strip()
-    if not 3 <= len(name) <= 80:
-        flash("O nome precisa ter entre 3 e 80 caracteres.", "error")
+    try:
+        if not 3 <= len(name) <= 80:
+            raise TournamentError("O nome precisa ter entre 3 e 80 caracteres.")
+        starts_on, ends_on = _dates(request.form)
+    except TournamentError as error:
+        flash(str(error), "error")
     else:
         db = get_db()
-        db.execute("UPDATE tournaments SET name = ?, rules = ?, updated_at = ? WHERE id = ?",
-                   (name, request.form.get("rules", "").strip()[:5000], now(), tournament["id"]))
+        db.execute("UPDATE tournaments SET name = ?, rules = ?, starts_on = ?, ends_on = ?, updated_at = ? WHERE id = ?",
+                   (name, request.form.get("rules", "").strip()[:5000], starts_on, ends_on, now(), tournament["id"]))
         db.commit()
         flash("Torneio atualizado.", "success")
     return redirect(url_for("tournaments.manage", slug=tournament["slug"]))
+
+
+# --- ISO do torneio (app/tournament/iso.py) ----------------------------------
+
+def _iso_limits():
+    return {"iso_max_bytes": current_app.config["TOURNAMENT_ISO_MAX_BYTES"],
+            "iso_accept": ",".join(f".{e}" for e in sorted(iso.EXTENSIONS))}
+
+
+def _save_iso(tournament, upload):
+    """Guarda a ISO e começa o envio para o archive.org (mensagem nos dois casos)."""
+    db = get_db()
+    try:
+        iso.check_upload(upload)
+        iso.save(db, tournament, upload, session.get("player_id"))
+        db.commit()
+    except TournamentError as error:
+        db.rollback()
+        flash(f"A ISO não foi aceita: {error}", "error")
+        return
+    app = current_app._get_current_object()
+    if iso.archive_configured(app):
+        flash("ISO recebida. Ela está sendo enviada para o archive.org; o download fica disponível quando o envio "
+              "terminar.", "success")
+    else:
+        flash("ISO recebida. O archive.org não está configurado neste servidor: a ISO fica só aqui.", "success")
+    iso.start_archive(app, tournament["id"])
+
+
+@bp.post("/<slug>/iso")
+def iso_upload(slug):
+    # Sem @manager_required: o tamanho é conferido antes de ler o formulário
+    # (o CSRF lê o corpo inteiro, que pode ter centenas de MB).
+    tournament = _load(slug)
+    if not can_manage(tournament):
+        abort(403)
+    try:
+        iso.check_size(request, current_app.config["TOURNAMENT_ISO_MAX_BYTES"])
+    except TournamentError as error:
+        flash(str(error), "error")
+    else:
+        validate_csrf()
+        upload = request.files.get("iso")
+        if upload is None or not upload.filename:
+            flash("Selecione o arquivo da ISO.", "error")
+        else:
+            _save_iso(tournament, upload)
+    return redirect(url_for("tournaments.manage", slug=slug))
+
+
+@bp.post("/<slug>/iso/archive-org")
+@manager_required
+def iso_retry(tournament):
+    row = iso.get(get_db(), tournament["id"])
+    if row is None or row["local_removed_at"]:
+        flash("A ISO já está no archive.org.", "error")
+    elif iso.uploading(row):
+        flash("O envio para o archive.org já está em andamento.", "error")
+    elif not iso.archive_configured(current_app):
+        flash("O archive.org não está configurado neste servidor.", "error")
+    else:
+        iso.start_archive(current_app._get_current_object(), tournament["id"])
+        flash("Enviando a ISO para o archive.org de novo.", "success")
+    return redirect(url_for("tournaments.manage", slug=tournament["slug"]))
+
+
+@bp.get("/<slug>/iso")
+def iso_download(slug):
+    """Só para quem está logado. Depois de confirmada no archive.org, a cópia
+    deste servidor não existe mais: redireciona para lá."""
+    tournament = _load(slug)
+    if "player_id" not in session and not is_admin():
+        return redirect(url_for("players.login", next=request.path))
+    row = iso.get(get_db(), tournament["id"])
+    if row is None:
+        abort(404)
+    if not iso.downloadable(row, current_app):
+        flash("A ISO ainda está sendo enviada para o archive.org. Tente de novo em alguns minutos.", "error")
+        return redirect(url_for("tournaments.show", slug=slug, aba="geral"))
+    if not row["local_removed_at"] and current_app.config["SERVE_DOWNLOADS_LOCALLY"]:
+        return send_from_directory(current_app.config["DOWNLOADS_DIR"], row["stored_name"], as_attachment=True,
+                                   download_name=row["original_filename"])
+    return redirect(row["archive_url"])
 
 
 @bp.post("/<slug>/iniciar")

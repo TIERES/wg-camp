@@ -7,7 +7,7 @@
   <form method="post" action="{{ url_for('tournaments_admin.admin_settings') }}" class="form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% for key, label in labels.items() %}
-    <label>{{ label }}<input name="{{ key }}" required {% if key in money %}inputmode="decimal" value="{{ (values[key]|wcash)[2:] }}"{% else %}type="number" min="1" value="{{ values[key] }}"{% endif %}></label>
+    <label>{{ label }}<input name="{{ key }}" required {% if key in money %}inputmode="numeric" data-wcash value="{{ (values[key]|wcash)[2:] }}"{% else %}type="number" min="1" value="{{ values[key] }}"{% endif %}></label>
     {% endfor %}
     <p class="muted">O saldo inicial vale para quem abrir a carteira depois da mudança. Os valores por jogo valem para os resultados lançados depois da mudança. Use 0,00 para não pagar nada.</p>
     <button>Salvar valores</button>
@@ -50,7 +50,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="two-columns">
       <label>Usuário<input name="username" required></label>
-      <label>Valor (W$)<input name="amount" inputmode="decimal" required placeholder="10,00"></label>
+      <label>Valor (W$)<input name="amount" inputmode="numeric" data-wcash required placeholder="W$ 10,00"></label>
     </div>
     <label>Tipo<select name="direction"><option value="credito">Crédito (adicionar)</option><option value="debito">Débito (retirar)</option></select></label>
     <label>Motivo<input name="note" maxlength="200" required></label>
@@ -64,4 +64,5 @@
   </table></div>
   {% endif %}
 </section>
+<script src="{{ url_for('static', filename='js/wcash-mask.js') }}"></script>
 {% endblock %}
