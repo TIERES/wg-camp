@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% block title %}Meus jogos · WE Camp{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from 'tournaments/_macros.html' import score %}{% block title %}Meus jogos · WE Camp{% endblock %}{% block content %}
 <h1>Meus jogos</h1>
 <p class="muted">Jogos dos seus torneios em andamento que ainda não têm resultado confirmado. Clique no torneio para ver os jogos.</p>
 {% set groups = rows|groupby('tournament_id') %}
@@ -25,11 +25,11 @@
       {% for row in group.list %}
       {% set mine_reported = row.status == 'reported' and row.reported_by_entry_id == row.my_entry_id %}
       <a class="my-match status-{{ row.status }}" data-search="{{ names[row.home_entry_id]|striptags }} {{ names[row.away_entry_id]|striptags }}" href="{{ url_for('tournaments.match', slug=row.slug, match_id=row.id) }}">
-        <span class="match-line"><span class="home">{{ names[row.home_entry_id] }}</span><span class="score">x</span><span class="away">{{ names[row.away_entry_id] }}</span></span>
+        <span class="match-line"><span class="home">{{ names[row.home_entry_id] }}</span><span class="score">{{ score(row) }}</span><span class="away">{{ names[row.away_entry_id] }}</span></span>
         <span class="my-match-status">{{ row.stage_name }} ·
           {% if row.status == 'scheduled' %}<strong>reporte o placar</strong>
           {% elif row.status == 'reported' and not mine_reported %}<strong>confirme ou conteste o placar do adversário</strong>
-          {% elif mine_reported %}esperando o adversário (até {{ deadlines[row.id]|localtime }})
+          {% elif mine_reported %}você reportou; esperando o adversário (até {{ deadlines[row.id]|localtime }})
           {% else %}contestado, com o organizador{% endif %}</span>
       </a>
       {% endfor %}

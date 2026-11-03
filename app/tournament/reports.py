@@ -1,6 +1,7 @@
 """Resultado informado pelos próprios jogadores (fase 2).
 
   scheduled --reportar--> reported --confirmar--> confirmed
+                             |  +--organizador libera novo reporte--> scheduled
                              |  +--sem resposta em N horas--> confirmed (automático)
                              +--contestar--> disputed --organizador/admin decide--> confirmed
 
@@ -87,6 +88,10 @@ def report(db, tournament, match_id, player_id, score, comment=""):
         raise TournamentError("O resultado deste jogo foi contestado e está com o organizador.")
     if match["status"] == "reported" and match["reported_by_entry_id"] != entry["id"]:
         raise TournamentError("O adversário já reportou o placar: confirme ou conteste.")
+    if match["status"] == "reported":
+        # Placar enviado não muda: só o organizador corrige ou libera um novo reporte.
+        raise TournamentError("Você já reportou o placar deste jogo. Para mudar, fale com o organizador: ele pode "
+                              "corrigir o resultado ou liberar um novo reporte.")
     _check_score(db, tournament, match_id, score)
     db.execute("UPDATE tournament_matches SET status = 'reported', reported_by_entry_id = ?, reported_at = ?, "
                "updated_at = ? WHERE id = ?", (entry["id"], now(), now(), match_id))

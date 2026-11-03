@@ -33,16 +33,16 @@
   {% for rnd in current.rounds %}
   <details class="round" {% if rnd.matches|selectattr('status', 'ne', 'confirmed')|list %}open{% endif %}>
     <summary>{{ rnd.name }} <small class="muted">({{ rnd.matches|selectattr('status', 'eq', 'confirmed')|list|length }}/{{ rnd.matches|length }})</small></summary>
-    {% for m in rnd.matches %}
+    {% for m in rnd.matches %}{% set shown = m if m.status == 'confirmed' else reported_score(m) %}
     <form method="post" action="{{ url_for('tournaments.result', slug=t.slug, match_id=m.id) }}" class="result-form{% if m.status == 'confirmed' %} done{% endif %}" id="jogo-{{ m.id }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <span class="home">{{ names[m.home_entry_id] }}</span>
-      <span class="goals"><input type="number" name="home_goals" min="0" max="99" value="{{ m.home_goals if m.home_goals is not none }}" required aria-label="Gols do mandante"> x <input type="number" name="away_goals" min="0" max="99" value="{{ m.away_goals if m.away_goals is not none }}" required aria-label="Gols do visitante"></span>
+      <span class="goals"><input type="number" name="home_goals" min="0" max="99" value="{{ shown.home_goals if shown and shown.home_goals is not none }}" required aria-label="Gols do mandante" class="score-{{ m.status }}" title="{{ score_tips[m.status] }}"> x <input type="number" name="away_goals" min="0" max="99" value="{{ shown.away_goals if shown and shown.away_goals is not none }}" required aria-label="Gols do visitante" class="score-{{ m.status }}" title="{{ score_tips[m.status] }}"></span>
       <span class="away">{{ names[m.away_entry_id] }}</span>
       {% if m.id in decisive %}<span class="pens">Pênaltis: <input type="number" name="home_pens" min="0" max="99" value="{{ m.home_pens if m.home_pens is not none }}" aria-label="Pênaltis mandante"> x <input type="number" name="away_pens" min="0" max="99" value="{{ m.away_pens if m.away_pens is not none }}" aria-label="Pênaltis visitante"></span>{% endif %}
       <span class="result-buttons">
         {% if my_entry_id in (m.home_entry_id, m.away_entry_id) %}<small class="muted">Seu jogo: reporte na <a href="{{ url_for('tournaments.match', slug=t.slug, match_id=m.id) }}">página do jogo</a></small>
-        {% else %}<button name="acao" value="salvar">{{ 'Corrigir' if m.status == 'confirmed' else 'Salvar' }}</button>{% if m.status == 'confirmed' %}<button name="acao" value="apagar" class="secondary" formnovalidate>Apagar</button>{% endif %}{% endif %}
+        {% else %}<button name="acao" value="salvar">{{ 'Corrigir' if m.status == 'confirmed' else 'Salvar' }}</button>{% if m.status == 'confirmed' %}<button name="acao" value="apagar" class="secondary" formnovalidate>Apagar</button>{% elif m.status in ('reported', 'disputed') %}<button name="acao" value="apagar" class="secondary" formnovalidate title="Descarta o placar enviado e deixa os jogadores reportarem de novo">Liberar novo reporte</button>{% endif %}{% endif %}
         {{ status_chip(m) }} <a href="{{ url_for('tournaments.match', slug=t.slug, match_id=m.id) }}">detalhes</a></span>
     </form>
     {% endfor %}

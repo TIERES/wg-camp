@@ -152,5 +152,28 @@ class StatsTest(unittest.TestCase):
         self.assertIn(b'value="p1"', client.get("/torneios/comparar").data)
 
 
+    def test_reported_score_is_shown_with_status_color(self):
+        from app.tournament import reports
+        p0, p1 = self.players[:2]
+        tid = self.league([p0, p1])
+        t = store.get_tournament(self.db, tid)
+        match_id = self.db.execute("SELECT id FROM tournament_matches").fetchone()[0]
+        home = self.db.execute("SELECT e.player_id FROM tournament_matches m JOIN tournament_entries e "
+                               "ON e.id = m.home_entry_id WHERE m.id = ?", (match_id,)).fetchone()[0]
+        reports.report(self.db, t, match_id, home, (4, 2, None, None))
+        self.db.commit()
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["player_id"] = home
+        for url in (f"/torneios/{t['slug']}?aba=jogos", f"/torneios/{t['slug']}/jogos/{match_id}", "/torneios/meus-jogos"):
+            page = client.get(url).get_data(as_text=True)
+            self.assertIn('score-val score-reported', page, url)
+            self.assertIn("<strong>4 x 2</strong>", page, url)
+            self.assertIn("aguardando a confirmação do adversário", page, url)
+        page = client.get(f"/torneios/{t['slug']}/jogos/{match_id}").get_data(as_text=True)
+        self.assertIn("Você reportou o placar", page)
+        self.assertNotIn("Enviar placar", page)
+        self.assertEqual(stats.player_record(self.db, home)["played"], 0)  # só conta depois de confirmado
+
 if __name__ == "__main__":
     unittest.main()

@@ -18,7 +18,7 @@ from functools import wraps
 from pathlib import Path
 from unicodedata import normalize
 
-from flask import (Blueprint, abort, current_app, flash, redirect, render_template, request, send_from_directory,
+from flask import (Blueprint, abort, current_app, flash, g, redirect, render_template, request, send_from_directory,
                    session, url_for)
 from markupsafe import Markup
 
@@ -76,6 +76,31 @@ def _dates(form):
 def date_br(value):
     """AAAA-MM-DD -> DD/MM/AAAA."""
     return f"{value[8:10]}/{value[5:7]}/{value[:4]}" if value else ""
+
+
+SCORE_TIPS = {
+    "scheduled": "Ainda sem resultado",
+    "reported": "Placar reportado por um jogador: aguardando a confirmação do adversário",
+    "confirmed": "Resultado confirmado",
+    "disputed": "Placar contestado: aguardando a decisão do organizador",
+}
+
+
+# Global (e não context processor): os macros importados com {% from %} só
+# enxergam os globais do Jinja.
+bp.record_once(lambda state: state.app.jinja_env.globals.update(score_tips=SCORE_TIPS))
+
+
+@bp.app_template_global()
+def reported_score(match):
+    """Último placar reportado de um jogo ainda não confirmado (para exibir
+    antes da confirmação), com cache por requisição."""
+    if match["status"] not in ("reported", "disputed"):
+        return None
+    cache = g.setdefault("reported_scores", {})
+    if match["id"] not in cache:
+        cache[match["id"]] = reports.last_report(get_db(), match["id"])
+    return cache[match["id"]]
 
 
 def can_manage(tournament):
@@ -606,7 +631,8 @@ def result(tournament, match_id):
     comment = request.form.get("comment", "")
     if request.form.get("acao") == "apagar":
         _run(lambda db, t: reports.clear(db, t, match_id, user_id=user_id, entry=organizer), tournament,
-             "Resultado apagado.")
+             "Resultado apagado." if match and match["status"] == "confirmed"
+             else "Reporte descartado: os jogadores podem enviar um novo placar.")
     else:
         try:
             score = _score_form()

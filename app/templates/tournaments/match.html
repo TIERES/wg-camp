@@ -18,15 +18,20 @@
 
 {% if open %}
   {% if me %}
-    {% if m.status == 'scheduled' or (m.status == 'reported' and m.reported_by_entry_id == me.id) %}
+    {% if m.status == 'reported' and m.reported_by_entry_id == me.id %}
     <section>
-      <h2>{{ 'Corrigir meu placar' if m.status == 'reported' else 'Reportar o placar' }}</h2>
+      <h2>Você reportou o placar</h2>
+      <p class="muted">O placar enviado não pode ser alterado. Se houver erro, fale com o organizador: ele pode corrigir o resultado ou liberar um novo reporte.</p>
+    </section>
+    {% elif m.status == 'scheduled' %}
+    <section>
+      <h2>Reportar o placar</h2>
       <form method="post" action="{{ url_for('tournaments.match_report', slug=t.slug, match_id=m.id) }}" class="form match-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        {% set values = reported if m.status == 'reported' else none %}{% set required = true %}{% include 'tournaments/_score_inputs.html' %}
+        {% set values = none %}{% set required = true %}{% include 'tournaments/_score_inputs.html' %}
         <label>Comentário (opcional)<input name="comment" maxlength="500" placeholder="Ex.: jogo com lag no 2º tempo"></label>
         <button>Enviar placar</button>
-        <p class="muted">O adversário confirma ou contesta. Sem resposta no prazo, o placar é confirmado automaticamente.</p>
+        <p class="muted">Confira antes de enviar: depois o placar não pode ser alterado por você. O adversário confirma ou contesta; sem resposta no prazo, o placar é confirmado automaticamente.</p>
       </form>
     </section>
     {% elif m.status == 'reported' %}
@@ -56,7 +61,8 @@
       {% set values = m if m.status == 'confirmed' else reported %}{% set required = true %}{% include 'tournaments/_score_inputs.html' %}
       <label>Observação (fica no histórico)<input name="comment" maxlength="500"></label>
       <div class="card-actions"><button name="acao" value="salvar">{{ 'Corrigir resultado' if m.status == 'confirmed' else 'Definir resultado' }}</button>
-      {% if m.status != 'scheduled' %}<button name="acao" value="apagar" class="secondary" formnovalidate>{{ 'Apagar resultado' if m.status == 'confirmed' else 'Descartar reporte' }}</button>{% endif %}</div>
+      {% if m.status != 'scheduled' %}<button name="acao" value="apagar" class="secondary" formnovalidate>{{ 'Apagar resultado' if m.status == 'confirmed' else 'Liberar novo reporte' }}</button>{% endif %}</div>
+      {% if m.status in ('reported', 'disputed') %}<p class="muted">"Liberar novo reporte" descarta o placar enviado e deixa os jogadores reportarem de novo.</p>{% endif %}
     </form>
   </section>
   {% endif %}
@@ -66,7 +72,7 @@
 <section>
   <h2>Confronto direto</h2>
   <p>{% if h2h.record.played %}Em {{ h2h.record.played }} jogo{{ 's' if h2h.record.played != 1 }} confirmado{{ 's' if h2h.record.played != 1 }}: <strong>{{ h2h.home }}</strong> {{ h2h.record.wins }} vitória{{ 's' if h2h.record.wins != 1 }}, {{ h2h.record.draws }} empate{{ 's' if h2h.record.draws != 1 }}, <strong>{{ h2h.away }}</strong> {{ h2h.record.losses }} vitória{{ 's' if h2h.record.losses != 1 }}.
-  {% else %}Primeiro jogo confirmado entre {{ h2h.home }} e {{ h2h.away }}.{% endif %}
+  {% else %}{{ h2h.home }} e {{ h2h.away }} ainda não têm jogos confirmados entre si.{% endif %}
   <a href="{{ url_for('tournaments.compare', a=h2h.home, b=h2h.away) }}">Comparar os dois</a></p>
 </section>
 {% endif %}

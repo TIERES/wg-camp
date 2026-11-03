@@ -74,13 +74,19 @@ class ReportsTest(unittest.TestCase):
             reports.confirm(self.db, self.t(tid), m["id"], home)  # quem reportou não confirma
         with self.assertRaises(TournamentError):
             reports.report(self.db, self.t(tid), m["id"], away, (0, 0, None, None))  # adversário não reporta por cima
-        reports.report(self.db, self.t(tid), m["id"], home, (3, 1, None, None))  # quem reportou corrige
+        with self.assertRaises(TournamentError):
+            reports.report(self.db, self.t(tid), m["id"], home, (3, 1, None, None))  # quem reportou não muda
+        # O organizador libera um novo reporte (descarta o enviado).
+        reports.clear(self.db, self.t(tid), m["id"], user_id=1)
+        self.assertEqual(self.status(m["id"]), "scheduled")
+        reports.report(self.db, self.t(tid), m["id"], home, (3, 1, None, None))
         reports.confirm(self.db, self.t(tid), m["id"], away)
         self.db.commit()
         m2 = self.db.execute("SELECT * FROM tournament_matches WHERE id = ?", (m["id"],)).fetchone()
         self.assertEqual((m2["status"], m2["home_goals"], m2["away_goals"]), ("confirmed", 3, 1))
         self.assertEqual(balance(self.db, home), 100050)
-        self.assertEqual([h["action"] for h in reports.history(self.db, m["id"])], ["report", "report", "confirm"])
+        self.assertEqual([h["action"] for h in reports.history(self.db, m["id"])],
+                         ["report", "clear", "report", "confirm"])
         with self.assertRaises(TournamentError):
             reports.report(self.db, self.t(tid), m["id"], home, (0, 0, None, None))
 
