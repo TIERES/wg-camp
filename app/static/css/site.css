@@ -154,7 +154,7 @@ a.match-line { color:var(--text); text-decoration:none } a.match-line:hover { ba
 .history { padding-left:1.25rem } .history li { margin:.5rem 0 }
 details.dispute { margin-top:1rem } details.dispute summary { cursor:pointer; color:#fca5a5 }
 .my-match { display:block; padding:.25rem .75rem .6rem; margin:.5rem 0; background:var(--card); border-radius:8px; color:var(--text); text-decoration:none; border-left:4px solid #4b5563 }
-.my-match.status-scheduled { border-left-color:#60a5fa } .my-match.status-reported { border-left-color:#fbbf24 } .my-match.status-disputed { border-left-color:#f87171 }
+.my-match.status-scheduled { border-left-color:#60a5fa } .my-match.status-reported { border-left-color:#fbbf24 } .my-match.status-disputed { border-left-color:#f87171 } .my-match.status-confirmed { border-left-color:#34d399 }
 .my-match .match-line { border-top:0 } .my-match-status { display:block; text-align:center; font-size:.85rem; color:#cbd5e1 }
 .upload-progress { display:flex; align-items:center; gap:.75rem } .upload-progress progress { flex:1; min-width:0 }
 .stat-tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(8.5rem,1fr)); gap:.75rem; margin:1rem 0 }
@@ -178,7 +178,7 @@ details.mt-card > summary::before { content:'\25B8'; color:#9ca3af; transition:t
 .mt-title { flex:1 1 12rem; display:flex; flex-direction:column; min-width:0; overflow-wrap:anywhere } .mt-title small { font-size:.8rem }
 .mt-counts { display:flex; flex-wrap:wrap; gap:.35rem }
 .mt-counts .chip { display:inline-block; margin:0; padding:.15rem .5rem; border-radius:999px; background:#374151; color:#e5e7eb; text-transform:none; letter-spacing:0; font-size:.75rem }
-.mt-counts .chip-todo { background:#1e3a8a; color:#bfdbfe } .mt-counts .chip-reported { background:#78350f; color:#fde68a } .mt-counts .chip-disputed { background:#7f1d1d; color:#fecaca }
+.mt-counts .chip-todo { background:#1e3a8a; color:#bfdbfe } .mt-counts .chip-reported { background:#78350f; color:#fde68a } .mt-counts .chip-disputed { background:#7f1d1d; color:#fecaca } .mt-counts .chip-done { background:#064e3b; color:#a7f3d0 }
 .mt-body { padding:0 1rem .75rem } .mt-body .my-match { background:#172333 }
 .mt-match-filter { width:100%; max-width:22rem; margin:.25rem 0 .25rem } .mt-link { margin:.5rem 0 0; font-size:.9rem }
 /* Placar pela cor: verde confirmado, laranja aguardando confirmação, vermelho contestado. */

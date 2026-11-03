@@ -724,15 +724,14 @@ def match_dispute(slug, match_id):
 @player_required
 def my_matches():
     db = get_db()
-    rows = reports.pending_for_player(db, session["player_id"])
-    tournaments = {}
+    rows = reports.matches_for_player(db, session["player_id"])
+    groups = {}  # tournament_id -> jogos, na ordem da consulta (em andamento primeiro)
     for row in rows:
-        if row["tournament_id"] not in tournaments:
-            tournaments[row["tournament_id"]] = store.get_tournament(db, row["tournament_id"])
+        groups.setdefault(row["tournament_id"], []).append(row)
     names = {}
-    for tournament in tournaments.values():
-        names.update(_names(db, tournament))
-    return render_template("tournaments/my_matches.html", rows=rows, names=names,
+    for tournament_id in groups:
+        names.update(_names(db, store.get_tournament(db, tournament_id)))
+    return render_template("tournaments/my_matches.html", groups=list(groups.values()), names=names,
                            deadlines={r["id"]: reports.deadline(db, r) for r in rows if r["status"] == "reported"})
 
 

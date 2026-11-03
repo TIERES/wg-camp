@@ -175,5 +175,18 @@ class StatsTest(unittest.TestCase):
         self.assertNotIn("Enviar placar", page)
         self.assertEqual(stats.player_record(self.db, home)["played"], 0)  # só conta depois de confirmado
 
+    def test_my_matches_lists_all_games(self):
+        p0, p1, p2 = self.players[:3]
+        tid = self.league([p0, p1, p2])
+        self.play(tid, p0, p1, 2, 0)  # confirmado
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["player_id"] = p0
+        page = client.get("/torneios/meus-jogos").get_data(as_text=True)
+        self.assertEqual(page.count('class="my-match status-'), 2)  # o confirmado e o que falta
+        self.assertIn("resultado confirmado", page)
+        self.assertIn("1 confirmado", page)
+        self.assertIn("1 para reportar", page)
+
 if __name__ == "__main__":
     unittest.main()

@@ -181,12 +181,14 @@ def auto_confirm(db, at=None):
     return done
 
 
-def pending_for_player(db, player_id):
-    """Jogos em andamento do jogador que pedem alguma ação ou estão esperando."""
+def matches_for_player(db, player_id):
+    """Todos os jogos do jogador nos torneios em andamento e encerrados (os
+    em andamento primeiro), na ordem da tabela."""
     return db.execute(
-        "SELECT m.*, t.id AS tournament_id, t.slug, t.name AS tournament_name, s.name AS stage_name, e.id AS my_entry_id "
+        "SELECT m.*, t.id AS tournament_id, t.slug, t.name AS tournament_name, t.status AS tournament_status, "
+        "s.name AS stage_name, s.status AS stage_status, e.id AS my_entry_id "
         "FROM tournament_entries e JOIN tournaments t ON t.id = e.tournament_id "
-        "JOIN tournament_stages s ON s.tournament_id = t.id AND s.status = 'running' "
+        "JOIN tournament_stages s ON s.tournament_id = t.id "
         "JOIN tournament_matches m ON m.stage_id = s.id AND (m.home_entry_id = e.id OR m.away_entry_id = e.id) "
-        "WHERE e.player_id = ? AND t.status = 'running' AND m.status != 'confirmed' "
-        "ORDER BY t.id, m.round, m.leg, m.id", (player_id,)).fetchall()
+        "WHERE e.player_id = ? AND t.status IN ('running', 'finished') "
+        "ORDER BY t.status = 'finished', t.id DESC, s.seq, m.round, m.leg, m.id", (player_id,)).fetchall()
