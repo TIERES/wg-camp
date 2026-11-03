@@ -1,5 +1,5 @@
 {% extends 'base.html' %}{% block title %}Torneios · WE Camp{% endblock %}{% block content %}
-<div class="page-title"><h1>Torneios</h1>{% if session.player_id %}<a class="button" href="{{ url_for('tournaments.new') }}">Criar torneio</a>{% else %}<a class="button" href="{{ url_for('players.login', next=url_for('tournaments.new')) }}">Entre para criar um torneio</a>{% endif %}</div>
+<div class="page-title"><h1>Torneios</h1><div class="card-actions"><a class="button secondary" href="{{ url_for('tournaments.ranking') }}">Ranking</a>{% if session.player_id %}<a class="button" href="{{ url_for('tournaments.new') }}">Criar torneio</a>{% else %}<a class="button" href="{{ url_for('players.login', next=url_for('tournaments.new')) }}">Entre para criar um torneio</a>{% endif %}</div></div>
 
 <form method="get" class="filters">
   <select name="status" onchange="this.form.submit()">

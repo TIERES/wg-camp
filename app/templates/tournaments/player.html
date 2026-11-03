@@ -1,0 +1,38 @@
+{% extends 'base.html' %}{% from 'tournaments/_stats_macros.html' import game_filter, player_link, form_badges, history_table %}
+{% block title %}{{ p.username }} · WE Camp{% endblock %}{% block content %}
+<p><a href="{{ url_for('tournaments.ranking', jogo=game) }}">← Ranking</a></p>
+<div class="page-title"><h1>{{ p.username }}</h1>{% if session.player_id and session.player_id != p.id %}<a class="button" href="{{ url_for('tournaments.compare', b=p.username, jogo=game) }}">Comparar comigo</a>{% else %}<a class="button" href="{{ url_for('tournaments.compare', a=p.username, jogo=game) }}">Comparar com…</a>{% endif %}</div>
+{{ game_filter(games, game) }}
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span>Ranking</span><strong>{{ position ~ 'º' if position else '—' }}</strong></div>
+  <div class="stat-tile"><span>Jogos</span><strong>{{ record.played }}</strong></div>
+  <div class="stat-tile win"><span>Vitórias</span><strong>{{ record.wins }}</strong></div>
+  <div class="stat-tile draw"><span>Empates</span><strong>{{ record.draws }}</strong></div>
+  <div class="stat-tile loss"><span>Derrotas</span><strong>{{ record.losses }}</strong></div>
+  <div class="stat-tile"><span>Gols (saldo)</span><strong>{{ record.goals_for }}:{{ record.goals_against }} <small>({{ '%+d'|format(record.goal_diff) }})</small></strong></div>
+  <div class="stat-tile"><span>Aproveitamento</span><strong>{{ record.efficiency }}%</strong></div>
+</div>
+{% if form %}<p>Últimos jogos: {{ form_badges(form) }}</p>{% endif %}
+
+{% if opponents %}
+<section>
+  <h2>Adversários mais enfrentados</h2>
+  <div class="table-scroll">
+  <table class="standings">
+    <thead><tr><th class="name-col">Adversário</th><th title="Jogos">J</th><th title="Vitórias">V</th><th title="Empates">E</th><th title="Derrotas">D</th><th title="Saldo">SG</th><th></th></tr></thead>
+    <tbody>{% for o in opponents %}
+      <tr><td class="name-col">{{ player_link(o.username, game) }}</td><td>{{ o.played }}</td><td>{{ o.wins }}</td><td>{{ o.draws }}</td><td>{{ o.losses }}</td><td>{{ o.goal_diff }}</td>
+        <td><a href="{{ url_for('tournaments.compare', a=p.username, b=o.username, jogo=game) }}">Confronto</a></td></tr>
+    {% endfor %}</tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
+
+<section>
+  <h2>Histórico de partidas</h2>
+  {% if rows %}{{ history_table(rows, outcome, game) }}{% if rows|length >= 100 %}<p class="muted">Mostrando os 100 jogos mais recentes.</p>{% endif %}
+  {% else %}<p class="muted">Nenhum jogo confirmado ainda{% if game %} neste jogo{% endif %}.</p>{% endif %}
+</section>
+{% endblock %}

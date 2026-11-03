@@ -1,0 +1,24 @@
+{% extends 'base.html' %}{% from 'tournaments/_stats_macros.html' import game_filter, player_link %}
+{% block title %}Ranking · WE Camp{% endblock %}{% block content %}
+<div class="page-title"><h1>Ranking dos jogadores</h1><a class="button" href="{{ url_for('tournaments.compare', jogo=game) }}">Comparar jogadores</a></div>
+<p class="muted">Top 10 pelos jogos confirmados em todos os torneios (cancelados não contam). Vitória 3 pontos, empate 1; desempate por vitórias, saldo e gols pró. Jogo decidido nos pênaltis conta como empate.</p>
+{{ game_filter(games, game) }}
+
+{% if rows %}
+<div class="table-scroll">
+<table class="standings">
+  <thead><tr><th>#</th><th class="name-col">Jogador</th><th title="Pontos">P</th><th title="Jogos">J</th><th title="Vitórias">V</th><th title="Empates">E</th><th title="Derrotas">D</th><th class="hide-sm" title="Gols pró">GP</th><th class="hide-sm" title="Gols contra">GC</th><th title="Saldo">SG</th><th title="Aproveitamento">%</th></tr></thead>
+  <tbody>{% for r in rows %}
+    <tr{% if r.player_id == session.player_id %} class="qualified"{% endif %}>
+      <td>{{ loop.index }}</td><td class="name-col">{{ player_link(r.username, game) }}</td><td><strong>{{ r.points }}</strong></td>
+      <td>{{ r.played }}</td><td>{{ r.wins }}</td><td>{{ r.draws }}</td><td>{{ r.losses }}</td>
+      <td class="hide-sm">{{ r.goals_for }}</td><td class="hide-sm">{{ r.goals_against }}</td><td>{{ r.goal_diff }}</td><td>{{ r.efficiency }}%</td>
+    </tr>
+  {% endfor %}</tbody>
+</table>
+</div>
+{% if my_position and my_position > rows|length %}
+<p>Você está em <strong>{{ my_position }}º</strong>: {{ my_record.points }} pontos em {{ my_record.played }} jogos ({{ my_record.wins }}V {{ my_record.draws }}E {{ my_record.losses }}D). <a href="{{ url_for('tournaments.player', nome=my_name, jogo=game) }}">Ver meu histórico</a></p>
+{% endif %}
+{% else %}<p>Nenhum jogo confirmado ainda{% if game %} neste jogo{% endif %}.</p>{% endif %}
+{% endblock %}

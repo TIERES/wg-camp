@@ -25,7 +25,7 @@ from markupsafe import Markup
 from .db import get_db, now
 from .players import player_required
 from .security import login_required, validate_csrf
-from .tournament import engine, formats, iso, reports, store
+from .tournament import engine, formats, iso, reports, stats, store
 from .tournament.store import TournamentError
 from .tournament.teams import KINDS as TEAM_KINDS, TEAM_MODES, generated_badge
 from .wallet import (KINDS, MONEY_SETTINGS, SETTING_LABELS, InsufficientFunds, ensure_wallet, format_cents,
@@ -638,8 +638,14 @@ def match(slug, match_id):
     names = _names(db, tournament)
     me = reports.player_entry(db, tournament, m, session.get("player_id")) if session.get("player_id") else None
     manager = can_manage(tournament) and (is_admin() or me is None)
+    sides = {row["id"]: row for row in db.execute(
+        "SELECT e.id, p.id AS player_id, p.username FROM tournament_entries e JOIN players p ON p.id = e.player_id "
+        "WHERE e.id IN (?, ?)", (m["home_entry_id"], m["away_entry_id"]))}
+    home, away = sides.get(m["home_entry_id"]), sides.get(m["away_entry_id"])
+    h2h = {"home": home["username"], "away": away["username"],
+           "record": stats.player_record(db, home["player_id"], opponent_id=away["player_id"])} if home and away else None
     return render_template(
-        "tournaments/match.html", t=tournament, m=m, names=names, me=me, manager=manager,
+        "tournaments/match.html", t=tournament, m=m, names=names, me=me, manager=manager, h2h=h2h,
         history=reports.history(db, match_id), labels=reports.ACTION_LABELS,
         reported=reports.last_report(db, match_id) if m["status"] in ("reported", "disputed") else None,
         deadline=reports.deadline(db, m) if m["status"] == "reported" else None,
@@ -702,6 +708,65 @@ def my_matches():
         names.update(_names(db, tournament))
     return render_template("tournaments/my_matches.html", rows=rows, names=names,
                            deadlines={r["id"]: reports.deadline(db, r) for r in rows if r["status"] == "reported"})
+
+
+# --- Ranking, histórico e comparação (app/tournament/stats.py) ----------------
+
+def _game_filter(db):
+    """Jogo escolhido no filtro (?jogo=) e a lista de jogos para o <select>."""
+    games = db.execute("SELECT id, name FROM game_titles ORDER BY name").fetchall()
+    game = request.args.get("jogo", type=int)
+    return (game if any(g["id"] == game for g in games) else None), games
+
+
+def _player_by_name(db, username):
+    return db.execute("SELECT id, username, created_at FROM players WHERE username = ?",
+                      ((username or "").strip(),)).fetchone()
+
+
+@bp.get("/ranking")
+def ranking():
+    db = get_db()
+    game, games = _game_filter(db)
+    me = session.get("player_id")
+    my_name = db.execute("SELECT username FROM players WHERE id = ?", (me,)).fetchone() if me else None
+    return render_template("tournaments/ranking.html", rows=stats.ranking(db, game), games=games, game=game,
+                           my_position=stats.position(db, me, game) if my_name else None,
+                           my_name=my_name[0] if my_name else None,
+                           my_record=stats.player_record(db, me, game) if me else None)
+
+
+@bp.get("/jogadores/<nome>")
+def player(nome):
+    db = get_db()
+    target = _player_by_name(db, nome)
+    if target is None:
+        abort(404)
+    game, games = _game_filter(db)
+    rows = stats.history(db, target["id"], game)
+    return render_template("tournaments/player.html", p=target, games=games, game=game,
+                           record=stats.player_record(db, target["id"], game),
+                           position=stats.position(db, target["id"], game), rows=rows, form=stats.form(rows),
+                           opponents=stats.opponents(db, target["id"], game), outcome=stats.outcome)
+
+
+@bp.get("/comparar")
+def compare():
+    db = get_db()
+    game, games = _game_filter(db)
+    names = (request.args.get("a", "").strip(), request.args.get("b", "").strip())
+    a, b = (_player_by_name(db, name) if name else None for name in names)
+    if not names[0] and session.get("player_id"):  # sem escolha: começa por quem está logado
+        a = db.execute("SELECT id, username FROM players WHERE id = ?", (session["player_id"],)).fetchone()
+    result = None
+    if (names[0] and a is None) or (names[1] and b is None):
+        flash("Jogador não encontrado.", "error")
+    elif a and b and a["id"] == b["id"]:
+        flash("Escolha dois jogadores diferentes.", "error")
+    elif a and b:
+        result = stats.compare(db, a["id"], b["id"], game)
+    return render_template("tournaments/compare.html", a=a, b=b, result=result, games=games, game=game,
+                           players=stats.players_with_matches(db), outcome=stats.outcome)
 
 
 _last_auto_confirm = [0.0]

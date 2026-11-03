@@ -62,6 +62,15 @@
   {% endif %}
 {% endif %}
 
+{% if h2h %}
+<section>
+  <h2>Confronto direto</h2>
+  <p>{% if h2h.record.played %}Em {{ h2h.record.played }} jogo{{ 's' if h2h.record.played != 1 }} confirmado{{ 's' if h2h.record.played != 1 }}: <strong>{{ h2h.home }}</strong> {{ h2h.record.wins }} vitória{{ 's' if h2h.record.wins != 1 }}, {{ h2h.record.draws }} empate{{ 's' if h2h.record.draws != 1 }}, <strong>{{ h2h.away }}</strong> {{ h2h.record.losses }} vitória{{ 's' if h2h.record.losses != 1 }}.
+  {% else %}Primeiro jogo confirmado entre {{ h2h.home }} e {{ h2h.away }}.{% endif %}
+  <a href="{{ url_for('tournaments.compare', a=h2h.home, b=h2h.away) }}">Comparar os dois</a></p>
+</section>
+{% endif %}
+
 <section>
   <h2>Histórico</h2>
   {% if history %}

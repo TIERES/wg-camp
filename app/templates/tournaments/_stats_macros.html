@@ -1,0 +1,36 @@
+{% macro game_filter(games, game, extra={}) -%}
+<form method="get" class="filters">
+  {% for key, value in extra.items() if value %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+  <select name="jogo" onchange="this.form.submit()" aria-label="Jogo">
+    <option value="">Todos os jogos</option>
+    {% for g in games %}<option value="{{ g.id }}" {% if g.id == game %}selected{% endif %}>{{ g.name }}</option>{% endfor %}
+  </select>
+  <noscript><button>Filtrar</button></noscript>
+</form>
+{%- endmacro %}
+
+{% macro player_link(username, game=none) -%}
+<a href="{{ url_for('tournaments.player', nome=username, jogo=game) }}">{{ username }}</a>
+{%- endmacro %}
+
+{% macro form_badges(items) -%}
+<span class="recent">{% for f in items %}<span class="f-{{ f }}">{{ f }}</span>{% endfor %}</span>
+{%- endmacro %}
+
+{# Jogos do histórico (stats.history), do ponto de vista do jogador. #}
+{% macro history_table(rows, outcome, game=none, show_opponent=true) -%}
+<div class="table-scroll">
+<table class="ledger match-history">
+  <thead><tr><th>Data</th><th></th><th>Placar</th>{% if show_opponent %}<th>Adversário</th>{% endif %}<th class="hide-sm">Torneio</th></tr></thead>
+  <tbody>{% for r in rows %}{% set o = outcome(r) %}
+    <tr>
+      <td>{{ r.played_at|localtime }}</td>
+      <td class="recent"><span class="f-{{ o }}">{{ o }}</span></td>
+      <td><a href="{{ url_for('tournaments.match', slug=r.slug, match_id=r.match_id) }}"><strong>{{ r.goals_for }} x {{ r.goals_against }}</strong>{% if r.pens_for is not none %} <small>({{ r.pens_for }} x {{ r.pens_against }} pên.)</small>{% endif %}</a></td>
+      {% if show_opponent %}<td>{{ player_link(r.opponent_name, game) }}</td>{% endif %}
+      <td class="hide-sm"><a href="{{ url_for('tournaments.show', slug=r.slug) }}">{{ r.tournament_name }}</a> <small class="muted">· {{ r.stage_name }}</small></td>
+    </tr>
+  {% endfor %}</tbody>
+</table>
+</div>
+{%- endmacro %}

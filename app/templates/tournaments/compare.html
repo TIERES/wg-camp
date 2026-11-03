@@ -1,0 +1,60 @@
+{% extends 'base.html' %}{% from 'tournaments/_stats_macros.html' import player_link, form_badges, history_table %}
+{% block title %}Comparar jogadores · WE Camp{% endblock %}{% block content %}
+<p><a href="{{ url_for('tournaments.ranking', jogo=game) }}">← Ranking</a></p>
+<h1>Comparar jogadores</h1>
+
+<form method="get" class="filters compare-form">
+  <input name="a" list="compare-players" placeholder="Jogador 1" value="{{ request.args.get('a') or (a.username if a else '') }}" aria-label="Jogador 1" required>
+  <span class="vs">x</span>
+  <input name="b" list="compare-players" placeholder="Jogador 2" value="{{ request.args.get('b', '') }}" aria-label="Jogador 2" required>
+  <select name="jogo" aria-label="Jogo">
+    <option value="">Todos os jogos</option>
+    {% for g in games %}<option value="{{ g.id }}" {% if g.id == game %}selected{% endif %}>{{ g.name }}</option>{% endfor %}
+  </select>
+  <button>Comparar</button>
+  <datalist id="compare-players">{% for pl in players %}<option value="{{ pl.username }}">{% endfor %}</datalist>
+</form>
+
+{% if result %}{% set h = result.head_to_head %}
+<section class="h2h">
+  <h2>Confronto direto</h2>
+  <div class="h2h-head">
+    <div class="h2h-side">{{ player_link(a.username, game) }}<strong class="h2h-wins">{{ h.wins }}</strong><small>vitórias</small></div>
+    <div class="h2h-mid"><strong>{{ h.draws }}</strong><small>empates</small><span class="muted">{{ h.played }} jogo{{ 's' if h.played != 1 }}</span></div>
+    <div class="h2h-side">{{ player_link(b.username, game) }}<strong class="h2h-wins">{{ h.losses }}</strong><small>vitórias</small></div>
+  </div>
+  {% if h.played %}
+  <div class="h2h-bar" role="img" aria-label="{{ a.username }} {{ h.wins }}, empates {{ h.draws }}, {{ b.username }} {{ h.losses }}">
+    <span class="f-V" style="flex:{{ h.wins }}"></span><span class="f-E" style="flex:{{ h.draws }}"></span><span class="f-D" style="flex:{{ h.losses }}"></span>
+  </div>
+  <p class="muted center">Gols no confronto: {{ a.username }} {{ h.goals_for }} x {{ h.goals_against }} {{ b.username }}</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Campanha geral</h2>
+  <div class="table-scroll">
+  <table class="standings compare-table">
+    <thead><tr><th>{{ a.username }}</th><th></th><th>{{ b.username }}</th></tr></thead>
+    <tbody>
+    {% set ra, rb = result.a, result.b %}
+    {% for label, key, higher in (('Jogos', 'played', none), ('Vitórias', 'wins', true), ('Empates', 'draws', none), ('Derrotas', 'losses', false), ('Pontos', 'points', true), ('Gols pró', 'goals_for', true), ('Gols contra', 'goals_against', false), ('Saldo de gols', 'goal_diff', true), ('Aproveitamento', 'efficiency', true)) %}
+      {% set va, vb = ra[key], rb[key] %}
+      <tr><td class="{{ 'better' if higher is not none and va != vb and ((va > vb) == higher) }}">{{ va }}{{ '%' if key == 'efficiency' }}</td><th>{{ label }}</th>
+          <td class="{{ 'better' if higher is not none and va != vb and ((vb > va) == higher) }}">{{ vb }}{{ '%' if key == 'efficiency' }}</td></tr>
+    {% endfor %}
+      <tr><td>{{ result.a_position ~ 'º' if result.a_position else '—' }}</td><th>Ranking</th><td>{{ result.b_position ~ 'º' if result.b_position else '—' }}</td></tr>
+      <tr><td>{{ form_badges(result.a_form) }}</td><th>Últimos jogos</th><td>{{ form_badges(result.b_form) }}</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>Jogos entre eles</h2>
+  {% if result.matches %}<p class="muted">Resultado do ponto de vista de {{ a.username }}.</p>{{ history_table(result.matches, outcome, game, show_opponent=false) }}
+  {% else %}<p class="muted">{{ a.username }} e {{ b.username }} ainda não se enfrentaram{% if game %} neste jogo{% endif %}.</p>{% endif %}
+</section>
+{% elif not players %}<p class="muted">Nenhum jogo confirmado ainda.</p>
+{% endif %}
+{% endblock %}
