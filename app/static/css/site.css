@@ -61,6 +61,24 @@ button:disabled { opacity:.5; cursor:not-allowed }
 .t-form fieldset { border:1px solid #374151; border-radius:8px; padding:1rem; display:grid; gap:1rem; min-width:0 }
 .t-form legend { padding:0 .4rem; color:var(--accent); font-weight:700 }
 .t-header h1 { margin:.35rem 0 } .t-header p { margin:.25rem 0 }
+.t-header { display:flow-root }
+.t-header-cover { float:right; width:160px; height:200px; margin:0 0 1rem 1rem; object-fit:cover; border-radius:6px; border:1px solid #374151 }
+@media (max-width:550px) { .t-header-cover { width:96px; height:120px } }
+.t-card { grid-template-columns:72px minmax(0,1fr); column-gap:.85rem; align-content:start } .t-card > * { grid-column:2 }
+.t-card .badge { justify-self:start }
+.t-card > .t-cover { grid-column:1; grid-row:1 / span 5; width:72px; height:90px; object-fit:cover; border-radius:4px }
+.game-covers { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:.75rem }
+.game-cover-option { position:relative; display:grid; gap:.4rem; padding:.4rem; border:2px solid transparent; border-radius:8px; cursor:pointer; text-align:center; font-size:.9rem }
+.game-cover-option input { position:absolute; opacity:0; pointer-events:none }
+.game-cover-option img { width:100%; height:auto; aspect-ratio:4 / 5; object-fit:cover; border-radius:4px; opacity:.7; transition:opacity .15s }
+.game-cover-option:hover img, .game-cover-option:has(input:checked) img { opacity:1 }
+.game-cover-option:has(input:checked) { border-color:var(--accent); background:#064e3b55 }
+.game-cover-option:has(input:focus-visible) { outline:2px solid var(--accent); outline-offset:2px }
+.game-filter { display:flex; flex-wrap:wrap; gap:.5rem; margin:0 0 1.25rem }
+.game-chip { display:flex; align-items:center; gap:.5rem; padding:.3rem .65rem .3rem .3rem; background:var(--card); border:2px solid #374151; border-radius:8px; color:var(--text); text-decoration:none; font-size:.9rem }
+.game-chip.all { padding:.3rem .8rem; min-height:4.25rem }
+.game-chip img { width:48px; height:60px; object-fit:cover; border-radius:3px }
+.game-chip:hover, .game-chip:focus { border-color:#6b7280 } .game-chip.active { border-color:var(--accent); color:var(--accent); font-weight:700 }
 .t-actions { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin:.75rem 0 }
 .t-actions form { margin:0 } .inline-form { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; max-width:none }
 .inline-form input { flex:1 1 12rem }

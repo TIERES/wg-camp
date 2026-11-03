@@ -1,26 +1,28 @@
 {% extends 'base.html' %}{% block title %}Criar torneio · WE Camp{% endblock %}{% block content %}
 <h1>Criar torneio</h1>
 {% if not games %}<p class="notice error">Nenhum jogo cadastrado para torneios ainda. Peça à administração do WE Camp.</p>{% else %}
-<form method="post" class="form t-form" enctype="multipart/form-data" data-upload="{{ iso_max_bytes }}">
+<form method="post" class="form t-form">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label>Nome do torneio<input name="name" maxlength="80" minlength="3" required value="{{ form.get('name', '') }}" placeholder="Copa WE Camp de Inverno"></label>
   <div class="two-columns">
     <label>Início provável<input type="date" name="starts_on" value="{{ form.get('starts_on', '') }}"></label>
     <label>Fim provável<input type="date" name="ends_on" value="{{ form.get('ends_on', '') }}"></label>
   </div>
-  <div class="two-columns">
-    <label>Jogo
-      <select name="game_title_id" required>
-        <option value="">Escolha...</option>
-        {% for g in games %}<option value="{{ g.id }}" {% if form.get('game_title_id')|int == g.id %}selected{% endif %}>{{ g.name }}{% if g.platform %} ({{ g.platform }}){% endif %}</option>{% endfor %}
-      </select>
-    </label>
-    <label>Formato
-      <select name="format" id="format" required>
-        {% for key, label in format_labels.items() %}<option value="{{ key }}" {% if form.get('format') == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
-      </select>
-    </label>
-  </div>
+  <fieldset class="game-pick">
+    <legend>Jogo</legend>
+    <div class="game-covers">
+    {% for g in games %}
+      <label class="game-cover-option"><input type="radio" name="game_title_id" value="{{ g.id }}" required {% if form.get('game_title_id')|int == g.id %}checked{% endif %}>
+        <img src="{{ game_cover(g.code) }}" alt="" width="200" height="250"><span>{{ g.name }}{% if g.year %} <small class="muted">({{ g.year }})</small>{% endif %}</span></label>
+    {% endfor %}
+    </div>
+    <p class="muted">A ISO com o patch do torneio é enviada depois de criar, em Gerenciar.</p>
+  </fieldset>
+  <label>Formato
+    <select name="format" id="format" required>
+      {% for key, label in format_labels.items() %}<option value="{{ key }}" {% if form.get('format') == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
   <div class="two-columns">
     <label>Vagas<input type="number" name="max_players" min="{{ min_players }}" max="{{ max_players }}" required value="{{ form.get('max_players', 8) }}"></label>
     <label>Inscrição (W$, máx. {{ max_fee|wcash }})<input name="entry_fee" inputmode="numeric" data-wcash value="{{ form.get('entry_fee', '0,00') }}"></label>
@@ -94,14 +96,7 @@
     </div>
   </fieldset>
 
-  <fieldset>
-    <legend>ISO do torneio</legend>
-    <label>Arquivo (opcional)<input type="file" name="iso" accept="{{ iso_accept }}"></label>
-    <p class="muted">Vai para o archive.org e fica disponível para download, na página do torneio, para quem estiver logado. Até {{ iso_max_bytes|filesize }} ({{ iso_accept.replace(',', ', ') }}). Dá para enviar ou trocar depois, em Gerenciar.</p>
-  </fieldset>
-
   <label>Regulamento / observações<textarea name="rules" rows="5" maxlength="5000" placeholder="Horários, regras do jogo, times permitidos...">{{ form.get('rules', '') }}</textarea></label>
-  {% include 'tournaments/_upload_progress.html' %}
   <button>Criar torneio</button>
 </form>
 <script>
@@ -184,7 +179,6 @@
   refreshTeams();
 })();
 </script>
-<script src="{{ url_for('static', filename='js/upload-progress.js') }}"></script>
 <script src="{{ url_for('static', filename='js/wcash-mask.js') }}"></script>
 {% endif %}
 {% include 'tournaments/_credits.html' %}

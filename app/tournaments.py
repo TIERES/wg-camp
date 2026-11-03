@@ -2,8 +2,8 @@
 
 Qualquer jogador logado cria um torneio e vira o organizador dele: abre as
 inscrições, sorteia, lança e corrige resultados, gera as fases e encerra. O
-Admin WE Camp (tabela `users`) pode tudo em qualquer torneio e mantém o
-catálogo de jogos e os valores do W$ (app/wallet.py).
+Admin WE Camp (tabela `users`) pode tudo em qualquer torneio e mantém os
+valores do W$ (app/wallet.py). Os jogos são fixos (app/tournament/games.py).
 
 Regras dos formatos em app/tournament/ (engine/formats/store).
 """
@@ -25,7 +25,7 @@ from markupsafe import Markup
 from .db import get_db, now
 from .players import player_required
 from .security import login_required, validate_csrf
-from .tournament import engine, formats, iso, reports, stats, store
+from .tournament import engine, formats, games as game_catalog, iso, reports, stats, store
 from .tournament.store import TournamentError
 from .tournament.teams import KINDS as TEAM_KINDS, TEAM_MODES, generated_badge
 from .wallet import (KINDS, MONEY_SETTINGS, SETTING_LABELS, InsufficientFunds, ensure_wallet, format_cents,
@@ -88,7 +88,8 @@ SCORE_TIPS = {
 
 # Global (e não context processor): os macros importados com {% from %} só
 # enxergam os globais do Jinja.
-bp.record_once(lambda state: state.app.jinja_env.globals.update(score_tips=SCORE_TIPS))
+bp.record_once(lambda state: state.app.jinja_env.globals.update(score_tips=SCORE_TIPS,
+                                                                game_cover=game_catalog.cover_url))
 
 
 @bp.app_template_global()
@@ -110,7 +111,8 @@ def can_manage(tournament):
 def _load(slug):
     db = get_db()
     tournament = db.execute(
-        "SELECT t.*, g.name AS game_name, g.platform, p.username AS organizer_name FROM tournaments t "
+        "SELECT t.*, g.name AS game_name, g.platform, g.code AS game_code, p.username AS organizer_name "
+        "FROM tournaments t "
         "JOIN game_titles g ON g.id = t.game_title_id JOIN players p ON p.id = t.organizer_id WHERE t.slug = ?",
         (slug,)).fetchone()
     if tournament is None or (tournament["status"] == "draft" and not can_manage(tournament)):
@@ -256,7 +258,7 @@ def index():
     db = get_db()
     status = request.args.get("status", "")
     game = request.args.get("jogo", type=int)
-    sql = ("SELECT t.*, g.name AS game_name, p.username AS organizer_name, "
+    sql = ("SELECT t.*, g.name AS game_name, g.code AS game_code, p.username AS organizer_name, "
            "(SELECT COUNT(*) FROM tournament_entries e WHERE e.tournament_id = t.id) AS entries "
            "FROM tournaments t JOIN game_titles g ON g.id = t.game_title_id JOIN players p ON p.id = t.organizer_id "
            "WHERE t.status != 'draft'")
@@ -270,7 +272,7 @@ def index():
     sql += (" ORDER BY CASE t.status WHEN 'registration' THEN 0 WHEN 'running' THEN 1 WHEN 'finished' THEN 2 "
             "ELSE 3 END, t.updated_at DESC LIMIT 200")
     tournaments = db.execute(sql, params).fetchall()
-    games = db.execute("SELECT id, name FROM game_titles WHERE is_active = 1 ORDER BY name").fetchall()
+    games = db.execute("SELECT id, name, code FROM game_titles WHERE is_active = 1 ORDER BY year, name").fetchall()
     return render_template("tournaments/index.html", tournaments=tournaments, games=games, status=status,
                            game=game, status_labels=STATUS_LABELS, format_labels=formats.FORMATS)
 
@@ -338,20 +340,11 @@ def _form_config(form, fmt):
 @player_required
 def new():
     db = get_db()
-    games = db.execute("SELECT * FROM game_titles WHERE is_active = 1 ORDER BY name").fetchall()
+    games = db.execute("SELECT * FROM game_titles WHERE is_active = 1 ORDER BY year, name").fetchall()
     max_fee = setting(db, "torneios_inscricao_max")
-    if request.method == "POST":
-        try:
-            iso.check_size(request, current_app.config["TOURNAMENT_ISO_MAX_BYTES"])
-        except TournamentError as error:
-            flash(str(error), "error")
-            return redirect(url_for("tournaments.new"))
     form = request.form if request.method == "POST" else {}
     if request.method == "POST":
         validate_csrf()
-        upload = request.files.get("iso")
-        if upload is not None and not upload.filename:
-            upload = None
         try:
             name = form.get("name", "").strip()
             if not 3 <= len(name) <= 80:
@@ -373,8 +366,6 @@ def new():
             if error:
                 raise TournamentError(f"Com {max_players} vagas: {error}")
             starts_on, ends_on = _dates(form)
-            if upload:
-                iso.check_upload(upload)
             team_mode = form.get("team_mode", "free")
             if team_mode not in TEAM_MODES:
                 raise TournamentError("Escolha como serão os times.")
@@ -397,8 +388,7 @@ def new():
                     raise TournamentError(f"Você já tem {open_count} torneio(s) em aberto (o limite é {limit}). "
                                           "Encerre ou cancele um antes de criar outro.")
         except (TournamentError, ValueError) as error:
-            # O navegador não preenche o campo de arquivo de novo.
-            flash(str(error) + (" Selecione a ISO de novo." if upload else ""), "error")
+            flash(str(error), "error")
         else:
             tournament_id = db.execute(
                 "INSERT INTO tournaments (slug, name, game_title_id, organizer_id, format, status, max_players, "
@@ -412,15 +402,14 @@ def new():
             db.executemany("INSERT INTO tournament_teams (tournament_id, team_id) VALUES (?, ?)",
                            [(tournament_id, team_id) for team_id in team_ids])
             db.commit()
-            flash("Torneio criado com inscrições abertas. Divulgue o link!", "success")
-            if upload:
-                _save_iso(store.get_tournament(db, tournament_id), upload)
-            return redirect(url_for("tournaments.show", slug=slug))
+            flash("Torneio criado com inscrições abertas. Agora envie a ISO do jogo (com o patch do torneio) aqui "
+                  "em Gerenciar; dá para trocar quando quiser.", "success")
+            return redirect(url_for("tournaments.manage", slug=slug, _anchor="iso"))
     selected = {int(v) for v in form.getlist("team_ids") if v.isdigit()} if form else set()
     return render_template("tournaments/new.html", games=games, form=form, max_fee=max_fee,
                            format_labels=formats.FORMATS, defaults=formats.DEFAULTS, splits=PRIZE_SPLITS,
                            min_players=formats.MIN_PLAYERS, max_players=formats.MAX_PLAYERS,
-                           team_modes=TEAM_MODES, catalog=_team_catalog(db), selected=selected, **_iso_limits())
+                           team_modes=TEAM_MODES, catalog=_team_catalog(db), selected=selected)
 
 
 @bp.post("/<slug>/inscrever")
@@ -879,13 +868,10 @@ def cancel(tournament):
 def admin_home():
     db = get_db()
     values = {key: setting(db, key) for key in SETTING_LABELS}
-    games = db.execute("SELECT g.*, (SELECT COUNT(*) FROM tournaments t WHERE t.game_title_id = g.id) AS used "
-                       "FROM game_titles g ORDER BY g.name").fetchall()
-    championships = db.execute("SELECT id, name FROM championships ORDER BY name").fetchall()
     recent = db.execute("SELECT w.*, p.username FROM wallet_entries w JOIN players p ON p.id = w.player_id "
                         "WHERE w.kind = 'ajuste_admin' ORDER BY w.id DESC LIMIT 20").fetchall()
     return render_template("tournaments/admin.html", values=values, labels=SETTING_LABELS, money=MONEY_SETTINGS,
-                           games=games, championships=championships, recent=recent)
+                           recent=recent)
 
 
 @admin_bp.post("/ajustes")
@@ -914,34 +900,6 @@ def admin_settings():
                        (key, str(value), now()))
         db.commit()
         flash("Valores do W$ salvos.", "success")
-    return redirect(url_for("tournaments_admin.admin_home"))
-
-
-@admin_bp.post("/jogos")
-@login_required
-def admin_game_save():
-    validate_csrf()
-    db = get_db()
-    name = request.form.get("name", "").strip()
-    game_id = request.form.get("game_id", type=int)
-    championship_id = request.form.get("championship_id", type=int) or None
-    if not name:
-        flash("Informe o nome do jogo.", "error")
-        return redirect(url_for("tournaments_admin.admin_home"))
-    values = (name[:80], request.form.get("platform", "").strip()[:40], championship_id,
-              1 if request.form.get("is_active") == "on" else 0)
-    try:
-        if game_id:
-            db.execute("UPDATE game_titles SET name = ?, platform = ?, championship_id = ?, is_active = ?, "
-                       "updated_at = ? WHERE id = ?", values + (now(), game_id))
-        else:
-            db.execute("INSERT INTO game_titles (name, platform, championship_id, is_active, created_at, updated_at) "
-                       "VALUES (?, ?, ?, ?, ?, ?)", values + (now(), now()))
-        db.commit()
-        flash("Jogo salvo.", "success")
-    except sqlite3.IntegrityError:
-        db.rollback()
-        flash("Já existe um jogo com esse nome.", "error")
     return redirect(url_for("tournaments_admin.admin_home"))
 
 

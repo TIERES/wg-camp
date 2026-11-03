@@ -40,17 +40,19 @@ class TournamentsWebTest(unittest.TestCase):
 
     def test_full_flow(self):
         admin = self.client(admin=True)
-        self.assertEqual(admin.get("/admin/torneios/").status_code, 200)
-        admin.post("/admin/torneios/jogos", data={"csrf_token": CSRF, "name": "Winning Eleven 2002",
-                                                  "platform": "PS1", "is_active": "on"})
+        admin_page = admin.get("/admin/torneios/")
+        self.assertEqual(admin_page.status_code, 200)
+        self.assertNotIn("Cadastrar jogo".encode(), admin_page.data)
         admin.post("/admin/torneios/ajustes", data={
             "csrf_token": CSRF, "torneios_bonus_inicial": "1.000,00", "torneios_inscricao_max": "50,00",
             "torneios_vitoria": "1,00", "torneios_empate": "0,25", "torneios_derrota": "0",
             "torneios_abertos_por_jogador": "3"})
-        game_id = self.query("SELECT id FROM game_titles")[0]["id"]
+        game_id = self.query("SELECT id FROM game_titles WHERE code = 'we2002'")[0]["id"]
 
         owner = self.client(self.players[0])
-        self.assertEqual(owner.get("/torneios/novo").status_code, 200)
+        new_page = owner.get("/torneios/novo").get_data(as_text=True)
+        self.assertEqual(new_page.count('name="game_title_id"'), 5)  # os 5 Winning Eleven do PS1
+        self.assertIn("images/games/we3fv.svg", new_page)
         too_expensive = owner.post("/torneios/novo", data={
             "csrf_token": CSRF, "name": "Copa Teste", "game_title_id": game_id, "format": "knockout",
             "max_players": "4", "entry_fee": "60,00", "prize_split": "60,30,10", "ko_legs": "1", "final_legs": "1"})
@@ -67,7 +69,10 @@ class TournamentsWebTest(unittest.TestCase):
         page = anon.get(f"/torneios/{slug}")
         self.assertEqual(page.status_code, 200)
         self.assertIn("Entre para se inscrever".encode(), page.data)
-        self.assertEqual(anon.get("/torneios/").status_code, 200)
+        self.assertIn(b'class="t-header-cover" src="/static/images/games/we2002.svg"', page.data)
+        listing = anon.get(f"/torneios/?jogo={game_id}").get_data(as_text=True)
+        self.assertIn('class="t-cover" src="/static/images/games/we2002.svg"', listing)
+        self.assertIn('game-chip active', listing)
 
         for pid in self.players[:4]:
             self.client(pid).post(f"/torneios/{slug}/inscrever", data={"csrf_token": CSRF, "team_name": f"Time {pid}"})
@@ -113,6 +118,22 @@ class TournamentsWebTest(unittest.TestCase):
         self.assertIn(b"W$", wallet.data)
         total = self.query("SELECT SUM(wallet_cents), (SELECT SUM(amount_cents) FROM wallet_entries) FROM players")[0]
         self.assertEqual(total[0], total[1])
+
+    def test_seed_games_keeps_existing_and_disables_others(self):
+        from app.tournament.games import GAMES, seed_games
+        with self.app.app_context():
+            db = get_db()
+            # Banco de antes da lista fixa: o WE 2002 cadastrado à mão e outro jogo.
+            old = db.execute("SELECT id FROM game_titles WHERE code = 'we2002'").fetchone()[0]
+            db.execute("UPDATE game_titles SET code = NULL, name = 'winning eleven 2002' WHERE id = ?", (old,))
+            db.execute("INSERT INTO game_titles (name, created_at, updated_at) VALUES ('PES 6', ?, ?)", (now(), now()))
+            seed_games(db)
+            seed_games(db)
+            rows = db.execute("SELECT id, code, name, is_active FROM game_titles ORDER BY year, name").fetchall()
+        active = [row for row in rows if row["is_active"]]
+        self.assertEqual([row["code"] for row in active], [code for code, _, _ in GAMES])
+        self.assertEqual(next(row["id"] for row in active if row["code"] == "we2002"), old)
+        self.assertFalse(next(row for row in rows if row["name"] == "PES 6")["is_active"])
 
     def test_admin_wallet_adjust_and_nav_balance(self):
         admin = self.client(admin=True)

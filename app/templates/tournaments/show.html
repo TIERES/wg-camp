@@ -1,6 +1,7 @@
 {% extends 'base.html' %}{% from 'tournaments/_macros.html' import standings, bracket, match_line %}
 {% block title %}{{ t.name }} · Torneios WE Camp{% endblock %}{% block content %}
 <section class="t-header">
+  <img class="t-header-cover" src="{{ game_cover(t.game_code) }}" alt="{{ t.game_name }}" width="200" height="250">
   <span class="badge status-{{ t.status }}">{{ status_labels[t.status] }}</span>
   <h1>{{ t.name }}</h1>
   <p class="muted">{{ t.game_name }}{% if t.platform %} ({{ t.platform }}){% endif %} · {{ format_label }} · organizado por <strong>{{ t.organizer_name }}</strong></p>

@@ -15,36 +15,6 @@
 </section>
 
 <section>
-  <h2>Jogos dos torneios</h2>
-  <div class="table-scroll"><table>
-    <thead><tr><th>Nome</th><th>Plataforma</th><th>ISO (Downloads)</th><th>Ativo</th><th>Torneios</th><th></th></tr></thead>
-    <tbody>
-    {% for g in games %}{% set f = 'game-' ~ g.id %}
-      <tr>
-        <td><input form="{{ f }}" name="name" value="{{ g.name }}" maxlength="80" required></td>
-        <td><input form="{{ f }}" name="platform" value="{{ g.platform }}" maxlength="40"></td>
-        <td><select form="{{ f }}" name="championship_id"><option value="">—</option>{% for c in championships %}<option value="{{ c.id }}" {% if c.id == g.championship_id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></td>
-        <td><input form="{{ f }}" type="checkbox" name="is_active" {% if g.is_active %}checked{% endif %} aria-label="Ativo"></td>
-        <td>{{ g.used }}</td>
-        <td><button form="{{ f }}">Salvar</button></td>
-      </tr>
-    {% else %}<tr><td colspan="6">Nenhum jogo cadastrado.</td></tr>{% endfor %}
-    </tbody>
-  </table></div>
-  {% for g in games %}<form id="game-{{ g.id }}" method="post" action="{{ url_for('tournaments_admin.admin_game_save') }}" hidden><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="game_id" value="{{ g.id }}"></form>{% endfor %}
-  <h3>Cadastrar jogo</h3>
-  <form method="post" action="{{ url_for('tournaments_admin.admin_game_save') }}" class="form">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="is_active" value="on">
-    <div class="two-columns">
-      <label>Nome<input name="name" maxlength="80" required placeholder="Winning Eleven 2002"></label>
-      <label>Plataforma<input name="platform" maxlength="40" placeholder="PS1"></label>
-    </div>
-    <label>ISO para download (opcional)<select name="championship_id"><option value="">—</option>{% for c in championships %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></label>
-    <button>Cadastrar</button>
-  </form>
-</section>
-
-<section>
   <h2>Ajustar saldo de um jogador</h2>
   <form method="post" action="{{ url_for('tournaments_admin.admin_wallet_adjust') }}" class="form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

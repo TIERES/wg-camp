@@ -80,8 +80,9 @@
 {% endif %}
 
 {% if t.status != 'cancelled' %}
-<section>
+<section id="iso">
   <h2>ISO do torneio</h2>
+  <p class="muted">A ISO do {{ t.game_name }} com o patch deste torneio. Dá para trocar a qualquer momento.</p>
   {% if iso %}
     <p><strong>{{ iso.original_filename }}</strong> <small>({{ iso.file_size|filesize }})</small><br>
     {% if iso.local_removed_at %}No archive.org: <a href="{{ iso.archive_url }}" rel="noopener">{{ iso.archive_url }}</a>

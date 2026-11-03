@@ -24,8 +24,7 @@ class TournamentIsoTest(unittest.TestCase):
             init_db()
             db = get_db()
             self.owner, self.other = add_player(db, "dono"), add_player(db, "outro")
-            self.game = db.execute("INSERT INTO game_titles (name, platform, created_at, updated_at) "
-                                   "VALUES ('Winning Eleven 2002', 'PS1', ?, ?)", (now(), now())).lastrowid
+            self.game = db.execute("SELECT id FROM game_titles WHERE code = 'we2002'").fetchone()[0]
             db.commit()
 
     def tearDown(self):
@@ -44,12 +43,17 @@ class TournamentIsoTest(unittest.TestCase):
             return get_db().execute(sql, args).fetchall()
 
     def create(self, iso=ISO, filename="Copa Teste.bin", **extra):
+        """Cria o torneio e, como o organizador faz depois, envia a ISO em Gerenciar."""
         data = {"csrf_token": CSRF, "name": "Copa ISO", "game_title_id": self.game, "format": "knockout",
                 "max_players": "4", "entry_fee": "0", "prize_split": "60,30,10", "ko_legs": "1", "final_legs": "1",
                 "team_mode": "free", **extra}
-        if iso is not None:
-            data["iso"] = (io.BytesIO(iso), filename)
-        return self.client(self.owner).post("/torneios/novo", data=data, content_type="multipart/form-data")
+        response = self.client(self.owner).post("/torneios/novo", data=data)
+        if response.status_code != 302 or iso is None:
+            return response
+        self.assertIn("/gerenciar#iso", response.headers["Location"])
+        slug = self.query("SELECT slug FROM tournaments")[0]["slug"]
+        return self.client(self.owner).post(f"/torneios/{slug}/iso", data={"csrf_token": CSRF, "iso": (io.BytesIO(iso), filename)},
+                                            content_type="multipart/form-data")
 
     def iso_row(self):
         rows = self.query("SELECT * FROM tournament_isos")
@@ -95,18 +99,26 @@ class TournamentIsoTest(unittest.TestCase):
 
     def test_invalid_dates_and_extension_are_refused(self):
         response = self.create(starts_on="2026-11-28", ends_on="2026-11-07")
-        self.assertIn("O fim provável não pode ser antes do início. Selecione a ISO de novo.",
-                      response.get_data(as_text=True))
-        response = self.create(filename="copa.exe")
-        self.assertIn("A ISO precisa ser", response.get_data(as_text=True))
+        self.assertIn("O fim provável não pode ser antes do início.", response.get_data(as_text=True))
         self.assertEqual(self.query("SELECT COUNT(*) FROM tournaments")[0][0], 0)
+        self.create(iso=None)
+        owner = self.client(self.owner)
+        response = owner.post("/torneios/copa-iso-1/iso", data={"csrf_token": CSRF, "iso": (io.BytesIO(ISO), "copa.exe")},
+                              content_type="multipart/form-data", follow_redirects=True)
+        self.assertIn("A ISO precisa ser", response.get_data(as_text=True))
+        self.assertIsNone(self.iso_row())
         self.assertEqual(list(Path(self.app.config["DOWNLOADS_DIR"]).iterdir()), [])
+
+    def test_create_form_has_no_iso_field(self):
+        page = self.client(self.owner).get("/torneios/novo").get_data(as_text=True)
+        self.assertNotIn('name="iso"', page)
+        self.assertIn("enviada depois de criar, em Gerenciar", page)
 
     def test_too_big_is_refused_before_reading(self):
         self.app.config["TOURNAMENT_ISO_MAX_BYTES"] = 0
         response = self.create(iso=b"x" * (1024 ** 2 + 10))
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(self.query("SELECT COUNT(*) FROM tournaments")[0][0], 0)
+        self.assertIsNone(self.iso_row())
 
     @mock.patch("app.tournament.iso.upload_file")
     @mock.patch("app.tournament.iso.list_item_files")

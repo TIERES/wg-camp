@@ -142,7 +142,7 @@ CREATE TABLE IF NOT EXISTS voice_channels (
 
 
 #  Torneios (/torneios - app/tournaments.py, motor em app/tournament/):
-#  - game_titles: catálogo de jogos dos torneios, mantido pelo Admin WE Camp
+#  - game_titles: os jogos dos torneios (lista fixa em app/tournament/games.py)
 #    (não confundir com `games`, que é o conteúdo da ISO do Memory Card);
 #  - um torneio é uma sequência de fases (tournament_stages): liga, grupos,
 #    fase de liga suíça (Liga dos Campeões) ou mata-mata;
@@ -478,7 +478,9 @@ def init_db():
     db.executescript(TOURNAMENTS_DDL)
     ensure_tournament_columns(db)
     from .tournament.teams import seed_teams
+    from .tournament.games import seed_games
     seed_teams(db)
+    seed_games(db)
     db.commit()
 
 
@@ -578,7 +580,9 @@ def migrate_db():
     database.executescript(TOURNAMENTS_DDL)
     ensure_tournament_columns(database)
     from .tournament.teams import seed_teams
+    from .tournament.games import seed_games
     seed_teams(database)
+    seed_games(database)
     database.execute("CREATE INDEX IF NOT EXISTS live_sessions_game_name_idx ON live_sessions(game_name)")
     database.execute("CREATE INDEX IF NOT EXISTS live_sessions_replay_idx ON live_sessions(status, duration_seconds)")
     rows = database.execute(
