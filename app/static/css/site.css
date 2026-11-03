@@ -163,6 +163,13 @@ details.dispute { margin-top:1rem } details.dispute summary { cursor:pointer; co
 .stat-tile.win { border-left:4px solid #34d399 } .stat-tile.draw { border-left:4px solid #9ca3af } .stat-tile.loss { border-left:4px solid #f87171 }
 .match-history td { white-space:nowrap } .match-history td:last-child { white-space:normal }
 .compare-form input { flex:1 1 9rem; min-width:0 } .compare-form .vs { align-self:center; font-weight:700 }
+.compare-form .ac { position:relative; flex:1 1 9rem; min-width:0; display:flex } .compare-form .ac input { width:100% }
+.ac-list { position:absolute; z-index:20; left:0; right:0; top:calc(100% + 2px); margin:0; padding:.25rem 0; list-style:none; max-height:16rem; overflow-y:auto; background:var(--card); border:1px solid #374151; border-radius:6px; box-shadow:0 6px 18px rgb(0 0 0 / .45) }
+.ac-list li { padding:.4rem .75rem; cursor:pointer }
+.ac-list li:hover, .ac-list li[aria-selected="true"] { background:#374151; color:var(--accent) }
+.my-last-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(18rem, 1fr)); gap:1rem; margin-top:1.5rem }
+.my-last { padding:1rem 1.25rem; background:var(--card); border:1px solid #374151; border-radius:8px }
+.my-last h2 { font-size:1.15rem; margin:0 0 .5rem } .my-last p { margin:.25rem 0 0 }
 .h2h-head { display:grid; grid-template-columns:1fr auto 1fr; gap:.75rem; align-items:end; text-align:center }
 .h2h-side,.h2h-mid { display:grid; gap:.1rem; min-width:0; overflow-wrap:anywhere } .h2h-wins { font-size:2.4rem; line-height:1 } .h2h-mid strong { font-size:1.6rem; line-height:1 }
 .h2h-bar { display:flex; height:.6rem; border-radius:999px; overflow:hidden; margin:.75rem 0 .25rem; background:#374151 }

@@ -78,8 +78,9 @@ class StatsTest(unittest.TestCase):
 
         h2h = stats.compare(self.db, p1, p0)
         self.assertEqual((h2h["head_to_head"]["wins"], h2h["head_to_head"]["losses"]), (0, 1))
-        self.assertEqual(len(h2h["matches"]), 1)
-        row = h2h["matches"][0]
+        meetings = stats.history(self.db, p1, opponent_id=p0, limit=5)
+        self.assertEqual(len(meetings), 1)
+        row = meetings[0]
         self.assertEqual((row["goals_for"], row["goals_against"], stats.outcome(row)), (1, 3, "D"))
         self.assertEqual(sorted(stats.form(stats.history(self.db, p0))), ["E", "V"])
 
@@ -139,9 +140,8 @@ class StatsTest(unittest.TestCase):
         page = client.get("/torneios/comparar?a=p0&b=p1")
         self.assertEqual(page.status_code, 200)
         self.assertIn("Confronto direto".encode(), page.data)
-        self.assertIn(b'class="match-dialog"', page.data)  # popup do último confronto
-        self.assertIn("Últimos jogos de p0 contra p1".encode(), page.data)
         self.assertNotIn("Gols pró".encode(), page.data)
+        self.assertIn("Entre</a> para ver os seus últimos resultados".encode(), page.data)  # sem login
         self.assertIn("Jogador não encontrado".encode(), client.get("/torneios/comparar?a=p0&b=zzz").data)
         self.assertIn("dois jogadores diferentes".encode(), client.get("/torneios/comparar?a=p0&b=p0").data)
         self.assertEqual(client.get("/torneios/comparar").status_code, 200)
@@ -153,6 +153,26 @@ class StatsTest(unittest.TestCase):
         page = client.get("/torneios/ranking")
         self.assertIn(b"qualified", page.data)  # a linha de quem está logado fica marcada
         self.assertIn(b'value="p1"', client.get("/torneios/comparar").data)
+
+    def test_compare_shows_my_last_results_against_each_player(self):
+        p0, p1, p2 = self.players[:3]
+        tid = self.league([p0, p1, p2])
+        self.play(tid, p0, p1, 2, 1)
+        self.play(tid, p0, p2, 0, 1)
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["player_id"] = p0
+        # Comparando a si mesmo com outro: um card só.
+        page = client.get("/torneios/comparar?a=p0&b=p1").get_data(as_text=True)
+        self.assertEqual(page.count('class="my-last"'), 1)
+        self.assertIn("Seus últimos resultados contra", page)
+        self.assertEqual(page.count('class="match-dialog"'), 1)
+        self.assertIn('class="f-btn f-V"', page)
+        # Comparando dois outros jogadores: um card para cada.
+        page = client.get("/torneios/comparar?a=p1&b=p2").get_data(as_text=True)
+        self.assertEqual(page.count('class="my-last"'), 2)
+        self.assertEqual(page.count('class="match-dialog"'), 2)
+        self.assertIn('class="f-btn f-D"', page)  # perdeu para p2
 
 
     def test_reported_score_is_shown_with_status_color(self):

@@ -4,15 +4,19 @@
 <h1>Comparar jogadores</h1>
 
 <form method="get" class="filters compare-form">
-  <input name="a" list="compare-players" placeholder="Jogador 1" value="{{ request.args.get('a') or (a.username if a else '') }}" aria-label="Jogador 1" required>
-  <span class="vs">x</span>
-  <input name="b" list="compare-players" placeholder="Jogador 2" value="{{ request.args.get('b', '') }}" aria-label="Jogador 2" required>
+  {% for field, other, label, value in (('a', 'b', 'Jogador 1', request.args.get('a') or (a.username if a else '')), ('b', 'a', 'Jogador 2', request.args.get('b', ''))) %}
+  {% if not loop.first %}<span class="vs">x</span>{% endif %}
+  <div class="ac">
+    <input name="{{ field }}" id="cmp-{{ field }}" data-other="cmp-{{ other }}" placeholder="{{ label }}" value="{{ value }}" aria-label="{{ label }}"
+           role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="cmp-{{ field }}-list" autocomplete="off" required>
+    <ul class="ac-list" id="cmp-{{ field }}-list" role="listbox" hidden></ul>
+  </div>
+  {% endfor %}
   <select name="jogo" aria-label="Jogo">
     <option value="">Todos os jogos</option>
     {% for g in games %}<option value="{{ g.id }}" {% if g.id == game %}selected{% endif %}>{{ g.name }}</option>{% endfor %}
   </select>
   <button>Comparar</button>
-  <datalist id="compare-players">{% for pl in players %}<option value="{{ pl.username }}">{% endfor %}</datalist>
 </form>
 
 {% if result %}{% set h = result.head_to_head %}
@@ -49,16 +53,19 @@
   </div>
 </section>
 
-<section>
-  <h2>{% if me_is_a %}Seus últimos jogos contra {{ b.username }}{% else %}Últimos jogos de {{ a.username }} contra {{ b.username }}{% endif %}</h2>
-  {% if result.matches %}
-  <p class="muted">Do mais antigo ao mais recente, do ponto de vista de {{ a.username }}. Clique para ver o jogo.</p>
+{% if session.player_id %}
+<div class="my-last-grid">
+{% for card in mine %}
+<section class="my-last">
+  <h2>Seus últimos resultados contra {{ player_link(card.opponent.username, game) }}:</h2>
+  {% if card.matches %}
   <div class="recent recent-lg">
-    {% for r in result.matches|reverse %}{% set o = outcome(r) %}
+    {% for r in card.matches|reverse %}{% set o = outcome(r) %}
     <button type="button" class="f-btn f-{{ o }}" data-dialog="jogo-{{ r.match_id }}" title="{{ r.goals_for }} x {{ r.goals_against }} · {{ r.tournament_name }}" aria-haspopup="dialog">{{ o }}</button>
     {% endfor %}
   </div>
-  {% for r in result.matches %}{% set m = games_by_id.get(r.match_id) %}
+  <p class="muted">Do mais antigo ao mais recente. Clique para ver o jogo.</p>
+  {% for r in card.matches %}{% set m = games_by_id.get(r.match_id) %}
   <dialog class="match-dialog" id="jogo-{{ r.match_id }}" aria-label="Jogo de {{ r.tournament_name }}">
     {% if m %}{{ match_line(m, names, r.slug) }}{% endif %}
     <dl>
@@ -68,8 +75,13 @@
     <form method="dialog"><button class="secondary">Fechar</button></form>
   </dialog>
   {% endfor %}
-  {% else %}<p class="muted">{{ a.username }} e {{ b.username }} ainda não se enfrentaram{% if game %} neste jogo{% endif %}.</p>{% endif %}
+  {% else %}<p class="muted">Vocês ainda não se enfrentaram{% if game %} neste jogo{% endif %}.</p>{% endif %}
 </section>
+{% endfor %}
+</div>
+{% else %}
+<p class="muted"><a href="{{ url_for('players.login', next=request.full_path) }}">Entre</a> para ver os seus últimos resultados contra esses jogadores.</p>
+{% endif %}
 <script>
 document.querySelectorAll('[data-dialog]').forEach(function (button) {
   var dialog = document.getElementById(button.dataset.dialog);
@@ -80,4 +92,62 @@ document.querySelectorAll('[data-dialog]').forEach(function (button) {
 </script>
 {% elif not players %}<p class="muted">Nenhum jogo confirmado ainda.</p>
 {% endif %}
+<script>
+(function () {
+  // Autocompletar dos jogadores: busca sem diferenciar acentos/maiúsculas e
+  // não oferece quem já está escolhido no outro campo.
+  var players = {{ players|tojson }};
+  function plain(s) { return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim(); }
+
+  document.querySelectorAll('.ac input').forEach(function (input) {
+    var list = document.getElementById(input.getAttribute('aria-controls'));
+    var other = document.getElementById(input.dataset.other);
+    var active = -1;
+
+    function close() { list.hidden = true; input.setAttribute('aria-expanded', 'false'); active = -1; }
+    function choose(name) { input.value = name; close(); }
+    function mark(index) {
+      var items = list.children;
+      if (!items.length) return;
+      active = (index + items.length) % items.length;
+      for (var i = 0; i < items.length; i++) items[i].setAttribute('aria-selected', i === active ? 'true' : 'false');
+      items[active].scrollIntoView({ block: 'nearest' });
+    }
+    function open() {
+      var q = plain(input.value), taken = plain(other.value);
+      var found = players.filter(function (name) {
+        var p = plain(name);
+        return p !== taken && p.indexOf(q) >= 0 && p !== q;
+      });
+      list.innerHTML = '';
+      found.slice(0, 8).forEach(function (name) {
+        var li = document.createElement('li');
+        li.setAttribute('role', 'option');
+        li.textContent = name;
+        li.addEventListener('mousedown', function (e) { e.preventDefault(); choose(name); });
+        list.appendChild(li);
+      });
+      active = -1;
+      list.hidden = !list.children.length;
+      input.setAttribute('aria-expanded', list.hidden ? 'false' : 'true');
+    }
+
+    input.addEventListener('input', open);
+    input.addEventListener('focus', open);
+    input.addEventListener('blur', close);
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (list.hidden) open();
+        mark(active + (e.key === 'ArrowDown' ? 1 : -1));
+      } else if (e.key === 'Enter' && !list.hidden && active >= 0) {
+        e.preventDefault();
+        choose(list.children[active].textContent);
+      } else if (e.key === 'Escape') {
+        close();
+      }
+    });
+  });
+})();
+</script>
 {% endblock %}

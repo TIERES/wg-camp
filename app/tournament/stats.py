@@ -134,12 +134,11 @@ def players_with_matches(db, game_id=None):
 
 
 def compare(db, a, b, game_id=None):
-    """Dois jogadores lado a lado: campanha geral de cada um, confronto
-    direto (do ponto de vista de `a`) e os jogos entre eles."""
+    """Dois jogadores lado a lado: campanha geral de cada um e o confronto
+    direto (do ponto de vista de `a`)."""
     return {
         "a": player_record(db, a, game_id), "b": player_record(db, b, game_id),
         "a_position": position(db, a, game_id), "b_position": position(db, b, game_id),
         "head_to_head": player_record(db, a, game_id, opponent_id=b),
-        "matches": history(db, a, game_id, opponent_id=b, limit=5),
         "a_form": form(history(db, a, game_id, limit=5)), "b_form": form(history(db, b, game_id, limit=5)),
     }

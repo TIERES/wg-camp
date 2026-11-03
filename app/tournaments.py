@@ -809,18 +809,22 @@ def compare():
         flash("Escolha dois jogadores diferentes.", "error")
     elif a and b:
         result = stats.compare(db, a["id"], b["id"], game)
-    # Últimos confrontos: o jogo de cada um (para o popup) e os nomes com escudo.
+    # Os últimos jogos de quem está logado contra cada jogador escolhido
+    # (menos ele mesmo), com o jogo (para o popup) e os nomes com escudo.
+    me_id = session.get("player_id")
+    mine = [{"opponent": other, "matches": stats.history(db, me_id, game, opponent_id=other["id"], limit=5)}
+            for other in (a, b) if result and me_id and other["id"] != me_id]
+    rows = [r for card in mine for r in card["matches"]]
     games_by_id, names = {}, {}
-    if result and result["matches"]:
-        ids = [r["match_id"] for r in result["matches"]]
+    if rows:
+        ids = [r["match_id"] for r in rows]
         for row in db.execute(f"SELECT * FROM tournament_matches WHERE id IN ({','.join('?' * len(ids))})", ids):
             games_by_id[row["id"]] = row
-        for tournament_id in {r["tournament_id"] for r in result["matches"]}:
+        for tournament_id in {r["tournament_id"] for r in rows}:
             names.update(_names(db, store.get_tournament(db, tournament_id)))
     return render_template("tournaments/compare.html", a=a, b=b, result=result, games=games, game=game,
-                           players=stats.players_with_matches(db), outcome=stats.outcome,
-                           games_by_id=games_by_id, names=names,
-                           me_is_a=bool(a and a["id"] == session.get("player_id")))
+                           players=[pl["username"] for pl in stats.players_with_matches(db)],
+                           outcome=stats.outcome, mine=mine, games_by_id=games_by_id, names=names)
 
 
 _last_auto_confirm = [0.0]
