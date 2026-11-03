@@ -4,9 +4,9 @@
 <form method="post" class="form t-form" id="new-tournament">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <p class="muted">Os campos com <span class="req">*</span> são obrigatórios.</p>
-  <label>Nome do torneio <span class="req">*</span><input name="name" maxlength="80" minlength="3" required value="{{ form.get('name', '') }}" placeholder="Copa WE Camp de Inverno"></label>
+  <label><span>Nome do torneio <span class="req">*</span></span><input name="name" maxlength="80" minlength="3" required value="{{ form.get('name', '') }}" placeholder="Copa WE Camp de Inverno"></label>
   <div class="two-columns">
-    <label>Início provável <span class="req">*</span><input type="date" name="starts_on" required value="{{ form.get('starts_on', '') }}"></label>
+    <label><span>Início provável <span class="req">*</span></span><input type="date" name="starts_on" required value="{{ form.get('starts_on', '') }}"></label>
     <label>Fim provável<input type="date" name="ends_on" value="{{ form.get('ends_on', '') }}"></label>
   </div>
   <fieldset class="game-pick">
@@ -25,11 +25,11 @@
     </select>
   </label>
   <div class="two-columns">
-    <label>Vagas <span class="req">*</span><input type="number" name="max_players" min="{{ min_players }}" max="{{ max_players }}" required value="{{ form.get('max_players', 8) }}"></label>
+    <label><span>Vagas <span class="req">*</span></span><input type="number" name="max_players" min="{{ min_players }}" max="{{ max_players }}" required value="{{ form.get('max_players', 8) }}"></label>
     <label>Inscrição (W$, máx. {{ max_fee|wcash }})<input name="entry_fee" inputmode="numeric" data-wcash value="{{ form.get('entry_fee', '0,00') }}"></label>
   </div>
   <div id="prize-split" class="form-block">
-    <label>Divisão do prêmio (1º / 2º / 3º, em %) <span class="req">*</span>
+    <label><span>Divisão do prêmio (1º / 2º / 3º, em %) <span class="req">*</span></span>
       <select name="prize_split" required>
         <option value="">Escolha...</option>
         {% for s in splits %}<option value="{{ s }}" {% if form.get('prize_split') == s %}selected{% endif %}>{{ s.replace(',', ' / ') }}</option>{% endfor %}
@@ -101,7 +101,7 @@
     </div>
   </fieldset>
 
-  <label>Regulamento / observações <span class="req">*</span><textarea name="rules" rows="5" maxlength="5000" required placeholder="Horários, regras do jogo, times permitidos...">{{ form.get('rules', '') }}</textarea></label>
+  <label><span>Regulamento / observações <span class="req">*</span></span><textarea name="rules" rows="5" maxlength="5000" required placeholder="Horários, regras do jogo, times permitidos...">{{ form.get('rules', '') }}</textarea></label>
   <div class="card-actions"><button id="create-button">Criar torneio</button><span class="muted" id="create-hint" hidden>Preencha os campos obrigatórios para criar o torneio.</span></div>
 </form>
 <script>
