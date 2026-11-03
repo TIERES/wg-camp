@@ -42,7 +42,8 @@
 .card-actions { display:flex; flex-wrap:nowrap; align-items:center; gap:.5rem }
 @media (max-width:600px) { .card-actions { flex-wrap:wrap } }
 .card-actions form { margin:0 }
-.card-actions .button,.card-actions button { display:inline-block; font-family:system-ui,sans-serif; font-size:.8333rem; line-height:1.2 }
+/* Todos os botões com a mesma altura: <a class=button> herdava fonte 16px/1.5 e <button> a fonte do navegador. */
+.button,button { display:inline-block; font-family:system-ui,sans-serif; font-size:.8333rem; line-height:1.2 }
 /* ---- Torneios (/torneios) - mobile first ---- */
 header { flex-wrap:wrap; gap:.5rem 1rem } header nav { flex-wrap:wrap; gap:.4rem 1rem }
 .wallet-chip { background:#064e3b; color:#a7f3d0 !important; padding:.1rem .55rem; border-radius:999px; font-size:.9rem }
@@ -67,7 +68,10 @@ button:disabled { opacity:.5; cursor:not-allowed }
 .tabs a { padding:.6rem .9rem; white-space:nowrap; color:#9ca3af; text-decoration:none; border-bottom:2px solid transparent }
 .tabs a.active { color:var(--text); border-bottom-color:var(--accent); font-weight:700 }
 .t-info dl { display:grid; grid-template-columns:max-content 1fr; gap:.4rem 1rem; margin:0 } .t-info dt { color:#9ca3af }
-.entry-list { columns:2 14rem; padding-left:1.5rem }
+.entry-list { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.5rem 1rem; list-style:none; padding:0; margin:1rem 0 }
+@media (max-width:900px) { .entry-list { grid-template-columns:repeat(2,minmax(0,1fr)) } }
+@media (max-width:550px) { .entry-list { grid-template-columns:1fr } }
+.entry-list li { display:flex; align-items:center; gap:.5rem; min-width:0 } .entry-pos { min-width:1.6rem; text-align:right; color:#9ca3af }
 .podium { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:.75rem; margin:1rem 0 }
 .podium > div { display:grid; gap:.2rem; padding:1rem; border-radius:8px; background:var(--card); text-align:center }
 .podium span { font-size:1.6rem; font-weight:800 } .podium-1 { border:2px solid #fbbf24 } .podium-2 { border:2px solid #d1d5db } .podium-3 { border:2px solid #d97706 }
@@ -112,12 +116,12 @@ details.round summary { cursor:pointer; padding:.5rem 0; font-weight:700 }
 .match-line .home .entry { flex-direction:row-reverse; text-align:right } .match-line .home .entry-name { align-items:flex-end }
 .tie-slot .entry,.standings .entry { text-align:left }
 .podium .entry { flex-direction:column; text-align:center } .podium .entry-name { align-items:center } .podium .crest { width:3rem; height:3rem }
-.entry-list li { margin:.3rem 0 }
+
 .team-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,11rem),1fr)); gap:.35rem .75rem; margin:.5rem 0 }
 .team-option { display:flex; align-items:center; gap:.45rem; padding:.3rem .4rem; border-radius:6px; line-height:1.2 }
 .team-option > span { display:flex; flex-direction:column } .team-option small { color:#9ca3af; font-size:.75rem }
 .team-option input { width:auto; margin:0 } label.team-option { cursor:pointer } label.team-option:hover { background:#273449 }
-.team-option.taken { opacity:.55 }
+.team-option.taken { opacity:.55 } label.team-option.taken { cursor:not-allowed } label.team-option.taken:hover { background:none }
 .team-grid.pick { max-height:22rem; overflow-y:auto; padding:.25rem; border:1px solid #374151; border-radius:8px }
 .team-groups { display:grid; gap:.4rem; max-height:28rem; overflow-y:auto }
 details.team-group { background:#172333; border-radius:6px; padding:.2rem .6rem }

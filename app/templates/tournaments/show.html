@@ -16,11 +16,17 @@
             <input name="team_name" maxlength="40" minlength="2" required placeholder="Nome do seu time">
           {% elif t.team_mode == 'choose' %}
             <p class="muted">Escolha seu time:</p>
-            <div class="team-grid pick">
-            {% for team in team_list if not team.owner %}
-              <label class="team-option"><input type="radio" name="team_id" value="{{ team.id }}" required><img class="crest" src="{{ team.image }}" alt="" loading="lazy"> {{ team.name }}</label>
+            <input type="search" id="pick-filter" placeholder="Digite o nome do time..." autocomplete="off" aria-controls="pick-grid">
+            <div class="team-grid pick" id="pick-grid">
+            {% for team in team_list %}
+              {% if team.owner %}
+              <label class="team-option taken" data-name="{{ team.name }}" title="Já escolhido por outro jogador ({{ team.owner }})"><input type="radio" disabled><img class="crest" src="{{ team.image }}" alt="" loading="lazy"> <span>{{ team.name }}<small>já escolhido por {{ team.owner }}</small></span></label>
+              {% else %}
+              <label class="team-option" data-name="{{ team.name }}"><input type="radio" name="team_id" value="{{ team.id }}" required><img class="crest" src="{{ team.image }}" alt="" loading="lazy"> {{ team.name }}</label>
+              {% endif %}
             {% endfor %}
             </div>
+            <p class="muted" id="pick-empty" hidden>Nenhum time com esse nome.</p>
           {% else %}
             <p class="muted">Seu time será sorteado quando o organizador fechar as inscrições.</p>
           {% endif %}
@@ -71,7 +77,7 @@
   </section>
   <section>
     <h2>Inscritos ({{ entries|length }})</h2>
-    {% if entries %}<ol class="entry-list">{% for e in entries %}<li>{{ names[e.id] }}</li>{% endfor %}</ol>
+    {% if entries %}<ol class="entry-list">{% for e in entries %}<li><span class="entry-pos">{{ loop.index }}.</span>{{ names[e.id] }}</li>{% endfor %}</ol>
     {% else %}<p class="muted">Ninguém inscrito ainda.</p>{% endif %}
   </section>
   {% if team_list %}
@@ -115,4 +121,28 @@
   {% endfor %}
 {% endif %}
 {% include 'tournaments/_credits.html' %}
+{% if t.status == 'registration' and t.team_mode == 'choose' %}
+<script>
+(function () {
+  var input = document.getElementById('pick-filter');
+  if (!input) return;
+  // Busca sem diferenciar acentos/maiúsculas: "sao" acha "São Paulo".
+  function plain(s) { return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
+  var options = Array.prototype.map.call(document.querySelectorAll('#pick-grid .team-option'), function (el) {
+    return { el: el, name: plain(el.dataset.name) };
+  });
+  input.addEventListener('input', function () {
+    var q = plain(this.value.trim()), any = false;
+    options.forEach(function (o) {
+      // O time marcado continua visível, para não sumir a escolha.
+      var show = !q || o.name.indexOf(q) >= 0 || o.el.querySelector('input:checked') !== null;
+      o.el.hidden = !show; any = any || show;
+    });
+    document.getElementById('pick-empty').hidden = any;
+  });
+  // Enter na busca não envia a inscrição.
+  input.addEventListener('keydown', function (e) { if (e.key === 'Enter') e.preventDefault(); });
+})();
+</script>
+{% endif %}
 {% endblock %}
