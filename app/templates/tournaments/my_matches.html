@@ -34,7 +34,9 @@
           {% elif row.status == 'scheduled' %}<strong>reporte o placar</strong>
           {% elif row.status == 'reported' and not mine_reported %}<strong>confirme ou conteste o placar do adversário</strong>
           {% elif mine_reported %}você reportou; esperando o adversário (até {{ deadlines[row.id]|localtime }})
-          {% else %}contestado, com o organizador{% endif %}</span>
+          {% elif row.reported_by_entry_id == row.my_entry_id and row.id in counter %}<strong>contestado: aceite o placar do adversário ou aguarde o organizador</strong>
+          {% elif row.reported_by_entry_id == row.my_entry_id %}contestado, com o organizador
+          {% else %}você contestou; aguardando o adversário aceitar ou o organizador decidir{% endif %}</span>
       </a>
       {% endfor %}
       <p class="muted mt-empty" hidden>Nenhum jogo com esse jogador ou time.</p>

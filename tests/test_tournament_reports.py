@@ -191,5 +191,30 @@ class ReportsTest(unittest.TestCase):
         self.assertNotIn("Meus jogos <span>", away_client.get("/torneios/").data.decode())
 
 
+    def test_reporter_accepts_disputed_score(self):
+        tid = self.tournament(legs=1)
+        m, home, away = self.sides(self.db.execute("SELECT id FROM tournament_matches").fetchone()[0])
+        reports.report(self.db, self.t(tid), m["id"], home, (5, 1, None, None))
+        reports.dispute(self.db, self.t(tid), m["id"], away, "Usuario cadastrou errado", (4, 1, None, None))
+        self.db.commit()
+        with self.assertRaises(TournamentError):
+            reports.accept_dispute(self.db, self.t(tid), m["id"], away)  # quem contestou não aceita o próprio
+        with self.assertRaises(TournamentError):
+            reports.accept_dispute(self.db, self.t(tid), m["id"], self.players[4])  # não joga
+        reports.accept_dispute(self.db, self.t(tid), m["id"], home)
+        self.db.commit()
+        m2 = self.db.execute("SELECT * FROM tournament_matches WHERE id = ?", (m["id"],)).fetchone()
+        self.assertEqual((m2["status"], m2["home_goals"], m2["away_goals"]), ("confirmed", 4, 1))
+        self.assertEqual([h["action"] for h in reports.history(self.db, m["id"])], ["report", "dispute", "confirm"])
+
+    def test_dispute_without_score_stays_with_organizer(self):
+        tid = self.tournament(legs=1)
+        m, home, away = self.sides(self.db.execute("SELECT id FROM tournament_matches").fetchone()[0])
+        reports.report(self.db, self.t(tid), m["id"], home, (2, 0, None, None))
+        reports.dispute(self.db, self.t(tid), m["id"], away, "Não jogamos ainda")
+        with self.assertRaises(TournamentError):
+            reports.accept_dispute(self.db, self.t(tid), m["id"], home)
+        self.assertEqual(self.status(m["id"]), "disputed")
+
 if __name__ == "__main__":
     unittest.main()

@@ -4,6 +4,7 @@
                              |  +--organizador libera novo reporte--> scheduled
                              |  +--sem resposta em N horas--> confirmed (automático)
                              +--contestar--> disputed --organizador/admin decide--> confirmed
+                                                |  +--quem reportou aceita o placar da contestação--> confirmed
 
 O placar só vale (tabela, chave, W$) quando confirmado - store.record_result
 continua sendo quem grava, paga e avança o mata-mata. O placar proposto fica
@@ -122,6 +123,25 @@ def dispute(db, tournament, match_id, player_id, comment, score=None):
         raise TournamentError("Explique o motivo da contestação.")
     db.execute("UPDATE tournament_matches SET status = 'disputed', updated_at = ? WHERE id = ?", (now(), match_id))
     log(db, match_id, "dispute", entry, score=score or (None, None, None, None), comment=comment)
+
+
+def last_dispute(db, match_id):
+    """Última contestação de um jogo que traz o placar que o adversário diz ser o certo."""
+    return db.execute("SELECT * FROM match_reports WHERE match_id = ? AND action = 'dispute' "
+                      "AND home_goals IS NOT NULL ORDER BY id DESC LIMIT 1", (match_id,)).fetchone()
+
+
+def accept_dispute(db, tournament, match_id, player_id):
+    """Quem reportou aceita o placar da contestação: o jogo é confirmado sem
+    precisar do organizador."""
+    match = _match(db, tournament, match_id)
+    entry = player_entry(db, tournament, match, player_id)
+    disputed = last_dispute(db, match_id) if match["status"] == "disputed" else None
+    if entry is None or disputed is None or match["reported_by_entry_id"] != entry["id"]:
+        raise TournamentError("Não há placar de contestação para você aceitar neste jogo.")
+    score = (disputed["home_goals"], disputed["away_goals"], disputed["home_pens"], disputed["away_pens"])
+    store.record_result(db, tournament, match_id, *score)
+    log(db, match_id, "confirm", entry, score=score, comment="Aceitou o placar da contestação.")
 
 
 def resolve(db, tournament, match_id, score, user_id=None, entry=None, comment=""):

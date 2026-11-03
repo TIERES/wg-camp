@@ -82,7 +82,7 @@ SCORE_TIPS = {
     "scheduled": "Ainda sem resultado",
     "reported": "Placar reportado por um jogador: aguardando a confirmação do adversário",
     "confirmed": "Resultado confirmado",
-    "disputed": "Placar contestado: aguardando a decisão do organizador",
+    "disputed": "Placar contestado: aguardando quem reportou aceitar a correção ou o organizador decidir",
 }
 
 
@@ -684,6 +684,7 @@ def match(slug, match_id):
         "tournaments/match.html", t=tournament, m=m, names=names, me=me, manager=manager, h2h=h2h,
         history=reports.history(db, match_id), labels=reports.ACTION_LABELS,
         reported=reports.last_report(db, match_id) if m["status"] in ("reported", "disputed") else None,
+        dispute=reports.last_dispute(db, match_id) if m["status"] == "disputed" else None,
         deadline=reports.deadline(db, m) if m["status"] == "reported" else None,
         decisive=store.needs_pens(db, m), open=tournament["status"] == "running" and m["stage_status"] == "running")
 
@@ -715,6 +716,13 @@ def match_confirm(slug, match_id):
                           "Resultado confirmado!")
 
 
+@bp.post("/<slug>/jogos/<int:match_id>/aceitar")
+@player_required
+def match_accept(slug, match_id):
+    return _player_action(slug, match_id, lambda db, t: reports.accept_dispute(db, t, match_id, session["player_id"]),
+                          "Placar da contestação aceito: resultado confirmado!")
+
+
 @bp.post("/<slug>/jogos/<int:match_id>/contestar")
 @player_required
 def match_dispute(slug, match_id):
@@ -741,7 +749,8 @@ def my_matches():
     names = {}
     for tournament_id in groups:
         names.update(_names(db, store.get_tournament(db, tournament_id)))
-    return render_template("tournaments/my_matches.html", groups=list(groups.values()), names=names,
+    counter = {r["id"] for r in rows if r["status"] == "disputed" and reports.last_dispute(db, r["id"])}
+    return render_template("tournaments/my_matches.html", groups=list(groups.values()), names=names, counter=counter,
                            deadlines={r["id"]: reports.deadline(db, r) for r in rows if r["status"] == "reported"})
 
 
@@ -1078,13 +1087,17 @@ def inject_wallet():
         if ensure_wallet(db, player_id):
             db.commit()
         row = db.execute("SELECT wallet_cents FROM players WHERE id = ?", (player_id,)).fetchone()
-        # Jogos esperando uma ação do jogador: sem placar, ou com placar do adversário para confirmar.
+        # Jogos esperando uma ação do jogador: sem placar, com placar do adversário
+        # para confirmar, ou com o próprio placar contestado com outro placar para aceitar.
         todo = db.execute(
             "SELECT COUNT(*) FROM tournament_entries e JOIN tournaments t ON t.id = e.tournament_id "
             "JOIN tournament_stages s ON s.tournament_id = t.id AND s.status = 'running' "
             "JOIN tournament_matches m ON m.stage_id = s.id AND (m.home_entry_id = e.id OR m.away_entry_id = e.id) "
             "WHERE e.player_id = ? AND t.status = 'running' AND (m.status = 'scheduled' OR "
-            "(m.status = 'reported' AND m.reported_by_entry_id != e.id))", (player_id,)).fetchone()[0]
+            "(m.status = 'reported' AND m.reported_by_entry_id != e.id) OR "
+            "(m.status = 'disputed' AND m.reported_by_entry_id = e.id AND EXISTS (SELECT 1 FROM match_reports r "
+            "WHERE r.match_id = m.id AND r.action = 'dispute' AND r.home_goals IS NOT NULL)))",
+            (player_id,)).fetchone()[0]
     except sqlite3.OperationalError:
         return {}  # banco ainda sem as colunas da carteira
     return {"wallet_balance": row["wallet_cents"] if row else None, "matches_todo": todo}
