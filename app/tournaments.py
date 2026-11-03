@@ -351,21 +351,30 @@ def new():
                 raise TournamentError("O nome precisa ter entre 3 e 80 caracteres.")
             game_id = int(form.get("game_title_id") or 0)
             if not any(g["id"] == game_id for g in games):
-                raise TournamentError("Escolha um jogo.")
+                raise TournamentError("Escolha o jogo base.")
             fmt = form.get("format", "")
             if fmt not in formats.FORMATS:
                 raise TournamentError("Escolha um formato.")
             max_players = int(form.get("max_players") or 0)
+            if max_players < 2:
+                raise TournamentError("O torneio precisa de pelo menos 2 vagas.")
             fee = parse_cents(form.get("entry_fee") or "0")
             if fee > max_fee:
                 raise TournamentError(f"A inscrição pode ser de no máximo {format_cents(max_fee)}.")
-            split = form.get("prize_split", PRIZE_SPLITS[0])
-            engine.parse_split(split)
+            # Sem inscrição não há prêmio para dividir: o campo nem aparece.
+            split = form.get("prize_split", "") if fee else PRIZE_SPLITS[0]
+            if split not in PRIZE_SPLITS:
+                raise TournamentError("Escolha a divisão do prêmio.")
             config = _form_config(form, fmt)
             error = formats.config_error(fmt, config, max_players)
             if error:
                 raise TournamentError(f"Com {max_players} vagas: {error}")
             starts_on, ends_on = _dates(form)
+            if not starts_on:
+                raise TournamentError("Informe o início provável.")
+            rules = form.get("rules", "").strip()
+            if not rules:
+                raise TournamentError("Escreva o regulamento / observações.")
             team_mode = form.get("team_mode", "free")
             if team_mode not in TEAM_MODES:
                 raise TournamentError("Escolha como serão os times.")
@@ -395,7 +404,7 @@ def new():
                 "entry_fee_cents, prize_split, settings_json, rules, team_mode, team_display, starts_on, ends_on, "
                 "created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'registration', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (f"tmp-{now()}-{session['player_id']}", name, game_id, session["player_id"], fmt, max_players, fee,
-                 split, json.dumps(config), form.get("rules", "").strip()[:5000], team_mode, team_display, starts_on,
+                 split, json.dumps(config), rules[:5000], team_mode, team_display, starts_on,
                  ends_on, now(), now())).lastrowid
             slug = f"{slugify(name)}-{tournament_id}"
             db.execute("UPDATE tournaments SET slug = ? WHERE id = ?", (slug, tournament_id))

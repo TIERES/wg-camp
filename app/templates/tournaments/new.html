@@ -1,15 +1,16 @@
 {% extends 'base.html' %}{% block title %}Criar torneio · WE Camp{% endblock %}{% block content %}
 <h1>Criar torneio</h1>
 {% if not games %}<p class="notice error">Nenhum jogo cadastrado para torneios ainda. Peça à administração do WE Camp.</p>{% else %}
-<form method="post" class="form t-form">
+<form method="post" class="form t-form" id="new-tournament">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <label>Nome do torneio<input name="name" maxlength="80" minlength="3" required value="{{ form.get('name', '') }}" placeholder="Copa WE Camp de Inverno"></label>
+  <p class="muted">Os campos com <span class="req">*</span> são obrigatórios.</p>
+  <label>Nome do torneio <span class="req">*</span><input name="name" maxlength="80" minlength="3" required value="{{ form.get('name', '') }}" placeholder="Copa WE Camp de Inverno"></label>
   <div class="two-columns">
-    <label>Início provável<input type="date" name="starts_on" value="{{ form.get('starts_on', '') }}"></label>
+    <label>Início provável <span class="req">*</span><input type="date" name="starts_on" required value="{{ form.get('starts_on', '') }}"></label>
     <label>Fim provável<input type="date" name="ends_on" value="{{ form.get('ends_on', '') }}"></label>
   </div>
   <fieldset class="game-pick">
-    <legend>Jogo</legend>
+    <legend>Jogo base <span class="req">*</span></legend>
     <div class="game-covers">
     {% for g in games %}
       <label class="game-cover-option"><input type="radio" name="game_title_id" value="{{ g.id }}" required {% if form.get('game_title_id')|int == g.id %}checked{% endif %}>
@@ -24,15 +25,19 @@
     </select>
   </label>
   <div class="two-columns">
-    <label>Vagas<input type="number" name="max_players" min="{{ min_players }}" max="{{ max_players }}" required value="{{ form.get('max_players', 8) }}"></label>
+    <label>Vagas <span class="req">*</span><input type="number" name="max_players" min="{{ min_players }}" max="{{ max_players }}" required value="{{ form.get('max_players', 8) }}"></label>
     <label>Inscrição (W$, máx. {{ max_fee|wcash }})<input name="entry_fee" inputmode="numeric" data-wcash value="{{ form.get('entry_fee', '0,00') }}"></label>
   </div>
-  <label>Divisão do prêmio (1º / 2º / 3º, em %)
-    <select name="prize_split">
-      {% for s in splits %}<option value="{{ s }}" {% if form.get('prize_split') == s %}selected{% endif %}>{{ s.replace(',', ' / ') }}</option>{% endfor %}
-    </select>
-  </label>
-  <p class="muted">Todo o valor das inscrições vira o prêmio, dividido entre os 3 primeiros. Cada jogo também rende W$ para os jogadores (vitória/empate), pago pelo WE Camp.</p>
+  <div id="prize-split" class="form-block">
+    <label>Divisão do prêmio (1º / 2º / 3º, em %) <span class="req">*</span>
+      <select name="prize_split" required>
+        <option value="">Escolha...</option>
+        {% for s in splits %}<option value="{{ s }}" {% if form.get('prize_split') == s %}selected{% endif %}>{{ s.replace(',', ' / ') }}</option>{% endfor %}
+      </select>
+    </label>
+    <p class="muted">Todo o valor das inscrições vira o prêmio, dividido entre os 3 primeiros.</p>
+  </div>
+  <p class="muted">Cada jogo também rende W$ para os jogadores (vitória/empate), pago pelo WE Camp.</p>
 
   <fieldset data-formats="league">
     <legend>Pontos corridos</legend>
@@ -96,8 +101,8 @@
     </div>
   </fieldset>
 
-  <label>Regulamento / observações<textarea name="rules" rows="5" maxlength="5000" placeholder="Horários, regras do jogo, times permitidos...">{{ form.get('rules', '') }}</textarea></label>
-  <button>Criar torneio</button>
+  <label>Regulamento / observações <span class="req">*</span><textarea name="rules" rows="5" maxlength="5000" required placeholder="Horários, regras do jogo, times permitidos...">{{ form.get('rules', '') }}</textarea></label>
+  <div class="card-actions"><button id="create-button">Criar torneio</button><span class="muted" id="create-hint" hidden>Preencha os campos obrigatórios para criar o torneio.</span></div>
 </form>
 <script>
 (function () {
@@ -177,6 +182,22 @@
   });
   form.elements.team_display.dispatchEvent(new Event('change'));
   refreshTeams();
+
+  // Prêmio só com inscrição; "Criar torneio" só com os obrigatórios preenchidos.
+  var fee = form.elements.entry_fee, prize = document.getElementById('prize-split');
+  var button = document.getElementById('create-button'), hint = document.getElementById('create-hint');
+  function filled(name, min) { return form.elements[name].value.trim().length >= (min || 1); }
+  function refreshCreate() {
+    var paid = /[1-9]/.test(fee.value);
+    prize.hidden = !paid;
+    form.elements.prize_split.disabled = !paid;
+    var ok = form.checkValidity() && filled('name', 3) && filled('rules');
+    button.disabled = !ok;
+    hint.hidden = ok;
+  }
+  form.addEventListener('input', refreshCreate);
+  form.addEventListener('change', refreshCreate);
+  refreshCreate();
 })();
 </script>
 <script src="{{ url_for('static', filename='js/wcash-mask.js') }}"></script>

@@ -44,7 +44,7 @@ class TournamentIsoTest(unittest.TestCase):
 
     def create(self, iso=ISO, filename="Copa Teste.bin", **extra):
         """Cria o torneio e, como o organizador faz depois, envia a ISO em Gerenciar."""
-        data = {"csrf_token": CSRF, "name": "Copa ISO", "game_title_id": self.game, "format": "knockout",
+        data = {"csrf_token": CSRF, "name": "Copa ISO", "starts_on": "2026-12-01", "rules": "Regras", "game_title_id": self.game, "format": "knockout",
                 "max_players": "4", "entry_fee": "0", "prize_split": "60,30,10", "ko_legs": "1", "final_legs": "1",
                 "team_mode": "free", **extra}
         response = self.client(self.owner).post("/torneios/novo", data=data)

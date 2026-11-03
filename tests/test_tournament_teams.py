@@ -120,7 +120,7 @@ class TeamsTest(unittest.TestCase):
         page = client.get("/torneios/novo")
         self.assertIn("Brasileirão Série A".encode(), page.data)
         teams = self.team_ids("brasileirao-a")
-        data = {"csrf_token": CSRF, "name": "Copa BR", "game_title_id": self.game, "format": "league",
+        data = {"csrf_token": CSRF, "name": "Copa BR", "starts_on": "2026-12-01", "rules": "Regras", "game_title_id": self.game, "format": "league",
                 "max_players": "4", "entry_fee": "0", "prize_split": "60,30,10", "legs": "1",
                 "team_mode": "choose", "team_ids": [str(t) for t in teams[:3]]}
         refused = client.post("/torneios/novo", data=data)

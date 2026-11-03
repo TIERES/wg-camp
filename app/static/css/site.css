@@ -60,6 +60,8 @@ button:disabled { opacity:.5; cursor:not-allowed }
 .t-name { font-size:1.1rem } .t-meta { display:flex; flex-wrap:wrap; gap:.25rem 1rem; font-size:.9rem }
 .t-form fieldset { border:1px solid #374151; border-radius:8px; padding:1rem; display:grid; gap:1rem; min-width:0 }
 .t-form legend { padding:0 .4rem; color:var(--accent); font-weight:700 }
+.t-form .req { color:#f87171; font-weight:700 } .t-form .form-block { display:grid; gap:.5rem } .t-form .form-block p { margin:0 }
+.t-form button:disabled { opacity:.5; cursor:not-allowed }
 .t-header h1 { margin:.35rem 0 } .t-header p { margin:.25rem 0 }
 .t-header { display:flow-root }
 .t-header-cover { float:right; width:160px; height:200px; margin:0 0 1rem 1rem; object-fit:cover; border-radius:6px; border:1px solid #374151 }

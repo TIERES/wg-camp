@@ -54,11 +54,11 @@ class TournamentsWebTest(unittest.TestCase):
         self.assertEqual(new_page.count('name="game_title_id"'), 5)  # os 5 Winning Eleven do PS1
         self.assertIn("images/games/we3fv.svg", new_page)
         too_expensive = owner.post("/torneios/novo", data={
-            "csrf_token": CSRF, "name": "Copa Teste", "game_title_id": game_id, "format": "knockout",
+            "csrf_token": CSRF, "name": "Copa Teste", "starts_on": "2026-12-01", "rules": "Regras", "game_title_id": game_id, "format": "knockout",
             "max_players": "4", "entry_fee": "60,00", "prize_split": "60,30,10", "ko_legs": "1", "final_legs": "1"})
         self.assertIn("no máximo".encode(), too_expensive.data)
         response = owner.post("/torneios/novo", data={
-            "csrf_token": CSRF, "name": "Copa Teste", "game_title_id": game_id, "format": "world_cup",
+            "csrf_token": CSRF, "name": "Copa Teste", "starts_on": "2026-12-01", "rules": "Regras", "game_title_id": game_id, "format": "world_cup",
             "max_players": "4", "entry_fee": "10,00", "prize_split": "60,30,10", "groups": "2",
             "qualifiers": "2", "group_legs": "1", "ko_legs": "1", "final_legs": "1", "third_place": "on"})
         self.assertEqual(response.status_code, 302)
@@ -154,12 +154,33 @@ class TournamentsWebTest(unittest.TestCase):
                        (now(),))
             db.commit()
         owner = self.client(self.players[2])
-        data = {"csrf_token": CSRF, "name": "Liga", "game_title_id": game, "format": "league", "max_players": "4",
+        data = {"csrf_token": CSRF, "name": "Liga", "starts_on": "2026-12-01", "rules": "Regras", "game_title_id": game, "format": "league", "max_players": "4",
                 "entry_fee": "0", "prize_split": "60,30,10", "legs": "1"}
         self.assertEqual(owner.post("/torneios/novo", data=data).status_code, 302)
         second = owner.post("/torneios/novo", data=data)
         self.assertEqual(second.status_code, 200)
         self.assertIn("limite".encode(), second.data)
+
+    def test_create_requires_fields(self):
+        game = self.query("SELECT id FROM game_titles WHERE code = 'we2002'")[0]["id"]
+        owner = self.client(self.players[0])
+        page = owner.get("/torneios/novo").get_data(as_text=True)
+        self.assertIn("Jogo base", page)
+        self.assertIn('name="starts_on" required', page)
+        self.assertIn('maxlength="5000" required', page)
+        data = {"csrf_token": CSRF, "name": "Liga", "starts_on": "2026-12-01", "rules": "Regras", "game_title_id": game,
+                "format": "league", "max_players": "4", "entry_fee": "0", "legs": "1"}
+        for key, value, message in (("starts_on", "", "Informe o início provável."),
+                                    ("rules", "   ", "Escreva o regulamento / observações."),
+                                    ("game_title_id", "", "Escolha o jogo base."),
+                                    ("max_players", "1", "pelo menos 2 vagas"),
+                                    ("entry_fee", "10,00", "Escolha a divisão do prêmio.")):
+            refused = owner.post("/torneios/novo", data={**data, key: value})
+            self.assertIn(message, refused.get_data(as_text=True), key)
+        self.assertEqual(self.query("SELECT COUNT(*) FROM tournaments")[0][0], 0)
+        # Sem inscrição a divisão do prêmio não é pedida.
+        self.assertEqual(owner.post("/torneios/novo", data=data).status_code, 302)
+        self.assertEqual(self.query("SELECT prize_split FROM tournaments")[0][0], "60,30,10")
 
     def test_cancel_requires_confirmation_and_refunds(self):
         with self.app.app_context():
@@ -168,7 +189,7 @@ class TournamentsWebTest(unittest.TestCase):
                               (now(), now())).lastrowid
             db.commit()
         owner = self.client(self.players[0])
-        owner.post("/torneios/novo", data={"csrf_token": CSRF, "name": "Liga", "game_title_id": game,
+        owner.post("/torneios/novo", data={"csrf_token": CSRF, "name": "Liga", "starts_on": "2026-12-01", "rules": "Regras", "game_title_id": game,
                                            "format": "league", "max_players": "4", "entry_fee": "20",
                                            "prize_split": "60,30,10", "legs": "1"})
         slug = self.query("SELECT slug FROM tournaments")[0]["slug"]
