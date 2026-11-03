@@ -188,5 +188,21 @@ class StatsTest(unittest.TestCase):
         self.assertIn("1 confirmado", page)
         self.assertIn("1 para reportar", page)
 
+    def test_home_and_away_league_shows_two_blocks(self):
+        cfg = formats.normalize("league", {"legs": "2"})
+        tid = self.db.execute(
+            "INSERT INTO tournaments (slug, name, game_title_id, organizer_id, format, status, max_players, "
+            "settings_json, created_at, updated_at) VALUES ('liga-iv', 'Liga', ?, ?, 'league', 'registration', 4, "
+            "?, ?, ?)", (self.game, self.players[0], json.dumps(cfg), now(), now())).lastrowid
+        for i, pid in enumerate(self.players[:4]):
+            store.enroll(self.db, store.get_tournament(self.db, tid), pid, f"Time {i}")
+        store.start(self.db, store.get_tournament(self.db, tid), random.Random(1))
+        self.db.commit()
+        page = self.app.test_client().get("/torneios/liga-iv?aba=jogos").get_data(as_text=True)
+        self.assertIn("<summary>Ida <small", page)
+        self.assertIn("<summary>Volta <small", page)
+        self.assertNotIn("Rodada 1", page)
+        self.assertEqual(page.count("(0/6)"), 2)  # 4 times: 6 jogos em cada turno
+
 if __name__ == "__main__":
     unittest.main()

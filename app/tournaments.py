@@ -231,6 +231,16 @@ def _stage_views(db, tournament):
             for group, table in store.group_tables(db, stage["id"]):
                 view["groups"].append({"group": group, "table": table})
             names = {r: f"Rodada {r}" for r in rounds}
+            if view["settings"].get("legs") == 2 and stage["kind"] in ("league", "groups"):
+                # Ida e volta: um bloco por turno em vez de um por rodada. O
+                # returno ocupa a segunda metade das rodadas de cada grupo.
+                half = {}
+                for match in matches:
+                    half[match["group_id"]] = max(half.get(match["group_id"], 0), match["round"])
+                rounds = {1: [], 2: []}
+                for match in matches:
+                    rounds[1 if match["round"] <= half[match["group_id"]] // 2 else 2].append(match)
+                names = {1: "Ida", 2: "Volta"}
             config = store.settings_of(tournament)
             if stage["kind"] == "groups":
                 view["highlight"] = config.get("qualifiers", 0)

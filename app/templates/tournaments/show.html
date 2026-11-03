@@ -113,7 +113,7 @@
     <h2>{{ view.stage.name }}</h2>
     {% for rnd in view.rounds %}
     <details class="round" {% if not loop.last or view.stage.status == 'running' %}open{% endif %}>
-      <summary>{{ rnd.name }}</summary>
+      <summary>{{ rnd.name }} <small class="muted">({{ rnd.matches|selectattr('status', 'eq', 'confirmed')|list|length }}/{{ rnd.matches|length }})</small></summary>
       {% for m in rnd.matches %}{{ match_line(m, names, t.slug) }}{% endfor %}
     </details>
     {% else %}<p class="muted">Sem jogos.</p>{% endfor %}
