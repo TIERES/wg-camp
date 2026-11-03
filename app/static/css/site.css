@@ -167,3 +167,16 @@ details.dispute { margin-top:1rem } details.dispute summary { cursor:pointer; co
 .h2h-bar { display:flex; height:.6rem; border-radius:999px; overflow:hidden; margin:.75rem 0 .25rem; background:#374151 }
 .center { text-align:center }
 .compare-table th,.compare-table td { width:33% } .compare-table td.better { color:#6ee7b7; font-weight:700 }
+/* Meus jogos: um card expansível por torneio */
+.mt-filter { width:100%; max-width:28rem; margin:.5rem 0 1rem }
+details.mt-card { background:var(--card); border:1px solid #374151; border-radius:8px; margin:.75rem 0 }
+details.mt-card[open] { border-color:#4b5563 }
+details.mt-card > summary { cursor:pointer; list-style:none; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.5rem 1rem; padding:.85rem 1rem }
+details.mt-card > summary::-webkit-details-marker { display:none }
+details.mt-card > summary::before { content:'\25B8'; color:#9ca3af; transition:transform .15s } details.mt-card[open] > summary::before { transform:rotate(90deg) }
+.mt-title { flex:1 1 12rem; display:flex; flex-direction:column; min-width:0; overflow-wrap:anywhere } .mt-title small { font-size:.8rem }
+.mt-counts { display:flex; flex-wrap:wrap; gap:.35rem }
+.mt-counts .chip { display:inline-block; margin:0; padding:.15rem .5rem; border-radius:999px; background:#374151; color:#e5e7eb; text-transform:none; letter-spacing:0; font-size:.75rem }
+.mt-counts .chip-todo { background:#064e3b; color:#a7f3d0 } .mt-counts .chip-reported { background:#78350f; color:#fde68a } .mt-counts .chip-disputed { background:#7f1d1d; color:#fecaca }
+.mt-body { padding:0 1rem .75rem } .mt-body .my-match { background:#172333 }
+.mt-match-filter { width:100%; max-width:22rem; margin:.25rem 0 .25rem } .mt-link { margin:.5rem 0 0; font-size:.9rem }

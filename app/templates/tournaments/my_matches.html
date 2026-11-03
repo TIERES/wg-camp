@@ -1,16 +1,77 @@
 {% extends 'base.html' %}{% block title %}Meus jogos · WE Camp{% endblock %}{% block content %}
 <h1>Meus jogos</h1>
-<p class="muted">Jogos dos seus torneios em andamento que ainda não têm resultado confirmado.</p>
-{% for row in rows %}
-  {% if loop.first or row.tournament_id != loop.previtem.tournament_id %}<h2>{{ row.tournament_name }}</h2>{% endif %}
-  {% set mine_reported = row.status == 'reported' and row.reported_by_entry_id == row.my_entry_id %}
-  <a class="my-match status-{{ row.status }}" href="{{ url_for('tournaments.match', slug=row.slug, match_id=row.id) }}">
-    <span class="match-line"><span class="home">{{ names[row.home_entry_id] }}</span><span class="score">x</span><span class="away">{{ names[row.away_entry_id] }}</span></span>
-    <span class="my-match-status">{{ row.stage_name }} ·
-      {% if row.status == 'scheduled' %}<strong>reporte o placar</strong>
-      {% elif row.status == 'reported' and not mine_reported %}<strong>confirme ou conteste o placar do adversário</strong>
-      {% elif mine_reported %}esperando o adversário (até {{ deadlines[row.id]|localtime }})
-      {% else %}contestado, com o organizador{% endif %}</span>
-  </a>
+<p class="muted">Jogos dos seus torneios em andamento que ainda não têm resultado confirmado. Clique no torneio para ver os jogos.</p>
+{% set groups = rows|groupby('tournament_id') %}
+{% if groups|length > 1 %}
+<input type="search" id="mt-filter" class="mt-filter" placeholder="Buscar torneio pelo nome..." autocomplete="off" aria-label="Buscar torneio">
+{% endif %}
+{% for group in groups %}{% set first = group.list[0] %}
+  {% set todo = group.list|selectattr('status', 'equalto', 'scheduled')|list|length %}
+  {% set to_confirm = group.list|selectattr('status', 'equalto', 'reported')|rejectattr('reported_by_entry_id', 'equalto', first.my_entry_id)|list|length %}
+  {% set waiting = group.list|selectattr('status', 'equalto', 'reported')|selectattr('reported_by_entry_id', 'equalto', first.my_entry_id)|list|length %}
+  {% set disputed = group.list|selectattr('status', 'equalto', 'disputed')|list|length %}
+  <details class="mt-card" data-name="{{ first.tournament_name }}" {% if groups|length == 1 %}open{% endif %}>
+    <summary>
+      <span class="mt-title"><strong>{{ first.tournament_name }}</strong><small class="muted">{{ group.list|length }} jogo{{ 's' if group.list|length != 1 }}</small></span>
+      <span class="mt-counts">
+        {% if todo %}<span class="chip chip-todo">{{ todo }} para reportar</span>{% endif %}
+        {% if to_confirm %}<span class="chip chip-reported">{{ to_confirm }} para confirmar</span>{% endif %}
+        {% if waiting %}<span class="chip">{{ waiting }} aguardando adversário</span>{% endif %}
+        {% if disputed %}<span class="chip chip-disputed">{{ disputed }} contestado{{ 's' if disputed != 1 }}</span>{% endif %}
+      </span>
+    </summary>
+    <div class="mt-body">
+      {% if group.list|length > 1 %}<input type="search" class="mt-match-filter" placeholder="Filtrar por jogador ou time..." autocomplete="off" aria-label="Filtrar jogos por jogador ou time">{% endif %}
+      {% for row in group.list %}
+      {% set mine_reported = row.status == 'reported' and row.reported_by_entry_id == row.my_entry_id %}
+      <a class="my-match status-{{ row.status }}" data-search="{{ names[row.home_entry_id]|striptags }} {{ names[row.away_entry_id]|striptags }}" href="{{ url_for('tournaments.match', slug=row.slug, match_id=row.id) }}">
+        <span class="match-line"><span class="home">{{ names[row.home_entry_id] }}</span><span class="score">x</span><span class="away">{{ names[row.away_entry_id] }}</span></span>
+        <span class="my-match-status">{{ row.stage_name }} ·
+          {% if row.status == 'scheduled' %}<strong>reporte o placar</strong>
+          {% elif row.status == 'reported' and not mine_reported %}<strong>confirme ou conteste o placar do adversário</strong>
+          {% elif mine_reported %}esperando o adversário (até {{ deadlines[row.id]|localtime }})
+          {% else %}contestado, com o organizador{% endif %}</span>
+      </a>
+      {% endfor %}
+      <p class="muted mt-empty" hidden>Nenhum jogo com esse jogador ou time.</p>
+      <p class="mt-link"><a href="{{ url_for('tournaments.show', slug=first.slug, aba='jogos') }}">Ver o torneio</a></p>
+    </div>
+  </details>
 {% else %}<p>Nenhum jogo pendente. 🎉</p>{% endfor %}
+<p class="muted" id="mt-none" hidden>Nenhum torneio com esse nome.</p>
+
+<script>
+(function () {
+  // Busca sem diferenciar acentos/maiúsculas.
+  function plain(s) { return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
+  function noEnter(input) { input.addEventListener('keydown', function (e) { if (e.key === 'Enter') e.preventDefault(); }); }
+
+  var cards = document.querySelectorAll('.mt-card');
+  var filter = document.getElementById('mt-filter');
+  if (filter) {
+    noEnter(filter);
+    filter.addEventListener('input', function () {
+      var q = plain(this.value.trim()), any = false;
+      cards.forEach(function (card) {
+        var show = !q || plain(card.dataset.name).indexOf(q) >= 0;
+        card.hidden = !show; any = any || show;
+      });
+      document.getElementById('mt-none').hidden = any;
+    });
+  }
+
+  document.querySelectorAll('.mt-match-filter').forEach(function (input) {
+    noEnter(input);
+    var body = input.closest('.mt-body');
+    input.addEventListener('input', function () {
+      var q = plain(this.value.trim()), any = false;
+      body.querySelectorAll('.my-match').forEach(function (m) {
+        var show = !q || plain(m.dataset.search).indexOf(q) >= 0;
+        m.hidden = !show; any = any || show;
+      });
+      body.querySelector('.mt-empty').hidden = any;
+    });
+  });
+})();
+</script>
 {% endblock %}
