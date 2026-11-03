@@ -139,6 +139,9 @@ class StatsTest(unittest.TestCase):
         page = client.get("/torneios/comparar?a=p0&b=p1")
         self.assertEqual(page.status_code, 200)
         self.assertIn("Confronto direto".encode(), page.data)
+        self.assertIn(b'class="match-dialog"', page.data)  # popup do último confronto
+        self.assertIn("Últimos jogos de p0 contra p1".encode(), page.data)
+        self.assertNotIn("Gols pró".encode(), page.data)
         self.assertIn("Jogador não encontrado".encode(), client.get("/torneios/comparar?a=p0&b=zzz").data)
         self.assertIn("dois jogadores diferentes".encode(), client.get("/torneios/comparar?a=p0&b=p0").data)
         self.assertEqual(client.get("/torneios/comparar").status_code, 200)

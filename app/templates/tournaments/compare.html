@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'tournaments/_stats_macros.html' import player_link, form_badges, history_table %}
+{% extends 'base.html' %}{% from 'tournaments/_stats_macros.html' import player_link, form_badges %}{% from 'tournaments/_macros.html' import match_line %}
 {% block title %}Comparar jogadores · WE Camp{% endblock %}{% block content %}
 <p><a href="{{ url_for('tournaments.ranking', jogo=game) }}">← Ranking</a></p>
 <h1>Comparar jogadores</h1>
@@ -27,7 +27,6 @@
   <div class="h2h-bar" role="img" aria-label="{{ a.username }} {{ h.wins }}, empates {{ h.draws }}, {{ b.username }} {{ h.losses }}">
     <span class="f-V" style="flex:{{ h.wins }}"></span><span class="f-E" style="flex:{{ h.draws }}"></span><span class="f-D" style="flex:{{ h.losses }}"></span>
   </div>
-  <p class="muted center">Gols no confronto: {{ a.username }} {{ h.goals_for }} x {{ h.goals_against }} {{ b.username }}</p>
   {% endif %}
 </section>
 
@@ -38,7 +37,7 @@
     <thead><tr><th>{{ a.username }}</th><th></th><th>{{ b.username }}</th></tr></thead>
     <tbody>
     {% set ra, rb = result.a, result.b %}
-    {% for label, key, higher in (('Jogos', 'played', none), ('Vitórias', 'wins', true), ('Empates', 'draws', none), ('Derrotas', 'losses', false), ('Pontos', 'points', true), ('Gols pró', 'goals_for', true), ('Gols contra', 'goals_against', false), ('Saldo de gols', 'goal_diff', true), ('Aproveitamento', 'efficiency', true)) %}
+    {% for label, key, higher in (('Jogos', 'played', none), ('Vitórias', 'wins', true), ('Empates', 'draws', none), ('Derrotas', 'losses', false), ('Aproveitamento', 'efficiency', true)) %}
       {% set va, vb = ra[key], rb[key] %}
       <tr><td class="{{ 'better' if higher is not none and va != vb and ((va > vb) == higher) }}">{{ va }}{{ '%' if key == 'efficiency' }}</td><th>{{ label }}</th>
           <td class="{{ 'better' if higher is not none and va != vb and ((vb > va) == higher) }}">{{ vb }}{{ '%' if key == 'efficiency' }}</td></tr>
@@ -51,10 +50,34 @@
 </section>
 
 <section>
-  <h2>Jogos entre eles</h2>
-  {% if result.matches %}<p class="muted">Resultado do ponto de vista de {{ a.username }}.</p>{{ history_table(result.matches, outcome, game, show_opponent=false) }}
+  <h2>{% if me_is_a %}Seus últimos jogos contra {{ b.username }}{% else %}Últimos jogos de {{ a.username }} contra {{ b.username }}{% endif %}</h2>
+  {% if result.matches %}
+  <p class="muted">Do mais antigo ao mais recente, do ponto de vista de {{ a.username }}. Clique para ver o jogo.</p>
+  <div class="recent recent-lg">
+    {% for r in result.matches|reverse %}{% set o = outcome(r) %}
+    <button type="button" class="f-btn f-{{ o }}" data-dialog="jogo-{{ r.match_id }}" title="{{ r.goals_for }} x {{ r.goals_against }} · {{ r.tournament_name }}" aria-haspopup="dialog">{{ o }}</button>
+    {% endfor %}
+  </div>
+  {% for r in result.matches %}{% set m = games_by_id.get(r.match_id) %}
+  <dialog class="match-dialog" id="jogo-{{ r.match_id }}" aria-label="Jogo de {{ r.tournament_name }}">
+    {% if m %}{{ match_line(m, names, r.slug) }}{% endif %}
+    <dl>
+      <dt>Campeonato</dt><dd><a href="{{ url_for('tournaments.show', slug=r.slug) }}">{{ r.tournament_name }}</a> <small class="muted">· {{ r.stage_name }}</small></dd>
+      <dt>Data e hora</dt><dd>{{ r.played_at|localtime }}</dd>
+    </dl>
+    <form method="dialog"><button class="secondary">Fechar</button></form>
+  </dialog>
+  {% endfor %}
   {% else %}<p class="muted">{{ a.username }} e {{ b.username }} ainda não se enfrentaram{% if game %} neste jogo{% endif %}.</p>{% endif %}
 </section>
+<script>
+document.querySelectorAll('[data-dialog]').forEach(function (button) {
+  var dialog = document.getElementById(button.dataset.dialog);
+  button.addEventListener('click', function () { dialog.showModal(); });
+  // Clique fora da caixa fecha.
+  dialog.addEventListener('click', function (e) { if (e.target === dialog) dialog.close(); });
+});
+</script>
 {% elif not players %}<p class="muted">Nenhum jogo confirmado ainda.</p>
 {% endif %}
 {% endblock %}

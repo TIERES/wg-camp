@@ -809,8 +809,18 @@ def compare():
         flash("Escolha dois jogadores diferentes.", "error")
     elif a and b:
         result = stats.compare(db, a["id"], b["id"], game)
+    # Últimos confrontos: o jogo de cada um (para o popup) e os nomes com escudo.
+    games_by_id, names = {}, {}
+    if result and result["matches"]:
+        ids = [r["match_id"] for r in result["matches"]]
+        for row in db.execute(f"SELECT * FROM tournament_matches WHERE id IN ({','.join('?' * len(ids))})", ids):
+            games_by_id[row["id"]] = row
+        for tournament_id in {r["tournament_id"] for r in result["matches"]}:
+            names.update(_names(db, store.get_tournament(db, tournament_id)))
     return render_template("tournaments/compare.html", a=a, b=b, result=result, games=games, game=game,
-                           players=stats.players_with_matches(db), outcome=stats.outcome)
+                           players=stats.players_with_matches(db), outcome=stats.outcome,
+                           games_by_id=games_by_id, names=names,
+                           me_is_a=bool(a and a["id"] == session.get("player_id")))
 
 
 _last_auto_confirm = [0.0]

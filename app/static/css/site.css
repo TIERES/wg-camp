@@ -189,3 +189,13 @@ details.mt-card > summary::before { content:'\25B8'; color:#9ca3af; transition:t
 .score-val strong { color:inherit }
 .big-score .score-val { padding:.1rem .7rem; border-radius:8px }
 .result-form input.score-confirmed { border-color:#059669 } .result-form input.score-reported { border-color:#ea580c } .result-form input.score-disputed { border-color:#dc2626 }
+/* V/E/D clicável (últimos confrontos) e o popup do jogo. */
+.recent-lg { display:flex; flex-wrap:wrap; gap:.4rem; margin:.5rem 0 }
+.recent button.f-btn { display:inline-flex; align-items:center; justify-content:center; width:2.2rem; height:2.2rem; padding:0; margin:0; border:0; border-radius:5px; font-size:.95rem; font-weight:700; line-height:1; color:#111827; cursor:pointer }
+.recent button.f-btn:hover,.recent button.f-btn:focus-visible { outline:2px solid var(--text); outline-offset:2px }
+dialog.match-dialog { width:min(34rem, calc(100vw - 2rem)); padding:1rem 1.25rem; background:var(--card); color:var(--text); border:1px solid #374151; border-radius:10px }
+dialog.match-dialog::backdrop { background:rgb(0 0 0 / .6) }
+dialog.match-dialog .match-line { border-top:0; padding:.25rem 0 .75rem }
+dialog.match-dialog dl { display:grid; grid-template-columns:auto 1fr; gap:.35rem 1rem; margin:0 0 1rem }
+dialog.match-dialog dt { color:#9ca3af } dialog.match-dialog dd { margin:0 }
+dialog.match-dialog form { display:flex; justify-content:flex-end; margin:0; max-width:none }

@@ -140,6 +140,6 @@ def compare(db, a, b, game_id=None):
         "a": player_record(db, a, game_id), "b": player_record(db, b, game_id),
         "a_position": position(db, a, game_id), "b_position": position(db, b, game_id),
         "head_to_head": player_record(db, a, game_id, opponent_id=b),
-        "matches": history(db, a, game_id, opponent_id=b),
+        "matches": history(db, a, game_id, opponent_id=b, limit=5),
         "a_form": form(history(db, a, game_id, limit=5)), "b_form": form(history(db, b, game_id, limit=5)),
     }
