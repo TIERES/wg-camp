@@ -284,8 +284,9 @@ def _stage_views(db, tournament):
     return views
 
 
-@bp.get("/")
-def index():
+def _tournament_list(template, player_id=None, **extra):
+    """Cards de torneios com os filtros de status, jogo, nome e organizador.
+    Com `player_id`, só os torneios em que esse jogador está inscrito."""
     db = get_db()
     status = request.args.get("status", "")
     game = request.args.get("jogo", type=int)
@@ -294,6 +295,11 @@ def index():
            "FROM tournaments t JOIN game_titles g ON g.id = t.game_title_id JOIN players p ON p.id = t.organizer_id "
            "WHERE t.status != 'draft'")
     params = []
+    mine = ""
+    if player_id:
+        mine = " AND t.id IN (SELECT tournament_id FROM tournament_entries WHERE player_id = ?)"
+        sql += mine
+        params.append(player_id)
     if status in STATUS_LABELS:
         sql += " AND t.status = ?"
         params.append(status)
@@ -309,7 +315,7 @@ def index():
     organizer = request.args.get("organizador", "").strip()
     suggestions = db.execute(
         "SELECT DISTINCT t.name, p.username FROM tournaments t JOIN players p ON p.id = t.organizer_id "
-        "WHERE t.status != 'draft'").fetchall()
+        "WHERE t.status != 'draft'" + mine, (player_id,) if player_id else ()).fetchall()
     if name or organizer:
         # Organizador escolhido na lista (nome exato) não traz quem só começa igual (TIERES x TIERES1).
         exact = any(_plain(r["username"]) == _plain(organizer) for r in suggestions)
@@ -317,11 +323,22 @@ def index():
             _plain(organizer) == _plain(t["organizer_name"]) if exact else _plain(organizer) in _plain(t["organizer_name"]))]
     tournaments = tournaments[:200]
     games = db.execute("SELECT id, name, code FROM game_titles WHERE is_active = 1 ORDER BY year, name").fetchall()
-    return render_template("tournaments/index.html", tournaments=tournaments, games=games, status=status,
+    return render_template(template, tournaments=tournaments, games=games, status=status,
                            game=game, name=name, organizer=organizer,
                            name_options=sorted({r["name"] for r in suggestions}, key=_plain),
                            organizer_options=sorted({r["username"] for r in suggestions}, key=_plain),
-                           status_labels=STATUS_LABELS, format_labels=formats.FORMATS)
+                           status_labels=STATUS_LABELS, format_labels=formats.FORMATS, **extra)
+
+
+@bp.get("/")
+def index():
+    return _tournament_list("tournaments/index.html", list_endpoint="tournaments.index")
+
+
+@bp.get("/meus-campeonatos")
+@player_required
+def my_tournaments():
+    return _tournament_list("tournaments/mine.html", session["player_id"], list_endpoint="tournaments.my_tournaments")
 
 
 def _plain(value):
@@ -855,6 +872,28 @@ def my_matches():
     return render_template("tournaments/my_matches.html", groups=list(groups.values()), names=names, counter=counter,
                            deadlines={r["id"]: reports.deadline(db, r) for r in rows if r["status"] == "reported"})
 
+
+
+@bp.get("/status")
+@player_required
+def my_status():
+    """Resumo do jogador logado: últimas 10 partidas (com o popup de cada uma),
+    V/E/D no geral e a evolução do aproveitamento jogo a jogo."""
+    db = get_db()
+    me = session["player_id"]
+    rows = stats.history(db, me, limit=100)
+    last = rows[:10]
+    games_by_id, names = {}, {}
+    if last:
+        ids = [r["match_id"] for r in last]
+        for row in db.execute(f"SELECT * FROM tournament_matches WHERE id IN ({','.join('?' * len(ids))})", ids):
+            games_by_id[row["id"]] = row
+        for tournament_id in {r["tournament_id"] for r in last}:
+            names.update(_names(db, store.get_tournament(db, tournament_id)))
+    return render_template("tournaments/status.html", record=stats.player_record(db, me),
+                           position=stats.position(db, me), last=last, outcome=stats.outcome,
+                           games_by_id=games_by_id, names=names, evolution=stats.evolution(rows),
+                           total=len(rows))
 
 # --- Ranking, histórico e comparação (app/tournament/stats.py) ----------------
 

@@ -108,6 +108,19 @@ def form(rows, size=5):
     return [outcome(row) for row in rows[:size]][::-1]
 
 
+def evolution(rows):
+    """Aproveitamento acumulado jogo a jogo, do mais antigo ao mais recente
+    (`rows` = history(), que vem do mais recente para o mais antigo)."""
+    points, points_list = 0, []
+    for index, row in enumerate(reversed(rows), 1):
+        result = outcome(row)
+        points += {"V": 3, "E": 1, "D": 0}[result]
+        points_list.append({"n": index, "outcome": result, "efficiency": round(100 * points / (3 * index)),
+                            "score": f"{row['goals_for']} x {row['goals_against']}",
+                            "opponent": row["opponent_name"], "played_at": row["played_at"]})
+    return points_list
+
+
 def opponents(db, player_id, game_id=None, limit=10):
     """Adversários mais enfrentados, com o retrospecto contra cada um."""
     where, params = _filters(game_id)

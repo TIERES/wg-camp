@@ -5,15 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Campeonatos WE 2002{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/retroarch.svg') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css', v='20261103b') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css', v='20261104a') }}">
 </head>
 <body>
   <header>
-    <a href="{{ url_for('public.index') }}">Campeonatos · Winning Eleven 2002</a>
+    <a href="{{ url_for('public.index') }}">Campeonatos · Winning Eleven</a>
     <nav>
       <a href="{{ url_for('tournaments.index') }}">Torneios</a>
       <a href="{{ url_for('replays.index') }}">Replays</a>
-      {% if session.player_id %}{% if matches_todo %}<a class="todo-chip" href="{{ url_for('tournaments.my_matches') }}" title="Jogos esperando você">Meus jogos <span>{{ matches_todo }}</span></a>{% endif %}{% if wallet_balance is not none %}<a class="wallet-chip" href="{{ url_for('tournaments.wallet') }}">{{ wallet_balance|wcash }}</a>{% endif %}<a href="{{ url_for('players.account') }}">Minha conta</a>{% else %}<a href="{{ url_for('players.login') }}">Entrar</a> <a href="{{ url_for('players.register') }}">Cadastre-se</a>{% endif %}
+      {% if session.player_id %}{% if matches_todo %}<a class="todo-chip" href="{{ url_for('tournaments.my_matches') }}" title="Jogos esperando você">Meus jogos <span>{{ matches_todo }}</span></a>{% endif %}{% if wallet_balance is not none %}<a class="wallet-chip" href="{{ url_for('tournaments.wallet') }}">{{ wallet_balance|wcash }}</a>{% endif %}<details class="user-menu"><summary><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span class="user-name">{{ player_name or 'Minha conta' }}</span><svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary><div class="user-menu-list"><a href="{{ url_for('tournaments.my_tournaments') }}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></svg>Meus campeonatos</a><a href="{{ url_for('tournaments.my_status') }}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 6-6"/></svg>Status</a><a href="{{ url_for('players.account') }}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Configurações</a><form method="post" action="{{ url_for('players.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>Sair</button></form></div></details>{% else %}<a href="{{ url_for('players.login') }}">Entrar</a> <a href="{{ url_for('players.register') }}">Cadastre-se</a>{% endif %}
       {% if session.user_id %}<a class="admin-link" href="{{ url_for('admin.dashboard') }}">Administração</a> <a class="admin-link" href="{{ url_for('admin.replays_list') }}">Replays (admin)</a> <a class="admin-link" href="{{ url_for('tournaments_admin.admin_home') }}">Torneios (admin)</a>{% endif %}
     </nav>
   </header>
@@ -22,9 +22,18 @@
     {% block content %}{% endblock %}
   </main>
   <footer class="site-footer">
-    <div>Arquivos oficiais dos campeonatos de Winning Eleven 2002.</div>
+    <div><strong>Campeonatos de Winning Eleven</strong></div>
     <div>Desenvolvido por <a href="https://www.wgs.dev.br" rel="noopener noreferrer" target="_blank">WGS Sistemas</a></div>
     <a class="wgs-logo" href="https://www.wgs.dev.br" rel="noopener noreferrer" target="_blank"><img src="https://www.wgs.dev.br/assets/images/logo/logo-text.svg" alt="WGS Sistemas"></a>
   </footer>
+  <script>
+  // Menu do usuário: fecha ao clicar fora ou com Esc.
+  (function () {
+    var menu = document.querySelector('.user-menu');
+    if (!menu) return;
+    document.addEventListener('click', function (e) { if (!menu.contains(e.target)) menu.open = false; });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && menu.open) { menu.open = false; menu.querySelector('summary').focus(); } });
+  })();
+  </script>
 </body>
 </html>

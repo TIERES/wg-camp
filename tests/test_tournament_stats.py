@@ -233,3 +233,18 @@ class StatsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EvolutionTest(unittest.TestCase):
+    def test_cumulative_efficiency_oldest_first(self):
+        from app.tournament.stats import evolution
+        rows = [  # history(): mais recente primeiro
+            {"goals_for": 0, "goals_against": 1, "opponent_name": "c", "played_at": "3"},
+            {"goals_for": 1, "goals_against": 1, "opponent_name": "b", "played_at": "2"},
+            {"goals_for": 2, "goals_against": 0, "opponent_name": "a", "played_at": "1"},
+        ]
+        points = evolution(rows)
+        self.assertEqual([p["outcome"] for p in points], ["V", "E", "D"])
+        self.assertEqual([p["efficiency"] for p in points], [100, 67, 44])
+        self.assertEqual(points[0]["opponent"], "a")
+        self.assertEqual(evolution([]), [])

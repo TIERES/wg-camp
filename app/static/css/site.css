@@ -257,3 +257,30 @@ dialog.match-dialog form { display:flex; justify-content:flex-end; margin:0; max
 .form-row.phase-row { align-items:stretch } .phase-row > fieldset { flex:1 1 24rem; align-content:start }
 .t-filters .ac { position:relative; flex:1 1 12rem; min-width:0; display:flex } .t-filters .ac input { width:100% }
 .tie-flip:not(.flipped) > .back, .tie-flip.flipped > .front { pointer-events:none }
+/* Menu do usuário no cabeçalho (nome + ícone, abre Meus campeonatos/Status/Configurações/Sair). */
+header nav { align-items:center }
+.ico { width:1.1rem; height:1.1rem; flex:0 0 auto; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round }
+.user-menu { position:relative }
+.user-menu > summary { display:flex; align-items:center; gap:.4rem; list-style:none; cursor:pointer; font-weight:700; color:white; padding:.2rem .55rem; border:1px solid #374151; border-radius:999px }
+.user-menu > summary::-webkit-details-marker { display:none }
+.user-menu > summary:hover,.user-menu[open] > summary { border-color:var(--accent) }
+.user-menu > summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px }
+.user-menu .user-name { max-width:12rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.user-menu .chev { width:.9rem; height:.9rem; transition:transform .15s ease } .user-menu[open] .chev { transform:rotate(180deg) }
+.user-menu-list { position:absolute; right:0; top:calc(100% + .4rem); z-index:20; min-width:13rem; display:grid; padding:.35rem; background:var(--card); border:1px solid #374151; border-radius:8px; box-shadow:0 10px 25px rgb(0 0 0 / .45) }
+.user-menu-list a,.user-menu-list button { display:flex; align-items:center; gap:.6rem; width:100%; padding:.55rem .65rem; border-radius:5px; background:none; color:var(--text); font:inherit; font-size:.95rem; font-weight:600; text-align:left; text-decoration:none; cursor:pointer }
+.user-menu-list a:hover,.user-menu-list a:focus-visible,.user-menu-list button:hover,.user-menu-list button:focus-visible { background:#374151; outline:0 }
+.user-menu-list .ico { color:var(--accent) }
+.user-menu-list form { display:block; margin:0; padding-top:.35rem; border-top:1px solid #374151; margin-top:.25rem }
+.user-menu-list form .ico { color:#f87171 }
+@media (max-width:550px) { .user-menu-list { right:auto; left:0 } }
+/* Status: gráfico da evolução do aproveitamento. */
+.evo-chart { position:relative; background:var(--card); border:1px solid #374151; border-radius:8px; padding:.5rem }
+.evo-chart svg { display:block; width:100%; height:auto }
+.evo-grid { stroke:#374151; stroke-width:1 } .evo-axis { fill:#9ca3af; font-size:11px }
+.evo-line { fill:none; stroke:var(--accent); stroke-width:2; stroke-linejoin:round; stroke-linecap:round }
+.evo-cross { stroke:#6b7280; stroke-width:1; stroke-dasharray:3 3 }
+.evo-pt circle { stroke:var(--card); stroke-width:2 } .evo-hit { fill:transparent; cursor:crosshair }
+.evo-tip { position:absolute; display:grid; gap:.1rem; padding:.4rem .6rem; background:#111827; border:1px solid #4b5563; border-radius:6px; font-size:.85rem; white-space:nowrap; pointer-events:none }
+.evo-tip strong { font-size:1rem }
+.evo-table { margin:.5rem 0 } .evo-table summary { cursor:pointer; color:var(--accent) }

@@ -56,6 +56,38 @@ class TournamentsWebTest(unittest.TestCase):
         self.assertEqual([tuple(r) for r in entry], [("Brasil", "br.svg")])
         self.assertIn("/static/teams/", player.get("/torneios/livre?aba=geral").data.decode())
 
+    def test_user_menu_my_tournaments_and_status(self):
+        from app.tournament import store
+        with self.app.app_context():
+            db = get_db()
+            game = db.execute("INSERT INTO game_titles (name, created_at, updated_at) VALUES ('WE', ?, ?)",
+                              (now(), now())).lastrowid
+            for slug, name in (("minha", "Copa Minha"), ("outra", "Copa Outra")):
+                db.execute("INSERT INTO tournaments (slug, name, game_title_id, organizer_id, format, status, max_players, "
+                           "settings_json, created_at, updated_at) VALUES (?, ?, ?, ?, 'league', 'registration', 4, "
+                           "'{\"legs\": 1}', ?, ?)", (slug, name, game, self.players[0], now(), now()))
+            store.enroll(db, db.execute("SELECT * FROM tournaments WHERE slug = 'minha'").fetchone(), self.players[1], "Time Um")
+            db.commit()
+        anon = self.client()
+        self.assertEqual(anon.get("/torneios/meus-campeonatos").status_code, 302)
+        self.assertEqual(anon.get("/torneios/status").status_code, 302)
+        self.assertNotIn('class="user-menu"', anon.get("/").data.decode())
+
+        player = self.client(self.players[1])
+        home = player.get("/").data.decode()
+        self.assertIn('class="user-name">jog1<', home)
+        for label in ("Meus campeonatos", "Status", "Configurações", "Sair"):
+            self.assertIn(label, home)
+        mine = player.get("/torneios/meus-campeonatos").data.decode()
+        self.assertIn('t-name">Copa Minha', mine)
+        self.assertNotIn("Copa Outra", mine)  # nem nas sugestões
+        self.assertNotIn('t-name">Copa Minha', player.get("/torneios/meus-campeonatos?status=finished").data.decode())
+        self.assertIn('t-name">Copa Minha', player.get("/torneios/meus-campeonatos?nome=minha&organizador=jog0").data.decode())
+        self.assertNotIn('t-name">Copa Minha', player.get("/torneios/meus-campeonatos?organizador=jog3").data.decode())
+        status = player.get("/torneios/status")
+        self.assertEqual(status.status_code, 200)
+        self.assertIn("ainda não tem partidas confirmadas", status.data.decode())
+
     def test_full_flow(self):
         admin = self.client(admin=True)
         admin_page = admin.get("/admin/torneios/")

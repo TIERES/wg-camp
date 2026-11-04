@@ -413,5 +413,10 @@ def restore_card(memcard_id):
 
 @bp.app_context_processor
 def inject_player():
-    return {"player_logged_in": "player_id" in session}
+    """Também o nome de quem está logado, para o menu do usuário no cabeçalho."""
+    name = None
+    if "player_id" in session:
+        row = get_db().execute("SELECT username FROM players WHERE id = ?", (session["player_id"],)).fetchone()
+        name = row["username"] if row else None
+    return {"player_logged_in": "player_id" in session, "player_name": name}
 

@@ -1,0 +1,109 @@
+{% extends 'base.html' %}{% from 'tournaments/_stats_macros.html' import player_link %}{% from 'tournaments/_macros.html' import match_line %}
+{% block title %}Status · WE Camp{% endblock %}{% block content %}
+<div class="page-title"><h1>Status</h1>{% if player_name %}<a class="button secondary" href="{{ url_for('tournaments.player', nome=player_name) }}">Histórico completo</a>{% endif %}</div>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span>Ranking</span><strong>{{ position ~ 'º' if position else '—' }}</strong></div>
+  <div class="stat-tile"><span>Jogos</span><strong>{{ record.played }}</strong></div>
+  <div class="stat-tile win"><span>Vitórias</span><strong>{{ record.wins }}</strong></div>
+  <div class="stat-tile draw"><span>Empates</span><strong>{{ record.draws }}</strong></div>
+  <div class="stat-tile loss"><span>Derrotas</span><strong>{{ record.losses }}</strong></div>
+  <div class="stat-tile"><span>Gols (saldo)</span><strong>{{ record.goals_for }}:{{ record.goals_against }} <small>({{ '%+d'|format(record.goal_diff) }})</small></strong></div>
+  <div class="stat-tile"><span>Aproveitamento</span><strong>{{ record.efficiency }}%</strong></div>
+</div>
+
+<section>
+  <h2>Últimas partidas</h2>
+  {% if last %}
+  <div class="recent recent-lg">
+    {% for r in last|reverse %}{% set o = outcome(r) %}
+    <button type="button" class="f-btn f-{{ o }}" data-dialog="partida-{{ r.match_id }}" title="{{ r.goals_for }} x {{ r.goals_against }} contra {{ r.opponent_name }}" aria-haspopup="dialog">{{ o }}</button>
+    {% endfor %}
+  </div>
+  <p class="muted">Do mais antigo ao mais recente. Clique para ver a partida.</p>
+  {% for r in last %}{% set m = games_by_id.get(r.match_id) %}
+  <dialog class="match-dialog" id="partida-{{ r.match_id }}" aria-label="Partida de {{ r.tournament_name }}">
+    {% if m %}{{ match_line(m, names, r.slug) }}{% endif %}
+    <dl>
+      <dt>Resultado</dt><dd><span class="recent"><span class="f-{{ outcome(r) }}">{{ outcome(r) }}</span></span> {{ r.goals_for }} x {{ r.goals_against }}{% if r.pens_for is not none %} <small class="muted">({{ r.pens_for }} x {{ r.pens_against }} pên.)</small>{% endif %}</dd>
+      <dt>Adversário</dt><dd>{{ player_link(r.opponent_name) }}</dd>
+      <dt>Campeonato</dt><dd><a href="{{ url_for('tournaments.show', slug=r.slug) }}">{{ r.tournament_name }}</a> <small class="muted">· {{ r.stage_name }}</small></dd>
+      <dt>Data e hora</dt><dd>{{ r.played_at|localtime }}</dd>
+    </dl>
+    <form method="dialog"><button class="secondary">Fechar</button></form>
+  </dialog>
+  {% endfor %}
+  {% else %}<p class="muted">Você ainda não tem partidas confirmadas. <a href="{{ url_for('tournaments.my_tournaments') }}">Ver meus campeonatos</a>.</p>{% endif %}
+</section>
+
+<section>
+  <h2>Evolução do aproveitamento</h2>
+  {% if evolution|length > 1 %}
+  {% set W, H, L, R, T, B = 640, 220, 40, 12, 12, 28 %}
+  {% set pw, ph = W - L - R, H - T - B %}
+  {% set step = pw / (evolution|length - 1) %}
+  {% set colors = {'V': '#34d399', 'E': '#9ca3af', 'D': '#f87171'} %}
+  <div class="evo-chart" id="evo-chart">
+    <svg viewBox="0 0 {{ W }} {{ H }}" role="img" aria-label="Aproveitamento acumulado ao longo de {{ evolution|length }} partidas, terminando em {{ evolution[-1].efficiency }}%">
+      {% for v in (0, 25, 50, 75, 100) %}{% set y = T + (100 - v) / 100 * ph %}
+      <line class="evo-grid" x1="{{ L }}" x2="{{ W - R }}" y1="{{ y }}" y2="{{ y }}"></line>
+      <text class="evo-axis" x="{{ L - 6 }}" y="{{ y + 4 }}" text-anchor="end">{{ v }}%</text>
+      {% endfor %}
+      <polyline class="evo-line" points="{% for p in evolution %}{{ L + loop.index0 * step }},{{ T + (100 - p.efficiency) / 100 * ph }} {% endfor %}"></polyline>
+      <line class="evo-cross" id="evo-cross" x1="0" x2="0" y1="{{ T }}" y2="{{ T + ph }}" visibility="hidden"></line>
+      {% for p in evolution %}{% set x = L + loop.index0 * step %}
+      <g class="evo-pt" data-i="{{ loop.index0 }}">
+        <rect class="evo-hit" x="{{ x - step / 2 }}" y="{{ T }}" width="{{ step }}" height="{{ ph }}"></rect>
+        <circle cx="{{ x }}" cy="{{ T + (100 - p.efficiency) / 100 * ph }}" r="{{ 4 if evolution|length <= 40 else 3 }}" fill="{{ colors[p.outcome] }}"></circle>
+      </g>
+      {% endfor %}
+      <text class="evo-axis" x="{{ L }}" y="{{ H - 8 }}">1º jogo</text>
+      <text class="evo-axis" x="{{ W - R }}" y="{{ H - 8 }}" text-anchor="end">{{ evolution|length }}º jogo</text>
+    </svg>
+    <div class="evo-tip" id="evo-tip" hidden></div>
+  </div>
+  <p class="muted">Aproveitamento acumulado (pontos ganhos ÷ pontos disputados) depois de cada partida. Bolinhas: <span class="recent"><span class="f-V">V</span><span class="f-E">E</span><span class="f-D">D</span></span>{% if total >= 100 %} · últimas 100 partidas{% endif %}.</p>
+  <details class="evo-table">
+    <summary>Ver em tabela</summary>
+    <div class="table-scroll"><table class="ledger">
+      <thead><tr><th>#</th><th></th><th>Placar</th><th>Adversário</th><th>Aproveitamento</th></tr></thead>
+      <tbody>{% for p in evolution|reverse %}<tr><td>{{ p.n }}</td><td class="recent"><span class="f-{{ p.outcome }}">{{ p.outcome }}</span></td><td>{{ p.score }}</td><td>{{ p.opponent }}</td><td>{{ p.efficiency }}%</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </details>
+  <script>
+  (function () {
+    var data = {{ evolution|tojson }};
+    var box = document.getElementById('evo-chart'), tip = document.getElementById('evo-tip'), cross = document.getElementById('evo-cross');
+    var names = { V: 'Vitória', E: 'Empate', D: 'Derrota' };
+    function show(g) {
+      var p = data[+g.dataset.i], c = g.querySelector('circle');
+      cross.setAttribute('x1', c.getAttribute('cx')); cross.setAttribute('x2', c.getAttribute('cx'));
+      cross.setAttribute('visibility', 'visible');
+      tip.innerHTML = '';
+      [['strong', p.efficiency + '%'], ['span', p.n + 'º jogo · ' + names[p.outcome] + ' ' + p.score], ['span', 'contra ' + p.opponent]]
+        .forEach(function (part) { var el = document.createElement(part[0]); el.textContent = part[1]; tip.appendChild(el); });
+      tip.hidden = false;
+      var b = box.getBoundingClientRect(), r = c.getBoundingClientRect();
+      var x = r.left - b.left + r.width / 2, left = Math.min(Math.max(x - tip.offsetWidth / 2, 0), b.width - tip.offsetWidth);
+      tip.style.left = left + 'px';
+      tip.style.top = Math.max(r.top - b.top - tip.offsetHeight - 10, 0) + 'px';
+    }
+    function hide() { tip.hidden = true; cross.setAttribute('visibility', 'hidden'); }
+    box.querySelectorAll('.evo-pt').forEach(function (g) {
+      g.addEventListener('mouseenter', function () { show(g); });
+      g.addEventListener('click', function () { show(g); });
+    });
+    box.addEventListener('mouseleave', hide);
+  })();
+  </script>
+  {% elif evolution %}<p class="muted">O gráfico aparece a partir da segunda partida confirmada.</p>
+  {% else %}<p class="muted">Sem partidas confirmadas ainda.</p>{% endif %}
+</section>
+<script>
+document.querySelectorAll('[data-dialog]').forEach(function (button) {
+  var dialog = document.getElementById(button.dataset.dialog);
+  button.addEventListener('click', function () { dialog.showModal(); });
+  dialog.addEventListener('click', function (e) { if (e.target === dialog) dialog.close(); });
+});
+</script>
+{% endblock %}
