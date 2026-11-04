@@ -222,10 +222,14 @@ class StatsTest(unittest.TestCase):
         store.start(self.db, store.get_tournament(self.db, tid), random.Random(1))
         self.db.commit()
         page = self.app.test_client().get("/torneios/liga-iv?aba=jogos").get_data(as_text=True)
-        self.assertIn("<summary>Ida <small", page)
-        self.assertIn("<summary>Volta <small", page)
+        # Um bloco só, com os botões Ida/Volta girando entre os dois turnos.
+        self.assertIn('data-leg="0" aria-pressed="true">Ida</button>', page)
+        self.assertIn('data-leg="1" aria-pressed="false">Volta</button>', page)
         self.assertNotIn("Rodada 1", page)
-        self.assertEqual(page.count("(0/6)"), 2)  # 4 times: 6 jogos em cada turno
+        self.assertNotIn("<details", page)
+        faces = page.split('class="leg-face back"')
+        self.assertEqual(faces[0].count('class="match-line'), 6)  # 4 times: 6 jogos em cada turno
+        self.assertEqual(faces[1].count('class="match-line'), 6)
 
 if __name__ == "__main__":
     unittest.main()

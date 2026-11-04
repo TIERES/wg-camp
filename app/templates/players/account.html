@@ -42,18 +42,20 @@
   {% if isos or games %}
   <form method="post" action="{{ url_for('players.upload_card') }}" enctype="multipart/form-data" class="account-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>Jogo (ISO)
-      <select name="content_id" required>
-        <option value="">Escolha...</option>
-        {% if isos %}<optgroup label="Campeonatos">
-          {% for iso in isos %}<option value="{{ iso.content_id }}">{{ iso.label }}</option>{% endfor %}
-        </optgroup>{% endif %}
-        {% if games %}<optgroup label="Outros jogos">
-          {% for game in games %}<option value="{{ game.content_id }}">{{ game.name }}</option>{% endfor %}
-        </optgroup>{% endif %}
-      </select>
-    </label>
-    <label>Arquivo (.mcd, .mcr ou .srm de 128 KB)<input type="file" name="file" accept=".mcd,.mcr,.srm" required></label>
+    <div class="form-row">
+      <label class="wide">Jogo (ISO)
+        <select name="content_id" required>
+          <option value="">Escolha...</option>
+          {% if isos %}<optgroup label="Campeonatos">
+            {% for iso in isos %}<option value="{{ iso.content_id }}">{{ iso.label }}</option>{% endfor %}
+          </optgroup>{% endif %}
+          {% if games %}<optgroup label="Outros jogos">
+            {% for game in games %}<option value="{{ game.content_id }}">{{ game.name }}</option>{% endfor %}
+          </optgroup>{% endif %}
+        </select>
+      </label>
+      <label class="wide">Arquivo (.mcd, .mcr ou .srm de 128 KB)<input type="file" name="file" accept=".mcd,.mcr,.srm" required></label>
+    </div>
     <p>O arquivo vira a versão atual do seu cartão desse jogo (as anteriores ficam no histórico). Não envie durante uma partida: o salvamento dela seria descartado.</p>
     <button>Enviar</button>
   </form>
@@ -64,9 +66,11 @@
   <h2>Senha</h2>
   <form method="post" action="{{ url_for('players.change_password') }}" class="account-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>Senha atual<input type="password" name="current_password" autocomplete="current-password" required></label>
-    <label>Nova senha<input type="password" name="password" autocomplete="new-password" minlength="8" required></label>
-    <label>Repita a nova senha<input type="password" name="password_confirm" autocomplete="new-password" minlength="8" required></label>
+    <div class="form-row">
+      <label>Senha atual<input type="password" name="current_password" autocomplete="current-password" required></label>
+      <label>Nova senha<input type="password" name="password" autocomplete="new-password" minlength="8" required></label>
+      <label>Repita a nova senha<input type="password" name="password_confirm" autocomplete="new-password" minlength="8" required></label>
+    </div>
     <button>Alterar senha</button>
   </form>
 </section>

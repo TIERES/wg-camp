@@ -4,8 +4,10 @@
   <p>Usuário: <strong>{{ username }}</strong></p>
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>Nova senha (mínimo 8 caracteres)<input type="password" name="password" autocomplete="new-password" minlength="8" required></label>
-    <label>Repita a nova senha<input type="password" name="password_confirm" autocomplete="new-password" minlength="8" required></label>
+    <div class="form-row">
+      <label>Nova senha (mínimo 8 caracteres)<input type="password" name="password" autocomplete="new-password" minlength="8" required></label>
+      <label>Repita a nova senha<input type="password" name="password_confirm" autocomplete="new-password" minlength="8" required></label>
+    </div>
     <button>Salvar</button>
   </form>
 </section>

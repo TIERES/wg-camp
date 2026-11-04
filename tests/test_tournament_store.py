@@ -91,6 +91,48 @@ class TournamentStoreTest(unittest.TestCase):
 
     # --- formatos ---------------------------------------------------------
 
+    def test_league_then_knockout(self):
+        """Pontos corridos + mata-mata: os 4 primeiros da tabela, 1º x 4º e 2º x 3º."""
+        tid = self.tournament("league_knockout", 6, legs=1, playoff_qualifiers=4)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM tournament_matches").fetchone()[0], 15)
+        league = self.play_stage(tid)
+        table = store.group_tables(self.db, league["id"])[0][1]
+        self.assertTrue(store.has_next_stage(self.t(tid), league))
+        with self.assertRaises(TournamentError):
+            store.finish(self.db, self.t(tid))  # antes, o mata-mata
+        self.db.rollback()
+        store.advance(self.db, self.t(tid))
+        self.db.commit()
+        top = [row["entry_id"] for row in table[:4]]
+        first_round = [tuple(r) for r in self.db.execute(
+            "SELECT entry_a, entry_b FROM tournament_ties t JOIN tournament_stages s ON s.id = t.stage_id "
+            "WHERE s.seq = 2 AND t.round = 1 ORDER BY position")]
+        self.assertEqual(first_round, [(top[0], top[3]), (top[1], top[2])])
+        self.play_stage(tid)
+        ranking = self.finish(tid)
+        entry_player = {r["id"]: r["player_id"] for r in store.entries_of(self.db, tid)}
+        self.assertEqual(len(ranking), 3)
+        self.assertTrue(set(ranking) <= {entry_player[e] for e in top})
+        self.assert_money_conserved()
+
+    def test_league_then_knockout_odd_qualifiers_use_repechage(self):
+        tid = self.tournament("league_knockout", 6, legs=1, playoff_qualifiers=5)
+        self.play_stage(tid)
+        store.advance(self.db, self.t(tid))
+        self.db.commit()
+        self.assertGreaterEqual(len(self.db.execute(
+            "SELECT 1 FROM tournament_ties r JOIN tournament_ties f ON f.loser_next_tie_id = r.id "
+            "WHERE r.is_third_place = 0").fetchall()), 1)
+        self.play_stage(tid)
+        self.assertEqual(len(self.finish(tid)), 3)
+
+    def test_league_knockout_qualifiers_below_players(self):
+        config = formats.normalize("league_knockout", {"playoff_qualifiers": "8"})
+        self.assertIn("menos que o número de jogadores", formats.config_error("league_knockout", config, 8))
+        self.assertIsNone(formats.config_error("league_knockout", config, 9))
+        self.assertIsNotNone(formats.config_error("league_knockout", formats.normalize(
+            "league_knockout", {"playoff_qualifiers": "1"}), 8))
+
     def test_league_two_legs(self):
         tid = self.tournament("league", 5, legs=2)
         self.assertEqual(self.db.execute("SELECT COUNT(*) FROM tournament_matches").fetchone()[0], 20)
@@ -106,10 +148,16 @@ class TournamentStoreTest(unittest.TestCase):
         self.assertEqual(prizes, [3000, 1500, 500])
         self.assert_money_conserved()
 
-    def test_knockout_with_byes_and_third_place(self):
+    def repechage_ties(self):
+        return self.db.execute(
+            "SELECT r.* FROM tournament_ties r JOIN tournament_ties f ON f.loser_next_tie_id = r.id "
+            "WHERE r.is_third_place = 0").fetchall()
+
+    def test_knockout_with_repechage_and_third_place(self):
         tid = self.tournament("knockout", 6, ko_legs=1, final_legs=1, third_place=1)
-        ties = self.db.execute("SELECT * FROM tournament_ties WHERE is_bye = 1").fetchall()
-        self.assertEqual(len(ties), 2)
+        # 6 numa chave de 8: ninguém passa direto; os 2 que sobram esperam perdedores.
+        self.assertIsNone(self.db.execute("SELECT 1 FROM tournament_ties WHERE is_bye = 1").fetchone())
+        self.assertEqual(len(self.repechage_ties()), 2)
         self.play_stage(tid, draws=True)  # tudo empatado: decide nos pênaltis
         top = self.finish(tid)
         self.assertEqual(len(top), 3)
@@ -122,6 +170,37 @@ class TournamentStoreTest(unittest.TestCase):
         self.assertIsNone(self.db.execute("SELECT 1 FROM tournament_ties WHERE is_third_place = 1").fetchone())
         self.play_stage(tid)
         self.assertEqual(len(self.finish(tid)), 3)
+
+    def test_knockout_of_three_uses_repechage(self):
+        """A x B; C espera o perdedor (repescagem); a final é vencedor de A x B
+        contra o vencedor da repescagem - ninguém vai direto à final."""
+        tid = self.tournament("knockout", 3)
+        first = self.db.execute("SELECT * FROM tournament_ties WHERE round = 1 AND entry_b IS NOT NULL").fetchone()
+        (waiting,) = self.repechage_ties()
+        self.assertIsNone(waiting["entry_b"])
+        self.assertNotIn(waiting["entry_a"], (first["entry_a"], first["entry_b"]))
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM tournament_matches").fetchone()[0], 1)
+        match = self.db.execute("SELECT * FROM tournament_matches WHERE tie_id = ?", (first["id"],)).fetchone()
+        store.record_result(self.db, self.t(tid), match["id"], 2, 0)
+        winner = match["home_entry_id"]
+        loser = match["away_entry_id"]
+        waiting = store._tie(self.db, waiting["id"])
+        self.assertEqual(waiting["entry_b"], loser)  # perdedor foi para a repescagem
+        final = self.db.execute("SELECT * FROM tournament_ties WHERE round = 2").fetchone()
+        self.assertEqual(final["entry_a"] or final["entry_b"], winner)
+        self.assertIsNone(final["entry_a"] and final["entry_b"])  # o outro finalista sai da repescagem
+        # O perdedor vence a repescagem e vai à final; o 3º é quem esperava.
+        rep = self.db.execute("SELECT * FROM tournament_matches WHERE tie_id = ?", (waiting["id"],)).fetchone()
+        store.record_result(self.db, self.t(tid), rep["id"], *((0, 1) if rep["away_entry_id"] == loser else (1, 0)))
+        self.db.commit()
+        # Mudar o 1º jogo depois da repescagem jogada é bloqueado.
+        with self.assertRaises(TournamentError):
+            store.record_result(self.db, self.t(tid), match["id"], 0, 2)
+        self.db.rollback()
+        self.play_stage(tid)
+        entry_player = {r["id"]: r["player_id"] for r in store.entries_of(self.db, tid)}
+        self.assertEqual(self.finish(tid)[2], entry_player[waiting["entry_a"]])
+        self.assert_money_conserved()
 
     def test_world_cup_cross(self):
         tid = self.tournament("world_cup", 16, groups=4, third_place=1)
@@ -154,9 +233,10 @@ class TournamentStoreTest(unittest.TestCase):
         self.play_stage(tid)
         store.advance(self.db, self.t(tid))
         self.db.commit()
-        # 6 classificados -> chave de 8: os 2 melhores 1ºs passam direto
+        # 6 classificados -> chave de 8: os 2 melhores 1ºs esperam na repescagem
         byes = self.db.execute("SELECT COUNT(*) FROM tournament_ties WHERE is_bye = 1").fetchone()[0]
-        self.assertEqual(byes, 2)
+        self.assertEqual(byes, 0)
+        self.assertEqual(len(self.repechage_ties()), 2)
         legs = self.db.execute("SELECT legs FROM tournament_ties t JOIN tournament_stages s ON s.id = t.stage_id "
                                "WHERE s.seq = 2 ORDER BY round DESC LIMIT 1").fetchone()[0]
         self.assertEqual(legs, 1)  # final em jogo único

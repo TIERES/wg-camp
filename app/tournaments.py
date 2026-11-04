@@ -25,7 +25,7 @@ from markupsafe import Markup
 from .db import get_db, now
 from .players import player_required
 from .security import login_required, validate_csrf
-from .tournament import engine, formats, games as game_catalog, iso, reports, stats, store
+from .tournament import engine, formats, games as game_catalog, iso, notify, reports, stats, store
 from .tournament.store import TournamentError
 from .tournament.teams import KINDS as TEAM_KINDS, TEAM_MODES, generated_badge
 from .wallet import (KINDS, MONEY_SETTINGS, SETTING_LABELS, InsufficientFunds, ensure_wallet, format_cents,
@@ -83,6 +83,7 @@ SCORE_TIPS = {
     "reported": "Placar reportado por um jogador: aguardando a confirmação do adversário",
     "confirmed": "Resultado confirmado",
     "disputed": "Placar contestado: aguardando quem reportou aceitar a correção ou o organizador decidir",
+    "partial": "Agregado parcial: os 2 jogos ainda não foram confirmados",
 }
 
 
@@ -210,6 +211,8 @@ def _stage_views(db, tournament):
             ties = db.execute("SELECT * FROM tournament_ties WHERE stage_id = ? ORDER BY round, is_third_place, "
                               "position", (stage["id"],)).fetchall()
             last = max(t["round"] for t in ties)
+            # Repescagem: confronto que recebe o perdedor de outro (fora a disputa de 3º).
+            feeders = {t["loser_next_tie_id"]: t for t in ties if t["loser_next_tie_id"]}
             per_round = {}
             for tie in ties:
                 per_round.setdefault(tie["round"], []).append(tie)
@@ -225,10 +228,24 @@ def _stage_views(db, tournament):
                         for m in legs:
                             aggregate[m["home_entry_id"]] += m["home_goals"]
                             aggregate[m["away_entry_id"]] += m["away_goals"]
+                    feeder = None if tie["is_third_place"] else feeders.get(tie["id"])
                     items.append({"tie": tie, "legs": legs, "aggregate": aggregate,
-                                  "label": "Disputa de 3º lugar" if tie["is_third_place"] else None})
+                                  "label": "Disputa de 3º lugar" if tie["is_third_place"] else
+                                  "Repescagem" if feeder else None,
+                                  "waits_for": None if not feeder else "perdedor do confronto " + (
+                                      "abaixo" if feeder["position"] > tie["position"] else "acima")})
                 view["bracket"].append({"name": name, "round": round_no, "items": items, "is_last": round_no == last})
             names = {r["round"]: r["name"] for r in view["bracket"]}
+            # Jogos da repescagem num bloco próprio, logo depois da rodada deles.
+            repechage = {tid for tid in feeders if not any(t["id"] == tid and t["is_third_place"] for t in ties)}
+            for round_no in list(rounds):
+                waiting = [m for m in rounds[round_no] if m["tie_id"] in repechage]
+                if waiting:
+                    rounds[round_no] = [m for m in rounds[round_no] if m["tie_id"] not in repechage]
+                    rounds[round_no + 0.5] = waiting
+                    names[round_no + 0.5] = "Repescagem"
+                    if not rounds[round_no]:
+                        del rounds[round_no]
         else:
             for group, table in store.group_tables(db, stage["id"]):
                 view["groups"].append({"group": group, "table": table})
@@ -246,9 +263,23 @@ def _stage_views(db, tournament):
             config = store.settings_of(tournament)
             if stage["kind"] == "groups":
                 view["highlight"] = config.get("qualifiers", 0)
+            elif stage["kind"] == "league" and tournament["format"] == "league_knockout":
+                view["highlight"] = config.get("playoff_qualifiers", 0)
             elif stage["kind"] == "swiss":
                 view["highlight"], view["playoff"] = config.get("direct", 0), config.get("direct", 0) * 2
         view["rounds"] = [{"name": names.get(r, f"Rodada {r}"), "matches": rounds[r]} for r in sorted(rounds)]
+        # Ida e volta: "legs" = [jogos de ida, jogos de volta], para os botões
+        # Ida/Volta das telas girarem entre os dois (macro leg_flip).
+        if stage["kind"] == "knockout":
+            tie_legs = {t["id"]: t["legs"] for t in ties}
+            for rnd in view["rounds"]:
+                ms = rnd["matches"]
+                if ms and all(tie_legs.get(m["tie_id"]) == 2 for m in ms):
+                    rnd["legs"] = [[m for m in ms if m["leg"] == 1], [m for m in ms if m["leg"] == 2]]
+        elif names.get(1) == "Ida" and len(view["rounds"]) == 2:
+            ida, volta = view["rounds"]
+            view["rounds"] = [{"name": "Turno e returno", "matches": ida["matches"] + volta["matches"],
+                               "legs": [ida["matches"], volta["matches"]]}]
         views.append(view)
     return views
 
@@ -270,11 +301,31 @@ def index():
         sql += " AND t.game_title_id = ?"
         params.append(game)
     sql += (" ORDER BY CASE t.status WHEN 'registration' THEN 0 WHEN 'running' THEN 1 WHEN 'finished' THEN 2 "
-            "ELSE 3 END, t.updated_at DESC LIMIT 200")
+            "ELSE 3 END, t.updated_at DESC")
     tournaments = db.execute(sql, params).fetchall()
+    # Nome e organizador: trecho do texto, sem diferenciar acentos nem maiúsculas
+    # (o LIKE do SQLite só ignora maiúsculas sem acento), por isso o filtro é aqui.
+    name = request.args.get("nome", "").strip()
+    organizer = request.args.get("organizador", "").strip()
+    suggestions = db.execute(
+        "SELECT DISTINCT t.name, p.username FROM tournaments t JOIN players p ON p.id = t.organizer_id "
+        "WHERE t.status != 'draft'").fetchall()
+    if name or organizer:
+        # Organizador escolhido na lista (nome exato) não traz quem só começa igual (TIERES x TIERES1).
+        exact = any(_plain(r["username"]) == _plain(organizer) for r in suggestions)
+        tournaments = [t for t in tournaments if _plain(name) in _plain(t["name"]) and (
+            _plain(organizer) == _plain(t["organizer_name"]) if exact else _plain(organizer) in _plain(t["organizer_name"]))]
+    tournaments = tournaments[:200]
     games = db.execute("SELECT id, name, code FROM game_titles WHERE is_active = 1 ORDER BY year, name").fetchall()
     return render_template("tournaments/index.html", tournaments=tournaments, games=games, status=status,
-                           game=game, status_labels=STATUS_LABELS, format_labels=formats.FORMATS)
+                           game=game, name=name, organizer=organizer,
+                           name_options=sorted({r["name"] for r in suggestions}, key=_plain),
+                           organizer_options=sorted({r["username"] for r in suggestions}, key=_plain),
+                           status_labels=STATUS_LABELS, format_labels=formats.FORMATS)
+
+
+def _plain(value):
+    return normalize("NFKD", value or "").encode("ascii", "ignore").decode().casefold()
 
 
 @bp.get("/<slug>")
@@ -305,10 +356,16 @@ def show(slug):
         "LEFT JOIN tournament_entries e ON e.tournament_id = tt.tournament_id AND e.team_id = t.id "
         "LEFT JOIN players p ON p.id = e.player_id WHERE tt.tournament_id = ? ORDER BY t.name COLLATE NOCASE",
         (tournament["id"],))]
+    # Modo livre: a base de times vira sugestão do campo, e o nome digitado que
+    # bate com um time da base usa esse time (store._entry_team).
+    free_teams = []
+    if tournament["team_mode"] == "free" and tournament["status"] == "registration" and player_id and not my_entry:
+        free_teams = [{"name": row["name"], "image": team_image(row, tournament["team_display"])} for row in db.execute(
+            "SELECT * FROM teams WHERE is_active = 1 ORDER BY name COLLATE NOCASE")]
     iso_row = iso.get(db, tournament["id"])
     return render_template(
         "tournaments/show.html", t=tournament, entries=entries, my_entry=my_entry, stages=stages, tab=tab,
-        team_list=team_list, team_modes=TEAM_MODES, crests=_crests(names), my_pending=my_pending,
+        team_list=team_list, free_teams=free_teams, team_modes=TEAM_MODES, crests=_crests(names), my_pending=my_pending,
         names=names, can_manage=can_manage(tournament), iso=iso_row, iso_ready=iso.downloadable(iso_row, current_app),
         format_label=formats.FORMATS[tournament["format"]], summary=formats.describe(tournament["format"], config),
         status_labels=STATUS_LABELS, pool=pool, split=split,
@@ -328,6 +385,43 @@ def _team_catalog(db):
         if teams:
             groups.append({"group": group, "teams": teams})
     return groups
+
+
+LOOSE_GROUP_SLUG = "avulsos"
+
+
+def _loose_group(db):
+    """Grupo "Times avulsos": times criados por quem monta um torneio (fora da base)."""
+    db.execute("INSERT OR IGNORE INTO team_groups (slug, name, seq, created_at) VALUES (?, 'Times avulsos', 900, ?)",
+               (LOOSE_GROUP_SLUG, now()))
+    return db.execute("SELECT id FROM team_groups WHERE slug = ?", (LOOSE_GROUP_SLUG,)).fetchone()[0]
+
+
+@bp.post("/times-avulsos")
+@player_required
+def loose_team_new():
+    """Cria (ou reaproveita, se o nome já existe) um time avulso; usado pelo Criar torneio.
+    Fica na base para os próximos torneios; a administração corrige nome e escudo em Times."""
+    validate_csrf()
+    db = get_db()
+    name = " ".join(request.form.get("name", "").split())[:60]
+    if len(name) < 2:
+        return {"error": "Digite o nome do time (pelo menos 2 letras)."}, 400
+    existing = next((row for row in db.execute("SELECT * FROM teams WHERE is_active = 1")
+                     if _plain(row["name"]) == _plain(name)), None)
+    if existing:
+        team_id = existing["id"]
+        # Time ativo fora de qualquer grupo não aparece na lista: entra nos avulsos.
+        if not db.execute("SELECT 1 FROM team_group_members WHERE team_id = ?", (team_id,)).fetchone():
+            db.execute("INSERT INTO team_group_members (group_id, team_id) VALUES (?, ?)", (_loose_group(db), team_id))
+            db.commit()
+    else:
+        team_id = db.execute("INSERT INTO teams (name, kind, created_at, updated_at) VALUES (?, 'custom', ?, ?)",
+                             (name, now(), now())).lastrowid
+        db.execute("INSERT INTO team_group_members (group_id, team_id) VALUES (?, ?)", (_loose_group(db), team_id))
+        db.commit()
+    team = db.execute("SELECT * FROM teams WHERE id = ?", (team_id,)).fetchone()
+    return {"id": team["id"], "name": team["name"], "image": team_image(team), "existing": bool(existing)}
 
 
 def _form_config(form, fmt):
@@ -469,12 +563,12 @@ def manage(slug):
     db = get_db()
     stages = _stage_views(db, tournament)
     current = stages[-1] if stages else None
-    decisive = set()
+    decisive = {}  # último jogo de cada confronto -> gols dos outros jogos (pênaltis só com empate)
     if current and current["stage"]["kind"] == "knockout":
         for rnd in current["bracket"]:
             for item in rnd["items"]:
                 if item["legs"]:
-                    decisive.add(item["legs"][-1]["id"])
+                    decisive[item["legs"][-1]["id"]] = store.other_legs_goals(db, item["legs"][-1])
     can_advance = can_finish = False
     if current and tournament["status"] == "running":
         complete = store.stage_complete(db, current["stage"])
@@ -489,7 +583,8 @@ def manage(slug):
     iso_row = iso.get(db, tournament["id"])
     return render_template("tournaments/manage.html", t=tournament, entries=store.entries_of(db, tournament["id"]),
                            open_reports=open_reports, my_entry_id=None if is_admin() or not my_entry else my_entry[0],
-                           current=current, names=_names(db, tournament), decisive=decisive,
+                           current=current, stages=stages, names=_names(db, tournament), decisive=decisive,
+                           auto_finish_at=notify.auto_finish_at(tournament),
                            can_advance=can_advance, can_finish=can_finish, is_admin=is_admin(),
                            status_labels=STATUS_LABELS, iso=iso_row, iso_uploading=iso.uploading(iso_row),
                            archive_configured=iso.archive_configured(current_app), **_iso_limits())
@@ -601,6 +696,8 @@ def iso_download(slug):
 @manager_required
 def start(tournament):
     ok = _run(store.start, tournament, "Sorteio feito: o torneio começou!")
+    if ok:
+        notify.tournament_started(get_db(), store.get_tournament(get_db(), tournament["id"]))
     return redirect(url_for("tournaments.show", slug=tournament["slug"]) if ok
                     else url_for("tournaments.manage", slug=tournament["slug"]))
 
@@ -649,6 +746,7 @@ def result(tournament, match_id):
         else:
             _run(lambda db, t: reports.resolve(db, t, match_id, score, user_id=user_id, entry=organizer,
                                                comment=comment), tournament, "Resultado salvo.")
+    notify.check_completion(db, tournament)
     return redirect(target)
 
 
@@ -684,13 +782,17 @@ def match(slug, match_id):
         reported=reports.last_report(db, match_id) if m["status"] in ("reported", "disputed") else None,
         dispute=reports.last_dispute(db, match_id) if m["status"] == "disputed" else None,
         deadline=reports.deadline(db, m) if m["status"] == "reported" else None,
-        decisive=store.needs_pens(db, m), open=tournament["status"] == "running" and m["stage_status"] == "running")
+        decisive=store.needs_pens(db, m), pens_agg=store.other_legs_goals(db, m), open=tournament["status"] == "running" and m["stage_status"] == "running")
 
 
-def _player_action(slug, match_id, action, success):
+def _player_action(slug, match_id, action, success, after=None):
+    """Ação do jogador num jogo; depois do commit, os e-mails (`after`) e o aviso de fim do torneio."""
     tournament = _load(slug)
     validate_csrf()
-    _run(lambda db, t: action(db, t), tournament, success)
+    if _run(lambda db, t: action(db, t), tournament, success):
+        if after:
+            after(get_db(), tournament)
+        notify.check_completion(get_db(), tournament)
     return redirect(url_for("tournaments.match", slug=slug, match_id=match_id))
 
 
@@ -704,7 +806,8 @@ def match_report(slug, match_id):
         return redirect(url_for("tournaments.match", slug=slug, match_id=match_id))
     return _player_action(slug, match_id, lambda db, t: reports.report(
         db, t, match_id, session["player_id"], score, request.form.get("comment", "")),
-        "Placar enviado. Agora o adversário confirma ou contesta.")
+        "Placar enviado. Agora o adversário confirma ou contesta.",
+        after=lambda db, t: notify.score_reported(db, t, match_id))
 
 
 @bp.post("/<slug>/jogos/<int:match_id>/confirmar")
@@ -733,7 +836,8 @@ def match_dispute(slug, match_id):
         score = None
     return _player_action(slug, match_id, lambda db, t: reports.dispute(
         db, t, match_id, session["player_id"], request.form.get("comment", ""), score),
-        "Contestação enviada ao organizador.")
+        "Contestação enviada ao organizador.",
+        after=lambda db, t: notify.score_disputed(db, t, match_id))
 
 
 @bp.get("/meus-jogos")
@@ -838,7 +942,12 @@ def _auto_confirm_reports():
         return
     _last_auto_confirm[0] = time.monotonic()
     try:
-        reports.auto_confirm(get_db())
+        db = get_db()
+        disputed = []
+        reports.auto_confirm(db, disputed=disputed)
+        for tournament_id, match_id in disputed:
+            notify.score_disputed(db, store.get_tournament(db, tournament_id), match_id)
+        notify.sweep(db)  # avisa o fim dos jogos e encerra quem passou do prazo
     except sqlite3.OperationalError:
         pass  # banco sem as tabelas ainda
 
@@ -846,7 +955,8 @@ def _auto_confirm_reports():
 @bp.post("/<slug>/proxima-fase")
 @manager_required
 def advance(tournament):
-    _run(store.advance, tournament, "Próxima fase gerada.")
+    if _run(store.advance, tournament, "Próxima fase gerada."):
+        notify.stage_started(get_db(), store.get_tournament(get_db(), tournament["id"]))
     return redirect(url_for("tournaments.manage", slug=tournament["slug"]))
 
 
@@ -880,7 +990,7 @@ def admin_home():
     recent = db.execute("SELECT w.*, p.username FROM wallet_entries w JOIN players p ON p.id = w.player_id "
                         "WHERE w.kind = 'ajuste_admin' ORDER BY w.id DESC LIMIT 20").fetchall()
     return render_template("tournaments/admin.html", values=values, labels=SETTING_LABELS, money=MONEY_SETTINGS,
-                           recent=recent)
+                           recent=recent, admin_emails=", ".join(notify.admin_emails(db)))
 
 
 @admin_bp.post("/ajustes")
@@ -909,6 +1019,23 @@ def admin_settings():
                        (key, str(value), now()))
         db.commit()
         flash("Valores do W$ salvos.", "success")
+    return redirect(url_for("tournaments_admin.admin_home"))
+
+
+@admin_bp.post("/email")
+@login_required
+def admin_email():
+    """E-mail(s) da administração do WE Camp: recebem as contestações que ela decide."""
+    validate_csrf()
+    emails = notify.parse_emails(request.form.get("emails", ""))
+    if emails is None:
+        flash("E-mail inválido. Separe vários endereços por vírgula.", "error")
+    else:
+        db = get_db()
+        db.execute("INSERT OR REPLACE INTO site_settings (key, value, updated_at) VALUES (?, ?, ?)",
+                   (notify.ADMIN_EMAIL_SETTING, ", ".join(emails), now()))
+        db.commit()
+        flash("E-mail da administração salvo." if emails else "E-mail da administração removido.", "success")
     return redirect(url_for("tournaments_admin.admin_home"))
 
 

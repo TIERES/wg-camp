@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'tournaments/_macros.html' import standings, bracket, match_line %}
+{% extends 'base.html' %}{% from 'tournaments/_macros.html' import standings, bracket, match_line, stage_rounds %}
 {% block title %}{{ t.name }} · Torneios WE Camp{% endblock %}{% block content %}
 <section class="t-header">
   <img class="t-header-cover" src="{{ game_cover(t.game_code) }}" alt="{{ t.game_name }}" width="200" height="250">
@@ -14,7 +14,9 @@
         <form method="post" action="{{ url_for('tournaments.enroll', slug=t.slug) }}" class="enroll-form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           {% if t.team_mode == 'free' %}
-            <input name="team_name" maxlength="40" minlength="2" required placeholder="Nome do seu time">
+            <input name="team_name" id="free-team" maxlength="60" minlength="2" required placeholder="Nome do seu time" list="free-team-list" autocomplete="off">
+            <datalist id="free-team-list">{% for team in free_teams %}<option value="{{ team.name }}">{% endfor %}</datalist>
+            <p class="muted free-team-match" id="free-team-match" hidden><img class="crest" alt=""> <span></span></p>
           {% elif t.team_mode == 'choose' %}
             <p class="muted">Escolha seu time:</p>
             <input type="search" id="pick-filter" placeholder="Digite o nome do time..." autocomplete="off" aria-controls="pick-grid">
@@ -95,7 +97,7 @@
   {% for view in stages %}
   <section class="stage">
     <h2>{{ view.stage.name }}</h2>
-    {% if view.stage.kind == 'knockout' %}{{ bracket(view, names, crests) }}
+    {% if view.stage.kind == 'knockout' %}{{ bracket(view, names, crests, t.slug, my_entry.id if my_entry else none) }}
     {% else %}
       {% if view.highlight %}<p class="legend"><span class="qualified-dot"></span> classificado{% if view.playoff %} direto · <span class="playoff-dot"></span> playoff{% endif %}</p>{% endif %}
       <div class="groups">
@@ -112,16 +114,12 @@
   {% for view in stages %}
   <section class="stage">
     <h2>{{ view.stage.name }}</h2>
-    {% for rnd in view.rounds %}
-    <details class="round" {% if not loop.last or view.stage.status == 'running' %}open{% endif %}>
-      <summary>{{ rnd.name }} <small class="muted">({{ rnd.matches|selectattr('status', 'eq', 'confirmed')|list|length }}/{{ rnd.matches|length }})</small></summary>
-      {% for m in rnd.matches %}{{ match_line(m, names, t.slug) }}{% endfor %}
-    </details>
-    {% else %}<p class="muted">Sem jogos.</p>{% endfor %}
+    {{ stage_rounds(view, names, t.slug) }}
   </section>
   {% endfor %}
 {% endif %}
 {% include 'tournaments/_credits.html' %}
+<script src="{{ url_for('static', filename='js/leg-flip.js') }}" defer></script>
 {% if t.status == 'registration' and t.team_mode == 'choose' %}
 <script>
 (function () {
@@ -132,8 +130,12 @@
   var options = Array.prototype.map.call(document.querySelectorAll('#pick-grid .team-option'), function (el) {
     return { el: el, name: plain(el.dataset.name) };
   });
+  function pick(o) { var radio = o.el.querySelector('input[name=team_id]'); if (radio) radio.checked = true; }
   input.addEventListener('input', function () {
-    var q = plain(this.value.trim()), any = false;
+    var q = plain(this.value.trim().replace(/\s+/g, ' ')), any = false;
+    // Nome exato de um time livre: já fica escolhido.
+    var exact = q && options.filter(function (o) { return o.name === q && !o.el.classList.contains('taken'); })[0];
+    if (exact) pick(exact);
     options.forEach(function (o) {
       // O time marcado continua visível, para não sumir a escolha.
       var show = !q || o.name.indexOf(q) >= 0 || o.el.querySelector('input:checked') !== null;
@@ -141,8 +143,33 @@
     });
     document.getElementById('pick-empty').hidden = any;
   });
-  // Enter na busca não envia a inscrição.
-  input.addEventListener('keydown', function (e) { if (e.key === 'Enter') e.preventDefault(); });
+  // Enter na busca não envia a inscrição; se só sobrou um time livre, escolhe ele.
+  input.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    var q = plain(this.value.trim().replace(/\s+/g, ' '));
+    var free = options.filter(function (o) { return !o.el.classList.contains('taken') && q && o.name.indexOf(q) >= 0; });
+    if (free.length === 1) pick(free[0]);
+  });
+})();
+</script>
+{% endif %}
+{% if free_teams %}
+<script>
+(function () {
+  var input = document.getElementById('free-team'), box = document.getElementById('free-team-match');
+  if (!input || !box) return;
+  // Mesmo critério do servidor: sem acentos, maiúsculas nem espaços repetidos.
+  function plain(s) { return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim().replace(/\s+/g, ' '); }
+  var teams = {};
+  {{ free_teams|tojson }}.forEach(function (t) { var k = plain(t.name); if (!teams[k]) teams[k] = t; });
+  function update() {
+    var team = teams[plain(input.value)];
+    box.hidden = !team;
+    if (team) { box.querySelector('img').src = team.image; box.querySelector('span').textContent = 'Time encontrado: ' + team.name; }
+  }
+  input.addEventListener('input', update);
+  update();
 })();
 </script>
 {% endif %}

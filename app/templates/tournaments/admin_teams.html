@@ -1,6 +1,8 @@
 {% extends 'base.html' %}{% block title %}Times · Administração{% endblock %}{% block content %}
 <div class="page-title"><h1>Times dos torneios</h1><a class="button" href="{{ url_for('tournaments_admin.admin_team_edit') }}">Novo time</a></div>
 <p><a href="{{ url_for('tournaments_admin.admin_home') }}">← Torneios: administração</a></p>
+{% set loose = groups|selectattr('slug', 'equalto', 'avulsos')|first %}
+{% if loose %}<p class="notice">Os organizadores podem criar <strong>times avulsos</strong> (que não estão na base) ao criar um torneio. Eles ficam no grupo <a href="{{ url_for('tournaments_admin.admin_teams', grupo=loose.id) }}">Times avulsos ({{ loose.size }})</a> com um escudo genérico: clique no time para corrigir o nome, enviar o escudo ou movê-lo para outro grupo.</p>{% endif %}
 <form method="get" class="filters">
   <input type="search" name="q" value="{{ query }}" placeholder="Buscar pelo nome">
   <select name="grupo"><option value="">Todos os grupos</option>{% for g in groups %}<option value="{{ g.id }}" {% if g.id == group_id %}selected{% endif %}>{{ g.name }} ({{ g.size }})</option>{% endfor %}</select>

@@ -174,10 +174,11 @@ def deadline(db, match):
     return (reported + timedelta(hours=setting(db, "torneios_confirmacao_horas"))).replace(microsecond=0).isoformat()
 
 
-def auto_confirm(db, at=None):
+def auto_confirm(db, at=None, disputed=None):
     """Confirma os placares reportados sem resposta no prazo. Cada jogo em
     sua própria transação; um placar que não dá mais para confirmar (ex. a
-    fase seguinte já andou) vira contestação, para o organizador ver."""
+    fase seguinte já andou) vira contestação, para o organizador ver (e entra
+    em `disputed` como (torneio, jogo), para o aviso por e-mail)."""
     at = at or datetime.now(timezone.utc)
     limit = (at - timedelta(hours=setting(db, "torneios_confirmacao_horas"))).replace(microsecond=0).isoformat()
     rows = db.execute(
@@ -198,6 +199,8 @@ def auto_confirm(db, at=None):
                        (now(), row["id"]))
             log(db, row["id"], "dispute", comment=f"Não foi possível confirmar automaticamente: {error}")
             db.commit()
+            if disputed is not None:
+                disputed.append((row["tournament_id"], row["id"]))
     return done
 
 

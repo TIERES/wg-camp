@@ -11,6 +11,7 @@ import secrets
 from ..db import now
 from ..wallet import ensure_wallet, post, setting
 from . import engine, formats
+from .teams import find_by_name, plain_name
 
 
 class TournamentError(Exception):
@@ -61,13 +62,18 @@ def _entry_team(db, tournament, team_name, team_id):
     if mode == "draw":
         return None, ""  # sorteado em start()
     if mode == "free":
-        name = " ".join((team_name or "").split())[:40]
+        name = " ".join((team_name or "").split())
         if len(name) < 2:
             raise TournamentError("Informe o nome do seu time (pelo menos 2 letras).")
-        if db.execute("SELECT 1 FROM tournament_entries WHERE tournament_id = ? AND team_name = ? COLLATE NOCASE",
-                      (tournament["id"], name)).fetchone():
+        # Nome de um time da base vira esse time (nome oficial e escudo).
+        team = find_by_name(db, name)
+        name = team["name"] if team is not None else name[:40]
+        taken = db.execute("SELECT team_name, team_id FROM tournament_entries WHERE tournament_id = ?",
+                           (tournament["id"],)).fetchall()
+        if any((team is not None and row["team_id"] == team["id"]) or plain_name(row["team_name"]) == plain_name(name)
+               for row in taken):
             raise TournamentError(f"Já existe um time chamado {name} neste torneio. Escolha outro nome.")
-        return None, name
+        return (team["id"] if team is not None else None), name
     team = next((t for t in available_teams(db, tournament["id"]) if t["id"] == team_id), None)
     if team is None:
         raise TournamentError("Escolha um time da lista (ele pode ter acabado de ser escolhido por outro jogador).")
@@ -165,7 +171,8 @@ def _swiss_stage(db, tournament, seq, entries, config, rng):
     return stage_id
 
 
-def _knockout_stage(db, tournament, seq, pairs, legs, final_legs, third_place, first_round_name=None):
+def _knockout_stage(db, tournament, seq, pairs, legs, final_legs, third_place, first_round_name=None,
+                    repechage=True):
     stage_id = _new_stage(db, tournament, seq, "knockout", "Mata-mata", {
         "legs": legs, "final_legs": final_legs, "third_place": bool(third_place),
         "first_round_name": first_round_name})
@@ -180,8 +187,8 @@ def _knockout_stage(db, tournament, seq, pairs, legs, final_legs, third_place, f
                 (stage_id, round_no, position, final_legs if is_final else legs,
                  None if is_final else ties[(round_no + 1, position // 2)],
                  None if is_final else ("a" if position % 2 == 0 else "b"))).lastrowid
-    # Chave de 4 com alguém passando direto: só um semifinalista perde, não
-    # há disputa de 3º (o 3º sai pela campanha, em final_ranking).
+    # Chave de 4 incompleta (3 jogadores, com repescagem): não há disputa de 3º;
+    # o 3º é quem perde a repescagem (em final_ranking).
     if third_place and rounds >= 2 and not (rounds == 2 and any(None in pair for pair in pairs)):
         third = db.execute("INSERT INTO tournament_ties (stage_id, round, position, legs, is_third_place) "
                            "VALUES (?, ?, 1, 1, 1)", (stage_id, rounds)).lastrowid
@@ -192,6 +199,14 @@ def _knockout_stage(db, tournament, seq, pairs, legs, final_legs, third_place, f
         tie_id = ties[(1, position)]
         if entry_a is None or entry_b is None:
             winner = entry_a if entry_b is None else entry_b
+            if repechage and None not in pairs[position ^ 1]:
+                # Repescagem: quem sobrou não passa direto; espera o perdedor do
+                # confronto vizinho (o vencedor desse jogo é o adversário seguinte).
+                db.execute("UPDATE tournament_ties SET loser_next_tie_id = ?, loser_next_slot = 'b' WHERE id = ?",
+                           (tie_id, ties[(1, position ^ 1)]))
+                _fill_slot(db, tie_id, "a", winner)
+                continue
+            # Vizinho também sem adversário (ex.: 5 numa chave de 8): passa direto.
             db.execute("UPDATE tournament_ties SET entry_a = ?, is_bye = 1 WHERE id = ?", (winner, tie_id))
             _set_winner(db, _tie(db, tie_id), winner)
         else:
@@ -219,7 +234,7 @@ def start(db, tournament, rng=random):
                        (team["id"], team["name"], entry_id))
     rng.shuffle(entries)  # o sorteio: ordem da tabela, grupos, potes e chave
     fmt = tournament["format"]
-    if fmt == "league":
+    if fmt in ("league", "league_knockout"):
         _round_robin_stage(db, tournament, 1, "league", "Pontos corridos", [entries], config["legs"])
     elif fmt in ("world_cup", "libertadores"):
         _round_robin_stage(db, tournament, 1, "groups", "Fase de grupos",
@@ -299,6 +314,18 @@ def needs_pens(db, match):
         return False
     tie = _tie(db, match["tie_id"])
     return match["leg"] == tie["legs"]
+
+
+def other_legs_goals(db, match):
+    """Gols já confirmados nos outros jogos do confronto, como (mandante, visitante)
+    deste jogo: a tela só mostra os pênaltis se o agregado com este placar empatar."""
+    home = away = 0
+    for other in tie_matches(db, match["tie_id"]) if match["tie_id"] else ():
+        if other["id"] != match["id"] and other["status"] == "confirmed":
+            same = other["home_entry_id"] == match["home_entry_id"]
+            home += other["home_goals"] if same else other["away_goals"]
+            away += other["away_goals"] if same else other["home_goals"]
+    return home, away
 
 
 def _tie_outcome(db, tie):
@@ -415,7 +442,8 @@ def stage_complete(db, stage):
 
 
 def has_next_stage(tournament, stage):
-    return tournament["format"] in ("world_cup", "libertadores", "ucl") and stage["kind"] != "knockout"
+    return (tournament["format"] in ("world_cup", "libertadores", "ucl", "league_knockout")
+            and stage["kind"] != "knockout")
 
 
 def advance(db, tournament):
@@ -432,6 +460,10 @@ def advance(db, tournament):
         table = tables[0][1]
         seeded = [row["entry_id"] for row in table[:config["direct"] * 3]]
         pairs, first_round_name = engine.seeded_pairs(seeded), "Playoff"
+    elif stage["kind"] == "league":
+        # Pontos corridos + mata-mata: os N primeiros da tabela, 1º x último classificado...
+        seeded = [row["entry_id"] for row in tables[0][1][:config["playoff_qualifiers"]]]
+        pairs, first_round_name = engine.seeded_pairs(seeded), None
     else:
         qualifiers = config["qualifiers"]
         groups = len(tables)
@@ -447,8 +479,9 @@ def advance(db, tournament):
             pairs = engine.seeded_pairs([item[-1] for item in sorted(ranked)])
         first_round_name = None
     db.execute("UPDATE tournament_stages SET status = 'done' WHERE id = ?", (stage["id"],))
+    # Na Liga dos Campeões os primeiros passam direto por mérito (não há repescagem).
     _knockout_stage(db, tournament, stage["seq"] + 1, pairs, config["ko_legs"], config["final_legs"],
-                    config["third_place"], first_round_name)
+                    config["third_place"], first_round_name, repechage=stage["kind"] != "swiss")
 
 
 def final_ranking(db, tournament):
@@ -469,8 +502,12 @@ def final_ranking(db, tournament):
     # Sem disputa de 3º: melhor campanha no torneio entre os eliminados na semifinal.
     semis = db.execute("SELECT * FROM tournament_ties WHERE stage_id = ? AND round = ? AND is_bye = 0",
                        (stage["id"], final_round - 1)).fetchall()
-    losers = [t["entry_b"] if t["winner_entry_id"] == t["entry_a"] else t["entry_a"] for t in semis]
-    if losers:
+    # Com repescagem, quem perdeu a semifinal pode ter ido à final por ela.
+    losers = sorted({t["entry_b"] if t["winner_entry_id"] == t["entry_a"] else t["entry_a"] for t in semis}
+                    - set(ranking))
+    if len(losers) == 1:
+        ranking.append(losers[0])
+    elif losers:
         played = db.execute(
             "SELECT m.* FROM tournament_matches m JOIN tournament_stages s ON s.id = m.stage_id "
             "WHERE s.tournament_id = ? AND m.status = 'confirmed'", (tournament["id"],)).fetchall()

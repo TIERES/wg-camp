@@ -82,6 +82,22 @@ class TeamsTest(unittest.TestCase):
         with self.assertRaises(TournamentError):
             store.enroll(self.db, t, self.players[2], "real suciedad")
 
+    def test_free_mode_uses_existing_team_by_name(self):
+        brasil = self.db.execute("SELECT * FROM teams WHERE kind = 'national' AND country = 'br'").fetchone()
+        t = store.get_tournament(self.db, self.tournament("free", []))
+        # Sem acento, minúsculas e espaços sobrando: acha o time da base.
+        store.enroll(self.db, t, self.players[1], "  BRASIL ")
+        entry = self.db.execute("SELECT * FROM tournament_entries WHERE player_id = ?", (self.players[1],)).fetchone()
+        self.assertEqual((entry["team_id"], entry["team_name"]), (brasil["id"], "Brasil"))
+        with self.assertRaises(TournamentError):
+            store.enroll(self.db, t, self.players[2], "brasil")  # o mesmo time da base
+        # Nome que não existe na base continua livre, sem time ligado.
+        store.enroll(self.db, t, self.players[2], "Unidos da Várzea")
+        entry = self.db.execute("SELECT * FROM tournament_entries WHERE player_id = ?", (self.players[2],)).fetchone()
+        self.assertEqual((entry["team_id"], entry["team_name"]), (None, "Unidos da Várzea"))
+        with self.assertRaises(TournamentError):
+            store.enroll(self.db, t, self.players[3], "unidos da varzea")  # acento não faz outro time
+
     def test_choose_mode(self):
         teams = self.team_ids("brasileirao-a", 4)
         t = store.get_tournament(self.db, self.tournament("choose", teams))
@@ -155,6 +171,35 @@ class TeamsTest(unittest.TestCase):
             "logo": (BytesIO(b"<svg onload=alert(1)>"), "x.svg")}, content_type="multipart/form-data")
         self.assertEqual(bad.status_code, 302)
         self.assertEqual(self.db.execute("SELECT logo FROM teams WHERE id = ?", (teams[2],)).fetchone()[0], logo)
+
+    def test_loose_team(self):
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["csrf_token"] = CSRF
+            session["player_id"] = self.players[0]
+        self.assertEqual(client.post("/torneios/times-avulsos", data={"csrf_token": CSRF, "name": " x "}).status_code, 400)
+        created = client.post("/torneios/times-avulsos", data={"csrf_token": CSRF, "name": "  Real   Suciedad "}).get_json()
+        self.assertEqual(created["name"], "Real Suciedad")
+        self.assertFalse(created["existing"])
+        self.assertTrue(created["image"].startswith("data:image/svg+xml"))  # escudo genérico
+        self.assertEqual(self.team_ids("avulsos"), [created["id"]])
+        # Mesmo nome (sem acento/maiúsculas) reaproveita; time da base também.
+        again = client.post("/torneios/times-avulsos", data={"csrf_token": CSRF, "name": "real suciedád"}).get_json()
+        self.assertEqual((again["id"], again["existing"]), (created["id"], True))
+        flamengo = client.post("/torneios/times-avulsos", data={"csrf_token": CSRF, "name": "FLAMENGO"}).get_json()
+        self.assertTrue(flamengo["existing"])
+        self.assertEqual(self.team_ids("avulsos"), [created["id"]])
+        # Aparece no Criar torneio e na administração.
+        self.assertIn("Real Suciedad".encode(), client.get("/torneios/novo").data)
+        admin = self.app.test_client()
+        with admin.session_transaction() as session:
+            session["user_id"] = 1
+        self.assertIn("Times avulsos (1)".encode(), admin.get("/admin/torneios/times").data)
+        # Sem login de jogador não cria.
+        anon = self.app.test_client()
+        with anon.session_transaction() as session:
+            session["csrf_token"] = CSRF
+        self.assertNotEqual(anon.post("/torneios/times-avulsos", data={"csrf_token": CSRF, "name": "Outro"}).status_code, 200)
 
 
 if __name__ == "__main__":

@@ -6,11 +6,25 @@
   <h2>Valores do W$</h2>
   <form method="post" action="{{ url_for('tournaments_admin.admin_settings') }}" class="form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-row">
     {% for key, label in labels.items() %}
-    <label>{{ label }}<input name="{{ key }}" required {% if key in money %}inputmode="numeric" data-wcash value="{{ (values[key]|wcash)[2:] }}"{% else %}type="number" min="1" value="{{ values[key] }}"{% endif %}></label>
+      <label>{{ label }}<input name="{{ key }}" required {% if key in money %}inputmode="numeric" data-wcash value="{{ (values[key]|wcash)[2:] }}"{% else %}type="number" min="1" value="{{ values[key] }}"{% endif %}></label>
     {% endfor %}
+    </div>
     <p class="muted">O saldo inicial vale para quem abrir a carteira depois da mudança. Os valores por jogo valem para os resultados lançados depois da mudança. Use 0,00 para não pagar nada.</p>
     <button>Salvar valores</button>
+  </form>
+</section>
+
+<section>
+  <h2>E-mail da administração</h2>
+  <form method="post" action="{{ url_for('tournaments_admin.admin_email') }}" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-row">
+      <label class="wide">E-mail(s) da administração do WE Camp<input name="emails" value="{{ admin_emails }}" placeholder="admin@wecamp.com.br, outro@wecamp.com.br" autocomplete="email"></label>
+      <button>Salvar e-mail</button>
+    </div>
+    <p class="muted">Recebe as contestações de placar que a administração decide (quando o organizador joga a própria partida). Separe vários endereços por vírgula; deixe vazio para não receber.</p>
   </form>
 </section>
 
@@ -18,12 +32,12 @@
   <h2>Ajustar saldo de um jogador</h2>
   <form method="post" action="{{ url_for('tournaments_admin.admin_wallet_adjust') }}" class="form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="two-columns">
+    <div class="form-row">
       <label>Usuário<input name="username" required></label>
       <label>Valor (W$)<input name="amount" inputmode="numeric" data-wcash required placeholder="W$ 10,00"></label>
+      <label>Tipo<select name="direction"><option value="credito">Crédito (adicionar)</option><option value="debito">Débito (retirar)</option></select></label>
+      <label class="wide">Motivo<input name="note" maxlength="200" required></label>
     </div>
-    <label>Tipo<select name="direction"><option value="credito">Crédito (adicionar)</option><option value="debito">Débito (retirar)</option></select></label>
-    <label>Motivo<input name="note" maxlength="200" required></label>
     <button>Lançar</button>
   </form>
   {% if recent %}

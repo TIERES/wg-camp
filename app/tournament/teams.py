@@ -12,6 +12,7 @@ teams.flag:  arquivo em app/static/flags (só seleções)
 import base64
 import hashlib
 import json
+import unicodedata
 from pathlib import Path
 
 from ..db import now
@@ -52,6 +53,20 @@ def seed_teams(db):
     db.execute("INSERT OR REPLACE INTO site_settings (key, value, updated_at) VALUES (?, ?, ?)",
                (SEED_SETTING, version, stamp))
     return True
+
+
+def plain_name(value):
+    """Nome para comparar sem acentos, maiúsculas nem espaços repetidos."""
+    return " ".join(unicodedata.normalize("NFKD", value or "").encode("ascii", "ignore").decode().casefold().split())
+
+
+def find_by_name(db, name):
+    """Time ativo da base com esse nome (ignorando acentos/maiúsculas), ou None."""
+    wanted = plain_name(name)
+    if not wanted:
+        return None
+    return next((row for row in db.execute("SELECT * FROM teams WHERE is_active = 1 ORDER BY id")
+                 if plain_name(row["name"]) == wanted), None)
 
 
 _COLORS = ("#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c", "#0891b2", "#be185d", "#ca8a04", "#4f46e5",

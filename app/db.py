@@ -166,7 +166,8 @@ CREATE TABLE IF NOT EXISTS tournaments (
     name TEXT NOT NULL,
     game_title_id INTEGER NOT NULL REFERENCES game_titles(id) ON DELETE RESTRICT,
     organizer_id INTEGER NOT NULL REFERENCES players(id) ON DELETE RESTRICT,
-    format TEXT NOT NULL CHECK (format IN ('league', 'ucl', 'world_cup', 'libertadores', 'knockout')),
+    format TEXT NOT NULL
+        CHECK (format IN ('league', 'league_knockout', 'ucl', 'world_cup', 'libertadores', 'knockout')),
     status TEXT NOT NULL DEFAULT 'draft'
         CHECK (status IN ('draft', 'registration', 'running', 'finished', 'cancelled')),
     max_players INTEGER NOT NULL,
@@ -183,6 +184,8 @@ CREATE TABLE IF NOT EXISTS tournaments (
     ends_on TEXT,
     started_at TEXT,
     finished_at TEXT,
+    -- Último jogo confirmado (aviso ao organizador; encerra sozinho 24 h depois - notify.py).
+    all_played_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -269,6 +272,7 @@ CREATE TABLE IF NOT EXISTS tournament_stages (
     name TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'done')),
     settings_json TEXT NOT NULL DEFAULT '{}',
+    all_played_at TEXT,
     created_at TEXT NOT NULL,
     UNIQUE (tournament_id, seq)
 );
@@ -390,11 +394,52 @@ def ensure_player_columns(database):
 
 
 def ensure_tournament_columns(database):
-    """Colunas novas de tournaments (bancos criados antes delas)."""
+    """Colunas novas de tournaments e tournament_stages (bancos criados antes delas)."""
     columns = {column["name"] for column in database.execute("PRAGMA table_info(tournaments)")}
-    for column in ("starts_on", "ends_on"):
+    if not columns:
+        return  # banco sem torneios ainda - o TOURNAMENTS_DDL cria a tabela completa
+    for column in ("starts_on", "ends_on", "all_played_at"):
         if column not in columns:
             database.execute(f"ALTER TABLE tournaments ADD COLUMN {column} TEXT")
+    stage_columns = {column["name"] for column in database.execute("PRAGMA table_info(tournament_stages)")}
+    if stage_columns and "all_played_at" not in stage_columns:
+        database.execute("ALTER TABLE tournament_stages ADD COLUMN all_played_at TEXT")
+
+
+def allow_tournament_formats(database):
+    """Bancos de antes do formato "Pontos corridos + mata-mata" têm o CHECK de
+    tournaments.format sem ele. Como em allow_iso_memcards, a tabela é refeita
+    (mesmos ids e colunas) com a definição atual do TOURNAMENTS_DDL; as outras
+    tabelas continuam apontando para ela pelo nome."""
+    row = database.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tournaments'").fetchone()
+    if row is None or "league_knockout" in row["sql"]:
+        return
+    start = TOURNAMENTS_DDL.index("CREATE TABLE IF NOT EXISTS tournaments (")
+    ddl = TOURNAMENTS_DDL[start:TOURNAMENTS_DDL.index(");", start) + 2]
+    ddl = ddl.replace("CREATE TABLE IF NOT EXISTS tournaments (", "CREATE TABLE tournaments_new (")
+    database.commit()
+    database.execute("PRAGMA foreign_keys = OFF")
+    try:
+        # A tabela nova sozinha primeiro, para saber as colunas em comum (executescript faz COMMIT antes).
+        database.executescript("DROP TABLE IF EXISTS tournaments_new;\n" + ddl)
+        new_columns = {c["name"] for c in database.execute("PRAGMA table_info(tournaments_new)")}
+        columns = ", ".join(c["name"] for c in database.execute("PRAGMA table_info(tournaments)")
+                            if c["name"] in new_columns)
+        database.executescript(f"""
+            BEGIN;
+            INSERT INTO tournaments_new ({columns}) SELECT {columns} FROM tournaments;
+            DROP TABLE tournaments;
+            ALTER TABLE tournaments_new RENAME TO tournaments;
+            COMMIT;
+        """)
+    except Exception:
+        database.rollback()  # a tabela antiga fica como estava
+        raise
+    finally:
+        database.execute("PRAGMA foreign_keys = ON")
+    broken = database.execute("PRAGMA foreign_key_check").fetchall()
+    if broken:
+        raise RuntimeError(f"tournaments: {len(broken)} referência(s) quebrada(s) depois de refazer a tabela")
 
 
 def allow_iso_memcards(database):
@@ -577,6 +622,8 @@ def migrate_db():
     database.executescript(PLAYERS_DDL)
     database.executescript(SITE_SETTINGS_DDL)
     ensure_player_columns(database)
+    ensure_tournament_columns(database)  # antes de refazer a tabela, para copiar as colunas novas
+    allow_tournament_formats(database)
     database.executescript(TOURNAMENTS_DDL)
     ensure_tournament_columns(database)
     from .tournament.teams import seed_teams

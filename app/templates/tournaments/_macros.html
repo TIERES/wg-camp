@@ -35,7 +35,12 @@
 </div>
 {%- endmacro %}
 
-{% macro bracket(view, names, crests) -%}
+{# Chave do mata-mata. Jogo único: o placar ao lado de cada time, na cor do
+   status. Ida e volta: botões Ida/Volta giram o card entre os dois jogos (placar
+   do jogo ao lado do time) e o agregado fica à direita, verde com os 2 jogos
+   confirmados e vermelho antes disso. O confronto de quem está logado
+   (`my_entry`) vira link para o jogo dele (o do lado à mostra, no ida e volta). #}
+{% macro bracket(view, names, crests, slug=none, my_entry=none) -%}
 <div class="bracket">
   {% for rnd in view.bracket %}
   <div class="bracket-round">
@@ -43,21 +48,91 @@
     <div class="bracket-ties">
     {# Quem passa direto aparece só na rodada seguinte. #}
     {% for item in rnd['items'] if not item.tie.is_bye %}{% set tie = item.tie %}
-    <div class="tie{% if tie.is_third_place %} third{% endif %}">
+    {% set mine = slug and my_entry and my_entry in (tie.entry_a, tie.entry_b) and item.legs %}
+    {% set target = (item.legs|selectattr('status', 'ne', 'confirmed')|first or item.legs|last) if mine else none %}
+    {# Por time: gols de cada jogo (none sem placar), pênaltis e quantos confirmados. #}
+    {% set slots = [] %}
+    {% for slot in ('a', 'b') %}{% set entry = tie['entry_' ~ slot] %}
+      {% set ns = namespace(goals=[], legs=[], pens=none, status='confirmed', confirmed=0) %}
+      {% for m in item.legs %}{% set r = (m if m.status == 'confirmed' else reported_score(m)) if entry else none %}
+        {% if r and r.home_goals is not none %}{% set home = m.home_entry_id == entry %}
+          {% set ns.goals = ns.goals + [r.home_goals if home else r.away_goals] %}
+          {% set ns.legs = ns.legs + [{'goals': r.home_goals if home else r.away_goals, 'status': m.status,
+                                       'pens': (r.home_pens if home else r.away_pens) if r.home_pens is not none else none}] %}
+          {% if m.status != 'confirmed' %}{% set ns.status = m.status %}{% else %}{% set ns.confirmed = ns.confirmed + 1 %}{% endif %}
+          {% if r.home_pens is not none %}{% set ns.pens = r.home_pens if home else r.away_pens %}{% endif %}
+        {% else %}{% set ns.legs = ns.legs + [none] %}{% endif %}
+      {% endfor %}
+      {% set _ = slots.append({'slot': slot, 'entry': entry, 'goals': ns.goals, 'legs': ns.legs, 'pens': ns.pens,
+                               'status': ns.status, 'agg': 'confirmed' if ns.confirmed == 2 else 'partial'}) %}
+    {% endfor %}
+    {% if tie.legs == 2 and item.legs|length == 2 %}
+      {# Lado à mostra: a volta quando ela já tem placar ou a ida está confirmada. #}
+      {% set ida, volta = item.legs[0], item.legs[1] %}
+      {% set show_back = volta.status in ('reported', 'disputed', 'confirmed') or ida.status == 'confirmed' %}
+      <div class="tie-box{% if tie.is_third_place %} third{% endif %}">
+        <div class="leg-toggle" role="group" aria-label="Escolher o jogo">
+          <button type="button" data-leg="0" aria-pressed="{{ 'false' if show_back else 'true' }}">Ida</button><button type="button" data-leg="1" aria-pressed="{{ 'true' if show_back else 'false' }}">Volta</button>
+        </div>
+        <div class="tie-flip{% if show_back %} flipped{% endif %}">
+        {% for m in (ida, volta) %}{% set leg = loop.index0 %}
+          <{{ 'a' if mine else 'div' }} class="tie tie-face {{ 'back' if leg else 'front' }}{% if mine %} mine{% endif %}{% if tie.is_third_place %} third{% endif %}"{% if mine %} href="{{ url_for('tournaments.match', slug=slug, match_id=m.id) }}" title="Abrir o jogo de {{ 'volta' if leg else 'ida' }}"{% endif %}{% if leg != (1 if show_back else 0) %} inert{% endif %}>
+            {% if item.label %}<div class="tie-label">{{ item.label }}</div>{% endif %}
+            {# O mandante do jogo fica em cima: time 1 na ida, time 2 na volta. #}
+            {% for s in (slots if slots[0].entry == m.home_entry_id or slots[1].entry != m.home_entry_id else slots|reverse) %}{% set g = s.legs[leg] if s.legs|length > leg else none %}
+            <div class="tie-slot{% if tie.winner_entry_id and tie.winner_entry_id == s.entry %} winner{% endif %}">
+              <span class="tie-team">{% if s.entry %}{{ names[s.entry] }}{% elif item.waits_for and s.slot == 'b' %}<em class="muted">aguarda o {{ item.waits_for }}</em>{% else %}<em class="muted">a definir</em>{% endif %}</span>
+              <span class="leg-score">{% if g %}<span class="score-val score-{{ g.status }}" title="{{ score_tips[g.status] }}"><strong>{{ g.goals }}</strong>{% if g.pens is not none %} <small>({{ g.pens }} pên.)</small>{% endif %}</span>{% elif s.entry %}<span class="muted" title="{{ score_tips.scheduled }}">–</span>{% endif %}</span>
+              {% if s.goals %}<span class="tie-score score-val score-{{ s.agg }}" title="{{ score_tips[s.agg] }}"><small>Agregado:</small> <strong>{{ s.goals|sum }}</strong></span>{% endif %}
+            </div>
+            {% endfor %}
+          </{{ 'a' if mine else 'div' }}>
+        {% endfor %}
+        </div>
+      </div>
+    {% else %}
+    {% if target %}<a class="tie mine{% if tie.is_third_place %} third{% endif %}" href="{{ url_for('tournaments.match', slug=slug, match_id=target.id) }}" title="Abrir o seu jogo para informar ou conferir o placar">
+    {% else %}<div class="tie{% if tie.is_third_place %} third{% endif %}">{% endif %}
       {% if item.label %}<div class="tie-label">{{ item.label }}</div>{% endif %}
-      {% for slot in ('a', 'b') %}{% set entry = tie['entry_' ~ slot] %}
-      <div class="tie-slot{% if tie.winner_entry_id and tie.winner_entry_id == entry %} winner{% endif %}">
-        <span>{% if entry %}{{ names[entry] }}{% elif tie.is_bye and slot == 'b' %}<em class="muted">passa direto</em>{% else %}<em class="muted">a definir</em>{% endif %}</span>
-        {% if item.aggregate %}<strong>{{ item.aggregate[entry] }}</strong>{% endif %}
+      {% for s in slots %}
+      <div class="tie-slot{% if tie.winner_entry_id and tie.winner_entry_id == s.entry %} winner{% endif %}">
+        <span>{% if s.entry %}{{ names[s.entry] }}{% elif tie.is_bye and s.slot == 'b' %}<em class="muted">passa direto</em>{% elif item.waits_for and s.slot == 'b' %}<em class="muted">aguarda o {{ item.waits_for }}</em>{% else %}<em class="muted">a definir</em>{% endif %}</span>
+        {% if s.goals %}<span class="tie-score score-val score-{{ s.status }}" title="{{ score_tips[s.status] }}">{% if tie.legs == 2 %}<small>Agregado:</small> {% endif %}<strong>{{ s.goals|sum }}</strong>{% if s.pens is not none %} <small>({{ s.pens }} pên.)</small>{% endif %}</span>{% endif %}
       </div>
       {% endfor %}
-      {% if item.legs %}<div class="tie-legs">
-        {% for m in item.legs %}<small class="leg-line">{% if tie.legs == 2 %}<span>{{ m.leg }}º jogo</span>{% endif %}{{ crests[m.home_entry_id] }} {{ score(m) }} {{ crests[m.away_entry_id] }}</small>{% endfor %}
-      </div>{% endif %}
-    </div>
+    {% if target %}</a>{% else %}</div>{% endif %}
+    {% endif %}
     {% endfor %}
     </div>
   </div>
   {% endfor %}
 </div>
+{%- endmacro %}
+
+{# Botões Ida/Volta que giram entre duas listas de jogos (aba Jogos, Gerenciar).
+   caller(0) desenha a ida e caller(1) a volta. Abre na volta quando ela já tem
+   placar ou a ida está toda confirmada. #}
+{% macro leg_flip(ida, volta, counts=false) -%}
+{% set show_back = volta|rejectattr('status', 'eq', 'scheduled')|list or not ida|rejectattr('status', 'eq', 'confirmed')|list %}
+<div class="leg-box">
+  <div class="leg-toggle" role="group" aria-label="Escolher os jogos">
+    <button type="button" data-leg="0" aria-pressed="{{ 'false' if show_back else 'true' }}">Ida{% if counts %} <small>({{ ida|selectattr('status', 'eq', 'confirmed')|list|length }}/{{ ida|length }})</small>{% endif %}</button><button type="button" data-leg="1" aria-pressed="{{ 'true' if show_back else 'false' }}">Volta{% if counts %} <small>({{ volta|selectattr('status', 'eq', 'confirmed')|list|length }}/{{ volta|length }})</small>{% endif %}</button>
+  </div>
+  <div class="tie-flip{% if show_back %} flipped{% endif %}">
+    <div class="leg-face front"{% if show_back %} inert{% endif %}>{{ caller(0) }}</div>
+    <div class="leg-face back"{% if not show_back %} inert{% endif %}>{{ caller(1) }}</div>
+  </div>
+</div>
+{%- endmacro %}
+
+{# Rodadas de uma fase, sem recolher (aba Jogos e conferência em Gerenciar).
+   Ida e volta: botões Ida/Volta fora do card, como na chave. #}
+{% macro stage_rounds(view, names, slug) -%}
+{% for rnd in view.rounds %}
+<div class="round-legs">
+  {% if rnd.name != 'Turno e returno' %}<h4 class="round-title">{{ rnd.name }}</h4>{% endif %}
+  {% if rnd.legs %}{% call(leg) leg_flip(rnd.legs[0], rnd.legs[1]) %}<div class="round-card">{% for m in rnd.legs[leg] %}{{ match_line(m, names, slug) }}{% endfor %}</div>{% endcall %}
+  {% else %}<div class="round-card">{% for m in rnd.matches %}{{ match_line(m, names, slug) }}{% endfor %}</div>{% endif %}
+</div>
+{% else %}<p class="muted">Sem jogos.</p>{% endfor %}
 {%- endmacro %}

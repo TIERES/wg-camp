@@ -1,7 +1,8 @@
-"""Os 5 formatos e a validação da configuração de cada um.
+"""Os 6 formatos e a validação da configuração de cada um.
 
 A configuração fica em tournaments.settings_json. Chaves usadas:
   league:       legs
+  league_knockout: legs, playoff_qualifiers, ko_legs, final_legs, third_place
   world_cup:    groups, group_legs, qualifiers, ko_legs, final_legs, third_place
   libertadores: groups, group_legs, qualifiers, ko_legs, final_legs, third_place
   ucl:          pots, per_pot, direct, ko_legs, final_legs, third_place
@@ -9,6 +10,7 @@ A configuração fica em tournaments.settings_json. Chaves usadas:
 """
 FORMATS = {
     "league": "Pontos corridos",
+    "league_knockout": "Pontos corridos + mata-mata",
     "ucl": "Liga dos Campeões (formato novo)",
     "world_cup": "Copa do Mundo (grupos + mata-mata)",
     "libertadores": "Libertadores (grupos ida e volta + mata-mata)",
@@ -17,6 +19,7 @@ FORMATS = {
 
 DEFAULTS = {
     "league": {"legs": 2},
+    "league_knockout": {"legs": 1, "playoff_qualifiers": 4, "ko_legs": 1, "final_legs": 1, "third_place": False},
     "world_cup": {"groups": 2, "group_legs": 1, "qualifiers": 2, "ko_legs": 1, "final_legs": 1, "third_place": True},
     "libertadores": {"groups": 2, "group_legs": 2, "qualifiers": 2, "ko_legs": 2, "final_legs": 1, "third_place": False},
     "ucl": {"pots": 4, "per_pot": 1, "direct": 2, "ko_legs": 2, "final_legs": 1, "third_place": False},
@@ -66,6 +69,10 @@ def config_error(fmt, config, players):
     for key in ("legs", "group_legs", "ko_legs", "final_legs"):
         if key in config and config[key] not in (1, 2):
             return "Os jogos devem ser de ida (1) ou ida e volta (2)."
+    if fmt == "league_knockout":
+        qualifiers = config["playoff_qualifiers"]
+        if not 2 <= qualifiers < players:
+            return f"Classificados para o mata-mata: entre 2 e {players - 1} (menos que o número de jogadores)."
     if fmt in ("world_cup", "libertadores"):
         groups, qualifiers = config["groups"], config["qualifiers"]
         if groups < 1:
@@ -99,9 +106,13 @@ def describe(fmt, config):
     """Resumo da configuração para a página do torneio."""
     legs = lambda n: "ida e volta" if n == 2 else "jogo único"
     final = f"; final em {legs(config.get('final_legs', 1))}" if fmt != "league" else ""
+    turns = lambda n: "turno e returno" if n == 2 else "turno único"
     third = "; com disputa de 3º lugar" if config.get("third_place") else ""
     if fmt == "league":
-        return f"Pontos corridos em {'turno e returno' if config['legs'] == 2 else 'turno único'}."
+        return f"Pontos corridos em {turns(config['legs'])}."
+    if fmt == "league_knockout":
+        return (f"Pontos corridos em {turns(config['legs'])}; os {config['playoff_qualifiers']} primeiros vão ao "
+                f"mata-mata em {legs(config['ko_legs'])}{final}{third}.")
     if fmt in ("world_cup", "libertadores"):
         return (f"{config['groups']} grupo(s) em {legs(config['group_legs'])}, {config['qualifiers']} classificado(s) "
                 f"por grupo; mata-mata em {legs(config['ko_legs'])}{final}{third}.")

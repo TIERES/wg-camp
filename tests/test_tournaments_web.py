@@ -38,6 +38,24 @@ class TournamentsWebTest(unittest.TestCase):
         with self.app.app_context():
             return get_db().execute(sql, args).fetchall()
 
+    def test_free_mode_enroll_finds_existing_team(self):
+        with self.app.app_context():
+            db = get_db()
+            game = db.execute("INSERT INTO game_titles (name, created_at, updated_at) VALUES ('WE', ?, ?)",
+                              (now(), now())).lastrowid
+            db.execute("INSERT INTO tournaments (slug, name, game_title_id, organizer_id, format, status, max_players, "
+                       "settings_json, team_mode, created_at, updated_at) VALUES ('livre', 'Livre', ?, ?, 'league', "
+                       "'registration', 4, '{\"legs\": 1}', 'free', ?, ?)", (game, self.players[0], now(), now()))
+            db.commit()
+        player = self.client(self.players[1])
+        page = player.get("/torneios/livre").data.decode()
+        self.assertIn('list="free-team-list"', page)
+        self.assertIn('<option value="Brasil">', page)
+        player.post("/torneios/livre/inscrever", data={"csrf_token": CSRF, "team_name": "brasil"})
+        entry = self.query("SELECT e.team_name, t.flag FROM tournament_entries e JOIN teams t ON t.id = e.team_id")
+        self.assertEqual([tuple(r) for r in entry], [("Brasil", "br.svg")])
+        self.assertIn("/static/teams/", player.get("/torneios/livre?aba=geral").data.decode())
+
     def test_full_flow(self):
         admin = self.client(admin=True)
         admin_page = admin.get("/admin/torneios/")
@@ -73,6 +91,11 @@ class TournamentsWebTest(unittest.TestCase):
         listing = anon.get(f"/torneios/?jogo={game_id}").get_data(as_text=True)
         self.assertIn('class="t-cover" src="/static/images/games/we2002.svg"', listing)
         self.assertIn('game-chip active', listing)
+        # Filtros por nome e organizador: trecho, sem acento nem maiúsculas.
+        self.assertIn("Copa Teste", anon.get("/torneios/?nome=cópa tes").get_data(as_text=True))
+        self.assertIn("Copa Teste", anon.get("/torneios/?organizador=JOG0").get_data(as_text=True))
+        self.assertIn("Nenhum torneio encontrado", anon.get("/torneios/?nome=copa&organizador=jog1").get_data(as_text=True))
+        self.assertIn("&#34;Copa Teste&#34;", anon.get("/torneios/").get_data(as_text=True))
 
         for pid in self.players[:4]:
             self.client(pid).post(f"/torneios/{slug}/inscrever", data={"csrf_token": CSRF, "team_name": f"Time {pid}"})

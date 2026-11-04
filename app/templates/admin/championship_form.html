@@ -4,11 +4,11 @@
 <label>URL do Arena17<input id="arena17-url" type="url" name="arena17_url" value="{{ championship.arena17_url or '' if championship else '' }}" aria-describedby="arena17-help"><small id="arena17-help">Ao informar uma URL de campeonato do Arena17, os dados são preenchidos automaticamente.</small></label>
 <button type="button" id="import-arena17">Preencher dados do Arena17</button>
 <div id="arena17-import-status" hidden aria-live="polite"></div>
-<label>Nome<input id="championship-name" name="name" required value="{{ championship.name if championship else '' }}"></label>
-<label>Liga (opcional)<input id="championship-league" name="league_name" value="{{ championship.league_name or '' if championship else '' }}" placeholder="Ex.: Liga Arena17"></label>
+<div class="form-row"><label class="wide">Nome<input id="championship-name" name="name" required value="{{ championship.name if championship else '' }}"></label>
+<label>Liga (opcional)<input id="championship-league" name="league_name" value="{{ championship.league_name or '' if championship else '' }}" placeholder="Ex.: Liga Arena17"></label></div>
 <label>Slug (opcional)<input id="championship-slug" name="slug" value="{{ championship.slug if championship else '' }}" pattern="[a-z0-9-]+" aria-describedby="slug-help"><small id="slug-help">Preenchido automaticamente a partir do nome; você pode alterá-lo.</small></label>
 <label>Descrição<textarea id="championship-description" name="description" rows="6">{{ championship.description if championship else '' }}</textarea></label>
-<div class="two-columns"><label>Início<input type="date" name="start_date" value="{{ championship.start_date or '' if championship else '' }}"></label><label>Fim<input type="date" name="end_date" value="{{ championship.end_date or '' if championship else '' }}"></label></div>
+<div class="form-row"><label>Início<input type="date" name="start_date" value="{{ championship.start_date or '' if championship else '' }}"></label><label>Fim<input type="date" name="end_date" value="{{ championship.end_date or '' if championship else '' }}"></label></div>
 <label class="check"><input type="checkbox" name="is_published" {% if not championship or championship.is_published %}checked{% endif %}> Publicar no site</label>
 <button>Salvar</button> <a href="{{ url_for('admin.dashboard') }}">Cancelar</a></form>
 {% if championship %}<form method="post" action="{{ url_for('admin.championship_delete', championship_id=championship.id) }}" class="delete"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label class="check"><input type="checkbox" name="confirm" value="delete"> Confirmo a exclusão do campeonato sem arquivos</label><button class="danger">Excluir campeonato</button></form>{% endif %}
