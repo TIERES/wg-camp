@@ -810,6 +810,8 @@ def _player_action(slug, match_id, action, success, after=None):
         if after:
             after(get_db(), tournament)
         notify.check_completion(get_db(), tournament)
+    if request.form.get("voltar") == "meus-jogos":
+        return redirect(url_for("tournaments.my_matches"))
     return redirect(url_for("tournaments.match", slug=slug, match_id=match_id))
 
 

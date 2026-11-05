@@ -177,7 +177,8 @@ class ReportsTest(unittest.TestCase):
         page = away_client.get(f"/torneios/{slug}/jogos/{m['id']}").data.decode()
         self.assertIn("Confirmar este placar", page)
         self.assertIn("fácil", page)
-        self.assertIn("confirme ou conteste".encode(), away_client.get("/torneios/meus-jogos").data)
+        self.assertIn("Confirmar partida".encode(), away_client.get("/torneios/meus-jogos").data)
+        self.assertIn("todo-badge", away_client.get("/torneios/").data.decode())  # badge no nick e em Meus jogos
         away_client.post(f"/torneios/{slug}/jogos/{m['id']}/contestar", data={
             "csrf_token": CSRF, "home_goals": "", "away_goals": "", "comment": "Não foi isso"})
         self.assertEqual(self.status(m["id"]), "disputed")
@@ -188,8 +189,27 @@ class ReportsTest(unittest.TestCase):
         self.assertEqual(self.status(m["id"]), "confirmed")
         history = self.client().get(f"/torneios/{slug}/jogos/{m['id']}").data.decode()
         self.assertIn("adm (administração)", history)
-        self.assertNotIn("Meus jogos <span>", away_client.get("/torneios/").data.decode())
+        self.assertNotIn("todo-badge", away_client.get("/torneios/").data.decode())
 
+
+    def test_confirm_from_my_matches(self):
+        tid = self.tournament(legs=1)
+        slug = self.t(tid)["slug"]
+        m, home, away = self.sides(self.db.execute("SELECT id FROM tournament_matches").fetchone()[0])
+        reports.report(self.db, self.t(tid), m["id"], home, (3, 1, None, None))
+        self.db.commit()
+        home_page = self.client(home).get("/torneios/meus-jogos").get_data(as_text=True)
+        self.assertNotIn("Confirmar partida", home_page)  # quem reportou não confirma
+        away_client = self.client(away)
+        page = away_client.get("/torneios/meus-jogos").get_data(as_text=True)
+        self.assertIn("mm-confirm", page)
+        self.assertIn("Confirmação automática em", page)
+        self.assertIn(f"/torneios/{slug}/jogos/{m['id']}/confirmar", page)
+        reply = away_client.post(f"/torneios/{slug}/jogos/{m['id']}/confirmar",
+                                 data={"csrf_token": CSRF, "voltar": "meus-jogos"})
+        self.assertTrue(reply.headers["Location"].endswith("/torneios/meus-jogos"))
+        self.assertEqual(self.status(m["id"]), "confirmed")
+        self.assertNotIn("Confirmar partida", away_client.get("/torneios/meus-jogos").get_data(as_text=True))
 
     def test_reporter_accepts_disputed_score(self):
         tid = self.tournament(legs=1)

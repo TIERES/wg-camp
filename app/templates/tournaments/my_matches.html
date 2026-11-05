@@ -1,6 +1,17 @@
 {% extends 'base.html' %}{% from 'tournaments/_macros.html' import score %}{% block title %}Meus jogos · WE Camp{% endblock %}{% block content %}
 <h1>Meus jogos</h1>
 <p class="muted">Todos os seus jogos, dos torneios em andamento e encerrados. Clique no torneio para ver os jogos.</p>
+{% set legend = {'ok': 'Resultado confirmado entre os jogadores', 'confirm': 'Resultado para você confirmar', 'none': 'Nenhum resultado informado', 'waiting': 'Você informou o resultado; aguardando o adversário', 'disputed': 'Resultado contestado'} %}
+{% set ns = namespace(waiting=false, disputed=false) %}
+{% for ms in groups %}{% for row in ms %}
+  {% if row.status == 'disputed' %}{% set ns.disputed = true %}
+  {% elif row.status == 'reported' and (row.reported_by_entry_id == row.my_entry_id or row.tournament_status != 'running') %}{% set ns.waiting = true %}{% endif %}
+{% endfor %}{% endfor %}
+{% if groups %}
+<ul class="mm-legend">
+  {% for kind in ['ok', 'confirm', 'none'] + (['waiting'] if ns.waiting else []) + (['disputed'] if ns.disputed else []) %}<li class="mm-{{ kind }}">{{ legend[kind] }}</li>{% endfor %}
+</ul>
+{% endif %}
 {% if groups|length > 1 %}
 <input type="search" id="mt-filter" class="mt-filter" placeholder="Buscar torneio pelo nome..." autocomplete="off" aria-label="Buscar torneio">
 {% endif %}
@@ -26,18 +37,20 @@
       {% if ms|length > 1 %}<input type="search" class="mt-match-filter" placeholder="Filtrar por jogador ou time..." autocomplete="off" aria-label="Filtrar jogos por jogador ou time">{% endif %}
       {% for row in ms %}
       {% set mine_reported = row.status == 'reported' and row.reported_by_entry_id == row.my_entry_id %}
-      <a class="my-match status-{{ row.status }}" data-search="{{ names[row.home_entry_id]|striptags }} {{ names[row.away_entry_id]|striptags }}" href="{{ url_for('tournaments.match', slug=row.slug, match_id=row.id) }}">
+      {% set must_confirm = open and row.status == 'reported' and not mine_reported %}
+      {% set kind = 'ok' if row.status == 'confirmed' else 'confirm' if must_confirm else 'none' if row.status == 'scheduled' else 'disputed' if row.status == 'disputed' else 'waiting' %}
+      <div class="my-match mm-{{ kind }}" data-search="{{ names[row.home_entry_id]|striptags }} {{ names[row.away_entry_id]|striptags }}" title="{{ legend[kind] }}">
+      <a class="my-match-link" href="{{ url_for('tournaments.match', slug=row.slug, match_id=row.id) }}">
         <span class="match-line"><span class="home">{{ names[row.home_entry_id] }}</span><span class="score">{{ score(row) }}</span><span class="away">{{ names[row.away_entry_id] }}</span></span>
-        <span class="my-match-status">{{ row.stage_name }} ·
-          {% if row.status == 'confirmed' %}resultado confirmado
-          {% elif row.status == 'scheduled' and not (open and row.stage_status == 'running') %}sem resultado
-          {% elif row.status == 'scheduled' %}<strong>reporte o placar</strong>
-          {% elif row.status == 'reported' and not mine_reported %}<strong>confirme ou conteste o placar do adversário</strong>
-          {% elif mine_reported %}você reportou; esperando o adversário (até {{ deadlines[row.id]|localtime }})
-          {% elif row.reported_by_entry_id == row.my_entry_id and row.id in counter %}<strong>contestado: aceite o placar do adversário ou aguarde o organizador</strong>
-          {% elif row.reported_by_entry_id == row.my_entry_id %}contestado, com o organizador
-          {% else %}você contestou; aguardando o adversário aceitar ou o organizador decidir{% endif %}</span>
       </a>
+      {% if must_confirm %}
+      <form method="post" class="my-match-actions" action="{{ url_for('tournaments.match_confirm', slug=row.slug, match_id=row.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="voltar" value="meus-jogos">
+        <button>Confirmar partida</button>
+      </form>
+      {% endif %}
+      {% if row.status == 'reported' and open %}<span class="my-match-status">Confirmação automática em {{ deadlines[row.id]|localtime }}</span>{% endif %}
+      </div>
       {% endfor %}
       <p class="muted mt-empty" hidden>Nenhum jogo com esse jogador ou time.</p>
       <p class="mt-link"><a href="{{ url_for('tournaments.show', slug=first.slug, aba='jogos') }}">Ver o torneio</a></p>

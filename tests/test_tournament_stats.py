@@ -206,8 +206,10 @@ class StatsTest(unittest.TestCase):
         with client.session_transaction() as session:
             session["player_id"] = p0
         page = client.get("/torneios/meus-jogos").get_data(as_text=True)
-        self.assertEqual(page.count('class="my-match status-'), 2)  # o confirmado e o que falta
-        self.assertIn("resultado confirmado", page)
+        self.assertEqual(page.count('class="my-match mm-'), 2)  # o confirmado e o que falta
+        self.assertIn('my-match mm-ok', page)
+        self.assertIn('my-match mm-none', page)
+        self.assertIn("Resultado confirmado entre os jogadores", page)  # legenda
         self.assertIn("1 confirmado", page)
         self.assertIn("1 para reportar", page)
 
