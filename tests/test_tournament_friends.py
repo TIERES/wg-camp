@@ -119,6 +119,17 @@ class FriendsAndInvitesTest(unittest.TestCase):
         self.assertIn("convidou você para este torneio", c1.get(f"/torneios/{first['slug']}").data.decode())
         c1.post(f"/torneios/{first['slug']}/convite/recusar", data={"csrf_token": CSRF})
         self.assertNotIn("Convites para torneios", c1.get("/torneios/meus-campeonatos").data.decode())
+        # quem recusou pode ser convidado de novo (quantas vezes o organizador quiser)
+        manage = c0.get(f"/torneios/{first['slug']}/gerenciar").data.decode()
+        self.assertIn("(recusou)", manage)
+        self.assertIn('name="invite_ids" value="%d"' % j1, manage)
+        self.mails()
+        for _ in range(2):
+            c0.post(f"/torneios/{first['slug']}/convidar", data={"csrf_token": CSRF, "invite_ids": [str(j1)]})
+            self.assertEqual([m[0] for m in self.mails()], ["jog1@x.com"])
+            self.assertIn("Convites para torneios (1)", c1.get("/torneios/meus-campeonatos").data.decode())
+            c1.post(f"/torneios/{first['slug']}/convite/recusar", data={"csrf_token": CSRF})
+        self.assertEqual(len(self.query("SELECT id FROM tournament_invites WHERE player_id = ?", j1)), 1)
 
         # jog2 joga a Copa Um; na Copa Dois ele aparece como jogador de um torneio de jog0.
         self.client(j2).post(f"/torneios/{first['slug']}/inscrever", data={"csrf_token": CSRF, "team_name": "Time"})
@@ -138,7 +149,26 @@ class FriendsAndInvitesTest(unittest.TestCase):
         # inscrito, o convite some da lista dele
         self.client(j2).post(f"/torneios/{second['slug']}/inscrever", data={"csrf_token": CSRF, "team_name": "Time"})
         self.assertNotIn("Convites para torneios", self.client(j2).get("/torneios/meus-campeonatos").data.decode())
-        self.assertIn("(inscrito)", c0.get(f"/torneios/{second['slug']}/gerenciar").data.decode())
+        manage = c0.get(f"/torneios/{second['slug']}/gerenciar").data.decode()
+        self.assertIn("(inscrito)", manage)
+        # convidado (laranja) e inscrito (verde) aparecem marcados e travados, fora do formulário
+        self.assertIn('invite-option is-pending', manage)
+        self.assertIn('invite-option is-enrolled', manage)
+        self.assertIn('<input type="checkbox" value="%d" checked data-locked' % j1, manage)
+        self.assertIn('<input type="checkbox" value="%d" checked data-locked' % j2, manage)
+        self.assertNotIn('name="invite_ids" value="%d"' % j2, manage)
+        self.assertIn("data-invite-submit", manage)
+
+        # o organizador remove o inscrito: o convite some junto e dá para convidar de novo
+        entry = self.query("SELECT id FROM tournament_entries WHERE tournament_id = ? AND player_id = ?", second["id"], j2)[0][0]
+        c0.post(f"/torneios/{second['slug']}/inscritos/{entry}/remover", data={"csrf_token": CSRF})
+        self.assertEqual(self.query("SELECT id FROM tournament_invites WHERE tournament_id = ? AND player_id = ?", second["id"], j2), [])
+        manage = c0.get(f"/torneios/{second['slug']}/gerenciar").data.decode()
+        self.assertIn('name="invite_ids" value="%d"' % j2, manage)
+        self.assertNotIn("Convites para torneios", self.client(j2).get("/torneios/meus-campeonatos").data.decode())
+        c0.post(f"/torneios/{second['slug']}/convidar", data={"csrf_token": CSRF, "invite_ids": [str(j2)]})
+        self.assertEqual([m[0] for m in self.mails()], ["jog2@x.com"])
+        self.assertIn("Convites para torneios (1)", self.client(j2).get("/torneios/meus-campeonatos").data.decode())
 
 
 if __name__ == "__main__":

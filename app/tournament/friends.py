@@ -123,16 +123,20 @@ def invite_status(db, tournament_id):
 
 
 def invite(db, tournament, invited_by, player_ids):
-    """Convida os jogadores escolhidos (só candidatos, sem repetir convite nem
-    chamar quem já está inscrito). Devolve as linhas (id, username, email) dos
+    """Convida os jogadores escolhidos (só candidatos, sem repetir convite pendente
+    nem chamar quem já está inscrito; quem recusou pode ser convidado de novo,
+    quantas vezes o organizador quiser). Devolve as linhas (id, username, email) dos
     convidados agora, para o e-mail."""
     if tournament["status"] != "registration":
         raise TournamentError("Só dá para convidar enquanto as inscrições estão abertas.")
     allowed = {p["id"] for p in candidates(db, tournament["organizer_id"], tournament["id"])["players"]}
     taken = invite_status(db, tournament["id"])
-    wanted = [pid for pid in dict.fromkeys(player_ids) if pid in allowed and pid not in taken]
+    wanted = [pid for pid in dict.fromkeys(player_ids)
+              if pid in allowed and taken.get(pid) not in ("pending", "enrolled")]
     for pid in wanted:
-        db.execute("INSERT INTO tournament_invites (tournament_id, player_id, invited_by, created_at) VALUES (?, ?, ?, ?)",
+        db.execute("INSERT INTO tournament_invites (tournament_id, player_id, invited_by, created_at) VALUES (?, ?, ?, ?) "
+                   "ON CONFLICT (tournament_id, player_id) DO UPDATE SET status = 'pending', "
+                   "invited_by = excluded.invited_by, created_at = excluded.created_at",
                    (tournament["id"], pid, invited_by, now()))
     if not wanted:
         return []
@@ -155,6 +159,10 @@ def my_invites(db, me):
 
 def my_invite(db, tournament_id, me):
     return next((i for i in my_invites(db, me) if i["tournament_id"] == tournament_id), None)
+
+
+def remove_invite(db, tournament_id, player_id):
+    db.execute("DELETE FROM tournament_invites WHERE tournament_id = ? AND player_id = ?", (tournament_id, player_id))
 
 
 def decline(db, tournament_id, me):

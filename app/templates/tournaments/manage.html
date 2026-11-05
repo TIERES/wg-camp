@@ -83,8 +83,7 @@
   <p class="muted">Seus amigos e quem já jogou torneios criados por você. Os convidados recebem um e-mail e o convite em "Meus campeonatos"; a inscrição continua sendo feita por eles.</p>
   <form method="post" action="{{ url_for('tournaments.invite', slug=t.slug) }}" class="form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    {{ invite_picker(candidates, invited, invite_labels) }}
-    {% if candidates.players %}<button>Enviar convites</button>{% endif %}
+    {{ invite_picker(candidates, invited, invite_labels, submit_label='Enviar convites') }}
   </form>
 </section>
 {% endif %}

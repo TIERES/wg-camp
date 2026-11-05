@@ -286,7 +286,7 @@ def _stage_views(db, tournament):
 
 def _tournament_list(template, player_id=None, **extra):
     """Cards de torneios com os filtros de status, jogo, nome e organizador.
-    Com `player_id`, só os torneios em que esse jogador está inscrito."""
+    Com `player_id`, só os torneios em que esse jogador está inscrito ou que ele criou."""
     db = get_db()
     status = request.args.get("status", "")
     game = request.args.get("jogo", type=int)
@@ -297,9 +297,10 @@ def _tournament_list(template, player_id=None, **extra):
     params = []
     mine = ""
     if player_id:
-        mine = " AND t.id IN (SELECT tournament_id FROM tournament_entries WHERE player_id = ?)"
+        mine = (" AND (t.organizer_id = ? OR t.id IN "
+                "(SELECT tournament_id FROM tournament_entries WHERE player_id = ?))")
         sql += mine
-        params.append(player_id)
+        params += [player_id, player_id]
     if status in STATUS_LABELS:
         sql += " AND t.status = ?"
         params.append(status)
@@ -318,7 +319,7 @@ def _tournament_list(template, player_id=None, **extra):
     organizer = request.args.get("organizador", "").strip()
     suggestions = db.execute(
         "SELECT DISTINCT t.name, p.username FROM tournaments t JOIN players p ON p.id = t.organizer_id "
-        "WHERE t.status != 'draft'" + mine, (player_id,) if player_id else ()).fetchall()
+        "WHERE t.status != 'draft'" + mine, (player_id, player_id) if player_id else ()).fetchall()
     if name or organizer:
         # Organizador escolhido na lista (nome exato) não traz quem só começa igual (TIERES x TIERES1).
         exact = any(_plain(r["username"]) == _plain(organizer) for r in suggestions)
@@ -342,7 +343,7 @@ def index():
 @player_required
 def my_tournaments():
     return _tournament_list("tournaments/mine.html", session["player_id"], list_endpoint="tournaments.my_tournaments",
-                            invites=friends.my_invites(get_db(), session["player_id"]))
+                            manage_buttons=True, invites=friends.my_invites(get_db(), session["player_id"]))
 
 
 # --- Amigos e convites (app/tournament/friends.py) ----------------------------
@@ -844,7 +845,12 @@ def remove_entry(tournament, entry_id):
     entry = get_db().execute("SELECT * FROM tournament_entries WHERE id = ? AND tournament_id = ?",
                              (entry_id, tournament["id"])).fetchone()
     if entry:
-        _run(lambda db, t: store.withdraw(db, t, entry), tournament, "Inscrição removida e devolvida ao jogador.")
+        # O convite sai junto: o jogador volta a aparecer sem marcação em "Convidar jogadores"
+        # e o organizador pode convidá-lo de novo se quiser.
+        def remove(db, t):
+            store.withdraw(db, t, entry)
+            friends.remove_invite(db, t["id"], entry["player_id"])
+        _run(remove, tournament, "Inscrição removida e devolvida ao jogador.")
     return redirect(url_for("tournaments.manage", slug=tournament["slug"]))
 
 

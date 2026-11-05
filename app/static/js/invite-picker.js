@@ -1,5 +1,7 @@
 // Convites para torneio (_invite_picker.html): marcar todos os amigos, os jogadores
-// de um torneio anterior, limpar e buscar pelo nome. Já convidados ficam desabilitados.
+// de um torneio anterior, limpar e buscar pelo nome. Convidados e inscritos ficam
+// marcados e travados (data-locked, fora do formulário); o botão data-invite-submit
+// só habilita quando há alguém novo marcado.
 (function () {
   function plain(s) { return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
 
@@ -8,10 +10,15 @@
     picker.dataset.ready = '1';
     var boxes = Array.prototype.slice.call(picker.querySelectorAll('input[name="invite_ids"]'));
     var count = picker.querySelector('.invite-count');
+    var submit = picker.querySelector('[data-invite-submit]');
+    picker.querySelectorAll('input[data-locked]').forEach(function (b) {
+      b.addEventListener('click', function (e) { e.preventDefault(); });
+    });
 
     function update() {
       var n = boxes.filter(function (b) { return b.checked; }).length;
       if (count) count.textContent = n ? n + (n === 1 ? ' jogador marcado' : ' jogadores marcados') : '';
+      if (submit) submit.disabled = !n;
     }
     function mark(test) { boxes.forEach(function (b) { if (!b.disabled && test(b)) b.checked = true; }); update(); }
 

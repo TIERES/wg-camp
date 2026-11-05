@@ -84,6 +84,14 @@ class TournamentsWebTest(unittest.TestCase):
         self.assertNotIn('t-name">Copa Minha', player.get("/torneios/meus-campeonatos?status=finished").data.decode())
         self.assertIn('t-name">Copa Minha', player.get("/torneios/meus-campeonatos?nome=minha&organizador=jog0").data.decode())
         self.assertNotIn('t-name">Copa Minha', player.get("/torneios/meus-campeonatos?organizador=jog3").data.decode())
+        self.assertNotIn("Gerenciar", mine)  # inscrito, mas não é o organizador
+        # Quem criou vê os seus torneios (mesmo sem estar inscrito) com o botão Gerenciar.
+        owner = self.client(self.players[0]).get("/torneios/meus-campeonatos").data.decode()
+        self.assertIn('t-name">Copa Minha', owner)
+        self.assertIn('t-name">Copa Outra', owner)
+        self.assertIn('href="/torneios/minha/gerenciar"', owner)
+        self.assertIn('href="/torneios/outra/gerenciar"', owner)
+        self.assertNotIn("Gerenciar", self.client(self.players[0]).get("/torneios/").data.decode())
         # Encerrado só aparece escolhendo o status no filtro.
         with self.app.app_context():
             get_db().execute("UPDATE tournaments SET status = 'finished' WHERE slug = 'minha'")

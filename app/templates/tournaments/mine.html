@@ -20,4 +20,4 @@
   {% endfor %}</ul>
 </section>
 {% endif %}{% endblock %}
-{% block empty %}<p>Você ainda não está inscrito em nenhum campeonato. <a href="{{ url_for('tournaments.index', status='registration') }}">Veja os que estão com inscrições abertas</a>.</p>{% endblock %}
+{% block empty %}<p>Você ainda não está inscrito em nenhum campeonato nem criou um. <a href="{{ url_for('tournaments.index', status='registration') }}">Veja os que estão com inscrições abertas</a>.</p>{% endblock %}

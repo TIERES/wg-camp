@@ -56,7 +56,9 @@ button:disabled { opacity:.5; cursor:not-allowed }
 .filters { display:flex; flex-wrap:wrap; gap:.5rem; max-width:none; margin:1rem 0 } .filters select { flex:1 1 12rem }
 .t-cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:1rem }
 .t-card { display:grid; gap:.35rem; padding:1rem; background:var(--card); border:1px solid #374151; border-radius:8px; color:var(--text); text-decoration:none }
-.t-card:hover,.t-card:focus { border-color:var(--accent) }
+.t-card { position:relative } .t-card:hover,.t-card:focus-within { border-color:var(--accent) }
+.t-link { position:absolute; inset:0; border-radius:8px } .t-link:focus { outline:none }
+.t-card .card-actions { position:relative; z-index:1; margin-top:.35rem }
 .t-name { font-size:1.1rem } .t-meta { display:flex; flex-wrap:wrap; gap:.25rem 1rem; font-size:.9rem }
 .t-form fieldset { border:1px solid #374151; border-radius:8px; padding:1rem; display:grid; gap:1rem; min-width:0 }
 .t-form legend { padding:0 .4rem; color:var(--accent); font-weight:700 }
@@ -306,10 +308,12 @@ header nav { align-items:center }
 .page-title .card-actions form { display:inline }
 .invite-tools { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center }
 .invite-tools select, .invite-tools input { flex:1 1 12rem; max-width:20rem }
-.invite-count { margin:.4rem 0 0; min-height:1.2em; font-size:.85rem }
+.invite-count { margin:.4rem 0 0; min-height:1.2em; font-size:.85rem } .invite-actions { margin-top:.75rem }
 .invite-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(11rem,1fr)); gap:.35rem .75rem; max-height:18rem; overflow:auto; padding:.5rem; background:#111827; border:1px solid #374151; border-radius:6px; margin-top:.4rem }
-.invite-option { overflow-wrap:anywhere } .invite-option[hidden] { display:none }
-.invite-tag { background:#064e3b; color:#a7f3d0; border-radius:999px; padding:0 .4rem; font-size:.7rem }
+.invite-option { overflow-wrap:anywhere; padding:.1rem .35rem; border-radius:4px } .invite-option[hidden] { display:none }
+.invite-option.is-pending { background:rgba(245,158,11,.14) } .invite-option.is-pending input { accent-color:#f59e0b } .invite-option.is-pending small { color:#fbbf24 }
+.invite-option.is-enrolled { background:rgba(16,185,129,.14) } .invite-option.is-enrolled input { accent-color:#10b981 } .invite-option.is-enrolled small { color:#34d399 }
+.invite-option input[data-locked] { cursor:default }
 .invite-notice { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.5rem 1rem; padding:.75rem 1rem; margin:.75rem 0; background:#1e3a8a; color:#dbeafe; border-radius:8px }
 .invite-notice form { display:inline }
 .invite-cards { list-style:none; padding:0; margin:.5rem 0 1.5rem; display:grid; gap:.6rem }

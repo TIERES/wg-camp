@@ -1,27 +1,34 @@
 {# Lista de jogadores para convidar (amigos + quem jogou torneios do organizador).
-   invited: player_id -> 'pending'/'declined'/'enrolled' (já convidados/inscritos ficam desmarcáveis). #}
-{% macro invite_picker(candidates, invited={}, labels={}, selected=()) %}
+   invited: player_id -> 'pending'/'declined'/'enrolled'. Convidados (laranja) e inscritos (verde) aparecem
+   marcados e travados, sem name (não vão no formulário); quem recusou pode ser convidado de novo.
+   Com submit_label, o rodapé traz Limpar + o botão de envio (data-invite-submit), que só habilita
+   com alguém novo marcado; sem ele (Criar torneio), só o Limpar. #}
+{% macro invite_picker(candidates, invited={}, labels={}, selected=(), submit_label=None) %}
 <div class="invite-picker">
   {% if candidates.players %}
   <div class="invite-tools">
-    <button type="button" class="secondary" data-invite-friends {% if not candidates.players|selectattr('friend')|list %}disabled{% endif %}>Todos os amigos</button>
+    <input type="search" data-invite-filter placeholder="Buscar jogador..." autocomplete="off" aria-label="Buscar jogador">
     {% if candidates.tournaments %}
     <select data-invite-tournament aria-label="Jogadores de um torneio seu">
       <option value="">Jogadores de um torneio seu…</option>
       {% for t in candidates.tournaments %}<option value="{{ t.player_ids|join(',') }}">{{ t.name }} ({{ t.player_ids|length }})</option>{% endfor %}
     </select>
     {% endif %}
-    <button type="button" class="secondary" data-invite-clear>Limpar</button>
-    <input type="search" data-invite-filter placeholder="Buscar jogador..." autocomplete="off" aria-label="Buscar jogador">
+    <button type="button" class="secondary" data-invite-friends {% if not candidates.players|selectattr('friend')|list %}disabled{% endif %}>Todos os amigos</button>
   </div>
   <p class="muted invite-count" aria-live="polite"></p>
   <div class="invite-list">
     {% for p in candidates.players %}{% set st = invited.get(p.id) %}
-    <label class="check invite-option" data-name="{{ p.username|lower }}" data-friend="{{ 1 if p.friend else 0 }}">
-      <input type="checkbox" name="invite_ids" value="{{ p.id }}" {% if st %}disabled{% elif p.id in selected %}checked{% endif %}>
-      {{ p.username }}{% if p.friend %} <small class="invite-tag">amigo</small>{% endif %}{% if st %} <small class="muted">({{ labels[st] }})</small>{% endif %}
+    <label class="check invite-option{% if st %} is-{{ st }}{% endif %}" data-name="{{ p.username|lower }}" data-friend="{{ 1 if p.friend else 0 }}">
+      {% if st in ('pending', 'enrolled') %}<input type="checkbox" value="{{ p.id }}" checked data-locked aria-disabled="true">
+      {% else %}<input type="checkbox" name="invite_ids" value="{{ p.id }}" {% if p.id in selected %}checked{% endif %}>{% endif %}
+      <span>{{ p.username }}{% if st %} <small class="muted">({{ labels[st] }})</small>{% endif %}</span>
     </label>
     {% endfor %}
+  </div>
+  <div class="card-actions invite-actions">
+    <button type="button" class="secondary" data-invite-clear>Limpar</button>
+    {% if submit_label %}<button data-invite-submit>{{ submit_label }}</button>{% endif %}
   </div>
   {% else %}
   <p class="muted">Ninguém para convidar ainda: aqui aparecem seus amigos e quem já jogou torneios criados por você. <a href="{{ url_for('tournaments.friends_page') }}">Adicione amigos</a>.</p>

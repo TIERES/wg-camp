@@ -28,7 +28,8 @@
 {% if tournaments %}
 <div class="t-cards">
   {% for t in tournaments %}
-  <a class="t-card" href="{{ url_for('tournaments.show', slug=t.slug) }}">
+  {% set own = manage_buttons and t.organizer_id == session.player_id %}
+  <div class="t-card">
     <img class="t-cover" src="{{ game_cover(t.game_code) }}" alt="{{ t.game_name }}" width="200" height="250" loading="lazy">
     <span class="badge status-{{ t.status }}">{{ status_labels[t.status] }}</span>
     <strong class="t-name">{{ t.name }}</strong>
@@ -38,8 +39,10 @@
       <span>Inscrição: {{ t.entry_fee_cents|wcash if t.entry_fee_cents else 'grátis' }}</span>
       {% if t.starts_on %}<span>{{ t.starts_on|date_br }}{% if t.ends_on %} a {{ t.ends_on|date_br }}{% endif %}</span>{% endif %}
     </span>
-    <small class="muted">Organizado por {{ t.organizer_name }}</small>
-  </a>
+    <small class="muted">{% if own %}Criado por você{% else %}Organizado por {{ t.organizer_name }}{% endif %}</small>
+    <a class="t-link" href="{{ url_for('tournaments.show', slug=t.slug) }}" aria-label="{{ t.name }}"></a>
+    {% if own %}<div class="card-actions"><a class="button t-manage" href="{{ url_for('tournaments.manage', slug=t.slug) }}">Gerenciar</a></div>{% endif %}
+  </div>
   {% endfor %}
 </div>
 {% elif name or organizer or status or game %}<p>Nenhum torneio encontrado com esses filtros.</p>
