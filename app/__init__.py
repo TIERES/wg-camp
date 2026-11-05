@@ -30,6 +30,9 @@ def create_app(test_config=None):
         # Escudos de times enviados pelo admin (/admin/torneios/times); a base
         # inicial fica em app/static/teams.
         TEAM_LOGOS_DIR=os.environ.get("ARENA17_TEAM_LOGOS_DIR", str(root / "storage" / "team-logos")),
+        # Foto do perfil e imagem do torneio enviadas pelos jogadores (app/images.py).
+        AVATARS_DIR=os.environ.get("ARENA17_AVATARS_DIR", str(root / "storage" / "avatars")),
+        TOURNAMENT_IMAGES_DIR=os.environ.get("ARENA17_TOURNAMENT_IMAGES_DIR", str(root / "storage" / "tournament-images")),
         # ISO que o organizador envia para o torneio (vai para o archive.org).
         TOURNAMENT_ISO_MAX_BYTES=int(os.environ.get("ARENA17_TOURNAMENT_ISO_MAX_BYTES", 1024**3)),
         # Base dos links enviados por e-mail (confirmação, nova senha), ex.
@@ -72,6 +75,8 @@ def create_app(test_config=None):
     Path(app.config["REPLAY_BACKUPS_DIR"]).mkdir(parents=True, exist_ok=True)
     Path(app.config["MEMCARDS_DIR"]).mkdir(parents=True, exist_ok=True)
     Path(app.config["TEAM_LOGOS_DIR"]).mkdir(parents=True, exist_ok=True)
+    Path(app.config["AVATARS_DIR"]).mkdir(parents=True, exist_ok=True)
+    Path(app.config["TOURNAMENT_IMAGES_DIR"]).mkdir(parents=True, exist_ok=True)
 
     db.init_app(app)
     # migrate_db() is idempotent (checks column/table existence before every
@@ -110,6 +115,8 @@ def create_app(test_config=None):
     from .updates import bp as updates_bp
     from .players import bp as players_bp
     from .memcards import api_bp as memcards_api_bp
+    from .images import bp as images_bp
+    app.register_blueprint(images_bp)
     app.register_blueprint(public_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(spectate_bp)

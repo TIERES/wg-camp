@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% block title %}Criar torneio · WE Camp{% endblock %}{% block content %}
 <h1>Criar torneio</h1>
 {% if not games %}<p class="notice error">Nenhum jogo cadastrado para torneios ainda. Peça à administração do WE Camp.</p>{% else %}
-<form method="post" class="form t-form" id="new-tournament">
+<form method="post" class="form t-form" id="new-tournament" enctype="multipart/form-data">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <p class="muted">Os campos com <span class="req">*</span> são obrigatórios.</p>
   <div class="form-row">
@@ -9,6 +9,16 @@
     <label><span>Início provável <span class="req">*</span></span><input type="date" name="starts_on" required value="{{ form.get('starts_on', '') }}"></label>
     <label>Fim provável<input type="date" name="ends_on" value="{{ form.get('ends_on', '') }}"></label>
   </div>
+  <fieldset>
+    <legend>Imagem do torneio <small class="muted">(opcional)</small></legend>
+    <div class="t-image-edit">
+      <img id="t-image-preview" class="t-image-thumb" alt="" hidden>
+      <div>
+        <p class="muted">Logo ou arte do campeonato; aparece ao lado da capa do jogo. <strong>Tamanho ideal: 480 × 600 px</strong> (em pé, proporção 4:5, igual à capa); outras proporções aparecem inteiras, com sobra nas laterais ou em cima e embaixo. PNG, JPG ou WebP (PNG/WebP com fundo transparente ficam melhor). Dá para trocar depois, em Gerenciar.</p>
+        <input type="file" name="image" accept="image/png,image/jpeg,image/webp" data-resize="max:600" data-preview="t-image-preview" aria-label="Escolher imagem do torneio">
+      </div>
+    </div>
+  </fieldset>
   <fieldset class="game-pick">
     <legend>Jogo base <span class="req">*</span></legend>
     <div class="game-covers">
@@ -320,6 +330,7 @@
 })();
 </script>
 <script src="{{ url_for('static', filename='js/wcash-mask.js') }}"></script>
+<script src="{{ url_for('static', filename='js/image-resize.js') }}" defer></script>
 {% endif %}
 {% include 'tournaments/_credits.html' %}
 {% endblock %}

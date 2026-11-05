@@ -28,20 +28,33 @@
 {% if tournaments %}
 <div class="t-cards">
   {% for t in tournaments %}
-  {% set own = manage_buttons and t.organizer_id == session.player_id %}
+  {% set own = session.player_id and t.organizer_id == session.player_id %}
+  {% set manageable = own or session.user_id %}{% set iso_ok = t.id in iso_ready %}
   <div class="t-card">
-    <img class="t-cover" src="{{ game_cover(t.game_code) }}" alt="{{ t.game_name }}" width="200" height="250" loading="lazy">
-    <span class="badge status-{{ t.status }}">{{ status_labels[t.status] }}</span>
-    <strong class="t-name">{{ t.name }}</strong>
-    <span class="muted">{{ t.game_name }} · {{ format_labels[t.format] }}</span>
-    <span class="t-meta">
-      <span>{{ t.entries }}/{{ t.max_players }} jogadores</span>
-      <span>Inscrição: {{ t.entry_fee_cents|wcash if t.entry_fee_cents else 'grátis' }}</span>
-      {% if t.starts_on %}<span>{{ t.starts_on|date_br }}{% if t.ends_on %} a {{ t.ends_on|date_br }}{% endif %}</span>{% endif %}
-    </span>
-    <small class="muted">{% if own %}Criado por você{% else %}Organizado por {{ t.organizer_name }}{% endif %}</small>
+    <div class="t-side">
+      <div class="t-side-images">
+        {% if t.image %}<img class="t-cover t-image" src="{{ image_url('torneio', t.image) }}" alt="" loading="lazy">{% endif %}
+        <img class="t-cover" src="{{ game_cover(t.game_code) }}" alt="{{ t.game_name }}" width="200" height="250" loading="lazy">
+      </div>
+    </div>
+    <div class="t-body">
+      <span class="badge status-{{ t.status }}">{{ status_labels[t.status] }}</span>
+      <strong class="t-name">{{ t.name }}</strong>
+      <span class="muted">{{ t.game_name }} · {{ format_labels[t.format] }}</span>
+      <span class="t-meta">
+        <span>{{ t.entries }}/{{ t.max_players }} jogadores</span>
+        <span>Inscrição: {{ t.entry_fee_cents|wcash if t.entry_fee_cents else 'grátis' }}</span>
+        {% if t.starts_on %}<span>{{ t.starts_on|date_br }}{% if t.ends_on %} a {{ t.ends_on|date_br }}{% endif %}</span>{% endif %}
+      </span>
+      <small class="muted">{% if own %}Criado por você{% else %}Organizado por {{ t.organizer_name }}{% endif %}</small>
+    </div>
+    {% if iso_ok or manageable %}
+    <div class="t-foot">
+      {% if iso_ok %}<a class="button secondary" href="{{ url_for('tournaments.iso_download', slug=t.slug) }}" title="Baixar {{ t.iso_name }}">Download ISO</a>{% endif %}
+      {% if manageable %}<a class="button" href="{{ url_for('tournaments.manage', slug=t.slug) }}">Gerenciar</a>{% endif %}
+    </div>
+    {% endif %}
     <a class="t-link" href="{{ url_for('tournaments.show', slug=t.slug) }}" aria-label="{{ t.name }}"></a>
-    {% if own %}<div class="card-actions"><a class="button t-manage" href="{{ url_for('tournaments.manage', slug=t.slug) }}">Gerenciar</a></div>{% endif %}
   </div>
   {% endfor %}
 </div>

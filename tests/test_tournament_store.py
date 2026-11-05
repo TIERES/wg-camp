@@ -17,6 +17,7 @@ def make_app(root):
         "DATABASE": str(root / "arena17.db"), "DOWNLOADS_DIR": str(root / "downloads"),
         "UPLOAD_TMP_DIR": str(root / "tmp"), "LIVE_DIR": str(root / "live"), "UPDATES_DIR": str(root / "updates"),
         "REPLAY_BACKUPS_DIR": str(root / "backups"), "MEMCARDS_DIR": str(root / "memcards"),
+        "AVATARS_DIR": str(root / "avatars"), "TOURNAMENT_IMAGES_DIR": str(root / "tournament-images"),
     })
 
 

@@ -354,9 +354,18 @@ def _pay_match(db, tournament, match):
         amount = setting(db, "torneios_" + kind)
         player_id = db.execute("SELECT player_id FROM tournament_entries WHERE id = ?", (entry_id,)).fetchone()[0]
         ensure_wallet(db, player_id)
-        if amount:
-            post(db, player_id, amount, kind, f"partida:{match_id}:v{version}:{player_id}",
-                 tournament_id=tournament["id"], match_id=match_id, note=tournament["name"])
+        ref_key = f"partida:{match_id}:v{version}:{player_id}"
+        if amount > 0:
+            post(db, player_id, amount, kind, ref_key, tournament_id=tournament["id"], match_id=match_id,
+                 note=tournament["name"])
+        elif amount < 0:
+            # Débito por derrota: só até zerar o saldo, nunca negativo. Zerou: marca para
+            # avisar o jogador e a administração (notify.empty_wallets, depois do commit).
+            balance = db.execute("SELECT wallet_cents FROM players WHERE id = ?", (player_id,)).fetchone()[0]
+            debit = max(amount, -balance)
+            if debit < 0 and post(db, player_id, debit, kind, ref_key, tournament_id=tournament["id"],
+                                  match_id=match_id, note=tournament["name"]) and debit == -balance:
+                db.execute("UPDATE players SET wallet_empty_pending = 1 WHERE id = ?", (player_id,))
 
 
 def record_result(db, tournament, match_id, home_goals, away_goals, home_pens=None, away_pens=None):

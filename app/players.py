@@ -15,6 +15,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from .accounts import (email_error, external_url, find_token, issue_token, password_error,
                        purge_stale_unverified, recently_sent, revoke_api_tokens, username_error)
+from . import images
 from .db import get_db, now
 from .mailer import MailError, send_mail
 from .memcards import (add_version, card_error, card_path, championship_isos, get_or_create_game,
@@ -257,6 +258,36 @@ def account():
         (player["id"],),
     ).fetchall()
     return render_template("players/account.html", player=player, cards=cards, isos=isos, games=games, tokens=tokens)
+
+
+@bp.post("/foto")
+@player_required
+def avatar():
+    """Envia, troca ou remove a foto do perfil (o navegador já recorta e reduz)."""
+    validate_csrf()
+    db = get_db()
+    old = db.execute("SELECT avatar FROM players WHERE id = ?", (session["player_id"],)).fetchone()
+    if old is None:
+        session.pop("player_id", None)
+        return redirect(url_for("players.login"))
+    if request.form.get("acao") == "remover":
+        new_name, message = None, "Foto removida."
+    else:
+        upload = request.files.get("avatar")
+        if not upload or not upload.filename:
+            flash("Escolha uma foto.", "error")
+            return redirect(url_for("players.account", _anchor="foto"))
+        try:
+            new_name = images.save("avatar", upload)
+        except images.ImageError as error:
+            flash(str(error), "error")
+            return redirect(url_for("players.account", _anchor="foto"))
+        message = "Foto salva."
+    db.execute("UPDATE players SET avatar = ?, updated_at = ? WHERE id = ?", (new_name, now(), session["player_id"]))
+    db.commit()
+    images.delete("avatar", old["avatar"])
+    flash(message, "success")
+    return redirect(url_for("players.account", _anchor="foto"))
 
 
 @bp.post("/senha")

@@ -1,7 +1,10 @@
-{% extends 'base.html' %}{% from 'tournaments/_macros.html' import standings, bracket, match_line, stage_rounds %}
+{% extends 'base.html' %}{% from '_avatar.html' import avatar_button %}{% from 'tournaments/_macros.html' import standings, bracket, match_line, stage_rounds %}
 {% block title %}{{ t.name }} · Torneios WE Camp{% endblock %}{% block content %}
 <section class="t-header">
-  <img class="t-header-cover" src="{{ game_cover(t.game_code) }}" alt="{{ t.game_name }}" width="200" height="250">
+  <div class="t-header-images">
+    {% if t.image %}<img class="t-header-cover t-image" src="{{ image_url('torneio', t.image) }}" alt="Imagem do torneio {{ t.name }}">{% endif %}
+    <img class="t-header-cover" src="{{ game_cover(t.game_code) }}" alt="{{ t.game_name }}" width="200" height="250">
+  </div>
   <span class="badge status-{{ t.status }}">{{ status_labels[t.status] }}</span>
   <h1>{{ t.name }}</h1>
   <p class="muted">{{ t.game_name }}{% if t.platform %} ({{ t.platform }}){% endif %} · {{ format_label }} · organizado por <strong>{{ t.organizer_name }}</strong></p>
@@ -84,7 +87,7 @@
   </section>
   <section>
     <h2>Inscritos ({{ entries|length }})</h2>
-    {% if entries %}<ol class="entry-list">{% for e in entries %}<li><span class="entry-pos">{{ loop.index }}.</span>{{ names[e.id] }}</li>{% endfor %}</ol>
+    {% if entries %}<ol class="entry-list">{% for e in entries %}<li><span class="entry-pos">{{ loop.index }}.</span><span class="with-avatar">{{ avatar_button(e.player_id, e.username) }}<span>{{ names[e.id] }}</span></span></li>{% endfor %}</ol>
     {% else %}<p class="muted">Ninguém inscrito ainda.</p>{% endif %}
   </section>
   {% if team_list %}

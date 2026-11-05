@@ -256,6 +256,32 @@ def auto_finish_at(tournament):
     return (played + timedelta(hours=AUTO_FINISH_HOURS)).replace(microsecond=0).isoformat()
 
 
+def empty_wallets(db):
+    """Jogadores que um débito por derrota deixou com W$0,00 (players.wallet_empty_pending):
+    avisa o jogador (a administração vai creditar um novo valor) e a administração.
+    Só lê o que já foi gravado (chamada no começo das páginas de torneio) e desmarca
+    antes de enviar, para não repetir o aviso."""
+    messages = []
+    for p in db.execute("SELECT id, username, email, wallet_cents FROM players WHERE wallet_empty_pending = 1").fetchall():
+        if not db.execute("UPDATE players SET wallet_empty_pending = 0 WHERE id = ? AND wallet_empty_pending = 1",
+                          (p["id"],)).rowcount:
+            continue
+        if p["wallet_cents"] > 0:
+            continue  # o resultado foi corrigido (estorno) ou já houve crédito
+        messages.append((p["email"], "Seu saldo W$ acabou", (
+            f"Olá, {p['username']}!\n\nCom o débito por derrota, o seu saldo W$ chegou a W$0,00. Não se preocupe: "
+            "a Administração do WE Camp já foi avisada e estará creditando um novo valor na sua carteira.\n\n"
+            f"Sua carteira: {external_url('tournaments.wallet')}\n")))
+        for admin in admin_emails(db):
+            messages.append((admin, f"Jogador sem saldo W$: {p['username']}", (
+                f"O jogador {p['username']} ({p['email']}) ficou sem saldo W$ (W$0,00) depois de um débito por "
+                "derrota.\n\nPara creditar um novo valor, use o ajuste de saldo em Torneios: administração:\n"
+                f"{external_url('tournaments_admin.admin_home')}\n")))
+    if messages:
+        db.commit()
+        _deliver(messages)
+
+
 # --- Amigos e convites (app/tournament/friends.py) -----------------------------
 
 def friend_request(db, from_id, to_id, accepted=False):

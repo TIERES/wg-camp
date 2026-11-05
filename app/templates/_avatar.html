@@ -1,0 +1,12 @@
+{# Foto do jogador (players.avatar) ou a inicial do nome quando não tem foto.
+   avatar_button: miniatura das listas; o clique abre o resumo do jogador
+   (static/js/player-card.js + tournaments.player_card). #}
+{% macro avatar(player_id, username, size='sm') -%}
+{%- set src = player_avatar(player_id) -%}
+{%- if src %}<img class="avatar avatar-{{ size }}" src="{{ src }}" alt="" loading="lazy">
+{%- else %}<span class="avatar avatar-{{ size }} avatar-initial" aria-hidden="true">{{ (username or '?')[:1]|upper }}</span>{% endif -%}
+{%- endmacro %}
+
+{% macro avatar_button(player_id, username, size='sm') -%}
+<button type="button" class="avatar-btn" data-player-card="{{ url_for('tournaments.player_card', nome=username) }}" title="Resumo de {{ username }}" aria-label="Ver resumo de {{ username }}">{{ avatar(player_id, username, size) }}</button>
+{%- endmacro %}

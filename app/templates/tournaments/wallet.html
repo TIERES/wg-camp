@@ -2,11 +2,40 @@
 <section class="wallet-head">
   <h1>Carteira W$</h1>
   <p class="wallet-balance">{{ player.wallet_cents|wcash }}</p>
-  <p class="muted">W$ é o dinheiro dos torneios do WE Camp: paga inscrições e vira prêmio para os 3 primeiros. Cada jogo também rende W$: vitória {{ values.torneios_vitoria|wcash }}, empate {{ values.torneios_empate|wcash }}, derrota {{ values.torneios_derrota|wcash }}. W$ não pode ser trocado por dinheiro de verdade.</p>
+  {% if player.wallet_cents <= 0 %}<p class="notice">Seu saldo W$ acabou. A Administração do WE Camp já foi avisada e estará creditando um novo valor na sua carteira.</p>{% endif %}
+  <p class="muted">W$ é o dinheiro dos torneios do WE Camp: paga inscrições e vira prêmio para os 3 primeiros. Cada jogo também rende W$: vitória {{ values.torneios_vitoria|wcash }}, empate {{ values.torneios_empate|wcash }}, derrota {% if values.torneios_derrota < 0 %}desconta {{ (-values.torneios_derrota)|wcash }} (só até zerar o saldo){% else %}{{ values.torneios_derrota|wcash }}{% endif %}. W$ não pode ser trocado por dinheiro de verdade.</p>
 </section>
 <section>
   <h2>Extrato</h2>
-  {% if entries %}
+  {% if entries %}{% set pts = chart.points %}
+  {% if pts|length > 1 %}
+  {% set W, H, L, R, T, B = 640, 220, 78, 12, 12, 28 %}
+  {% set pw, ph = W - L - R, H - T - B %}
+  {% set step = pw / (pts|length - 1) %}
+  {% set span = chart.high - chart.low %}
+  <div class="evo-chart" id="wallet-chart">
+    <svg viewBox="0 0 {{ W }} {{ H }}" role="img" aria-label="Saldo da carteira ao longo de {{ pts|length }} movimentos, terminando em {{ pts[-1].balance_label }}">
+      {% for tick in chart.ticks %}{% set y = T + (chart.high - tick.value) / span * ph %}
+      <line class="evo-grid{{ ' evo-zero' if tick.value == 0 and chart.low < 0 }}" x1="{{ L }}" x2="{{ W - R }}" y1="{{ y }}" y2="{{ y }}"></line>
+      <text class="evo-axis" x="{{ L - 6 }}" y="{{ y + 4 }}" text-anchor="end">{{ tick.label }}</text>
+      {% endfor %}
+      <polyline class="evo-line" points="{% for p in pts %}{{ L + loop.index0 * step }},{{ T + (chart.high - p.balance) / span * ph }} {% endfor %}"></polyline>
+      <line class="evo-cross" id="wallet-cross" x1="0" x2="0" y1="{{ T }}" y2="{{ T + ph }}" visibility="hidden"></line>
+      {% for p in pts %}{% set x = L + loop.index0 * step %}
+      <g class="evo-pt" data-i="{{ loop.index0 }}">
+        <rect class="evo-hit" x="{{ x - step / 2 }}" y="{{ T }}" width="{{ step }}" height="{{ ph }}"></rect>
+        <circle cx="{{ x }}" cy="{{ T + (chart.high - p.balance) / span * ph }}" r="{{ 4 if pts|length <= 40 else 3 }}" fill="{{ '#34d399' if p.positive else '#f87171' }}"></circle>
+      </g>
+      {% endfor %}
+      <text class="evo-axis" x="{{ L }}" y="{{ H - 8 }}">{{ pts[0].date[:10] }}</text>
+      <text class="evo-axis" x="{{ W - R }}" y="{{ H - 8 }}" text-anchor="end">Hoje</text>
+    </svg>
+    <div class="evo-tip" id="wallet-tip" hidden></div>
+  </div>
+  <p class="muted">Saldo depois de cada movimento. Bolinhas: <span class="wallet-dot pos"></span> entrada · <span class="wallet-dot neg"></span> saída{% if entries|length >= 200 %} · últimos 200 movimentos{% endif %}.</p>
+  {% else %}<p class="muted">O gráfico aparece a partir do segundo movimento.</p>{% endif %}
+  <details class="evo-table">
+    <summary>Ver em tabela</summary>
   <div class="table-scroll"><table class="ledger">
     <thead><tr><th>Data</th><th>Descrição</th><th class="num">Valor</th></tr></thead>
     <tbody>{% for e in entries %}
@@ -15,6 +44,32 @@
         <td class="num {{ 'pos' if e.amount_cents > 0 else 'neg' }}">{{ e.amount_cents|wcash }}</td></tr>
     {% endfor %}</tbody>
   </table></div>
+  </details>
+  <script>
+  (function () {
+    var data = {{ pts|tojson }};
+    var box = document.getElementById('wallet-chart'), tip = document.getElementById('wallet-tip'), cross = document.getElementById('wallet-cross');
+    function show(g) {
+      var p = data[+g.dataset.i], c = g.querySelector('circle');
+      cross.setAttribute('x1', c.getAttribute('cx')); cross.setAttribute('x2', c.getAttribute('cx'));
+      cross.setAttribute('visibility', 'visible');
+      tip.innerHTML = '';
+      var parts = [['strong', p.balance_label], ['span', p.description], ['span', p.amount_label + ' · ' + p.date]];
+      parts.forEach(function (part) { var el = document.createElement(part[0]); el.textContent = part[1]; tip.appendChild(el); });
+      tip.hidden = false;
+      var b = box.getBoundingClientRect(), r = c.getBoundingClientRect();
+      var x = r.left - b.left + r.width / 2, left = Math.min(Math.max(x - tip.offsetWidth / 2, 0), b.width - tip.offsetWidth);
+      tip.style.left = left + 'px';
+      tip.style.top = Math.max(r.top - b.top - tip.offsetHeight - 10, 0) + 'px';
+    }
+    function hide() { tip.hidden = true; cross.setAttribute('visibility', 'hidden'); }
+    box.querySelectorAll('.evo-pt').forEach(function (g) {
+      g.addEventListener('mouseenter', function () { show(g); });
+      g.addEventListener('click', function () { show(g); });
+    });
+    box.addEventListener('mouseleave', hide);
+  })();
+  </script>
   {% else %}<p class="muted">Nenhum movimento ainda.</p>{% endif %}
 </section>
 {% endblock %}

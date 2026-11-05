@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'tournaments/_stats_macros.html' import player_link, form_badges %}{% from 'tournaments/_macros.html' import match_line %}
+{% extends 'base.html' %}{% from '_avatar.html' import avatar_button %}{% from 'tournaments/_stats_macros.html' import player_link, form_badges %}{% from 'tournaments/_macros.html' import match_line %}
 {% block title %}Comparar jogadores · WE Camp{% endblock %}{% block content %}
 <p><a href="{{ url_for('tournaments.ranking', jogo=game) }}">← Ranking</a></p>
 <h1>Comparar jogadores</h1>
@@ -23,9 +23,9 @@
 <section class="h2h">
   <h2>Confronto direto</h2>
   <div class="h2h-head">
-    <div class="h2h-side">{{ player_link(a.username, game) }}<strong class="h2h-wins">{{ h.wins }}</strong><small>vitórias</small></div>
+    <div class="h2h-side">{{ avatar_button(a.id, a.username, 'md') }}<div class="h2h-score">{{ player_link(a.username, game) }}<strong class="h2h-wins">{{ h.wins }}</strong><small>vitórias</small></div></div>
     <div class="h2h-mid"><strong>{{ h.draws }}</strong><small>empates</small><span class="muted">{{ h.played }} jogo{{ 's' if h.played != 1 }}</span></div>
-    <div class="h2h-side">{{ player_link(b.username, game) }}<strong class="h2h-wins">{{ h.losses }}</strong><small>vitórias</small></div>
+    <div class="h2h-side h2h-b">{{ avatar_button(b.id, b.username, 'md') }}<div class="h2h-score">{{ player_link(b.username, game) }}<strong class="h2h-wins">{{ h.losses }}</strong><small>vitórias</small></div></div>
   </div>
   {% if h.played %}
   <div class="h2h-bar" role="img" aria-label="{{ a.username }} {{ h.wins }}, empates {{ h.draws }}, {{ b.username }} {{ h.losses }}">

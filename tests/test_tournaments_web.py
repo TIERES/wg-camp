@@ -38,6 +38,20 @@ class TournamentsWebTest(unittest.TestCase):
         with self.app.app_context():
             return get_db().execute(sql, args).fetchall()
 
+    def test_admin_header_menu_and_footer(self):
+        anon = self.client().get("/torneios/").data.decode()
+        self.assertIn('Campeonatos de Winning Eleven</strong> - <a href="/admin/">Administração</a>', anon)
+        self.assertIn(">Entrar<", anon)
+        admin = self.client(admin=True).get("/torneios/").data.decode()
+        self.assertIn('class="user-name">adm<', admin)
+        for href in ('href="/admin/"', 'href="/admin/replays', 'href="/admin/torneios/"', 'href="/admin/torneios/times"',
+                     'href="/torneios/"><svg', 'action="/admin/logout"'):
+            self.assertIn(href, admin)
+        self.assertNotIn(">Entrar<", admin)
+        self.assertNotIn(">Cadastre-se<", admin)
+        self.assertNotIn('<a href="/torneios/">Torneios</a>', admin)
+        self.assertNotIn('- <a href="/admin/">Administração</a>', admin)
+
     def test_free_mode_enroll_finds_existing_team(self):
         with self.app.app_context():
             db = get_db()
@@ -91,7 +105,21 @@ class TournamentsWebTest(unittest.TestCase):
         self.assertIn('t-name">Copa Outra', owner)
         self.assertIn('href="/torneios/minha/gerenciar"', owner)
         self.assertIn('href="/torneios/outra/gerenciar"', owner)
-        self.assertNotIn("Gerenciar", self.client(self.players[0]).get("/torneios/").data.decode())
+        # Torneios usa o mesmo card: Gerenciar nos do organizador, nada para os outros; sem ISO, sem Download ISO.
+        listing = self.client(self.players[0]).get("/torneios/").data.decode()
+        self.assertIn('href="/torneios/minha/gerenciar"', listing)
+        self.assertNotIn("Download ISO", listing)
+        self.assertNotIn("Gerenciar", player.get("/torneios/").data.decode())
+        with self.app.app_context():
+            get_db().execute(
+                "INSERT INTO tournament_isos (tournament_id, stored_name, original_filename, file_size, md5, archive_name, "
+                "archive_status, archive_url, local_removed_at, created_at, updated_at) SELECT id, 'x', 'copa.chd', 1, 'm', "
+                "'copa.chd', 'done', 'https://archive.org/download/one-two-iso/copa.chd', ?, ?, ? FROM tournaments "
+                "WHERE slug = 'minha'", (now(), now(), now()))
+            get_db().commit()
+        listing = player.get("/torneios/").data.decode()
+        self.assertIn('href="/torneios/minha/iso" title="Baixar copa.chd">Download ISO', listing)
+        self.assertEqual(listing.count("Download ISO"), 1)  # só a Copa Minha tem ISO
         # Encerrado só aparece escolhendo o status no filtro.
         with self.app.app_context():
             get_db().execute("UPDATE tournaments SET status = 'finished' WHERE slug = 'minha'")
@@ -185,6 +213,24 @@ class TournamentsWebTest(unittest.TestCase):
         wallet = self.client(self.players[1]).get("/torneios/carteira")
         self.assertEqual(wallet.status_code, 200)
         self.assertIn(b"W$", wallet.data)
+        # Extrato em gráfico: saldo depois de cada movimento, do mais antigo até o saldo atual.
+        page = wallet.data.decode()
+        self.assertIn('id="wallet-chart"', page)
+        self.assertIn("Ver em tabela", page)
+        with self.app.app_context():
+            from app.tournaments import _wallet_chart
+            from app.wallet import format_cents
+            db = get_db()
+            current = db.execute("SELECT wallet_cents FROM players WHERE id = ?", (self.players[1],)).fetchone()[0]
+            entries = db.execute("SELECT w.*, NULL AS tournament_name FROM wallet_entries w WHERE player_id = ? "
+                                 "ORDER BY id DESC", (self.players[1],)).fetchall()
+            chart = _wallet_chart(current, entries)
+        self.assertEqual(chart["points"][0]["balance"], entries[-1]["amount_cents"])  # depois do 1º movimento
+        self.assertEqual(chart["points"][-1]["balance"], current)
+        self.assertEqual(len(chart["points"]), len(entries))
+        self.assertLessEqual(chart["low"], min(p["balance"] for p in chart["points"]))
+        self.assertGreaterEqual(chart["high"], current)
+        self.assertIn(f"terminando em {format_cents(current)}", page)
         total = self.query("SELECT SUM(wallet_cents), (SELECT SUM(amount_cents) FROM wallet_entries) FROM players")[0]
         self.assertEqual(total[0], total[1])
 

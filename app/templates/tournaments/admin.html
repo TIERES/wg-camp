@@ -1,5 +1,5 @@
 {% extends 'base.html' %}{% block title %}Torneios · Administração{% endblock %}{% block content %}
-<div class="page-title"><h1>Torneios: administração</h1><span><a class="button" href="{{ url_for('tournaments_admin.admin_teams') }}">Times e escudos</a> <a href="{{ url_for('tournaments.index') }}">Ver torneios</a></span></div>
+<div class="page-title"><h1>Torneios: administração</h1></div>
 <p class="muted">Como administração do WE Camp você pode gerenciar qualquer torneio (botão "Gerenciar" na página dele), inclusive cancelar torneios em andamento.</p>
 
 <section>
@@ -8,10 +8,10 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-row">
     {% for key, label in labels.items() %}
-      <label>{{ label }}<input name="{{ key }}" required {% if key in money %}inputmode="numeric" data-wcash value="{{ (values[key]|wcash)[2:] }}"{% else %}type="number" min="1" value="{{ values[key] }}"{% endif %}></label>
+      <label>{{ label }}<input name="{{ key }}" required {% if key in money %}inputmode="numeric" data-wcash{% if key == 'torneios_derrota' %} data-wcash-signed title="Digite - para descontar de quem perde e + para voltar a pagar"{% endif %} value="{{ values[key]|wcash }}"{% else %}type="number" min="1" value="{{ values[key] }}"{% endif %}></label>
     {% endfor %}
     </div>
-    <p class="muted">O saldo inicial vale para quem abrir a carteira depois da mudança. Os valores por jogo valem para os resultados lançados depois da mudança. Use 0,00 para não pagar nada.</p>
+    <p class="muted">O saldo inicial vale para quem abrir a carteira depois da mudança. Os valores por jogo valem para os resultados lançados depois da mudança. Use 0,00 para não pagar nada. No <strong>Débito por derrota</strong>, digite <kbd>-</kbd> para descontar de quem perde (ex.: -W$ 0,50) e <kbd>+</kbd> para voltar a um valor positivo; o desconto só vai até W$ 0,00, o saldo nunca fica negativo. Quem chegar a zero recebe um e-mail avisando que a administração vai creditar um novo valor, e o e-mail da administração (abaixo) é avisado.</p>
     <button>Salvar valores</button>
   </form>
 </section>

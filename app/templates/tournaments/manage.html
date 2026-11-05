@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'tournaments/_macros.html' import match_line, status_chip, leg_flip, stage_rounds %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% block title %}Gerenciar {{ t.name }} · Torneios WE Camp{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from 'tournaments/_macros.html' import match_line, status_chip, leg_flip, stage_rounds %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% from '_avatar.html' import avatar_button %}{% block title %}Gerenciar {{ t.name }} · Torneios WE Camp{% endblock %}{% block content %}
 {# Formulários de resultado de uma lista de jogos (com ou sem Ida/Volta). #}
 {% macro result_forms(ms) %}{% for m in ms %}{% set shown = m if m.status == 'confirmed' else reported_score(m) %}
     <form method="post" action="{{ url_for('tournaments.result', slug=t.slug, match_id=m.id) }}" class="result-form{% if m.status == 'confirmed' %} done{% endif %}" id="jogo-{{ m.id }}">
@@ -9,7 +9,7 @@
       {% if m.id in decisive %}<span class="pens" data-agg="{{ decisive[m.id]|join(',') }}">{{ 'Empate no agregado' if decisive[m.id] != (0, 0) else 'Empate' }}, pênaltis: <input type="number" name="home_pens" min="0" max="99" value="{{ m.home_pens if m.home_pens is not none }}" aria-label="Pênaltis mandante"> x <input type="number" name="away_pens" min="0" max="99" value="{{ m.away_pens if m.away_pens is not none }}" aria-label="Pênaltis visitante"></span>{% endif %}
       <span class="result-buttons">
         {% if my_entry_id in (m.home_entry_id, m.away_entry_id) %}<small class="muted">Seu jogo: reporte na <a href="{{ url_for('tournaments.match', slug=t.slug, match_id=m.id) }}">página do jogo</a></small>
-        {% else %}<button name="acao" value="salvar">{{ 'Corrigir' if m.status == 'confirmed' else 'Salvar' }}</button>{% if m.status == 'confirmed' %}<button name="acao" value="apagar" class="secondary" formnovalidate>Apagar</button>{% elif m.status in ('reported', 'disputed') %}<button name="acao" value="apagar" class="secondary" formnovalidate title="Descarta o placar enviado e deixa os jogadores reportarem de novo">Liberar novo reporte</button>{% endif %}{% endif %}
+        {% else %}<button name="acao" value="salvar">{{ 'Corrigir' if m.status == 'confirmed' else 'Salvar' }}</button>{% if m.status == 'confirmed' %}<button name="acao" value="apagar" class="secondary btn-left" formnovalidate>Apagar</button>{% elif m.status in ('reported', 'disputed') %}<button name="acao" value="apagar" class="secondary btn-left" formnovalidate title="Descarta o placar enviado e deixa os jogadores reportarem de novo">Liberar novo reporte</button>{% endif %}{% endif %}
         {{ status_chip(m) }} <a href="{{ url_for('tournaments.match', slug=t.slug, match_id=m.id) }}">detalhes</a></span>
     </form>
     {% endfor %}
@@ -71,7 +71,7 @@
   {% if entries %}
   <div class="table-scroll"><table>
     <thead><tr><th>Jogador</th><th>Time</th><th>Inscrito em</th>{% if t.status == 'registration' %}<th></th>{% endif %}</tr></thead>
-    <tbody>{% for e in entries %}<tr><td>{{ e.username }}</td><td>{{ e.team_name }}</td><td>{{ e.created_at|localtime }}</td>
+    <tbody>{% for e in entries %}<tr><td><span class="with-avatar">{{ avatar_button(e.player_id, e.username) }}<span>{{ e.username }}</span></span></td><td>{{ e.team_name }}</td><td>{{ e.created_at|localtime }}</td>
       {% if t.status == 'registration' %}<td><form method="post" action="{{ url_for('tournaments.remove_entry', slug=t.slug, entry_id=e.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Remover</button></form></td>{% endif %}</tr>{% endfor %}</tbody>
   </table></div>
   {% else %}<p class="muted">Ninguém inscrito ainda.</p>{% endif %}
@@ -106,6 +106,25 @@
 {% endif %}
 
 {% if t.status != 'cancelled' %}
+<section id="imagem">
+  <h2>Imagem do torneio</h2>
+  <div class="t-image-edit">
+    <img id="t-image-preview" class="t-image-thumb" src="{{ image_url('torneio', t.image) or '' }}" alt="" {% if not t.image %}hidden{% endif %}>
+    <div>
+      <p class="muted">Logo ou arte do campeonato; aparece ao lado da capa do jogo na página e nos cards. <strong>Tamanho ideal: 480 × 600 px</strong> (em pé, proporção 4:5, igual à capa); outras proporções aparecem inteiras, com sobra nas laterais ou em cima e embaixo. PNG, JPG ou WebP (PNG/WebP com fundo transparente ficam melhor).</p>
+      <form method="post" action="{{ url_for('tournaments.tournament_image', slug=t.slug) }}" enctype="multipart/form-data" class="image-upload-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="file" name="image" accept="image/png,image/jpeg,image/webp" required data-resize="max:600" data-preview="t-image-preview" aria-label="Escolher imagem do torneio">
+        <div class="card-actions">
+          <button>{{ 'Trocar imagem' if t.image else 'Salvar imagem' }}</button>
+          {% if t.image %}<button class="secondary btn-left" name="acao" value="remover" formnovalidate>Remover imagem</button>{% endif %}
+        </div>
+      </form>
+    </div>
+  </div>
+  <script src="{{ url_for('static', filename='js/image-resize.js') }}" defer></script>
+</section>
+
 <section id="iso">
   <h2>ISO do torneio</h2>
   <p class="muted">A ISO do {{ t.game_name }} com o patch deste torneio. Dá para trocar a qualquer momento.</p>

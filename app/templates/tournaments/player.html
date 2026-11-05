@@ -1,7 +1,7 @@
-{% extends 'base.html' %}{% from 'tournaments/_stats_macros.html' import game_filter, player_link, form_badges, history_table %}
+{% extends 'base.html' %}{% from '_avatar.html' import avatar %}{% from 'tournaments/_stats_macros.html' import game_filter, player_link, form_badges, history_table %}
 {% block title %}{{ p.username }} · WE Camp{% endblock %}{% block content %}
 <p><a href="{{ url_for('tournaments.ranking', jogo=game) }}">← Ranking</a></p>
-<div class="page-title"><h1>{{ p.username }}</h1>{% if session.player_id and session.player_id != p.id %}<div class="card-actions">
+<div class="page-title"><div class="player-title">{{ avatar(p.id, p.username, 'lg') }}<h1>{{ p.username }}</h1>{% if session.user_id and player_avatar(p.id) %}<form method="post" action="{{ url_for('tournaments.player_avatar_remove', player_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary" title="Moderação: tira a foto deste jogador">Remover foto</button></form>{% endif %}</div>{% if session.player_id and session.player_id != p.id %}<div class="card-actions">
   {% if relation == 'friends' %}<span class="friend-tag">Amigos ✓</span>
   {% elif relation == 'sent' %}<span class="friend-tag">Pedido de amizade enviado</span>
   {% elif relation == 'received' %}<form method="post" action="{{ url_for('tournaments.friend_action', player_id=p.id, acao='aceitar') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="voltar" value="{{ request.full_path }}"><button>Aceitar amizade</button></form>

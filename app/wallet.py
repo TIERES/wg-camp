@@ -21,7 +21,7 @@ SETTING_DEFAULTS = {
     "torneios_inscricao_max": 5000,       # teto da inscrição: W$50,00
     "torneios_vitoria": 50,               # por jogo: V W$0,50
     "torneios_empate": 25,                #           E W$0,25
-    "torneios_derrota": 0,                #           D W$0,00
+    "torneios_derrota": 0,                #           D W$0,00 (negativo = débito, só até zerar o saldo)
     "torneios_abertos_por_jogador": 3,    # torneios não encerrados que um jogador pode ter criado
     "torneios_confirmacao_horas": 24,     # placar reportado sem resposta é confirmado depois disso
 }
@@ -30,12 +30,14 @@ SETTING_LABELS = {
     "torneios_inscricao_max": "Valor máximo da inscrição",
     "torneios_vitoria": "Prêmio por vitória",
     "torneios_empate": "Prêmio por empate",
-    "torneios_derrota": "Prêmio por derrota",
+    "torneios_derrota": "Débito por derrota",
     "torneios_abertos_por_jogador": "Torneios em aberto por criador (quantidade, não W$)",
     "torneios_confirmacao_horas": "Horas para o adversário responder a um placar reportado (depois, confirma sozinho)",
 }
 MONEY_SETTINGS = ("torneios_bonus_inicial", "torneios_inscricao_max", "torneios_vitoria",
                   "torneios_empate", "torneios_derrota")
+# Ajustes que aceitam valor negativo: o débito por derrota (desconta de quem perde).
+SIGNED_SETTINGS = ("torneios_derrota",)
 
 KINDS = {
     "bonus_inicial": "Saldo inicial",
@@ -76,9 +78,13 @@ def format_cents(cents):
     return f"{sign}W${reais:,}".replace(",", ".") + f",{centavos:02d}"
 
 
-def parse_cents(text):
-    """"1.000,50" / "1000.5" / "50" -> centavos; ValueError se inválido ou negativo."""
+def parse_cents(text, allow_negative=False):
+    """"1.000,50" / "1000.5" / "50" -> centavos; ValueError se inválido ou negativo
+    (com allow_negative, "-0,50" / "-W$ 0,50" -> -50)."""
     value = str(text or "").strip().replace("W$", "").replace(" ", "")
+    sign = 1
+    if allow_negative and value.startswith("-"):
+        sign, value = -1, value[1:]
     if not value:
         raise ValueError("Informe um valor.")
     if "," in value:
@@ -88,7 +94,7 @@ def parse_cents(text):
     match = re.fullmatch(r"(\d{1,9})(?:\.(\d{1,2}))?", value)
     if not match:
         raise ValueError("Valor inválido. Use, por exemplo, 10,00.")
-    return int(match.group(1)) * 100 + int((match.group(2) or "").ljust(2, "0"))
+    return sign * (int(match.group(1)) * 100 + int((match.group(2) or "").ljust(2, "0")))
 
 
 def post(db, player_id, amount_cents, kind, ref_key, tournament_id=None, match_id=None, note="",

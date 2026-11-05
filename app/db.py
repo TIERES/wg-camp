@@ -186,6 +186,8 @@ CREATE TABLE IF NOT EXISTS tournaments (
     finished_at TEXT,
     -- Último jogo confirmado (aviso ao organizador; encerra sozinho 24 h depois - notify.py).
     all_played_at TEXT,
+    -- Imagem do torneio enviada pelo organizador (arquivo em TOURNAMENT_IMAGES_DIR - app/images.py).
+    image TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -416,6 +418,13 @@ def ensure_player_columns(database):
         database.execute("ALTER TABLE players ADD COLUMN wallet_cents INTEGER NOT NULL DEFAULT 0")
     if "wallet_started_at" not in columns:
         database.execute("ALTER TABLE players ADD COLUMN wallet_started_at TEXT")
+    # Saldo zerado por um débito por derrota: falta avisar o jogador e a administração
+    # (notify.empty_wallets, depois do commit).
+    if "wallet_empty_pending" not in columns:
+        database.execute("ALTER TABLE players ADD COLUMN wallet_empty_pending INTEGER NOT NULL DEFAULT 0")
+    # Foto do perfil (nome do arquivo em AVATARS_DIR - app/images.py).
+    if "avatar" not in columns:
+        database.execute("ALTER TABLE players ADD COLUMN avatar TEXT")
 
 
 def ensure_tournament_columns(database):
@@ -423,7 +432,7 @@ def ensure_tournament_columns(database):
     columns = {column["name"] for column in database.execute("PRAGMA table_info(tournaments)")}
     if not columns:
         return  # banco sem torneios ainda - o TOURNAMENTS_DDL cria a tabela completa
-    for column in ("starts_on", "ends_on", "all_played_at"):
+    for column in ("starts_on", "ends_on", "all_played_at", "image"):
         if column not in columns:
             database.execute(f"ALTER TABLE tournaments ADD COLUMN {column} TEXT")
     stage_columns = {column["name"] for column in database.execute("PRAGMA table_info(tournament_stages)")}

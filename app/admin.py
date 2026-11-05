@@ -61,6 +61,15 @@ def login():
     return render_template("admin/login.html")
 
 
+@bp.app_context_processor
+def inject_admin():
+    """Nome do administrador logado, para o menu do cabeçalho (base.html)."""
+    if "user_id" not in session:
+        return {}
+    row = get_db().execute("SELECT username FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+    return {"admin_name": row["username"] if row else "Administração"}
+
+
 @bp.post("/logout")
 @login_required
 def logout():

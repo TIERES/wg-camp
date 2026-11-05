@@ -22,14 +22,16 @@ from flask import (Blueprint, abort, current_app, flash, g, redirect, render_tem
                    session, url_for)
 from markupsafe import Markup
 
+from . import images
 from .db import get_db, now
 from .players import player_required
 from .security import login_required, validate_csrf
+from .timeutil import format_local
 from .tournament import engine, formats, friends, games as game_catalog, iso, notify, reports, stats, store
 from .tournament.store import TournamentError
 from .tournament.teams import KINDS as TEAM_KINDS, TEAM_MODES, generated_badge
-from .wallet import (KINDS, MONEY_SETTINGS, SETTING_LABELS, InsufficientFunds, ensure_wallet, format_cents,
-                     parse_cents, post, setting)
+from .wallet import (KINDS, MONEY_SETTINGS, SETTING_LABELS, SIGNED_SETTINGS, InsufficientFunds, ensure_wallet,
+                     format_cents, parse_cents, post, setting)
 
 bp = Blueprint("tournaments", __name__, url_prefix="/torneios")
 admin_bp = Blueprint("tournaments_admin", __name__, url_prefix="/admin/torneios")
@@ -291,9 +293,10 @@ def _tournament_list(template, player_id=None, **extra):
     status = request.args.get("status", "")
     game = request.args.get("jogo", type=int)
     sql = ("SELECT t.*, g.name AS game_name, g.code AS game_code, p.username AS organizer_name, "
-           "(SELECT COUNT(*) FROM tournament_entries e WHERE e.tournament_id = t.id) AS entries "
+           "(SELECT COUNT(*) FROM tournament_entries e WHERE e.tournament_id = t.id) AS entries, "
+           "i.original_filename AS iso_name, i.archive_url AS iso_archive_url, i.local_removed_at AS iso_removed "
            "FROM tournaments t JOIN game_titles g ON g.id = t.game_title_id JOIN players p ON p.id = t.organizer_id "
-           "WHERE t.status != 'draft'")
+           "LEFT JOIN tournament_isos i ON i.tournament_id = t.id WHERE t.status != 'draft'")
     params = []
     mine = ""
     if player_id:
@@ -326,12 +329,15 @@ def _tournament_list(template, player_id=None, **extra):
         tournaments = [t for t in tournaments if _plain(name) in _plain(t["name"]) and (
             _plain(organizer) == _plain(t["organizer_name"]) if exact else _plain(organizer) in _plain(t["organizer_name"]))]
     tournaments = tournaments[:200]
+    # Rodapé do card: "Download ISO" só quando a ISO já pode ser baixada (a mesma regra da página do torneio).
+    iso_ready = {t["id"] for t in tournaments if t["iso_name"] and iso.downloadable(
+        {"archive_url": t["iso_archive_url"], "local_removed_at": t["iso_removed"]}, current_app)}
     games = db.execute("SELECT id, name, code FROM game_titles WHERE is_active = 1 ORDER BY year, name").fetchall()
     return render_template(template, tournaments=tournaments, games=games, status=status,
                            game=game, name=name, organizer=organizer,
                            name_options=sorted({r["name"] for r in suggestions}, key=_plain),
                            organizer_options=sorted({r["username"] for r in suggestions}, key=_plain),
-                           status_labels=STATUS_LABELS, format_labels=formats.FORMATS, **extra)
+                           status_labels=STATUS_LABELS, format_labels=formats.FORMATS, iso_ready=iso_ready, **extra)
 
 
 @bp.get("/")
@@ -343,7 +349,7 @@ def index():
 @player_required
 def my_tournaments():
     return _tournament_list("tournaments/mine.html", session["player_id"], list_endpoint="tournaments.my_tournaments",
-                            manage_buttons=True, invites=friends.my_invites(get_db(), session["player_id"]))
+                            invites=friends.my_invites(get_db(), session["player_id"]))
 
 
 # --- Amigos e convites (app/tournament/friends.py) ----------------------------
@@ -621,16 +627,19 @@ def new():
                 if open_count >= limit:
                     raise TournamentError(f"Você já tem {open_count} torneio(s) em aberto (o limite é {limit}). "
                                           "Encerre ou cancele um antes de criar outro.")
-        except (TournamentError, ValueError) as error:
+            # Por último: só grava o arquivo quando o resto do formulário passou.
+            upload = request.files.get("image")
+            image_name = images.save("torneio", upload) if upload and upload.filename else None
+        except (TournamentError, images.ImageError, ValueError) as error:
             flash(str(error), "error")
         else:
             tournament_id = db.execute(
                 "INSERT INTO tournaments (slug, name, game_title_id, organizer_id, format, status, max_players, "
                 "entry_fee_cents, prize_split, settings_json, rules, team_mode, team_display, starts_on, ends_on, "
-                "created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'registration', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "image, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'registration', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (f"tmp-{now()}-{session['player_id']}", name, game_id, session["player_id"], fmt, max_players, fee,
                  split, json.dumps(config), rules[:5000], team_mode, team_display, starts_on,
-                 ends_on, now(), now())).lastrowid
+                 ends_on, image_name, now(), now())).lastrowid
             slug = f"{slugify(name)}-{tournament_id}"
             db.execute("UPDATE tournaments SET slug = ? WHERE id = ?", (slug, tournament_id))
             db.executemany("INSERT INTO tournament_teams (tournament_id, team_id) VALUES (?, ?)",
@@ -684,7 +693,44 @@ def wallet():
         "LEFT JOIN tournaments t ON t.id = w.tournament_id WHERE w.player_id = ? ORDER BY w.id DESC LIMIT 200",
         (session["player_id"],)).fetchall()
     return render_template("tournaments/wallet.html", player=player, entries=entries, kinds=KINDS,
-                           values={key: setting(db, key) for key in MONEY_SETTINGS})
+                           values={key: setting(db, key) for key in MONEY_SETTINGS},
+                           chart=_wallet_chart(player["wallet_cents"], entries))
+
+
+def _wallet_chart(current, entries):
+    """Saldo depois de cada movimento do extrato (gráfico da Carteira W$), do mais
+    antigo ao mais recente. `entries` vem do mais recente para o mais antigo: o
+    saldo é refeito de trás para frente a partir do saldo atual. O eixo vai do
+    menor ao maior saldo (com marcações redondas), não do zero: perto do saldo
+    inicial de W$1.000, os movimentos de centavos sumiriam."""
+    running, points = current, []
+    for e in entries:
+        description = KINDS.get(e["kind"], e["kind"])
+        if e["tournament_name"]:
+            description += f" · {e['tournament_name']}"
+        elif e["note"]:
+            description += f" · {e['note']}"
+        amount = e["amount_cents"]
+        points.append({"balance": running, "balance_label": format_cents(running),
+                       "amount_label": ("+" if amount > 0 else "") + format_cents(amount), "positive": amount > 0,
+                       "description": description, "date": format_local(e["created_at"])})
+        running -= amount
+    points.reverse()
+    if not points:
+        return {"points": []}
+    low, high = min(p["balance"] for p in points), max(p["balance"] for p in points)
+    # Passo "redondo" (1, 2, 2,5 ou 5 x 10^n centavos) para umas 4 faixas.
+    raw = max((high - low) / 4, 25)
+    magnitude = 10 ** (len(str(int(raw))) - 1)
+    step = next(m * magnitude for m in (1, 2, 2.5, 5, 10) if m * magnitude >= raw)
+    low, high = (low // step) * step, -(-high // step) * step
+    if high == low:
+        high = low + step
+    ticks, value = [], low
+    while value <= high + 1e-9:
+        ticks.append({"value": value, "label": format_cents(round(value))})
+        value += step
+    return {"points": points, "low": low, "high": high, "ticks": ticks}
 
 
 # --- Organizador --------------------------------------------------------------
@@ -744,6 +790,32 @@ def edit(tournament):
         db.commit()
         flash("Torneio atualizado.", "success")
     return redirect(url_for("tournaments.manage", slug=tournament["slug"]))
+
+
+@bp.post("/<slug>/imagem")
+@manager_required
+def tournament_image(tournament):
+    """Envia, troca ou remove a imagem do torneio (organizador ou admin)."""
+    db = get_db()
+    old = tournament["image"]
+    if request.form.get("acao") == "remover":
+        new_name, message = None, "Imagem do torneio removida."
+    else:
+        upload = request.files.get("image")
+        if not upload or not upload.filename:
+            flash("Escolha uma imagem.", "error")
+            return redirect(url_for("tournaments.manage", slug=tournament["slug"], _anchor="imagem"))
+        try:
+            new_name = images.save("torneio", upload)
+        except images.ImageError as error:
+            flash(str(error), "error")
+            return redirect(url_for("tournaments.manage", slug=tournament["slug"], _anchor="imagem"))
+        message = "Imagem do torneio salva."
+    db.execute("UPDATE tournaments SET image = ?, updated_at = ? WHERE id = ?", (new_name, now(), tournament["id"]))
+    db.commit()
+    images.delete("torneio", old)
+    flash(message, "success")
+    return redirect(url_for("tournaments.manage", slug=tournament["slug"], _anchor="imagem"))
 
 
 # --- ISO do torneio (app/tournament/iso.py) ----------------------------------
@@ -1065,6 +1137,35 @@ def player(nome):
                            relation=friends.relation(db, session.get("player_id"), target["id"]))
 
 
+@bp.get("/jogadores/<nome>/resumo")
+def player_card(nome):
+    """Resumo do jogador para o popup das listas (miniatura da foto - _avatar.html)."""
+    db = get_db()
+    target = _player_by_name(db, nome)
+    if target is None:
+        abort(404)
+    return render_template("tournaments/_player_card.html", p=target, record=stats.player_record(db, target["id"]),
+                           position=stats.position(db, target["id"]), rows=stats.history(db, target["id"], limit=5),
+                           outcome=stats.outcome)
+
+
+@bp.post("/jogadores/<int:player_id>/foto/remover")
+def player_avatar_remove(player_id):
+    """Moderação: o admin tira a foto de um jogador."""
+    if not is_admin():
+        abort(403)
+    validate_csrf()
+    db = get_db()
+    row = db.execute("SELECT username, avatar FROM players WHERE id = ?", (player_id,)).fetchone()
+    if row is None:
+        abort(404)
+    db.execute("UPDATE players SET avatar = NULL, updated_at = ? WHERE id = ?", (now(), player_id))
+    db.commit()
+    images.delete("avatar", row["avatar"])
+    flash("Foto removida.", "success")
+    return redirect(url_for("tournaments.player", nome=row["username"]))
+
+
 @bp.get("/comparar")
 def compare():
     db = get_db()
@@ -1107,6 +1208,10 @@ def _auto_confirm_reports():
     a partir das páginas de torneio (não há cron no servidor)."""
     if not (request.path.startswith("/torneios") or request.path.startswith("/admin/torneios")):
         return
+    try:
+        notify.empty_wallets(get_db())  # saldo zerado por débito: avisa logo (barato: só lê uma flag)
+    except sqlite3.OperationalError:
+        return  # banco sem as colunas/tabelas ainda
     if time.monotonic() - _last_auto_confirm[0] < 60:
         return
     _last_auto_confirm[0] = time.monotonic()
@@ -1172,7 +1277,10 @@ def admin_settings():
         for key in SETTING_LABELS:
             raw = request.form.get(key, "")
             if key in MONEY_SETTINGS:
-                updates[key] = parse_cents(raw)
+                try:
+                    updates[key] = parse_cents(raw, allow_negative=key in SIGNED_SETTINGS)
+                except ValueError as error:
+                    raise ValueError(f"{SETTING_LABELS[key]}: {error}")
             else:
                 try:
                     updates[key] = int(raw)
