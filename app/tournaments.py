@@ -25,7 +25,7 @@ from markupsafe import Markup
 from .db import get_db, now
 from .players import player_required
 from .security import login_required, validate_csrf
-from .tournament import engine, formats, games as game_catalog, iso, notify, reports, stats, store
+from .tournament import engine, formats, friends, games as game_catalog, iso, notify, reports, stats, store
 from .tournament.store import TournamentError
 from .tournament.teams import KINDS as TEAM_KINDS, TEAM_MODES, generated_badge
 from .wallet import (KINDS, MONEY_SETTINGS, SETTING_LABELS, InsufficientFunds, ensure_wallet, format_cents,
@@ -303,6 +303,9 @@ def _tournament_list(template, player_id=None, **extra):
     if status in STATUS_LABELS:
         sql += " AND t.status = ?"
         params.append(status)
+    elif player_id:
+        # Meus campeonatos: encerrados e cancelados só aparecem escolhendo o status no filtro.
+        sql += " AND t.status NOT IN ('finished', 'cancelled')"
     if game:
         sql += " AND t.game_title_id = ?"
         params.append(game)
@@ -338,7 +341,116 @@ def index():
 @bp.get("/meus-campeonatos")
 @player_required
 def my_tournaments():
-    return _tournament_list("tournaments/mine.html", session["player_id"], list_endpoint="tournaments.my_tournaments")
+    return _tournament_list("tournaments/mine.html", session["player_id"], list_endpoint="tournaments.my_tournaments",
+                            invites=friends.my_invites(get_db(), session["player_id"]))
+
+
+# --- Amigos e convites (app/tournament/friends.py) ----------------------------
+
+def _back(default):
+    """Volta para a página de onde veio o formulário (só caminhos do próprio site)."""
+    target = request.form.get("voltar", "")
+    return redirect(target if target.startswith("/torneios") else default)
+
+
+@bp.get("/amigos")
+@player_required
+def friends_page():
+    db = get_db()
+    me = session["player_id"]
+    return render_template("tournaments/friends.html", friends=friends.friends(db, me),
+                           received=friends.pending_received(db, me), sent=friends.pending_sent(db, me))
+
+
+@bp.post("/amigos/adicionar")
+@player_required
+def friend_add():
+    validate_csrf()
+    db = get_db()
+    me = session["player_id"]
+    other = friends.find_player(db, request.form.get("nome"))
+    try:
+        if other is None:
+            raise TournamentError("Jogador não encontrado.")
+        result = friends.request(db, me, other["id"])
+        db.commit()
+    except TournamentError as error:
+        db.rollback()
+        flash(str(error), "error")
+    else:
+        if result == "accepted":
+            flash(f"Agora você e {other['username']} são amigos!", "success")
+        else:
+            flash(f"Pedido de amizade enviado para {other['username']}.", "success")
+        notify.friend_request(db, me, other["id"], accepted=result == "accepted")
+    return _back(url_for("tournaments.friends_page"))
+
+
+@bp.post("/amigos/<int:player_id>/<acao>")
+@player_required
+def friend_action(player_id, acao):
+    validate_csrf()
+    db = get_db()
+    me = session["player_id"]
+    try:
+        if acao in ("aceitar", "recusar"):
+            friends.respond(db, me, player_id, acao == "aceitar")
+        elif acao == "remover":
+            friends.remove(db, me, player_id)
+        else:
+            abort(404)
+        db.commit()
+    except TournamentError as error:
+        db.rollback()
+        flash(str(error), "error")
+    else:
+        flash({"aceitar": "Pedido de amizade aceito!", "recusar": "Pedido de amizade recusado.",
+               "remover": "Pronto."}[acao], "success")
+        if acao == "aceitar":
+            notify.friend_request(db, me, player_id, accepted=True)
+    return _back(url_for("tournaments.friends_page"))
+
+
+def _send_invites(db, tournament, player_ids):
+    """Grava os convites e manda os e-mails; devolve quantos foram convidados."""
+    me = session.get("player_id")
+    invited = friends.invite(db, tournament, me, player_ids)
+    db.commit()
+    if invited:
+        inviter = db.execute("SELECT username FROM players WHERE id = ?", (me,)).fetchone() if me else None
+        notify.tournament_invites(db, tournament, inviter[0] if inviter else "O organizador", invited)
+    return len(invited)
+
+
+def _invite_ids():
+    return [int(v) for v in request.form.getlist("invite_ids") if v.isdigit()]
+
+
+@bp.post("/<slug>/convidar")
+@manager_required
+def invite(tournament):
+    db = get_db()
+    try:
+        count = _send_invites(db, tournament, _invite_ids())
+    except TournamentError as error:
+        db.rollback()
+        flash(str(error), "error")
+    else:
+        flash(f"{count} convite{'s' if count != 1 else ''} enviado{'s' if count != 1 else ''}." if count
+              else "Marque pelo menos um jogador que ainda não foi convidado.", "success" if count else "error")
+    return redirect(url_for("tournaments.manage", slug=tournament["slug"], _anchor="convidar"))
+
+
+@bp.post("/<slug>/convite/recusar")
+@player_required
+def invite_decline(slug):
+    validate_csrf()
+    tournament = _load(slug)
+    db = get_db()
+    friends.decline(db, tournament["id"], session["player_id"])
+    db.commit()
+    flash("Convite recusado.", "success")
+    return _back(url_for("tournaments.my_tournaments"))
 
 
 def _plain(value):
@@ -387,7 +499,8 @@ def show(slug):
         format_label=formats.FORMATS[tournament["format"]], summary=formats.describe(tournament["format"], config),
         status_labels=STATUS_LABELS, pool=pool, split=split,
         prizes=engine.split_prize(pool, split, 3) if pool else [],
-        podium=sorted((e for e in entries if e["final_position"]), key=lambda e: e["final_position"]))
+        podium=sorted((e for e in entries if e["final_position"]), key=lambda e: e["final_position"]),
+        invite=friends.my_invite(db, tournament["id"], player_id) if player_id and not my_entry else None)
 
 
 # --- Jogador: criar, inscrever-se, carteira -----------------------------------
@@ -522,14 +635,17 @@ def new():
             db.executemany("INSERT INTO tournament_teams (tournament_id, team_id) VALUES (?, ?)",
                            [(tournament_id, team_id) for team_id in team_ids])
             db.commit()
-            flash("Torneio criado com inscrições abertas. Agora envie a ISO do jogo (com o patch do torneio) aqui "
-                  "em Gerenciar; dá para trocar quando quiser.", "success")
+            invited = _send_invites(db, store.get_tournament(db, tournament_id), _invite_ids())
+            flash("Torneio criado com inscrições abertas" + (f" e {invited} convite(s) enviado(s)" if invited else "")
+                  + ". Agora envie a ISO do jogo (com o patch do torneio) aqui em Gerenciar; dá para trocar quando "
+                  "quiser.", "success")
             return redirect(url_for("tournaments.manage", slug=slug, _anchor="iso"))
     selected = {int(v) for v in form.getlist("team_ids") if v.isdigit()} if form else set()
     return render_template("tournaments/new.html", games=games, form=form, max_fee=max_fee,
                            format_labels=formats.FORMATS, defaults=formats.DEFAULTS, splits=PRIZE_SPLITS,
                            min_players=formats.MIN_PLAYERS, max_players=formats.MAX_PLAYERS,
-                           team_modes=TEAM_MODES, catalog=_team_catalog(db), selected=selected)
+                           team_modes=TEAM_MODES, catalog=_team_catalog(db), selected=selected,
+                           candidates=friends.candidates(db, session["player_id"]), invite_selected=set(_invite_ids()))
 
 
 @bp.post("/<slug>/inscrever")
@@ -604,7 +720,10 @@ def manage(slug):
                            auto_finish_at=notify.auto_finish_at(tournament),
                            can_advance=can_advance, can_finish=can_finish, is_admin=is_admin(),
                            status_labels=STATUS_LABELS, iso=iso_row, iso_uploading=iso.uploading(iso_row),
-                           archive_configured=iso.archive_configured(current_app), **_iso_limits())
+                           archive_configured=iso.archive_configured(current_app), **_iso_limits(),
+                           candidates=friends.candidates(db, tournament["organizer_id"], tournament["id"])
+                           if tournament["status"] == "registration" else None,
+                           invited=friends.invite_status(db, tournament["id"]), invite_labels=friends.INVITE_LABELS)
 
 
 @bp.post("/<slug>/editar")
@@ -811,7 +930,8 @@ def _player_action(slug, match_id, action, success, after=None):
             after(get_db(), tournament)
         notify.check_completion(get_db(), tournament)
     if request.form.get("voltar") == "meus-jogos":
-        return redirect(url_for("tournaments.my_matches"))
+        # Volta com o card do torneio aberto, na altura do jogo.
+        return redirect(url_for("tournaments.my_matches", aberto=tournament["id"], _anchor=f"jogo-{match_id}"))
     return redirect(url_for("tournaments.match", slug=slug, match_id=match_id))
 
 
@@ -872,6 +992,7 @@ def my_matches():
         names.update(_names(db, store.get_tournament(db, tournament_id)))
     counter = {r["id"] for r in rows if r["status"] == "disputed" and reports.last_dispute(db, r["id"])}
     return render_template("tournaments/my_matches.html", groups=list(groups.values()), names=names, counter=counter,
+                           opened=request.args.get("aberto", type=int),
                            deadlines={r["id"]: reports.deadline(db, r) for r in rows if r["status"] == "reported"})
 
 
@@ -934,7 +1055,8 @@ def player(nome):
     return render_template("tournaments/player.html", p=target, games=games, game=game,
                            record=stats.player_record(db, target["id"], game),
                            position=stats.position(db, target["id"], game), rows=rows, form=stats.form(rows),
-                           opponents=stats.opponents(db, target["id"], game), outcome=stats.outcome)
+                           opponents=stats.opponents(db, target["id"], game), outcome=stats.outcome,
+                           relation=friends.relation(db, session.get("player_id"), target["id"]))
 
 
 @bp.get("/comparar")
@@ -1247,6 +1369,9 @@ def inject_wallet():
             "(m.status = 'disputed' AND m.reported_by_entry_id = e.id AND EXISTS (SELECT 1 FROM match_reports r "
             "WHERE r.match_id = m.id AND r.action = 'dispute' AND r.home_goals IS NOT NULL)))",
             (player_id,)).fetchone()[0]
+        friends_todo = friends.pending_count(db, player_id)
+        invites_todo = len(friends.my_invites(db, player_id))
     except sqlite3.OperationalError:
         return {}  # banco ainda sem as colunas da carteira
-    return {"wallet_balance": row["wallet_cents"] if row else None, "matches_todo": todo}
+    return {"wallet_balance": row["wallet_cents"] if row else None, "matches_todo": todo,
+            "friends_todo": friends_todo, "invites_todo": invites_todo}

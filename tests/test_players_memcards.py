@@ -107,7 +107,7 @@ class RegistrationTest(PlayersTestBase):
         self.client.get(self.last_link("confirmar"))
         login = self.client.post("/conta/entrar", data={"csrf_token": "csrf", "username": "pele@example.com", "password": "segredo123"})
         self.assertEqual(login.status_code, 302)
-        self.assertTrue(login.headers["Location"].endswith("/conta/"))
+        self.assertTrue(login.headers["Location"].endswith("/torneios/meus-campeonatos"))
 
     def test_confirmation_link_is_single_use(self):
         self.register(confirm=False)

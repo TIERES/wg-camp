@@ -5,6 +5,10 @@
   <span class="badge status-{{ t.status }}">{{ status_labels[t.status] }}</span>
   <h1>{{ t.name }}</h1>
   <p class="muted">{{ t.game_name }}{% if t.platform %} ({{ t.platform }}){% endif %} · {{ format_label }} · organizado por <strong>{{ t.organizer_name }}</strong></p>
+  {% if invite %}
+  <div class="invite-notice"><span><strong>{{ t.organizer_name }}</strong> convidou você para este torneio. Faça a sua inscrição abaixo.</span>
+    <form method="post" action="{{ url_for('tournaments.invite_decline', slug=t.slug) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="voltar" value="{{ url_for('tournaments.show', slug=t.slug, aba='geral') }}"><button class="secondary">Recusar convite</button></form></div>
+  {% endif %}
   <div class="t-actions">
     {% if t.status == 'registration' %}
       {% if my_entry %}

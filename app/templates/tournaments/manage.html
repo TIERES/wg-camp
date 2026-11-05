@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'tournaments/_macros.html' import match_line, status_chip, leg_flip, stage_rounds %}{% block title %}Gerenciar {{ t.name }} · Torneios WE Camp{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from 'tournaments/_macros.html' import match_line, status_chip, leg_flip, stage_rounds %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% block title %}Gerenciar {{ t.name }} · Torneios WE Camp{% endblock %}{% block content %}
 {# Formulários de resultado de uma lista de jogos (com ou sem Ida/Volta). #}
 {% macro result_forms(ms) %}{% for m in ms %}{% set shown = m if m.status == 'confirmed' else reported_score(m) %}
     <form method="post" action="{{ url_for('tournaments.result', slug=t.slug, match_id=m.id) }}" class="result-form{% if m.status == 'confirmed' %} done{% endif %}" id="jogo-{{ m.id }}">
@@ -76,6 +76,18 @@
   </table></div>
   {% else %}<p class="muted">Ninguém inscrito ainda.</p>{% endif %}
 </section>
+
+{% if candidates is not none %}
+<section id="convidar">
+  <h2>Convidar jogadores</h2>
+  <p class="muted">Seus amigos e quem já jogou torneios criados por você. Os convidados recebem um e-mail e o convite em "Meus campeonatos"; a inscrição continua sendo feita por eles.</p>
+  <form method="post" action="{{ url_for('tournaments.invite', slug=t.slug) }}" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {{ invite_picker(candidates, invited, invite_labels) }}
+    {% if candidates.players %}<button>Enviar convites</button>{% endif %}
+  </form>
+</section>
+{% endif %}
 
 {% if t.status not in ('finished', 'cancelled') %}
 <section>

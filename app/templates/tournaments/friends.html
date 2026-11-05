@@ -1,0 +1,42 @@
+{% extends 'base.html' %}{% block title %}Amigos · WE Camp{% endblock %}{% block content %}
+{% macro action(p, acao, label, cls='') %}<form method="post" action="{{ url_for('tournaments.friend_action', player_id=p.id, acao=acao) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="{{ cls }}">{{ label }}</button></form>{% endmacro %}
+<h1>Amigos</h1>
+<p class="muted">Seus amigos aparecem para convite quando você cria ou edita um torneio.</p>
+
+<form method="post" action="{{ url_for('tournaments.friend_add') }}" class="form friend-add">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="form-row">
+    <label class="wide">Adicionar amigo<input name="nome" placeholder="Nome do jogador" maxlength="40" required autocomplete="off"></label>
+    <button>Adicionar amigo</button>
+  </div>
+</form>
+
+{% if received %}
+<section>
+  <h2>Pedidos de amizade ({{ received|length }})</h2>
+  <ul class="friend-list">{% for p in received %}
+    <li><a href="{{ url_for('tournaments.player', nome=p.username) }}">{{ p.username }}</a><small class="muted">{{ p.created_at|localtime }}</small>
+      <span class="friend-actions">{{ action(p, 'aceitar', 'Aceitar') }}{{ action(p, 'recusar', 'Recusar', 'secondary') }}</span></li>
+  {% endfor %}</ul>
+</section>
+{% endif %}
+
+<section>
+  <h2>Meus amigos ({{ friends|length }})</h2>
+  {% if friends %}<ul class="friend-list">{% for p in friends %}
+    <li><a href="{{ url_for('tournaments.player', nome=p.username) }}">{{ p.username }}</a>
+      <span class="friend-actions"><a class="button secondary" href="{{ url_for('tournaments.compare', b=p.username) }}">Comparar</a>{{ action(p, 'remover', 'Desfazer amizade', 'secondary') }}</span></li>
+  {% endfor %}</ul>
+  {% else %}<p class="muted">Você ainda não tem amigos. Adicione pelo nome acima ou pelo botão "Adicionar amigo" na página de um jogador.</p>{% endif %}
+</section>
+
+{% if sent %}
+<section>
+  <h2>Pedidos enviados ({{ sent|length }})</h2>
+  <ul class="friend-list">{% for p in sent %}
+    <li><a href="{{ url_for('tournaments.player', nome=p.username) }}">{{ p.username }}</a><small class="muted">aguardando · {{ p.created_at|localtime }}</small>
+      <span class="friend-actions">{{ action(p, 'remover', 'Cancelar pedido', 'secondary') }}</span></li>
+  {% endfor %}</ul>
+</section>
+{% endif %}
+{% endblock %}

@@ -84,6 +84,12 @@ class TournamentsWebTest(unittest.TestCase):
         self.assertNotIn('t-name">Copa Minha', player.get("/torneios/meus-campeonatos?status=finished").data.decode())
         self.assertIn('t-name">Copa Minha', player.get("/torneios/meus-campeonatos?nome=minha&organizador=jog0").data.decode())
         self.assertNotIn('t-name">Copa Minha', player.get("/torneios/meus-campeonatos?organizador=jog3").data.decode())
+        # Encerrado só aparece escolhendo o status no filtro.
+        with self.app.app_context():
+            get_db().execute("UPDATE tournaments SET status = 'finished' WHERE slug = 'minha'")
+            get_db().commit()
+        self.assertNotIn('t-name">Copa Minha', player.get("/torneios/meus-campeonatos").data.decode())
+        self.assertIn('t-name">Copa Minha', player.get("/torneios/meus-campeonatos?status=finished").data.decode())
         status = player.get("/torneios/status")
         self.assertEqual(status.status_code, 200)
         self.assertIn("ainda não tem partidas confirmadas", status.data.decode())

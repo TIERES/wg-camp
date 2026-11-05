@@ -375,6 +375,31 @@ CREATE TABLE IF NOT EXISTS wallet_entries (
 CREATE INDEX IF NOT EXISTS wallet_entries_player_idx ON wallet_entries(player_id, id);
 CREATE INDEX IF NOT EXISTS wallet_entries_tournament_idx ON wallet_entries(tournament_id, kind);
 CREATE INDEX IF NOT EXISTS wallet_entries_match_idx ON wallet_entries(match_id);
+
+-- Amizade: pedido de requester para addressee; aceito vira 'accepted', recusado é apagado.
+CREATE TABLE IF NOT EXISTS friendships (
+    id INTEGER PRIMARY KEY,
+    requester_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    addressee_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted')),
+    created_at TEXT NOT NULL,
+    responded_at TEXT,
+    UNIQUE (requester_id, addressee_id),
+    CHECK (requester_id != addressee_id)
+);
+CREATE INDEX IF NOT EXISTS friendships_addressee_idx ON friendships(addressee_id, status);
+
+-- Convite para um torneio com inscrições abertas (a inscrição continua sendo feita na página do torneio).
+CREATE TABLE IF NOT EXISTS tournament_invites (
+    id INTEGER PRIMARY KEY,
+    tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+    player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    invited_by INTEGER REFERENCES players(id) ON DELETE SET NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'declined')),
+    created_at TEXT NOT NULL,
+    UNIQUE (tournament_id, player_id)
+);
+CREATE INDEX IF NOT EXISTS tournament_invites_player_idx ON tournament_invites(player_id, status);
 """
 
 

@@ -2,18 +2,29 @@
 <h1>Meus jogos</h1>
 <p class="muted">Todos os seus jogos, dos torneios em andamento e encerrados. Clique no torneio para ver os jogos.</p>
 {% set legend = {'ok': 'Resultado confirmado entre os jogadores', 'confirm': 'Resultado para você confirmar', 'none': 'Nenhum resultado informado', 'waiting': 'Você informou o resultado; aguardando o adversário', 'disputed': 'Resultado contestado'} %}
-{% set ns = namespace(waiting=false, disputed=false) %}
-{% for ms in groups %}{% for row in ms %}
-  {% if row.status == 'disputed' %}{% set ns.disputed = true %}
-  {% elif row.status == 'reported' and (row.reported_by_entry_id == row.my_entry_id or row.tournament_status != 'running') %}{% set ns.waiting = true %}{% endif %}
-{% endfor %}{% endfor %}
+{% macro kind_of(row) -%}
+  {%- set open = row.tournament_status == 'running' -%}
+  {%- set mine_reported = row.status == 'reported' and row.reported_by_entry_id == row.my_entry_id -%}
+  {{- 'ok' if row.status == 'confirmed' else 'confirm' if (open and row.status == 'reported' and not mine_reported) else 'none' if row.status == 'scheduled' else 'disputed' if row.status == 'disputed' else 'waiting' -}}
+{%- endmacro %}
 {% if groups %}
-<ul class="mm-legend">
-  {% for kind in ['ok', 'confirm', 'none'] + (['waiting'] if ns.waiting else []) + (['disputed'] if ns.disputed else []) %}<li class="mm-{{ kind }}">{{ legend[kind] }}</li>{% endfor %}
-</ul>
-{% endif %}
-{% if groups|length > 1 %}
-<input type="search" id="mt-filter" class="mt-filter" placeholder="Buscar torneio pelo nome..." autocomplete="off" aria-label="Buscar torneio">
+{% set organizers = groups|map('first')|map(attribute='organizer_name')|unique|sort|list %}
+<div class="mm-filters" id="mm-filters">
+  {% if groups|length > 1 %}<input type="search" id="mt-filter" placeholder="Buscar torneio pelo nome..." autocomplete="off" aria-label="Buscar torneio">{% endif %}
+  <select id="mm-organizer" aria-label="Criado por">
+    <option value="">Criado por: todos</option>
+    {% for o in organizers %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+  </select>
+  <select id="mm-tstatus" aria-label="Status do torneio">
+    <option value="">Torneio: todos os status</option>
+    <option value="running">Em andamento</option>
+    <option value="finished">Encerrado</option>
+  </select>
+  <select id="mm-kind" aria-label="Status da partida">
+    <option value="">Partida: todos os status</option>
+    {% for kind in ['confirm', 'none', 'waiting', 'disputed', 'ok'] %}<option value="{{ kind }}">{{ legend[kind] }}</option>{% endfor %}
+  </select>
+</div>
 {% endif %}
 {% for ms in groups %}{% set first = ms[0] %}
   {% set open = first.tournament_status == 'running' %}
@@ -22,9 +33,11 @@
   {% set to_confirm = ms|selectattr('status', 'equalto', 'reported')|rejectattr('reported_by_entry_id', 'equalto', first.my_entry_id)|list|length %}
   {% set waiting = ms|selectattr('status', 'equalto', 'reported')|selectattr('reported_by_entry_id', 'equalto', first.my_entry_id)|list|length %}
   {% set disputed = ms|selectattr('status', 'equalto', 'disputed')|list|length %}
-  <details class="mt-card" data-name="{{ first.tournament_name }}" {% if groups|length == 1 %}open{% endif %}>
+  {% set ns = namespace(kinds=[]) %}
+  {% for row in ms %}{% set k = kind_of(row)|trim %}{% if k not in ns.kinds %}{% set ns.kinds = ns.kinds + [k] %}{% endif %}{% endfor %}
+  <details class="mt-card" data-name="{{ first.tournament_name }}" data-organizer="{{ first.organizer_name }}" data-status="{{ first.tournament_status }}" data-kinds="{{ ns.kinds|join(' ') }}" {% if groups|length == 1 or opened == first.tournament_id %}open{% endif %}>
     <summary>
-      <span class="mt-title"><strong>{{ first.tournament_name }}</strong><small class="muted">{{ ms|length }} jogo{{ 's' if ms|length != 1 }}{% if not open %} · encerrado{% endif %}</small></span>
+      <span class="mt-title"><strong>{{ first.tournament_name }}</strong><small class="muted">{{ ms|length }} jogo{{ 's' if ms|length != 1 }}{% if not open %} · encerrado{% endif %} · criado por {{ first.organizer_name }}</small></span>
       <span class="mt-counts">
         {% if todo %}<span class="chip chip-todo">{{ todo }} para reportar</span>{% endif %}
         {% if to_confirm %}<span class="chip chip-reported">{{ to_confirm }} para confirmar</span>{% endif %}
@@ -34,16 +47,17 @@
       </span>
     </summary>
     <div class="mt-body">
+      <ul class="mm-legend">
+        {% for kind in ['ok', 'confirm', 'none', 'waiting', 'disputed'] if kind in ns.kinds %}<li class="mm-{{ kind }}">{{ legend[kind] }}</li>{% endfor %}
+      </ul>
       {% if ms|length > 1 %}<input type="search" class="mt-match-filter" placeholder="Filtrar por jogador ou time..." autocomplete="off" aria-label="Filtrar jogos por jogador ou time">{% endif %}
       {% for row in ms %}
-      {% set mine_reported = row.status == 'reported' and row.reported_by_entry_id == row.my_entry_id %}
-      {% set must_confirm = open and row.status == 'reported' and not mine_reported %}
-      {% set kind = 'ok' if row.status == 'confirmed' else 'confirm' if must_confirm else 'none' if row.status == 'scheduled' else 'disputed' if row.status == 'disputed' else 'waiting' %}
-      <div class="my-match mm-{{ kind }}" data-search="{{ names[row.home_entry_id]|striptags }} {{ names[row.away_entry_id]|striptags }}" title="{{ legend[kind] }}">
+      {% set kind = kind_of(row)|trim %}
+      <div class="my-match mm-{{ kind }}" id="jogo-{{ row.id }}" data-kind="{{ kind }}" data-search="{{ names[row.home_entry_id]|striptags }} {{ names[row.away_entry_id]|striptags }}" title="{{ legend[kind] }}">
       <a class="my-match-link" href="{{ url_for('tournaments.match', slug=row.slug, match_id=row.id) }}">
         <span class="match-line"><span class="home">{{ names[row.home_entry_id] }}</span><span class="score">{{ score(row) }}</span><span class="away">{{ names[row.away_entry_id] }}</span></span>
       </a>
-      {% if must_confirm %}
+      {% if kind == 'confirm' %}
       <form method="post" class="my-match-actions" action="{{ url_for('tournaments.match_confirm', slug=row.slug, match_id=row.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="voltar" value="meus-jogos">
         <button>Confirmar partida</button>
@@ -52,44 +66,60 @@
       {% if row.status == 'reported' and open %}<span class="my-match-status">Confirmação automática em {{ deadlines[row.id]|localtime }}</span>{% endif %}
       </div>
       {% endfor %}
-      <p class="muted mt-empty" hidden>Nenhum jogo com esse jogador ou time.</p>
+      <p class="muted mt-empty" hidden>Nenhum jogo com esses filtros.</p>
       <p class="mt-link"><a href="{{ url_for('tournaments.show', slug=first.slug, aba='jogos') }}">Ver o torneio</a></p>
     </div>
   </details>
 {% else %}<p>Você ainda não tem jogos. <a href="{{ url_for('tournaments.index') }}">Veja os torneios</a> com inscrições abertas.</p>{% endfor %}
-<p class="muted" id="mt-none" hidden>Nenhum torneio com esse nome.</p>
+<p class="muted" id="mt-none" hidden>Nenhum torneio com esses filtros.</p>
 
 <script>
 (function () {
   // Busca sem diferenciar acentos/maiúsculas.
   function plain(s) { return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
   function noEnter(input) { input.addEventListener('keydown', function (e) { if (e.key === 'Enter') e.preventDefault(); }); }
+  function val(id) { var el = document.getElementById(id); return el ? el.value : ''; }
 
   var cards = document.querySelectorAll('.mt-card');
-  var filter = document.getElementById('mt-filter');
-  if (filter) {
-    noEnter(filter);
-    filter.addEventListener('input', function () {
-      var q = plain(this.value.trim()), any = false;
-      cards.forEach(function (card) {
-        var show = !q || plain(card.dataset.name).indexOf(q) >= 0;
-        card.hidden = !show; any = any || show;
-      });
-      document.getElementById('mt-none').hidden = any;
+  var single = cards.length === 1, kindChanged = false;
+
+  // Jogos de um card: texto do filtro do próprio card + status da partida.
+  function filterMatches(card) {
+    var input = card.querySelector('.mt-match-filter');
+    var q = input ? plain(input.value.trim()) : '', kind = val('mm-kind'), any = false;
+    card.querySelectorAll('.my-match').forEach(function (m) {
+      var show = (!q || plain(m.dataset.search).indexOf(q) >= 0) && (!kind || m.dataset.kind === kind);
+      m.hidden = !show; any = any || show;
     });
+    card.querySelector('.mt-empty').hidden = any;
   }
 
+  function apply() {
+    var q = plain(val('mt-filter').trim()), organizer = val('mm-organizer'), status = val('mm-tstatus'), kind = val('mm-kind');
+    var any = false;
+    cards.forEach(function (card) {
+      var show = (!q || plain(card.dataset.name).indexOf(q) >= 0)
+        && (!organizer || card.dataset.organizer === organizer)
+        && (!status || card.dataset.status === status)
+        && (!kind || card.dataset.kinds.split(' ').indexOf(kind) >= 0);
+      card.hidden = !show; any = any || show;
+      filterMatches(card);
+      if (kindChanged && !single) card.open = !!(kind && show);  // filtrando pela partida, abre os cards com os jogos
+    });
+    kindChanged = false;
+    var none = document.getElementById('mt-none');
+    if (none) none.hidden = any;
+  }
+
+  var text = document.getElementById('mt-filter');
+  if (text) { noEnter(text); text.addEventListener('input', apply); }
+  ['mm-organizer', 'mm-tstatus', 'mm-kind'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('change', function () { kindChanged = id === 'mm-kind'; apply(); });
+  });
   document.querySelectorAll('.mt-match-filter').forEach(function (input) {
     noEnter(input);
-    var body = input.closest('.mt-body');
-    input.addEventListener('input', function () {
-      var q = plain(this.value.trim()), any = false;
-      body.querySelectorAll('.my-match').forEach(function (m) {
-        var show = !q || plain(m.dataset.search).indexOf(q) >= 0;
-        m.hidden = !show; any = any || show;
-      });
-      body.querySelector('.mt-empty').hidden = any;
-    });
+    input.addEventListener('input', function () { filterMatches(input.closest('.mt-card')); });
   });
 })();
 </script>

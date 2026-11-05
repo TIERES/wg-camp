@@ -173,7 +173,7 @@ def login():
             db.commit()
             target = request.args.get("next", "")
             if not (target.startswith("/conta") or target.startswith("/torneios")):
-                target = url_for("players.account")
+                target = url_for("tournaments.my_tournaments")
             return redirect(target)
     return render_template("players/login.html")
 

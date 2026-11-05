@@ -1,0 +1,43 @@
+// Convites para torneio (_invite_picker.html): marcar todos os amigos, os jogadores
+// de um torneio anterior, limpar e buscar pelo nome. Já convidados ficam desabilitados.
+(function () {
+  function plain(s) { return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
+
+  document.querySelectorAll('.invite-picker').forEach(function (picker) {
+    if (picker.dataset.ready) return;
+    picker.dataset.ready = '1';
+    var boxes = Array.prototype.slice.call(picker.querySelectorAll('input[name="invite_ids"]'));
+    var count = picker.querySelector('.invite-count');
+
+    function update() {
+      var n = boxes.filter(function (b) { return b.checked; }).length;
+      if (count) count.textContent = n ? n + (n === 1 ? ' jogador marcado' : ' jogadores marcados') : '';
+    }
+    function mark(test) { boxes.forEach(function (b) { if (!b.disabled && test(b)) b.checked = true; }); update(); }
+
+    var friends = picker.querySelector('[data-invite-friends]');
+    if (friends) friends.addEventListener('click', function () {
+      mark(function (b) { return b.closest('.invite-option').dataset.friend === '1'; });
+    });
+    var select = picker.querySelector('[data-invite-tournament]');
+    if (select) select.addEventListener('change', function () {
+      var ids = this.value ? this.value.split(',') : [];
+      mark(function (b) { return ids.indexOf(b.value) >= 0; });
+      this.value = '';
+    });
+    var clear = picker.querySelector('[data-invite-clear]');
+    if (clear) clear.addEventListener('click', function () { boxes.forEach(function (b) { b.checked = false; }); update(); });
+    var filter = picker.querySelector('[data-invite-filter]');
+    if (filter) {
+      filter.addEventListener('keydown', function (e) { if (e.key === 'Enter') e.preventDefault(); });
+      filter.addEventListener('input', function () {
+        var q = plain(this.value.trim());
+        picker.querySelectorAll('.invite-option').forEach(function (o) {
+          o.hidden = !!q && plain(o.dataset.name).indexOf(q) < 0;
+        });
+      });
+    }
+    boxes.forEach(function (b) { b.addEventListener('change', update); });
+    update();
+  });
+})();

@@ -209,8 +209,9 @@ def matches_for_player(db, player_id):
     em andamento primeiro), na ordem da tabela."""
     return db.execute(
         "SELECT m.*, t.id AS tournament_id, t.slug, t.name AS tournament_name, t.status AS tournament_status, "
-        "s.name AS stage_name, s.status AS stage_status, e.id AS my_entry_id "
+        "s.name AS stage_name, s.status AS stage_status, e.id AS my_entry_id, o.username AS organizer_name "
         "FROM tournament_entries e JOIN tournaments t ON t.id = e.tournament_id "
+        "JOIN players o ON o.id = t.organizer_id "
         "JOIN tournament_stages s ON s.tournament_id = t.id "
         "JOIN tournament_matches m ON m.stage_id = s.id AND (m.home_entry_id = e.id OR m.away_entry_id = e.id) "
         "WHERE e.player_id = ? AND t.status IN ('running', 'finished') "

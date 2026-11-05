@@ -1,3 +1,4 @@
+import re
 import json
 import random
 import tempfile
@@ -204,10 +205,19 @@ class ReportsTest(unittest.TestCase):
         page = away_client.get("/torneios/meus-jogos").get_data(as_text=True)
         self.assertIn("mm-confirm", page)
         self.assertIn("Confirmação automática em", page)
+        # Filtros (criado por, status do torneio e da partida) e legenda dentro do card.
+        for marker in ('id="mm-organizer"', 'id="mm-tstatus"', 'id="mm-kind"', 'data-kinds="confirm', 'data-kind="confirm"'):
+            self.assertIn(marker, page)
+        self.assertIn('<li class="mm-confirm">', page.split('class="mt-body"', 1)[1])
         self.assertIn(f"/torneios/{slug}/jogos/{m['id']}/confirmar", page)
         reply = away_client.post(f"/torneios/{slug}/jogos/{m['id']}/confirmar",
                                  data={"csrf_token": CSRF, "voltar": "meus-jogos"})
-        self.assertTrue(reply.headers["Location"].endswith("/torneios/meus-jogos"))
+        self.assertTrue(reply.headers["Location"].endswith(f"/torneios/meus-jogos?aberto={tid}#jogo-{m['id']}"))
+        self.tournament(legs=1)  # com dois torneios, só o do jogo confirmado volta aberto
+        back = away_client.get(f"/torneios/meus-jogos?aberto={tid}").get_data(as_text=True)
+        self.assertEqual(back.count('class="mt-card"'), 2)
+        self.assertEqual(len(re.findall(r'<details class="mt-card"[^>]*\bopen>', back)), 1)
+        self.assertIn(f'id="jogo-{m["id"]}"', back)
         self.assertEqual(self.status(m["id"]), "confirmed")
         self.assertNotIn("Confirmar partida", away_client.get("/torneios/meus-jogos").get_data(as_text=True))
 

@@ -254,3 +254,30 @@ def auto_finish_at(tournament):
         return None
     played = datetime.fromisoformat(tournament["all_played_at"])
     return (played + timedelta(hours=AUTO_FINISH_HOURS)).replace(microsecond=0).isoformat()
+
+
+# --- Amigos e convites (app/tournament/friends.py) -----------------------------
+
+def friend_request(db, from_id, to_id, accepted=False):
+    """Pedido de amizade (ou o aviso de que o pedido foi aceito)."""
+    who = db.execute("SELECT username FROM players WHERE id = ?", (from_id,)).fetchone()
+    to = db.execute("SELECT username, email FROM players WHERE id = ?", (to_id,)).fetchone()
+    if not who or not to:
+        return
+    link = external_url("tournaments.friends_page")
+    if accepted:
+        subject, text = f"{who['username']} aceitou sua amizade", f"{who['username']} aceitou seu pedido de amizade."
+    else:
+        subject = f"{who['username']} quer ser seu amigo no WE Camp"
+        text = f"{who['username']} enviou um pedido de amizade. Aceite ou recuse em:\n{link}"
+    _deliver([(to["email"], subject, f"Olá, {to['username']}!\n\n{text}\n")])
+
+
+def tournament_invites(db, tournament, inviter_name, players):
+    """Convite para o torneio, para cada jogador convidado agora."""
+    page = external_url("tournaments.show", slug=tournament["slug"], aba="geral")
+    day = "/".join(reversed((tournament["starts_on"] or "").split("-")))
+    starts = f"\nInício provável: {day}" if day else ""
+    _deliver([(p["email"], f"Convite para o torneio {tournament['name']}", (
+        f"Olá, {p['username']}!\n\n{inviter_name} convidou você para o torneio \"{tournament['name']}\"."
+        f"{starts}\n\nVeja o torneio e faça a sua inscrição em:\n{page}\n")) for p in players])

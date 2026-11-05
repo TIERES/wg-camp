@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% block title %}Criar torneio · WE Camp{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% block title %}Criar torneio · WE Camp{% endblock %}{% block content %}
 <h1>Criar torneio</h1>
 {% if not games %}<p class="notice error">Nenhum jogo cadastrado para torneios ainda. Peça à administração do WE Camp.</p>{% else %}
 <form method="post" class="form t-form" id="new-tournament">
@@ -117,6 +117,11 @@
   </fieldset>
 
   <label><span>Regulamento / observações <span class="req">*</span></span><textarea name="rules" rows="5" maxlength="5000" required placeholder="Horários, regras do jogo, times permitidos...">{{ form.get('rules', '') }}</textarea></label>
+  <fieldset id="convidar">
+    <legend>Convidar jogadores <small class="muted">(opcional)</small></legend>
+    <p class="muted">Os marcados recebem um e-mail com o convite e o aviso em "Meus campeonatos". Dá para convidar mais depois, em Gerenciar.</p>
+    {{ invite_picker(candidates, selected=invite_selected) }}
+  </fieldset>
   <div class="card-actions"><button id="create-button">Criar torneio</button><span class="muted" id="create-hint" hidden>Preencha os campos obrigatórios para criar o torneio.</span></div>
 </form>
 <script>
