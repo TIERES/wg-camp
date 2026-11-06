@@ -1,0 +1,72 @@
+{% extends 'base.html' %}{% block title %}{{ 'Editar ISO' if row else 'Nova ISO' }} · Administração{% endblock %}{% block content %}
+<h1>{{ 'Editar ISO' if row else 'Nova ISO' }}</h1>
+<p><a href="{{ url_for('tournaments_admin.admin_isos') }}">← ISOs para amistosos</a></p>
+{% set v = form or {} %}
+{% set pending = row and not row.approved_at %}
+{% if pending %}<p class="notice">Enviada por <strong>{{ row.requester_name or 'um jogador' }}</strong> em {{ row.created_at|localtime }}, aguardando liberação. Confira o nome e o jogo base, cadastre a imagem e clique em <strong>Liberar ISO</strong>. Quem enviou recebe um e-mail avisando.</p>{% endif %}
+<form method="post" enctype="multipart/form-data" class="form" id="iso-form" data-upload="{{ iso_max_bytes }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="form-row">
+    <label class="wide">Nome da ISO<input name="name" maxlength="120" required value="{{ v.get('name', row.name if row else '') }}" placeholder="Ex.: WE 2002 Brasileirão 2026"></label>
+    <label>Jogo base<select name="game_title_id" required>
+      <option value="">Escolha...</option>
+      {% set chosen = (v.get('game_title_id') or (row.game_title_id if row else ''))|string %}
+      {% for g in games %}<option value="{{ g.id }}" {% if chosen == g.id|string %}selected{% endif %}>{{ g.name }}</option>{% endfor %}
+    </select></label>
+  </div>
+
+  <fieldset>
+    <legend>Arquivo</legend>
+    {% if row %}<p class="muted">Arquivo atual: <strong>{{ row.original_filename or row.file_filename }}</strong>{% if row.file_size %} ({{ row.file_size|filesize }}){% endif %}{% if row.file_id %} (ISO de Campeonato){% endif %}{% if row.archive_url %} · <a href="{{ row.archive_url }}" rel="noopener noreferrer" target="_blank">ver no archive.org</a>{% endif %}. Para manter, deixe os dois campos abaixo em branco.</p>
+    {% if row.stored_name and not row.local_removed_at and row.archive_status in ('uploading', 'verifying') %}<div class="archive-progress" data-archive-status="{{ url_for('tournaments.catalog_iso_status', catalog_id=row.id) }}"></div>{% endif %}{% endif %}
+    <div class="form-row">
+      <label>Enviar a ISO<input type="file" name="iso" accept="{{ iso_accept }}" id="iso-file"></label>
+      <label>ou usar uma ISO já enviada num Campeonato<select name="file_id" id="iso-championship">
+        <option value="">—</option>
+        {% set file_chosen = (v.get('file_id') or (row.file_id if row and row.file_id else ''))|string %}
+        {% for f in files %}<option value="{{ f.id }}" {% if file_chosen == f.id|string %}selected{% endif %}>{{ f.championship_name }}: {{ f.display_name }} ({{ f.original_filename }})</option>{% endfor %}
+      </select></label>
+    </div>
+    <p class="muted">A ISO enviada aqui vai para o archive.org, como as dos campeonatos. Se o archive.org já tiver um arquivo com o mesmo conteúdo, ela não é enviada de novo. Tamanho máximo: {{ iso_max_bytes // 1024 // 1024 }} MB.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Imagem do card (opcional)</legend>
+    <div class="t-image-edit">
+      <img class="t-image-thumb" id="iso-image-preview" src="{{ image_url('torneio', row.image) if row and row.image else '' }}" alt="" {% if not (row and row.image) %}hidden{% endif %}>
+      <div>
+        <input type="file" name="image" accept="image/png,image/jpeg,image/webp" data-resize="max:600" data-preview="iso-image-preview" aria-label="Escolher imagem da ISO">
+        <p class="muted">Sem imagem, o card mostra a capa do jogo base.</p>
+        {% if row and row.image %}<label class="check"><input type="checkbox" name="remove_image"> Remover a imagem</label>{% endif %}
+      </div>
+    </div>
+  </fieldset>
+
+  {% if pending %}<input type="hidden" name="is_active" value="on">
+  {% else %}<label class="check"><input type="checkbox" name="is_active" {% if (v.get('is_active') if form else (row.is_active if row else true)) %}checked{% endif %}> Ativa (aparece para os jogadores escolherem)</label>{% endif %}
+  {% include 'tournaments/_upload_progress.html' %}
+  <div class="card-actions">{% if pending %}<button name="liberar" value="1">Liberar ISO</button><button class="secondary btn-left">Salvar sem liberar</button>{% else %}<button>Salvar ISO</button>{% endif %}</div>
+</form>
+{% if pending %}
+<section>
+  <h2>Recusar</h2>
+  <form method="post" action="{{ url_for('tournaments_admin.admin_iso_reject', catalog_id=row.id) }}" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input name="motivo" maxlength="300" placeholder="Motivo (vai no e-mail para quem enviou)">
+    <button class="danger">Recusar e apagar a ISO</button>
+  </form>
+  <p class="muted">Apaga o cadastro e a cópia deste servidor. Se a ISO já foi para o archive.org, ela continua lá.</p>
+</section>
+{% endif %}
+<script>
+(function () {
+  // O arquivo enviado e a ISO de Campeonato são excludentes (tamanho e progresso: upload-progress.js).
+  var file = document.getElementById('iso-file'), pick = document.getElementById('iso-championship');
+  file.addEventListener('change', function () { if (file.files.length) pick.value = ''; });
+  pick.addEventListener('change', function () { if (pick.value) file.value = ''; });
+})();
+</script>
+<script src="{{ url_for('static', filename='js/upload-progress.js') }}"></script>
+<script src="{{ url_for('static', filename='js/archive-progress.js') }}"></script>
+<script src="{{ url_for('static', filename='js/image-resize.js') }}" defer></script>
+{% endblock %}

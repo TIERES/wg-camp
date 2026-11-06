@@ -1,0 +1,53 @@
+{% extends 'base.html' %}{% block title %}Campeonatos · Administração{% endblock %}{% block content %}
+<div class="page-title"><h1>Campeonatos: administração</h1></div>
+<p class="muted">Como administração do WE Camp você pode gerenciar qualquer campeonato (botão "Gerenciar" na página dele), inclusive cancelar campeonatos em andamento.</p>
+<p><a class="button secondary" href="{{ url_for('tournaments_admin.admin_teams') }}">Times e escudos</a> <a class="button secondary" href="{{ url_for('tournaments_admin.admin_isos') }}">ISOs para amistosos</a></p>
+
+<section>
+  <h2>Valores do W$</h2>
+  <form method="post" action="{{ url_for('tournaments_admin.admin_settings') }}" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-row">
+    {% for key, label in labels.items() %}
+      <label>{{ label }}<input name="{{ key }}" required {% if key in money %}inputmode="numeric" data-wcash{% if key == 'torneios_derrota' %} data-wcash-signed title="Digite - para descontar de quem perde e + para voltar a pagar"{% endif %} value="{{ values[key]|wcash }}"{% else %}type="number" min="1" value="{{ values[key] }}"{% endif %}></label>
+    {% endfor %}
+    </div>
+    <p class="muted">O saldo inicial vale para quem abrir a carteira depois da mudança. Os valores por jogo valem para os resultados lançados depois da mudança. Use 0,00 para não pagar nada. No <strong>Débito por derrota</strong>, digite <kbd>-</kbd> para descontar de quem perde (ex.: -W$ 0,50) e <kbd>+</kbd> para voltar a um valor positivo; o desconto só vai até W$ 0,00, o saldo nunca fica negativo. Quem chegar a zero recebe um e-mail avisando que a administração vai creditar um novo valor, e o e-mail da administração (abaixo) é avisado.</p>
+    <button>Salvar valores</button>
+  </form>
+</section>
+
+<section>
+  <h2>E-mail da administração</h2>
+  <form method="post" action="{{ url_for('tournaments_admin.admin_email') }}" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-row">
+      <label class="wide">E-mail(s) da administração do WE Camp<input name="emails" value="{{ admin_emails }}" placeholder="admin@wecamp.com.br, outro@wecamp.com.br" autocomplete="email"></label>
+      <button>Salvar e-mail</button>
+    </div>
+    <p class="muted">Recebe as contestações de placar que a administração decide (quando o organizador joga a própria partida). Separe vários endereços por vírgula; deixe vazio para não receber.</p>
+  </form>
+</section>
+
+<section>
+  <h2>Ajustar saldo de um jogador</h2>
+  <form method="post" action="{{ url_for('tournaments_admin.admin_wallet_adjust') }}" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-row">
+      <label>Usuário<input name="username" required></label>
+      <label>Valor (W$)<input name="amount" inputmode="numeric" data-wcash required placeholder="W$ 10,00"></label>
+      <label>Tipo<select name="direction"><option value="credito">Crédito (adicionar)</option><option value="debito">Débito (retirar)</option></select></label>
+      <label class="wide">Motivo<input name="note" maxlength="200" required></label>
+    </div>
+    <button>Lançar</button>
+  </form>
+  {% if recent %}
+  <h3>Últimos ajustes</h3>
+  <div class="table-scroll"><table>
+    <thead><tr><th>Data</th><th>Jogador</th><th>Valor</th><th>Motivo</th></tr></thead>
+    <tbody>{% for r in recent %}<tr><td>{{ r.created_at|localtime }}</td><td>{{ r.username }}</td><td>{{ r.amount_cents|wcash }}</td><td>{{ r.note }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+</section>
+<script src="{{ url_for('static', filename='js/wcash-mask.js') }}"></script>
+{% endblock %}

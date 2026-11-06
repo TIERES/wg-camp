@@ -49,7 +49,7 @@
     var checked = form.querySelectorAll('.row-select:checked');
     if (checked.length === 0) {
       event.preventDefault();
-      alert('Selecione ao menos um replay.');
+      toast('Selecione ao menos um replay.', 'error');
       return;
     }
     event.preventDefault();

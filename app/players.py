@@ -10,11 +10,13 @@ import sqlite3
 import zipfile
 from functools import wraps
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, session, url_for
+from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from .accounts import (email_error, external_url, find_token, issue_token, password_error,
-                       purge_stale_unverified, recently_sent, revoke_api_tokens, username_error)
+                       purge_stale_unverified, recently_sent, revoke_api_tokens, username_error, USERNAME_ALLOWED,
+                       USERNAME_RE, already_registered)
+from . import images
 from .db import get_db, now
 from .mailer import MailError, send_mail
 from .memcards import (add_version, card_error, card_path, championship_isos, get_or_create_game,
@@ -70,6 +72,25 @@ def _send_reset(db, player):
     ))
 
 
+@bp.get("/cadastro/verificar")
+def register_check():
+    """Conferência do cadastro ao sair do campo Usuário ou E-mail
+    (players/register.html): formato e se já existe conta com ele."""
+    field = request.args.get("campo")
+    value = (request.args.get("valor") or "").strip()
+    if field == "usuario":
+        error = username_error(value)
+        if not error and already_registered(get_db(), "username", value):
+            error = "Este usuário já está cadastrado. Se a conta é sua, entre ou use \"Esqueci minha senha\"."
+    elif field == "email":
+        error = email_error(value)
+        if not error and already_registered(get_db(), "email", value):
+            error = "Este e-mail já está cadastrado. Use \"Esqueci minha senha\" para recuperar o acesso."
+    else:
+        abort(404)
+    return jsonify({"ok": not error, "message": error or ""})
+
+
 @bp.route("/cadastro", methods=("GET", "POST"))
 def register():
     form = {"username": "", "email": ""}
@@ -108,7 +129,8 @@ def register():
                     f"Enviamos um link de confirmação para {email}. Abra-o em até 48 horas para "
                     "ativar sua conta. Verifique também a caixa de spam."))
         flash(error, "error")
-    return render_template("players/register.html", form=form)
+    return render_template("players/register.html", form=form, username_pattern=USERNAME_RE.pattern,
+                           username_allowed=USERNAME_ALLOWED)
 
 
 @bp.get("/confirmar/<token>")
@@ -172,8 +194,8 @@ def login():
             db.execute("UPDATE players SET last_login_at = ? WHERE id = ?", (now(), player["id"]))
             db.commit()
             target = request.args.get("next", "")
-            if not target.startswith("/conta"):
-                target = url_for("players.account")
+            if not (target.startswith("/conta") or target.startswith("/torneios")):
+                target = url_for("tournaments.my_tournaments")
             return redirect(target)
     return render_template("players/login.html")
 
@@ -257,6 +279,36 @@ def account():
         (player["id"],),
     ).fetchall()
     return render_template("players/account.html", player=player, cards=cards, isos=isos, games=games, tokens=tokens)
+
+
+@bp.post("/foto")
+@player_required
+def avatar():
+    """Envia, troca ou remove a foto do perfil (o navegador já recorta e reduz)."""
+    validate_csrf()
+    db = get_db()
+    old = db.execute("SELECT avatar FROM players WHERE id = ?", (session["player_id"],)).fetchone()
+    if old is None:
+        session.pop("player_id", None)
+        return redirect(url_for("players.login"))
+    if request.form.get("acao") == "remover":
+        new_name, message = None, "Foto removida."
+    else:
+        upload = request.files.get("avatar")
+        if not upload or not upload.filename:
+            flash("Escolha uma foto.", "error")
+            return redirect(url_for("players.account", _anchor="foto"))
+        try:
+            new_name = images.save("avatar", upload)
+        except images.ImageError as error:
+            flash(str(error), "error")
+            return redirect(url_for("players.account", _anchor="foto"))
+        message = "Foto salva."
+    db.execute("UPDATE players SET avatar = ?, updated_at = ? WHERE id = ?", (new_name, now(), session["player_id"]))
+    db.commit()
+    images.delete("avatar", old["avatar"])
+    flash(message, "success")
+    return redirect(url_for("players.account", _anchor="foto"))
 
 
 @bp.post("/senha")
@@ -413,5 +465,10 @@ def restore_card(memcard_id):
 
 @bp.app_context_processor
 def inject_player():
-    return {"player_logged_in": "player_id" in session}
+    """Também o nome de quem está logado, para o menu do usuário no cabeçalho."""
+    name = None
+    if "player_id" in session:
+        row = get_db().execute("SELECT username FROM players WHERE id = ?", (session["player_id"],)).fetchone()
+        name = row["username"] if row else None
+    return {"player_logged_in": "player_id" in session, "player_name": name}
 

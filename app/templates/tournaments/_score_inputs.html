@@ -1,0 +1,7 @@
+{# Campos de placar (e pênaltis no jogo decisivo do mata-mata, só à mostra com empate - js/pens.js). Espera: m, names, decisive, pens_agg, values (opcional), required #}
+<div class="score-inputs">
+  <span class="home">{{ names[m.home_entry_id] }}</span>
+  <span class="goals"><input type="number" name="home_goals" min="0" max="99" {% if required %}required{% endif %} value="{{ values.home_goals if values and values.home_goals is not none }}" aria-label="Gols do mandante"> x <input type="number" name="away_goals" min="0" max="99" {% if required %}required{% endif %} value="{{ values.away_goals if values and values.away_goals is not none }}" aria-label="Gols do visitante"></span>
+  <span class="away">{{ names[m.away_entry_id] }}</span>
+  {% if decisive %}<span class="pens" data-agg="{{ pens_agg|join(',') }}">{{ 'Empate no agregado' if pens_agg != (0, 0) else 'Empate' }}, pênaltis: <input type="number" name="home_pens" min="0" max="99" value="{{ values.home_pens if values and values.home_pens is not none }}" aria-label="Pênaltis do mandante"> x <input type="number" name="away_pens" min="0" max="99" value="{{ values.away_pens if values and values.away_pens is not none }}" aria-label="Pênaltis do visitante"></span>{% endif %}
+</div>

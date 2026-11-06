@@ -1,0 +1,23 @@
+{% extends 'tournaments/index.html' %}
+{% block title %}Meus campeonatos · WE Camp{% endblock %}
+{% block heading %}<div class="page-title"><h1>Meus campeonatos</h1><div class="card-actions"><a class="button secondary" href="{{ url_for('tournaments.index') }}">Todos os campeonatos</a><a class="button" href="{{ url_for('tournaments.new') }}">Criar campeonato</a></div></div>
+{% if invites %}
+<section class="invites">
+  <h2>Convites para campeonatos ({{ invites|length }})</h2>
+  <ul class="invite-cards">{% for i in invites %}
+    <li class="invite-card">
+      <img class="t-cover" src="{{ game_cover(i.game_code) }}" alt="" width="200" height="250" loading="lazy">
+      <div class="invite-info">
+        <strong>{{ i.name }}</strong>
+        <span class="muted">{{ i.game_name }} · convite de {{ i.organizer_name }}</span>
+        <small class="muted">{{ i.entries }}/{{ i.max_players }} jogadores · Inscrição: {{ i.entry_fee_cents|wcash if i.entry_fee_cents else 'grátis' }}{% if i.starts_on %} · início {{ i.starts_on|date_br }}{% endif %}</small>
+      </div>
+      <div class="card-actions">
+        <a class="button" href="{{ url_for('tournaments.show', slug=i.slug, aba='geral') }}">Ver e inscrever-se</a>
+        <form method="post" action="{{ url_for('tournaments.invite_decline', slug=i.slug) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Recusar</button></form>
+      </div>
+    </li>
+  {% endfor %}</ul>
+</section>
+{% endif %}{% endblock %}
+{% block empty %}<p>Você ainda não está inscrito em nenhum campeonato nem criou um. <a href="{{ url_for('tournaments.index', status='registration') }}">Veja os que estão com inscrições abertas</a>.</p>{% endblock %}

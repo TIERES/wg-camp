@@ -1,0 +1,87 @@
+{# Card de um amistoso (tournament/friendly.py) com as ações de quem está logado.
+   Espera: labels (friendly.STATUS_LABELS) e needs_me (friendly.needs_me). #}
+{% from '_avatar.html' import avatar_button %}
+{% macro friendly_form(f, acao, label, cls='', form_cls='', back='') -%}
+<form method="post" action="{{ url_for('tournaments.friendly_action', friendly_id=f.id, acao=acao) }}"{% if form_cls %} class="{{ form_cls }}"{% endif %}><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% if back %}<input type="hidden" name="voltar" value="{{ back }}">{% endif %}<button class="{{ cls }}">{{ label }}</button></form>
+{%- endmacro %}
+
+{% macro score_form(f, label, back='') -%}
+<form method="post" class="friendly-score" action="{{ url_for('tournaments.friendly_action', friendly_id=f.id, acao='placar') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% if back %}<input type="hidden" name="voltar" value="{{ back }}">{% endif %}
+  <div class="score-inputs">
+    <span class="home">{{ f.home_name }}</span>
+    <span class="goals"><input type="number" name="home_goals" min="0" max="99" required aria-label="Gols de {{ f.home_name }}"> x <input type="number" name="away_goals" min="0" max="99" required aria-label="Gols de {{ f.away_name }}"></span>
+    <span class="away">{{ f.away_name }}</span>
+  </div>
+  <button>{{ label }}</button>
+</form>
+{%- endmacro %}
+
+{% macro friendly_card(f, labels, needs_me, back='') -%}
+{% set me = session.player_id %}
+{% set mine = me in (f.home_id, f.away_id) %}
+{% set other = (f.away_name if f.home_id == me else f.home_name) if mine else '' %}
+<article class="friendly-card friendly-{{ f.status }}{% if mine and needs_me(f, me) %} friendly-todo{% endif %}" id="amistoso-{{ f.id }}">
+  <div class="friendly-head">
+    <a href="{{ url_for('tournaments.friendly_show', friendly_id=f.id) }}" class="friendly-game">Amistoso{% if f.game_name %} · {{ f.game_name }}{% endif %}</a>
+    <span class="friendly-status">{{ 'Convite para você' if f.status == 'invited' and f.away_id == me else labels[f.status] }}</span>
+  </div>
+  <div class="friendly-line">
+    <span class="with-avatar home">{{ avatar_button(f.home_id, f.home_name) }}<a href="{{ url_for('tournaments.player', nome=f.home_name) }}">{{ f.home_name }}</a></span>
+    <strong class="friendly-score-text">{% if f.home_goals is not none and f.status in ('reported', 'suspended', 'confirmed') %}{{ f.home_goals }} x {{ f.away_goals }}{% else %}x{% endif %}</strong>
+    <span class="with-avatar away"><a href="{{ url_for('tournaments.player', nome=f.away_name) }}">{{ f.away_name }}</a>{{ avatar_button(f.away_id, f.away_name) }}</span>
+  </div>
+  {% if f.message %}<p class="friendly-note"><small class="muted">Recado de {{ f.home_name }}:</small> {{ f.message }}</p>{% endif %}
+  {% if f.iso_title %}
+  <div class="friendly-iso">
+    {% if f.iso_image %}<img class="friendly-iso-cover t-image" src="{{ image_url('torneio', f.iso_image) }}" alt="" loading="lazy">{% endif %}
+    <img class="friendly-iso-cover" src="{{ game_cover(f.game_code) }}" alt="{{ f.game_name }}" loading="lazy">
+    <div class="friendly-iso-text">
+      <small class="muted">{{ 'ISO do campeonato' if f.iso_tournament_id else 'ISO do WE Camp' }}</small>
+      <strong>{{ f.iso_title }}</strong>
+      <span class="muted">{{ f.game_name }}{% if f.iso_filename %} · {{ f.iso_filename }}{% endif %}</span>
+    </div>
+    {% if mine or session.user_id %}<a class="button secondary" href="{{ url_for('tournaments.friendly_iso', friendly_id=f.id) }}" title="Baixar {{ f.iso_filename }}">Download ISO</a>{% endif %}
+  </div>
+  {% endif %}
+
+  {% if f.status == 'invited' %}
+    {% if mine and f.away_id == me %}
+    <p>{{ f.home_name }} chamou você para um amistoso.</p>
+    <div class="card-actions">{{ friendly_form(f, 'recusar', 'Recusar', 'secondary', 'btn-left', back) }}{{ friendly_form(f, 'aceitar', 'Aceitar amistoso', '', '', back) }}</div>
+    {% elif mine %}
+    <p class="muted">Aguardando {{ f.away_name }} aceitar o convite.</p>
+    <div class="card-actions">{{ friendly_form(f, 'cancelar', 'Cancelar convite', 'secondary', '', back) }}</div>
+    {% endif %}
+  {% elif f.status == 'accepted' and mine %}
+    <p class="muted">Depois do jogo, informe o placar. {{ other }} vai precisar confirmar.</p>
+    {{ score_form(f, 'Enviar placar', back) }}
+    <div class="card-actions">{{ friendly_form(f, 'cancelar', 'Cancelar amistoso', 'secondary', '', back) }}</div>
+  {% elif f.status == 'reported' and mine %}
+    {% if f.reported_by == me %}
+    <p class="muted">Você informou o placar. Aguardando {{ other }} confirmar.</p>
+    {% else %}
+    <p>{{ f.reported_name }} informou o placar <strong>{{ f.home_name }} {{ f.home_goals }} x {{ f.away_goals }} {{ f.away_name }}</strong>. Está certo?</p>
+    <form method="post" class="friendly-reject" action="{{ url_for('tournaments.friendly_action', friendly_id=f.id, acao='rejeitar') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% if back %}<input type="hidden" name="voltar" value="{{ back }}">{% endif %}
+      <details><summary>Não aceito este placar</summary>
+        <label>Motivo (opcional)<input name="motivo" maxlength="300" placeholder="Ex.: o placar foi 2 x 1"></label>
+        <button class="secondary">Não aceitar o placar</button>
+      </details>
+    </form>
+    <div class="card-actions">{{ friendly_form(f, 'confirmar', 'Confirmar placar', '', '', back) }}</div>
+    {% endif %}
+  {% elif f.status == 'suspended' %}
+    <p class="friendly-warn">Suspenso: {{ f.rejected_name }} não aceitou o placar {{ f.home_goals }} x {{ f.away_goals }}{% if f.rejected_note %} <small class="muted">("{{ f.rejected_note }}")</small>{% endif %}. Fica parado até um de vocês propor um placar que o outro aceite.</p>
+    {% if mine %}{{ score_form(f, 'Propor novo placar', back) }}{% endif %}
+  {% elif f.status == 'confirmed' %}
+    {% if f.ranked %}
+      {% set d_home = match_xp('a' ~ f.id, f.home_id) %}{% set d_away = match_xp('a' ~ f.id, f.away_id) %}
+      <p class="friendly-ranked">Vale para o Ranking e o XP{% if d_home is not none %}: {{ f.home_name }} <span class="xp-delta {{ 'up' if d_home > 0 else 'down' if d_home < 0 }}">{{ '%+d'|format(d_home) }} XP</span>, {{ f.away_name }} <span class="xp-delta {{ 'up' if d_away > 0 else 'down' if d_away < 0 }}">{{ '%+d'|format(d_away) }} XP</span>{% endif %}.</p>
+    {% else %}
+      <p class="muted">Não vale para o Ranking: {{ f.unranked_reason }}.</p>
+    {% endif %}
+  {% endif %}
+  <div class="friendly-foot"><small class="muted">{% if f.confirmed_at %}Confirmado em {{ f.confirmed_at|localtime }}{% else %}Atualizado em {{ f.updated_at|localtime }}{% endif %}</small></div>
+</article>
+{%- endmacro %}

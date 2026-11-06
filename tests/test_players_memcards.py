@@ -107,7 +107,7 @@ class RegistrationTest(PlayersTestBase):
         self.client.get(self.last_link("confirmar"))
         login = self.client.post("/conta/entrar", data={"csrf_token": "csrf", "username": "pele@example.com", "password": "segredo123"})
         self.assertEqual(login.status_code, 302)
-        self.assertTrue(login.headers["Location"].endswith("/conta/"))
+        self.assertTrue(login.headers["Location"].endswith("/torneios/meus-campeonatos"))
 
     def test_confirmation_link_is_single_use(self):
         self.register(confirm=False)
@@ -124,7 +124,7 @@ class RegistrationTest(PlayersTestBase):
 
     def test_invalid_username_is_rejected(self):
         response = self.register(username="com espaco", confirm=False)
-        self.assertIn("sem espaços", response.get_data(as_text=True))
+        self.assertIn("não pode ter espaços", response.get_data(as_text=True))
         with self.app.app_context():
             self.assertEqual(get_db().execute("SELECT COUNT(*) FROM players").fetchone()[0], 0)
 

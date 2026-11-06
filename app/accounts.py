@@ -44,10 +44,25 @@ def parse_iso(value):
         return None
 
 
+USERNAME_ALLOWED = "letras sem acento, números ou _ . - [ ] ( ) ! + = ~ |"
+
+
 def username_error(username):
-    if not USERNAME_RE.match(username or ""):
-        return ("O usuário deve ter de 2 a 31 caracteres, sem espaços, usando letras, números "
-                "ou _ . - [ ] ( ) ! + = ~ |. Use exatamente o nick do Kaillera.")
+    """Erro do usuário (nick do Kaillera), dizendo o que está errado - a mesma
+    conferência é feita no navegador antes do envio (players/register.html)."""
+    username = username or ""
+    if not username:
+        return "Informe o usuário (o seu nick do Kaillera)."
+    if any(ch.isspace() for ch in username):
+        return "O usuário não pode ter espaços: o Kaillera não aceita espaço no nick."
+    if any(ord(ch) > 127 for ch in username):
+        return ("O usuário não pode ter acentos nem ç (ex.: á, ã, é, ç): eles quebram o nick no Kaillera. "
+                "Troque por letras sem acento.")
+    if not 2 <= len(username) <= 31:
+        return "O usuário deve ter de 2 a 31 caracteres."
+    if not USERNAME_RE.match(username):
+        bad = "".join(sorted({ch for ch in username if not USERNAME_RE.match(ch * 2)}))
+        return f"O usuário tem caractere não permitido ({bad}). Use {USERNAME_ALLOWED}."
     return None
 
 
@@ -127,6 +142,17 @@ def purge_stale_unverified(db, username, email):
         "AND (username = ? COLLATE NOCASE OR email = ? COLLATE NOCASE)",
         (limit, username, email),
     )
+
+
+def already_registered(db, field, value):
+    """Já existe conta com esse usuário/e-mail (sem diferenciar maiúsculas)? Um
+    cadastro nunca confirmado e mais velho que UNVERIFIED_TTL não conta - o
+    novo cadastro o apaga (purge_stale_unverified)."""
+    column = {"username": "username", "email": "email"}[field]
+    limit = iso(utcnow() - UNVERIFIED_TTL)
+    return db.execute(
+        f"SELECT 1 FROM players WHERE {column} = ? COLLATE NOCASE "
+        "AND NOT (email_verified_at IS NULL AND created_at < ?)", ((value or "").strip(), limit)).fetchone() is not None
 
 
 def revoke_api_tokens(db, player_id):

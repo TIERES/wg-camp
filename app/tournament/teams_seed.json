@@ -1,0 +1,4796 @@
+{
+"groups": [
+{
+"slug": "brasileirao-a",
+"name": "Brasileirão Série A",
+"teams": [
+"brazil/athletico-paranaense",
+"brazil/atletico-mineiro",
+"brazil/bahia",
+"brazil/clube-do-remo",
+"brazil/botafogo",
+"brazil/chapecoense",
+"brazil/corinthians",
+"brazil/coritiba",
+"brazil/cruzeiro",
+"brazil/flamengo",
+"brazil/fluminense",
+"brazil/gremio",
+"brazil/internacional",
+"brazil/mirassol",
+"brazil/palmeiras",
+"brazil/rb-bragantino",
+"brazil/sao-paulo",
+"brazil/santos",
+"brazil/vasco-da-gama",
+"brazil/vitoria"
+]
+},
+{
+"slug": "brasileirao-b",
+"name": "Brasileirão Série B",
+"teams": [
+"brazil/america-mineiro",
+"brazil/athletic",
+"brazil/atletico-goianiense",
+"brazil/avai",
+"brazil/botafogo-sp",
+"brazil/ceara",
+"brazil/crb",
+"brazil/criciuma",
+"brazil/cuiaba",
+"brazil/fortaleza",
+"brazil/goias",
+"brazil/londrina",
+"brazil/juventude",
+"brazil/nautico",
+"brazil/novorizontino",
+"brazil/operario-ferroviario",
+"brazil/ponte-preta",
+"brazil/sao-bernardo",
+"brazil/sport-recife",
+"brazil/vila-nova"
+]
+},
+{
+"slug": "premier-league",
+"name": "Premier League (Inglaterra)",
+"teams": [
+"england/arsenal",
+"england/aston-villa",
+"england/chelsea",
+"england/everton",
+"england/liverpool",
+"england/manchester-city",
+"england/manchester-united",
+"england/newcastle",
+"england/tottenham",
+"england/bournemouth",
+"england/brentford",
+"england/brighton",
+"england/coventry-city",
+"england/crystal-palace",
+"england/fulham",
+"england/hull-city",
+"england/ipswich",
+"england/leeds-united",
+"england/nottingham-forest",
+"england/sunderland"
+]
+},
+{
+"slug": "la-liga",
+"name": "La Liga (Espanha)",
+"teams": [
+"spain/barcelona",
+"spain/real-madrid",
+"spain/atletico-madrid",
+"spain/sevilla",
+"spain/valencia",
+"spain/villarreal",
+"spain/real-betis",
+"spain/real-sociedad",
+"spain/athletic-club",
+"spain/espanyol",
+"spain/celta",
+"spain/deportivo",
+"spain/deportivo-la-coruna",
+"spain/elche",
+"spain/getafe",
+"spain/levante",
+"spain/malaga",
+"spain/osasuna",
+"spain/racing",
+"spain/rayo-vallecano"
+]
+},
+{
+"slug": "serie-a-italia",
+"name": "Serie A (Itália)",
+"teams": [
+"italy/juventus",
+"italy/milan",
+"italy/inter",
+"italy/napoli",
+"italy/roma",
+"italy/lazio",
+"italy/fiorentina",
+"italy/atalanta",
+"italy/bologna",
+"italy/cagliari",
+"italy/como-1907",
+"italy/frosinone",
+"italy/genoa",
+"italy/lecce",
+"italy/monza",
+"italy/parma",
+"italy/sassuolo",
+"italy/torino",
+"italy/udinese",
+"italy/venezia"
+]
+},
+{
+"slug": "bundesliga",
+"name": "Bundesliga (Alemanha)",
+"teams": [
+"germany/bayern-munchen",
+"germany/borussia-dortmund",
+"germany/rb-leipzig",
+"germany/bayer-leverkusen",
+"germany/eintracht-frankfurt",
+"germany/union-berlin",
+"germany/schalke-04",
+"germany/hamburger-sv",
+"germany/augsburg",
+"germany/werder-bremen",
+"germany/freiburg",
+"germany/hoffenheim",
+"germany/koln",
+"germany/mainz-05",
+"germany/borussia-monchengladbach",
+"germany/paderborn",
+"germany/sv-elversberg",
+"germany/vfb-stuttgart"
+]
+},
+{
+"slug": "ligue-1",
+"name": "Ligue 1 (França)",
+"teams": [
+"france/paris-saint-germain",
+"france/angers",
+"france/auxerre",
+"france/brest",
+"france/le-havre-ac",
+"france/rc-lens",
+"france/le-mans",
+"france/lille",
+"france/lorient",
+"france/lyon",
+"france/marseille",
+"france/as-monaco",
+"france/nice",
+"france/paris-fc",
+"france/rennes",
+"france/rc-strasbourg-alsace",
+"france/toulouse",
+"france/troyes"
+]
+},
+{
+"slug": "primeira-liga",
+"name": "Primeira Liga (Portugal)",
+"teams": [
+"portugal/sporting-cp",
+"portugal/benfica",
+"portugal/fc-porto",
+"portugal/academico-de-viseu",
+"portugal/alverca",
+"portugal/arouca",
+"portugal/casa-pia-ac",
+"portugal/estrela-da-amadora",
+"portugal/estoril",
+"portugal/famalicao",
+"portugal/gil-vicente",
+"portugal/maritimo",
+"portugal/moreirense",
+"portugal/nacional-da-madeira",
+"portugal/rio-ave",
+"portugal/santa-clara",
+"portugal/sc-braga",
+"portugal/vitoria-de-guimaraes"
+]
+},
+{
+"slug": "eredivisie",
+"name": "Eredivisie (Holanda)",
+"teams": [
+"netherlands/psv",
+"netherlands/ajax",
+"netherlands/feyenoord",
+"netherlands/fc-utrecht",
+"netherlands/az-alkmaar",
+"netherlands/twente",
+"netherlands/ado-den-haag",
+"netherlands/excelsior-rotterdam",
+"netherlands/telstar",
+"netherlands/fortuna-sittard",
+"netherlands/go-ahead-eagles",
+"netherlands/fc-groningen",
+"netherlands/sc-heerenveen",
+"netherlands/nec-nijmegen",
+"netherlands/sparta-rotterdam",
+"netherlands/willem-ii",
+"netherlands/pec-zwolle",
+"netherlands/sc-cambuur"
+]
+},
+{
+"slug": "argentina",
+"name": "Primera División (Argentina)",
+"teams": [
+"argentina/aldosivi",
+"argentina/argeninos-juniors",
+"argentina/atletico-tucuman",
+"argentina/banfield",
+"argentina/barracas-central",
+"argentina/belgrano",
+"argentina/boca-juniors",
+"argentina/ca-huracan",
+"argentina/central-cordoba",
+"argentina/club-atletico-platanense",
+"argentina/defensa-y-justicia",
+"argentina/deportivo-riestra",
+"argentina/estudiantes-de-la-plata",
+"argentina/gimnasia-lp",
+"argentina/independiente",
+"argentina/independiente-rivadavia",
+"argentina/instituto-cordoba",
+"argentina/lanus",
+"argentina/newells-old-boys",
+"argentina/racing-club",
+"argentina/river-plate",
+"argentina/rosario-central",
+"argentina/san-lorenzo-de-almagro",
+"argentina/sarmiento",
+"argentina/talleres",
+"argentina/tigre",
+"argentina/union",
+"argentina/velez-sarsfield",
+"argentina/gimnasia-y-esgrima",
+"argentina/estudiantes-de-rio-cuarto"
+]
+},
+{
+"slug": "uruguai",
+"name": "Primera División (Uruguai)",
+"teams": [
+"uruguay/penarol",
+"uruguay/defensor-sporting",
+"uruguay/montevideo-wanderers",
+"uruguay/liverpool",
+"uruguay/cerro",
+"uruguay/cerro-largo",
+"uruguay/nacional",
+"uruguay/juventud",
+"uruguay/racing-montevideo",
+"uruguay/danubio",
+"uruguay/boston-river",
+"uruguay/progreso",
+"uruguay/montevideo-city-torque",
+"uruguay/deportivo-maldonado",
+"uruguay/central-espanol",
+"uruguay/albion"
+]
+},
+{
+"slug": "chile",
+"name": "Primera División (Chile)",
+"teams": [
+"chile/coquimbo-unido",
+"chile/audax-italiano",
+"chile/universidad-de-chile",
+"chile/palestino",
+"chile/ohiggins",
+"chile/universidad-catolica",
+"chile/cobresal",
+"chile/union-la-calera",
+"chile/colo-colo",
+"chile/huachipato",
+"chile/la-serena",
+"chile/nublense",
+"chile/everton",
+"chile/deportes-limache",
+"chile/universidad-de-concepcion",
+"chile/deportes-concepcion"
+]
+},
+{
+"slug": "colombia",
+"name": "Primera A (Colômbia)",
+"teams": [
+"colombia/alianza-valledupar",
+"colombia/aguilas-doradas",
+"colombia/america-de-cali",
+"colombia/atletico-junior",
+"colombia/atletico-nacional",
+"colombia/boyaca-chico",
+"colombia/bucaramanga",
+"colombia/deportes-tolima",
+"colombia/deportivo-pereira",
+"colombia/deportivo-pasto",
+"colombia/independiente-medellin",
+"colombia/independiente-santa-fe",
+"colombia/millonarios",
+"colombia/llaneros",
+"colombia/once-caldas",
+"colombia/fortaleza",
+"colombia/deportivo-cali",
+"colombia/internacional-de-bogota",
+"colombia/cucuta-deportivo",
+"colombia/jaguares-de-cordoba",
+"colombia/envigado",
+"colombia/la-equidad",
+"colombia/union-magdalena",
+"colombia/atletico-huila",
+"colombia/internacional-palmira"
+]
+},
+{
+"slug": "paraguai",
+"name": "Primera División (Paraguai)",
+"teams": [
+"paraguay/cerro-porteno",
+"paraguay/guarani",
+"paraguay/sportivo-luqueno",
+"paraguay/nacional",
+"paraguay/trinidense",
+"paraguay/libertad",
+"paraguay/olimpia",
+"paraguay/2-de-mayo",
+"paraguay/rubio-nu",
+"paraguay/sportivo-ameliano",
+"paraguay/sportivo-san-lorenzo",
+"paraguay/deportivo-recoleta",
+"paraguay/general-caballero-jlm",
+"paraguay/club-atletico-tembetary",
+"paraguay/presidente-hayes"
+]
+},
+{
+"slug": "peru",
+"name": "Liga 1 (Peru)",
+"teams": [
+"peru/universitario",
+"peru/cusco",
+"peru/sporting-cristal",
+"peru/alianza-lima",
+"peru/cienciano-del-cusco",
+"peru/los-chankas",
+"peru/comerciantes-unidos",
+"peru/melgar",
+"peru/deportivo-garcilaso",
+"peru/adt",
+"peru/alianza-atletico",
+"peru/sport-huancayo",
+"peru/atletico-grau",
+"peru/sport-boys",
+"peru/utc",
+"peru/juan-pablo-ii",
+"peru/deportivo-moquegua",
+"peru/fc-cajamarca",
+"peru/alianza-universidad",
+"peru/ayacucho",
+"peru/defensor-lima",
+"peru/ada-jaen",
+"peru/coronel-bolognesi",
+"peru/juan-aurich",
+"peru/sportivo-huracan-arequipa",
+"peru/deportivo-municipal",
+"peru/union-comercio",
+"peru/universidad-cesar-vallejo",
+"peru/universidad-san-martin"
+]
+},
+{
+"slug": "equador",
+"name": "Liga Pro (Equador)",
+"teams": [
+"ecuador/independiente-del-valle",
+"ecuador/barcelona-sc",
+"ecuador/liga-de-quito",
+"ecuador/deportivo-cuenca",
+"ecuador/universidad-catolica-quito",
+"ecuador/orense",
+"ecuador/aucas",
+"ecuador/emelec",
+"ecuador/macara",
+"ecuador/delfin",
+"ecuador/manta-fc",
+"ecuador/tecnico-universitario",
+"ecuador/libertad",
+"ecuador/mushuc-runa",
+"ecuador/guayaquil-city",
+"ecuador/leones-del-norte",
+"ecuador/el-nacional",
+"ecuador/vinotinto",
+"ecuador/deportivo-quito"
+]
+},
+{
+"slug": "bolivia",
+"name": "Primera División (Bolívia)",
+"teams": [
+"bolivia/always-ready",
+"bolivia/bolivar",
+"bolivia/san-antonio-bulo-bulo",
+"bolivia/nacional-potosi",
+"bolivia/independiente-petrolero",
+"bolivia/aurora",
+"bolivia/guabira",
+"bolivia/gv-san-jose",
+"bolivia/real-oruro",
+"bolivia/the-strongest",
+"bolivia/real-tomayapo",
+"bolivia/blooming",
+"bolivia/jorge-wilstermann",
+"bolivia/oriente-petrolero",
+"bolivia/abb",
+"bolivia/universitario-de-vinto",
+"bolivia/real-santa-cruz",
+"bolivia/universitario-de-sucre"
+]
+},
+{
+"slug": "venezuela",
+"name": "Primera División (Venezuela)",
+"teams": [
+"venezuela/deportivo-la-guaira",
+"venezuela/deportivo-tachira",
+"venezuela/carabobo",
+"venezuela/monagas",
+"venezuela/caracas",
+"venezuela/zamora",
+"venezuela/academia-puerto-cabello",
+"venezuela/metropolitanos",
+"venezuela/universidad-central",
+"venezuela/estudiantes-merida",
+"venezuela/rayo-zuliano",
+"venezuela/academia-anzoategui",
+"venezuela/portuguesa",
+"venezuela/trujillanos-fc",
+"venezuela/yaracuyanos",
+"venezuela/mineros-de-guayana"
+]
+},
+{
+"slug": "selecoes",
+"name": "Seleções",
+"teams": [
+"albania/albania-national-team",
+"andorra/andorra-national-team",
+"austria/austria-national-team",
+"belarus/belarus-national-team",
+"belgium/belgium-national-team",
+"bosnia-and-herzegovina/bosnia-and-herzegovina-national-team",
+"bulgaria/bulgaria-national-team",
+"catalonia/catalonia-national-team",
+"croatia/croatia-national-team",
+"czech-republic/czech-republic-national-team",
+"denmark/denmark-national-team",
+"england/england-national-team",
+"estonia/estonia-national-team",
+"faroe-islands/faroe-islands-national-team",
+"finland/finland-national-team",
+"france/france-national-team",
+"germany/germany-national-team",
+"gibraltar/gibraltar-national-team",
+"greece/greece-national-team",
+"hungary/hungary-national-team",
+"iceland/iceland-national-team",
+"italy/italy-national-team",
+"kosovo/kosovo-national-team",
+"latvia/latvia-national-team",
+"liechtenstein/liechtenstein-national-team",
+"lithuania/lithuania-national-team",
+"luxembourg/luxembourg-national-team",
+"malta/malta-national-team",
+"moldova/moldova-national-team",
+"montenegro/montenegro-national-team",
+"netherlands/dutch-national-team",
+"north-macedonia/north-macedonia-national-team",
+"northern-ireland/northern-ireland-national-team",
+"norway/norway-national-team",
+"poland/poland-national-team",
+"portugal/portuguese-football-federation",
+"republic-of-ireland/republic-of-ireland-national-team",
+"romania/romania-national-team",
+"russia/russia-national-team",
+"san-marino/san-marino-national-team",
+"scotland/scotland-national-team",
+"serbia/serbia-national-team",
+"slovakia/slovakia-national-team",
+"slovenia/slovenia-national-team",
+"spain/spain-national-team",
+"sweden/sweden-national-team",
+"switzerland/switzerland-national-team",
+"ukraine/ukraine-national-team",
+"vatican-city/vatican-city-national-team",
+"wales/wales-national-team",
+"algeria/algeria-national-team",
+"angola/angola-national-team",
+"benin/benin-national-team",
+"botswana/botswana-national-team",
+"burkina-faso/burkina-faso-national-team",
+"burundi/burundi-national-team",
+"cabo-verde/cabo-verde-national-team",
+"cameroon/cameroon-national-team",
+"central-african-republic/central-african-republic-national-team",
+"chad/chad-national-team",
+"comoros/comoros-national-team",
+"congo/congo-national-team",
+"congo-dr/congo-dr-national-team",
+"cote-d-ivoire/cote-d-ivoire-national-team",
+"djibouti/djibouti-national-team",
+"egypt/egypt-national-team",
+"equatorial-guinea/equatorial-guinea-national-team",
+"eritrea/eritrea-national-team",
+"eswatini/eswatini-national-team",
+"ethiopia/ethiopia-national-team",
+"gabon/gabon-national-team",
+"gambia/gambia-national-team",
+"ghana/ghana-national-team",
+"guinea/guinea-national-team",
+"guinea-bissau/guinea-bissau-national-team",
+"kenya/kenya-national-team",
+"lesotho/lesotho-national-team",
+"liberia/liberia-national-team",
+"libya/libya-national-team",
+"madagascar/madagascar-national-team",
+"malawi/malawi-national-team",
+"mali/mali-national-team",
+"mauritania/mauritania-national-team",
+"mauritius/mauritius-national-team",
+"morocco/morocco-national-team",
+"mozambique/mozambique-national-team",
+"namibia/namibia-national-team",
+"niger/niger-national-team",
+"nigeria/nigeria-national-team",
+"reunion/reunion-national-team",
+"rwanda/rwanda-national-team",
+"sao-tome-and-principe/sao-tome-and-principe-national-team",
+"senegal/senegal-national-team",
+"seychelles/seychelles-national-team",
+"sierra-leone/sierra-leone-national-team",
+"somalia/somalia-national-team",
+"south-africa/south-africa-national-team",
+"south-sudan/south-sudan-national-team",
+"sudan/sudan-national-team",
+"tanzania/tanzania-national-team",
+"togo/togo-national-team",
+"tunisia/tunisia-national-team",
+"uganda/uganda-national-team",
+"zambia/zambia-national-team",
+"zanzibar/zanzibar-national-team",
+"zimbabwe/zimbabwe-national-team",
+"afghanistan/afghanistan-national-team",
+"armenia/armenia-national-team",
+"azerbaijan/azerbaijan-national-team",
+"bahrain/bahrain-national-team",
+"bangladesh/bangladesh-national-team",
+"bhutan/bhutan-national-team",
+"brunei/brunei-national-team",
+"cambodia/cambodia-national-team",
+"china/china-national-team",
+"cyprus/cyprus-national-team",
+"georgia/georgia-national-team",
+"hong-kong/hong-kong-national-team",
+"india/india-national-team",
+"indonesia/indonesia-national-team",
+"iran/iran-national-team",
+"iraq/iraq-national-team",
+"israel/israel-national-team",
+"japan/japan-national-team",
+"jordan/jordan-national-team",
+"kazakhstan/kazakhstan-national-team",
+"kurdistan/kurdistan-national-team",
+"kuwait/kuwait-national-team",
+"kyrgyzstan/kyrgyzstan-national-team",
+"laos/laos-national-team",
+"lebanon/lebanon-national-team",
+"macau/macau-national-team",
+"malaysia/malaysia-national-team",
+"maldives/maldives-national-team",
+"mongolia/mongolia-national-team",
+"myanmar/myanmar-national-team",
+"nepal/nepal-national-team",
+"north-korea/north-korea-national-team",
+"northern-mariana-islands/northern-mariana-islands-national-team",
+"oman/oman-national-team",
+"pakistan/pakistan-national-team",
+"palestine/palestine-national-team",
+"philippines/philippines-national-team",
+"qatar/qatar-national-team",
+"saudi-arabia/saudi-arabia-national-team",
+"singapore/singapore-national-team",
+"south-korea/south-korea-national-team",
+"sri-lanka/sri-lanka-national-team",
+"syria/syria-national-team",
+"taiwan/taiwan-national-team",
+"tajikistan/tajikistan-national-team",
+"thailand/thailand-national-team",
+"timor-leste/timor-leste-national-team",
+"turkey/turkey-national-team",
+"turkmenistan/turkmenistan-national-team",
+"uae/uae-national-team",
+"uzbekistan/uzbekistan-national-team",
+"vietnam/vietnam-national-team",
+"yemen/yemen-national-team",
+"anguilla/anguilla-national-team",
+"antigua-and-barbuda/antigua-and-barbuda-national-team",
+"aruba/aruba-national-team",
+"bahamas/bahamas-national-team",
+"barbados/barbados-national-team",
+"belize/belize-national-team",
+"bermuda/bermuda-national-team",
+"bonaire/bonaire-national-team",
+"british-virgin-islands/british-virgin-islands-national-team",
+"canada/canada-national-team",
+"cayman-islands/cayman-islands-national-team",
+"costa-rica/costa-rica-national-team",
+"cuba/cuba-national-team",
+"curacao/curacao-national-team",
+"dominica/dominica-national-team",
+"dominican-republic/dominican-republic-national-team",
+"el-salvador/el-salvador-national-team",
+"greenland/greenland-national-team",
+"grenada/grenada-national-team",
+"guadeloupe/guadeloupe-national-team",
+"guatemala/guatemala-national-team",
+"haiti/haiti-national-team",
+"honduras/honduras-national-team",
+"jamaica/jamaica-national-team",
+"martinique/martinique-national-team",
+"mexico/mexico-national-team",
+"montserrat/montserrat-national-team",
+"nicaragua/nicaragua-national-team",
+"panama/panama-national-team",
+"puerto-rico/puerto-rico-national-team",
+"saint-lucia/saint-lucia-national-team",
+"saint-martin/saint-martin-national-team",
+"saint-vincent-and-the-grenadines/saint-vincent-and-the-grenadines-national-team",
+"sint-maarten/sint-maarten-national-team",
+"st-kitts-and-nevis/st-kitts-and-nevis-national-team",
+"trinidad-and-tobago/trinidad-and-tobago-national-team",
+"turks-and-caicos-islands/turks-and-caicos-islands-national-team",
+"us-virgin-islands/us-virgin-islands-national-team",
+"usa/usa-national-team",
+"american-samoa/american-samoa-national-team",
+"australia/australia-national-team",
+"cook-islands/cook-islands-national-team",
+"fiji/fiji-national-team",
+"guam/guam-national-team",
+"kiribati/kiribati-national-team",
+"nauru/nauru-national-team",
+"new-caledonia/new-caledonia-national-team",
+"new-zealand/new-zealand-national-team",
+"palau/palau-national-team",
+"papua-new-guinea/papua-new-guinea-national-team",
+"samoa/samoa-national-team",
+"solomon-islands/solomon-islands-national-team",
+"tahiti/tahiti-national-team",
+"tonga/tonga-national-team",
+"tuvalu/tuvalu-national-team",
+"vanuatu/vanuatu-national-team",
+"argentina/argentina-national-team",
+"bolivia/bolivia-national-team",
+"brazil/brazil-national-team",
+"chile/chile-national-team",
+"colombia/colombia-national-team",
+"ecuador/ecuador-national-team",
+"french-guiana/french-guiana-national-team",
+"guyana/guyana-national-team",
+"paraguay/paraguay-national-team",
+"peru/peru-national-team",
+"suriname/suriname-national-team",
+"uruguay/uruguay-national-team",
+"venezuela/venezuela-national-team"
+]
+}
+],
+"teams": [
+{
+"key": "argentina/aldosivi",
+"name": "Aldosivi",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/aldosivi.webp"
+},
+{
+"key": "argentina/argeninos-juniors",
+"name": "Argeninos Juniors",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/argeninos-juniors.webp"
+},
+{
+"key": "argentina/atletico-tucuman",
+"name": "Atlético Tucumán",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/atletico-tucuman.webp"
+},
+{
+"key": "argentina/banfield",
+"name": "Banfield",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/banfield.webp"
+},
+{
+"key": "argentina/barracas-central",
+"name": "Barracas Central",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/barracas-central.webp"
+},
+{
+"key": "argentina/belgrano",
+"name": "Belgrano",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/belgrano.webp"
+},
+{
+"key": "argentina/boca-juniors",
+"name": "Boca Juniors",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/boca-juniors.webp"
+},
+{
+"key": "argentina/ca-huracan",
+"name": "CA Huracán",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/ca-huracan.webp"
+},
+{
+"key": "argentina/central-cordoba",
+"name": "Central Córdoba",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/central-cordoba.webp"
+},
+{
+"key": "argentina/club-atletico-platanense",
+"name": "Club Atlético Platanense",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/club-atletico-platanense.webp"
+},
+{
+"key": "argentina/defensa-y-justicia",
+"name": "Defensa y Justicia",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/defensa-y-justicia.webp"
+},
+{
+"key": "argentina/deportivo-riestra",
+"name": "Deportivo Riestra",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/deportivo-riestra.webp"
+},
+{
+"key": "argentina/estudiantes-de-la-plata",
+"name": "Estudiantes de La Plata",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/estudiantes-de-la-plata.webp"
+},
+{
+"key": "argentina/estudiantes-de-rio-cuarto",
+"name": "Estudiantes de Rio Cuarto",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/estudiantes-de-rio-cuarto.webp"
+},
+{
+"key": "argentina/gimnasia-lp",
+"name": "Gimnasia LP",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/gimnasia-lp.webp"
+},
+{
+"key": "argentina/gimnasia-y-esgrima",
+"name": "Gimnasia y Esgrima",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/gimnasia-y-esgrima.webp"
+},
+{
+"key": "argentina/independiente",
+"name": "Independiente",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/independiente.webp"
+},
+{
+"key": "argentina/independiente-rivadavia",
+"name": "Independiente Rivadavia",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/independiente-rivadavia.webp"
+},
+{
+"key": "argentina/instituto-cordoba",
+"name": "Instituto Córdoba",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/instituto-cordoba.webp"
+},
+{
+"key": "argentina/lanus",
+"name": "Lanús",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/lanus.webp"
+},
+{
+"key": "argentina/newells-old-boys",
+"name": "Newell's Old Boys",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/newells-old-boys.webp"
+},
+{
+"key": "argentina/racing-club",
+"name": "Racing Club",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/racing-club.webp"
+},
+{
+"key": "argentina/river-plate",
+"name": "River Plate",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/river-plate.webp"
+},
+{
+"key": "argentina/rosario-central",
+"name": "Rosario Central",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/rosario-central.webp"
+},
+{
+"key": "argentina/san-lorenzo-de-almagro",
+"name": "San Lorenzo de Almagro",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/san-lorenzo-de-almagro.webp"
+},
+{
+"key": "argentina/sarmiento",
+"name": "Sarmiento",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/sarmiento.webp"
+},
+{
+"key": "argentina/talleres",
+"name": "Talleres",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/talleres.webp"
+},
+{
+"key": "argentina/tigre",
+"name": "Tigre",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/tigre.webp"
+},
+{
+"key": "argentina/union",
+"name": "Union",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/union.webp"
+},
+{
+"key": "argentina/velez-sarsfield",
+"name": "Vélez Sarsfield",
+"kind": "club",
+"country": "ar",
+"logo": "argentina/velez-sarsfield.webp"
+},
+{
+"key": "bolivia/abb",
+"name": "Academia del Balompié Boliviano",
+"kind": "club",
+"country": "bo",
+"logo": "bolivia/abb.webp"
+},
+{
+"key": "bolivia/always-ready",
+"name": "Always Ready",
+"kind": "club",
+"country": "bo",
+"logo": "bolivia/always-ready.webp"
+},
+{
+"key": "bolivia/aurora",
+"name": "Aurora",
+"kind": "club",
+"country": "bo",
+"logo": "bolivia/aurora.webp"
+},
+{
+"key": "bolivia/blooming",
+"name": "Blooming",
+"kind": "club",
+"country": "bo",
+"logo": "bolivia/blooming.webp"
+},
+{
+"key": "bolivia/bolivar",
+"name": "Bolívar",
+"kind": "club",
+"country": "bo",
+"logo": "bolivia/bolivar.webp"
+},
+{
+"key": "bolivia/guabira",
+"name": "Deportivo Guabirá",
+"kind": "club",
+"country": "bo",
+"logo": "bolivia/guabira.webp"
+},
+{
+"key": "bolivia/gv-san-jose",
+"name": "Gualberto Villarroel Deportivo San José",
+"kind": "club",
+"country": "bo",
+"logo": "bolivia/gv-san-jose.webp"
+},
+{
+"key": "bolivia/independiente-petrolero",
+"name": "Independiente Petrolero",
+"kind": "club",
+"country": "bo",
+"logo": "bolivia/independiente-petrolero.webp"
+},
+{
+"key": "bolivia/jorge-wilstermann",
+"name": "Jorge Wilstermann",
+"kind": "club",
+"country": "bo",
+"logo": "bolivia/jorge-wilstermann.webp"
+},
+{
+"key": "bolivia/nacional-potosi",
+"name": "Atlético Nacional Potosí",
+"kind": "club",
+"country": "bo",
+"logo": "bolivia/nacional-potosi.webp"
+},
+{
+"key": "bolivia/oriente-petrolero",
+"name": "Deportivo Oriente Petrolero",
+"kind": "club",
+"country": "bo",
+"logo": "bolivia/oriente-petrolero.webp"
+},
+{
+"key": "bolivia/real-oruro",
+"name": "Deportivo Totora Real Oruro",
+"kind": "club",
+"country": "bo",
+"logo": "bolivia/real-oruro.webp"
+},
+{
+"key": "bolivia/real-santa-cruz",
+"name": "Real Santa Cruz",
+"kind": "club",
+"country": "bo",
+"logo": "bolivia/real-santa-cruz.webp"
+},
+{
+"key": "bolivia/real-tomayapo",
+"name": "Real Tomayapo",
+"kind": "club",
+"country": "bo",
+"logo": "bolivia/real-tomayapo.webp"
+},
+{
+"key": "bolivia/san-antonio-bulo-bulo",
+"name": "CD San Antonio Bulo Bulo",
+"kind": "club",
+"country": "bo",
+"logo": "bolivia/san-antonio-bulo-bulo.webp"
+},
+{
+"key": "bolivia/the-strongest",
+"name": "The Strongest",
+"kind": "club",
+"country": "bo",
+"logo": "bolivia/the-strongest.webp"
+},
+{
+"key": "bolivia/universitario-de-sucre",
+"name": "Universitario de Sucre",
+"kind": "club",
+"country": "bo",
+"logo": "bolivia/universitario-de-sucre.webp"
+},
+{
+"key": "bolivia/universitario-de-vinto",
+"name": "Universitario de Vinto",
+"kind": "club",
+"country": "bo",
+"logo": "bolivia/universitario-de-vinto.webp"
+},
+{
+"key": "brazil/america-mineiro",
+"name": "América Mineiro",
+"kind": "club",
+"country": "br",
+"logo": "brazil/america-mineiro.webp"
+},
+{
+"key": "brazil/athletic",
+"name": "Athletic",
+"kind": "club",
+"country": "br",
+"logo": "brazil/athletic.webp"
+},
+{
+"key": "brazil/athletico-paranaense",
+"name": "Athletico Paranaense",
+"kind": "club",
+"country": "br",
+"logo": "brazil/athletico-paranaense.webp"
+},
+{
+"key": "brazil/atletico-goianiense",
+"name": "Atlético Goianiense",
+"kind": "club",
+"country": "br",
+"logo": "brazil/atletico-goianiense.webp"
+},
+{
+"key": "brazil/atletico-mineiro",
+"name": "Atlético Mineiro",
+"kind": "club",
+"country": "br",
+"logo": "brazil/atletico-mineiro.webp"
+},
+{
+"key": "brazil/avai",
+"name": "Avai",
+"kind": "club",
+"country": "br",
+"logo": "brazil/avai.webp"
+},
+{
+"key": "brazil/bahia",
+"name": "Bahia",
+"kind": "club",
+"country": "br",
+"logo": "brazil/bahia.webp"
+},
+{
+"key": "brazil/botafogo",
+"name": "Botafogo FR",
+"kind": "club",
+"country": "br",
+"logo": "brazil/botafogo.webp"
+},
+{
+"key": "brazil/botafogo-sp",
+"name": "Botafogo SP",
+"kind": "club",
+"country": "br",
+"logo": "brazil/botafogo-sp.webp"
+},
+{
+"key": "brazil/ceara",
+"name": "Ceará",
+"kind": "club",
+"country": "br",
+"logo": "brazil/ceara.webp"
+},
+{
+"key": "brazil/chapecoense",
+"name": "Chapecoense",
+"kind": "club",
+"country": "br",
+"logo": "brazil/chapecoense.webp"
+},
+{
+"key": "brazil/clube-do-remo",
+"name": "Clube do Remo",
+"kind": "club",
+"country": "br",
+"logo": "brazil/clube-do-remo.webp"
+},
+{
+"key": "brazil/corinthians",
+"name": "Corinthians",
+"kind": "club",
+"country": "br",
+"logo": "brazil/corinthians.webp"
+},
+{
+"key": "brazil/coritiba",
+"name": "Coritiba",
+"kind": "club",
+"country": "br",
+"logo": "brazil/coritiba.webp"
+},
+{
+"key": "brazil/crb",
+"name": "Clube de Regatas Brasil",
+"kind": "club",
+"country": "br",
+"logo": "brazil/crb.webp"
+},
+{
+"key": "brazil/criciuma",
+"name": "Criciúma",
+"kind": "club",
+"country": "br",
+"logo": "brazil/criciuma.webp"
+},
+{
+"key": "brazil/cruzeiro",
+"name": "Cruzeiro",
+"kind": "club",
+"country": "br",
+"logo": "brazil/cruzeiro.webp"
+},
+{
+"key": "brazil/cuiaba",
+"name": "Cuiabá",
+"kind": "club",
+"country": "br",
+"logo": "brazil/cuiaba.webp"
+},
+{
+"key": "brazil/flamengo",
+"name": "Flamengo",
+"kind": "club",
+"country": "br",
+"logo": "brazil/flamengo.webp"
+},
+{
+"key": "brazil/fluminense",
+"name": "Fluminense",
+"kind": "club",
+"country": "br",
+"logo": "brazil/fluminense.webp"
+},
+{
+"key": "brazil/fortaleza",
+"name": "Fortaleza",
+"kind": "club",
+"country": "br",
+"logo": "brazil/fortaleza.webp"
+},
+{
+"key": "brazil/goias",
+"name": "Goiás",
+"kind": "club",
+"country": "br",
+"logo": "brazil/goias.webp"
+},
+{
+"key": "brazil/gremio",
+"name": "Grêmio",
+"kind": "club",
+"country": "br",
+"logo": "brazil/gremio.webp"
+},
+{
+"key": "brazil/internacional",
+"name": "Internacional",
+"kind": "club",
+"country": "br",
+"logo": "brazil/internacional.webp"
+},
+{
+"key": "brazil/juventude",
+"name": "Juventude",
+"kind": "club",
+"country": "br",
+"logo": "brazil/juventude.webp"
+},
+{
+"key": "brazil/londrina",
+"name": "Londrina",
+"kind": "club",
+"country": "br",
+"logo": "brazil/londrina.webp"
+},
+{
+"key": "brazil/mirassol",
+"name": "Mirassol",
+"kind": "club",
+"country": "br",
+"logo": "brazil/mirassol.webp"
+},
+{
+"key": "brazil/nautico",
+"name": "Náutico",
+"kind": "club",
+"country": "br",
+"logo": "brazil/nautico.webp"
+},
+{
+"key": "brazil/novorizontino",
+"name": "Grêmio Novorizontino",
+"kind": "club",
+"country": "br",
+"logo": "brazil/novorizontino.webp"
+},
+{
+"key": "brazil/operario-ferroviario",
+"name": "Operário Ferroviário",
+"kind": "club",
+"country": "br",
+"logo": "brazil/operario-ferroviario.webp"
+},
+{
+"key": "brazil/palmeiras",
+"name": "Palmeiras",
+"kind": "club",
+"country": "br",
+"logo": "brazil/palmeiras.webp"
+},
+{
+"key": "brazil/ponte-preta",
+"name": "Ponte Preta",
+"kind": "club",
+"country": "br",
+"logo": "brazil/ponte-preta.webp"
+},
+{
+"key": "brazil/rb-bragantino",
+"name": "RB Bragantino",
+"kind": "club",
+"country": "br",
+"logo": "brazil/rb-bragantino.webp"
+},
+{
+"key": "brazil/santos",
+"name": "Santos FC",
+"kind": "club",
+"country": "br",
+"logo": "brazil/santos.webp"
+},
+{
+"key": "brazil/sao-bernardo",
+"name": "São Bernardo",
+"kind": "club",
+"country": "br",
+"logo": "brazil/sao-bernardo.webp"
+},
+{
+"key": "brazil/sao-paulo",
+"name": "São Paulo",
+"kind": "club",
+"country": "br",
+"logo": "brazil/sao-paulo.webp"
+},
+{
+"key": "brazil/sport-recife",
+"name": "Sport Recife",
+"kind": "club",
+"country": "br",
+"logo": "brazil/sport-recife.webp"
+},
+{
+"key": "brazil/vasco-da-gama",
+"name": "Vasco da Gama",
+"kind": "club",
+"country": "br",
+"logo": "brazil/vasco-da-gama.webp"
+},
+{
+"key": "brazil/vila-nova",
+"name": "Vila Nova",
+"kind": "club",
+"country": "br",
+"logo": "brazil/vila-nova.webp"
+},
+{
+"key": "brazil/vitoria",
+"name": "Vitória",
+"kind": "club",
+"country": "br",
+"logo": "brazil/vitoria.webp"
+},
+{
+"key": "chile/audax-italiano",
+"name": "Audax Italiano",
+"kind": "club",
+"country": "cl",
+"logo": "chile/audax-italiano.webp"
+},
+{
+"key": "chile/cobresal",
+"name": "Cobresal",
+"kind": "club",
+"country": "cl",
+"logo": "chile/cobresal.webp"
+},
+{
+"key": "chile/colo-colo",
+"name": "Colo Colo",
+"kind": "club",
+"country": "cl",
+"logo": "chile/colo-colo.webp"
+},
+{
+"key": "chile/coquimbo-unido",
+"name": "Coquimbo Unido",
+"kind": "club",
+"country": "cl",
+"logo": "chile/coquimbo-unido.webp"
+},
+{
+"key": "chile/deportes-concepcion",
+"name": "Deportes Concepción",
+"kind": "club",
+"country": "cl",
+"logo": "chile/deportes-concepcion.webp"
+},
+{
+"key": "chile/deportes-limache",
+"name": "Deportes Limache",
+"kind": "club",
+"country": "cl",
+"logo": "chile/deportes-limache.webp"
+},
+{
+"key": "chile/everton",
+"name": "Everton de Viña del Mar",
+"kind": "club",
+"country": "cl",
+"logo": "chile/everton.webp"
+},
+{
+"key": "chile/huachipato",
+"name": "Huachipato",
+"kind": "club",
+"country": "cl",
+"logo": "chile/huachipato.webp"
+},
+{
+"key": "chile/la-serena",
+"name": "La Serena",
+"kind": "club",
+"country": "cl",
+"logo": "chile/la-serena.webp"
+},
+{
+"key": "chile/nublense",
+"name": "Ñublense",
+"kind": "club",
+"country": "cl",
+"logo": "chile/nublense.webp"
+},
+{
+"key": "chile/ohiggins",
+"name": "O'Higgins",
+"kind": "club",
+"country": "cl",
+"logo": "chile/ohiggins.webp"
+},
+{
+"key": "chile/palestino",
+"name": "Palestino",
+"kind": "club",
+"country": "cl",
+"logo": "chile/palestino.webp"
+},
+{
+"key": "chile/union-la-calera",
+"name": "Unión La Calera",
+"kind": "club",
+"country": "cl",
+"logo": "chile/union-la-calera.webp"
+},
+{
+"key": "chile/universidad-catolica",
+"name": "Universidad Católica",
+"kind": "club",
+"country": "cl",
+"logo": "chile/universidad-catolica.webp"
+},
+{
+"key": "chile/universidad-de-chile",
+"name": "Universidad de Chile",
+"kind": "club",
+"country": "cl",
+"logo": "chile/universidad-de-chile.webp"
+},
+{
+"key": "chile/universidad-de-concepcion",
+"name": "Universidad de Concepción",
+"kind": "club",
+"country": "cl",
+"logo": "chile/universidad-de-concepcion.webp"
+},
+{
+"key": "colombia/aguilas-doradas",
+"name": "Águilas Doradas",
+"kind": "club",
+"country": "co",
+"logo": "colombia/aguilas-doradas.webp"
+},
+{
+"key": "colombia/alianza-valledupar",
+"name": "Alianza Valledupar",
+"kind": "club",
+"country": "co",
+"logo": "colombia/alianza-valledupar.webp"
+},
+{
+"key": "colombia/america-de-cali",
+"name": "América de Cali",
+"kind": "club",
+"country": "co",
+"logo": "colombia/america-de-cali.webp"
+},
+{
+"key": "colombia/atletico-huila",
+"name": "Atlético Huila",
+"kind": "club",
+"country": "co",
+"logo": "colombia/atletico-huila.webp"
+},
+{
+"key": "colombia/atletico-junior",
+"name": "Atlético Junior",
+"kind": "club",
+"country": "co",
+"logo": "colombia/atletico-junior.webp"
+},
+{
+"key": "colombia/atletico-nacional",
+"name": "Atlético Nacional",
+"kind": "club",
+"country": "co",
+"logo": "colombia/atletico-nacional.webp"
+},
+{
+"key": "colombia/boyaca-chico",
+"name": "Boyacá Chicó",
+"kind": "club",
+"country": "co",
+"logo": "colombia/boyaca-chico.webp"
+},
+{
+"key": "colombia/bucaramanga",
+"name": "Bucaramanga",
+"kind": "club",
+"country": "co",
+"logo": "colombia/bucaramanga.webp"
+},
+{
+"key": "colombia/cucuta-deportivo",
+"name": "Cúcuta Deportivo",
+"kind": "club",
+"country": "co",
+"logo": "colombia/cucuta-deportivo.webp"
+},
+{
+"key": "colombia/deportes-tolima",
+"name": "Deportes Tolima",
+"kind": "club",
+"country": "co",
+"logo": "colombia/deportes-tolima.webp"
+},
+{
+"key": "colombia/deportivo-cali",
+"name": "Deportivo Cali",
+"kind": "club",
+"country": "co",
+"logo": "colombia/deportivo-cali.webp"
+},
+{
+"key": "colombia/deportivo-pasto",
+"name": "Deportivo Pasto",
+"kind": "club",
+"country": "co",
+"logo": "colombia/deportivo-pasto.webp"
+},
+{
+"key": "colombia/deportivo-pereira",
+"name": "Deportivo Pereira",
+"kind": "club",
+"country": "co",
+"logo": "colombia/deportivo-pereira.webp"
+},
+{
+"key": "colombia/envigado",
+"name": "Envigado",
+"kind": "club",
+"country": "co",
+"logo": "colombia/envigado.webp"
+},
+{
+"key": "colombia/fortaleza",
+"name": "Fortaleza",
+"kind": "club",
+"country": "co",
+"logo": "colombia/fortaleza.webp"
+},
+{
+"key": "colombia/independiente-medellin",
+"name": "Independiente Medellín",
+"kind": "club",
+"country": "co",
+"logo": "colombia/independiente-medellin.webp"
+},
+{
+"key": "colombia/independiente-santa-fe",
+"name": "Independiente Santa Fe",
+"kind": "club",
+"country": "co",
+"logo": "colombia/independiente-santa-fe.webp"
+},
+{
+"key": "colombia/internacional-de-bogota",
+"name": "Internacional de Bogotá",
+"kind": "club",
+"country": "co",
+"logo": "colombia/internacional-de-bogota.webp"
+},
+{
+"key": "colombia/internacional-palmira",
+"name": "Internacional Palmira",
+"kind": "club",
+"country": "co",
+"logo": "colombia/internacional-palmira.webp"
+},
+{
+"key": "colombia/jaguares-de-cordoba",
+"name": "Jaguares de Córdoba",
+"kind": "club",
+"country": "co",
+"logo": "colombia/jaguares-de-cordoba.webp"
+},
+{
+"key": "colombia/la-equidad",
+"name": "La Equidad",
+"kind": "club",
+"country": "co",
+"logo": "colombia/la-equidad.webp"
+},
+{
+"key": "colombia/llaneros",
+"name": "Llaneros",
+"kind": "club",
+"country": "co",
+"logo": "colombia/llaneros.webp"
+},
+{
+"key": "colombia/millonarios",
+"name": "Millonarios",
+"kind": "club",
+"country": "co",
+"logo": "colombia/millonarios.webp"
+},
+{
+"key": "colombia/once-caldas",
+"name": "Once Caldas",
+"kind": "club",
+"country": "co",
+"logo": "colombia/once-caldas.webp"
+},
+{
+"key": "colombia/union-magdalena",
+"name": "Unión Magdalena",
+"kind": "club",
+"country": "co",
+"logo": "colombia/union-magdalena.webp"
+},
+{
+"key": "ecuador/aucas",
+"name": "Aucas",
+"kind": "club",
+"country": "ec",
+"logo": "ecuador/aucas.webp"
+},
+{
+"key": "ecuador/barcelona-sc",
+"name": "Barcelona SC",
+"kind": "club",
+"country": "ec",
+"logo": "ecuador/barcelona-sc.webp"
+},
+{
+"key": "ecuador/delfin",
+"name": "Delfín",
+"kind": "club",
+"country": "ec",
+"logo": "ecuador/delfin.webp"
+},
+{
+"key": "ecuador/deportivo-cuenca",
+"name": "Deportivo Cuenca",
+"kind": "club",
+"country": "ec",
+"logo": "ecuador/deportivo-cuenca.webp"
+},
+{
+"key": "ecuador/deportivo-quito",
+"name": "Deportivo Quito",
+"kind": "club",
+"country": "ec",
+"logo": "ecuador/deportivo-quito.webp"
+},
+{
+"key": "ecuador/el-nacional",
+"name": "El Nacional",
+"kind": "club",
+"country": "ec",
+"logo": "ecuador/el-nacional.webp"
+},
+{
+"key": "ecuador/emelec",
+"name": "Emelec",
+"kind": "club",
+"country": "ec",
+"logo": "ecuador/emelec.webp"
+},
+{
+"key": "ecuador/guayaquil-city",
+"name": "Guayaquil City",
+"kind": "club",
+"country": "ec",
+"logo": "ecuador/guayaquil-city.webp"
+},
+{
+"key": "ecuador/independiente-del-valle",
+"name": "Independiente del Valle",
+"kind": "club",
+"country": "ec",
+"logo": "ecuador/independiente-del-valle.webp"
+},
+{
+"key": "ecuador/leones-del-norte",
+"name": "Leones del Norte",
+"kind": "club",
+"country": "ec",
+"logo": "ecuador/leones-del-norte.webp"
+},
+{
+"key": "ecuador/libertad",
+"name": "Libertad Fútbol Club",
+"kind": "club",
+"country": "ec",
+"logo": "ecuador/libertad.webp"
+},
+{
+"key": "ecuador/liga-de-quito",
+"name": "Liga de Quito",
+"kind": "club",
+"country": "ec",
+"logo": "ecuador/liga-de-quito.webp"
+},
+{
+"key": "ecuador/macara",
+"name": "Macará",
+"kind": "club",
+"country": "ec",
+"logo": "ecuador/macara.webp"
+},
+{
+"key": "ecuador/manta-fc",
+"name": "Manta F.C.",
+"kind": "club",
+"country": "ec",
+"logo": "ecuador/manta-fc.webp"
+},
+{
+"key": "ecuador/mushuc-runa",
+"name": "Mushuc Runa Sporting Club",
+"kind": "club",
+"country": "ec",
+"logo": "ecuador/mushuc-runa.webp"
+},
+{
+"key": "ecuador/orense",
+"name": "Orense",
+"kind": "club",
+"country": "ec",
+"logo": "ecuador/orense.webp"
+},
+{
+"key": "ecuador/tecnico-universitario",
+"name": "Técnico Universitario",
+"kind": "club",
+"country": "ec",
+"logo": "ecuador/tecnico-universitario.webp"
+},
+{
+"key": "ecuador/universidad-catolica-quito",
+"name": "Universidad Católica",
+"kind": "club",
+"country": "ec",
+"logo": "ecuador/universidad-catolica-quito.webp"
+},
+{
+"key": "ecuador/vinotinto",
+"name": "Vinotinto",
+"kind": "club",
+"country": "ec",
+"logo": "ecuador/vinotinto.webp"
+},
+{
+"key": "england/arsenal",
+"name": "Arsenal",
+"kind": "club",
+"country": "gb-eng",
+"logo": "england/arsenal.webp"
+},
+{
+"key": "england/aston-villa",
+"name": "Aston Villa",
+"kind": "club",
+"country": "gb-eng",
+"logo": "england/aston-villa.webp"
+},
+{
+"key": "england/bournemouth",
+"name": "Bournemouth",
+"kind": "club",
+"country": "gb-eng",
+"logo": "england/bournemouth.webp"
+},
+{
+"key": "england/brentford",
+"name": "Brentford",
+"kind": "club",
+"country": "gb-eng",
+"logo": "england/brentford.webp"
+},
+{
+"key": "england/brighton",
+"name": "Brighton",
+"kind": "club",
+"country": "gb-eng",
+"logo": "england/brighton.webp"
+},
+{
+"key": "england/chelsea",
+"name": "Chelsea",
+"kind": "club",
+"country": "gb-eng",
+"logo": "england/chelsea.webp"
+},
+{
+"key": "england/coventry-city",
+"name": "Coventry City",
+"kind": "club",
+"country": "gb-eng",
+"logo": "england/coventry-city.webp"
+},
+{
+"key": "england/crystal-palace",
+"name": "Crystal Palace",
+"kind": "club",
+"country": "gb-eng",
+"logo": "england/crystal-palace.webp"
+},
+{
+"key": "england/everton",
+"name": "Everton",
+"kind": "club",
+"country": "gb-eng",
+"logo": "england/everton.webp"
+},
+{
+"key": "england/fulham",
+"name": "Fulham",
+"kind": "club",
+"country": "gb-eng",
+"logo": "england/fulham.webp"
+},
+{
+"key": "england/hull-city",
+"name": "Hull City",
+"kind": "club",
+"country": "gb-eng",
+"logo": "england/hull-city.webp"
+},
+{
+"key": "england/ipswich",
+"name": "Ipswich",
+"kind": "club",
+"country": "gb-eng",
+"logo": "england/ipswich.webp"
+},
+{
+"key": "england/leeds-united",
+"name": "Leeds United",
+"kind": "club",
+"country": "gb-eng",
+"logo": "england/leeds-united.webp"
+},
+{
+"key": "england/liverpool",
+"name": "Liverpool FC",
+"kind": "club",
+"country": "gb-eng",
+"logo": "england/liverpool.webp"
+},
+{
+"key": "england/manchester-city",
+"name": "Manchester City",
+"kind": "club",
+"country": "gb-eng",
+"logo": "england/manchester-city.webp"
+},
+{
+"key": "england/manchester-united",
+"name": "Manchester United",
+"kind": "club",
+"country": "gb-eng",
+"logo": "england/manchester-united.webp"
+},
+{
+"key": "england/newcastle",
+"name": "Newcastle United",
+"kind": "club",
+"country": "gb-eng",
+"logo": "england/newcastle.webp"
+},
+{
+"key": "england/nottingham-forest",
+"name": "Nottingham Forest",
+"kind": "club",
+"country": "gb-eng",
+"logo": "england/nottingham-forest.webp"
+},
+{
+"key": "england/sunderland",
+"name": "Sunderland",
+"kind": "club",
+"country": "gb-eng",
+"logo": "england/sunderland.webp"
+},
+{
+"key": "england/tottenham",
+"name": "Tottenham",
+"kind": "club",
+"country": "gb-eng",
+"logo": "england/tottenham.webp"
+},
+{
+"key": "france/angers",
+"name": "Angers",
+"kind": "club",
+"country": "fr",
+"logo": "france/angers.webp"
+},
+{
+"key": "france/as-monaco",
+"name": "AS Monaco",
+"kind": "club",
+"country": "fr",
+"logo": "france/as-monaco.webp"
+},
+{
+"key": "france/auxerre",
+"name": "Auxerre",
+"kind": "club",
+"country": "fr",
+"logo": "france/auxerre.webp"
+},
+{
+"key": "france/brest",
+"name": "Brest",
+"kind": "club",
+"country": "fr",
+"logo": "france/brest.webp"
+},
+{
+"key": "france/le-havre-ac",
+"name": "Le Havre AC",
+"kind": "club",
+"country": "fr",
+"logo": "france/le-havre-ac.webp"
+},
+{
+"key": "france/le-mans",
+"name": "Le Mans FC",
+"kind": "club",
+"country": "fr",
+"logo": "france/le-mans.webp"
+},
+{
+"key": "france/lille",
+"name": "Lille",
+"kind": "club",
+"country": "fr",
+"logo": "france/lille.webp"
+},
+{
+"key": "france/lorient",
+"name": "Lorient FC",
+"kind": "club",
+"country": "fr",
+"logo": "france/lorient.webp"
+},
+{
+"key": "france/lyon",
+"name": "Olympique Lyonnais",
+"kind": "club",
+"country": "fr",
+"logo": "france/lyon.webp"
+},
+{
+"key": "france/marseille",
+"name": "Marseille",
+"kind": "club",
+"country": "fr",
+"logo": "france/marseille.webp"
+},
+{
+"key": "france/nice",
+"name": "Nice",
+"kind": "club",
+"country": "fr",
+"logo": "france/nice.webp"
+},
+{
+"key": "france/paris-fc",
+"name": "Paris FC",
+"kind": "club",
+"country": "fr",
+"logo": "france/paris-fc.webp"
+},
+{
+"key": "france/paris-saint-germain",
+"name": "PSG",
+"kind": "club",
+"country": "fr",
+"logo": "france/paris-saint-germain.webp"
+},
+{
+"key": "france/rc-lens",
+"name": "RC Lens",
+"kind": "club",
+"country": "fr",
+"logo": "france/rc-lens.webp"
+},
+{
+"key": "france/rc-strasbourg-alsace",
+"name": "RC Strasbourg Alsace",
+"kind": "club",
+"country": "fr",
+"logo": "france/rc-strasbourg-alsace.webp"
+},
+{
+"key": "france/rennes",
+"name": "Rennes",
+"kind": "club",
+"country": "fr",
+"logo": "france/rennes.webp"
+},
+{
+"key": "france/toulouse",
+"name": "Toulouse",
+"kind": "club",
+"country": "fr",
+"logo": "france/toulouse.webp"
+},
+{
+"key": "france/troyes",
+"name": "Troyes",
+"kind": "club",
+"country": "fr",
+"logo": "france/troyes.webp"
+},
+{
+"key": "germany/augsburg",
+"name": "Augsburg",
+"kind": "club",
+"country": "de",
+"logo": "germany/augsburg.webp"
+},
+{
+"key": "germany/bayer-leverkusen",
+"name": "Bayer Leverkusen",
+"kind": "club",
+"country": "de",
+"logo": "germany/bayer-leverkusen.webp"
+},
+{
+"key": "germany/bayern-munchen",
+"name": "Bayern Munich",
+"kind": "club",
+"country": "de",
+"logo": "germany/bayern-munchen.webp"
+},
+{
+"key": "germany/borussia-dortmund",
+"name": "Borussia Dortmund",
+"kind": "club",
+"country": "de",
+"logo": "germany/borussia-dortmund.webp"
+},
+{
+"key": "germany/borussia-monchengladbach",
+"name": "Borussia Mönchengladbach",
+"kind": "club",
+"country": "de",
+"logo": "germany/borussia-monchengladbach.webp"
+},
+{
+"key": "germany/eintracht-frankfurt",
+"name": "Eintracht Frankfurt",
+"kind": "club",
+"country": "de",
+"logo": "germany/eintracht-frankfurt.webp"
+},
+{
+"key": "germany/freiburg",
+"name": "Freiburg",
+"kind": "club",
+"country": "de",
+"logo": "germany/freiburg.webp"
+},
+{
+"key": "germany/hamburger-sv",
+"name": "Hamburger SV",
+"kind": "club",
+"country": "de",
+"logo": "germany/hamburger-sv.webp"
+},
+{
+"key": "germany/hoffenheim",
+"name": "Hoffenheim",
+"kind": "club",
+"country": "de",
+"logo": "germany/hoffenheim.webp"
+},
+{
+"key": "germany/koln",
+"name": "Cologne",
+"kind": "club",
+"country": "de",
+"logo": "germany/koln.webp"
+},
+{
+"key": "germany/mainz-05",
+"name": "Mainz 05",
+"kind": "club",
+"country": "de",
+"logo": "germany/mainz-05.webp"
+},
+{
+"key": "germany/paderborn",
+"name": "SC Paderborn",
+"kind": "club",
+"country": "de",
+"logo": "germany/paderborn.webp"
+},
+{
+"key": "germany/rb-leipzig",
+"name": "RB Leipzig",
+"kind": "club",
+"country": "de",
+"logo": "germany/rb-leipzig.webp"
+},
+{
+"key": "germany/schalke-04",
+"name": "Schalke 04",
+"kind": "club",
+"country": "de",
+"logo": "germany/schalke-04.webp"
+},
+{
+"key": "germany/sv-elversberg",
+"name": "SV Elversberg",
+"kind": "club",
+"country": "de",
+"logo": "germany/sv-elversberg.webp"
+},
+{
+"key": "germany/union-berlin",
+"name": "Union Berlin",
+"kind": "club",
+"country": "de",
+"logo": "germany/union-berlin.webp"
+},
+{
+"key": "germany/vfb-stuttgart",
+"name": "VfB Stuttgart",
+"kind": "club",
+"country": "de",
+"logo": "germany/vfb-stuttgart.webp"
+},
+{
+"key": "germany/werder-bremen",
+"name": "Werder Bremen",
+"kind": "club",
+"country": "de",
+"logo": "germany/werder-bremen.webp"
+},
+{
+"key": "italy/atalanta",
+"name": "Atalanta",
+"kind": "club",
+"country": "it",
+"logo": "italy/atalanta.webp"
+},
+{
+"key": "italy/bologna",
+"name": "Bologna",
+"kind": "club",
+"country": "it",
+"logo": "italy/bologna.webp"
+},
+{
+"key": "italy/cagliari",
+"name": "Cagliari",
+"kind": "club",
+"country": "it",
+"logo": "italy/cagliari.webp"
+},
+{
+"key": "italy/como-1907",
+"name": "Como 1907",
+"kind": "club",
+"country": "it",
+"logo": "italy/como-1907.webp"
+},
+{
+"key": "italy/fiorentina",
+"name": "Fiorentina",
+"kind": "club",
+"country": "it",
+"logo": "italy/fiorentina.webp"
+},
+{
+"key": "italy/frosinone",
+"name": "Frosinone Calcio",
+"kind": "club",
+"country": "it",
+"logo": "italy/frosinone.webp"
+},
+{
+"key": "italy/genoa",
+"name": "Genoa",
+"kind": "club",
+"country": "it",
+"logo": "italy/genoa.webp"
+},
+{
+"key": "italy/inter",
+"name": "Inter",
+"kind": "club",
+"country": "it",
+"logo": "italy/inter.webp"
+},
+{
+"key": "italy/juventus",
+"name": "Juventus",
+"kind": "club",
+"country": "it",
+"logo": "italy/juventus.webp"
+},
+{
+"key": "italy/lazio",
+"name": "Lazio",
+"kind": "club",
+"country": "it",
+"logo": "italy/lazio.webp"
+},
+{
+"key": "italy/lecce",
+"name": "Lecce",
+"kind": "club",
+"country": "it",
+"logo": "italy/lecce.webp"
+},
+{
+"key": "italy/milan",
+"name": "Milan",
+"kind": "club",
+"country": "it",
+"logo": "italy/milan.webp"
+},
+{
+"key": "italy/monza",
+"name": "AC Monza",
+"kind": "club",
+"country": "it",
+"logo": "italy/monza.webp"
+},
+{
+"key": "italy/napoli",
+"name": "Napoli",
+"kind": "club",
+"country": "it",
+"logo": "italy/napoli.webp"
+},
+{
+"key": "italy/parma",
+"name": "Parma",
+"kind": "club",
+"country": "it",
+"logo": "italy/parma.webp"
+},
+{
+"key": "italy/roma",
+"name": "AS Roma",
+"kind": "club",
+"country": "it",
+"logo": "italy/roma.webp"
+},
+{
+"key": "italy/sassuolo",
+"name": "Sassuolo",
+"kind": "club",
+"country": "it",
+"logo": "italy/sassuolo.webp"
+},
+{
+"key": "italy/torino",
+"name": "Torino",
+"kind": "club",
+"country": "it",
+"logo": "italy/torino.webp"
+},
+{
+"key": "italy/udinese",
+"name": "Udinese",
+"kind": "club",
+"country": "it",
+"logo": "italy/udinese.webp"
+},
+{
+"key": "italy/venezia",
+"name": "Venezia",
+"kind": "club",
+"country": "it",
+"logo": "italy/venezia.webp"
+},
+{
+"key": "netherlands/ado-den-haag",
+"name": "ADO Den Haag",
+"kind": "club",
+"country": "nl",
+"logo": "netherlands/ado-den-haag.webp"
+},
+{
+"key": "netherlands/ajax",
+"name": "Ajax",
+"kind": "club",
+"country": "nl",
+"logo": "netherlands/ajax.webp"
+},
+{
+"key": "netherlands/az-alkmaar",
+"name": "AZ Alkmaar",
+"kind": "club",
+"country": "nl",
+"logo": "netherlands/az-alkmaar.webp"
+},
+{
+"key": "netherlands/excelsior-rotterdam",
+"name": "Excelsior Rotterdam",
+"kind": "club",
+"country": "nl",
+"logo": "netherlands/excelsior-rotterdam.webp"
+},
+{
+"key": "netherlands/fc-groningen",
+"name": "FC Groningen",
+"kind": "club",
+"country": "nl",
+"logo": "netherlands/fc-groningen.webp"
+},
+{
+"key": "netherlands/fc-utrecht",
+"name": "FC Utrecht",
+"kind": "club",
+"country": "nl",
+"logo": "netherlands/fc-utrecht.webp"
+},
+{
+"key": "netherlands/feyenoord",
+"name": "Feyenoord",
+"kind": "club",
+"country": "nl",
+"logo": "netherlands/feyenoord.webp"
+},
+{
+"key": "netherlands/fortuna-sittard",
+"name": "Fortuna Sittard",
+"kind": "club",
+"country": "nl",
+"logo": "netherlands/fortuna-sittard.webp"
+},
+{
+"key": "netherlands/go-ahead-eagles",
+"name": "Go Ahead Eagles",
+"kind": "club",
+"country": "nl",
+"logo": "netherlands/go-ahead-eagles.webp"
+},
+{
+"key": "netherlands/nec-nijmegen",
+"name": "N.E.C. Nijmegen",
+"kind": "club",
+"country": "nl",
+"logo": "netherlands/nec-nijmegen.webp"
+},
+{
+"key": "netherlands/pec-zwolle",
+"name": "PEC Zwolle",
+"kind": "club",
+"country": "nl",
+"logo": "netherlands/pec-zwolle.webp"
+},
+{
+"key": "netherlands/psv",
+"name": "PSV Eindhoven",
+"kind": "club",
+"country": "nl",
+"logo": "netherlands/psv.webp"
+},
+{
+"key": "netherlands/sc-cambuur",
+"name": "SC Cambuur",
+"kind": "club",
+"country": "nl",
+"logo": "netherlands/sc-cambuur.webp"
+},
+{
+"key": "netherlands/sc-heerenveen",
+"name": "sc Heerenveen",
+"kind": "club",
+"country": "nl",
+"logo": "netherlands/sc-heerenveen.webp"
+},
+{
+"key": "netherlands/sparta-rotterdam",
+"name": "Sparta Rotterdam",
+"kind": "club",
+"country": "nl",
+"logo": "netherlands/sparta-rotterdam.webp"
+},
+{
+"key": "netherlands/telstar",
+"name": "Telstar",
+"kind": "club",
+"country": "nl",
+"logo": "netherlands/telstar.webp"
+},
+{
+"key": "netherlands/twente",
+"name": "Twente",
+"kind": "club",
+"country": "nl",
+"logo": "netherlands/twente.webp"
+},
+{
+"key": "netherlands/willem-ii",
+"name": "Willem II",
+"kind": "club",
+"country": "nl",
+"logo": "netherlands/willem-ii.webp"
+},
+{
+"key": "paraguay/2-de-mayo",
+"name": "2 de Mayo",
+"kind": "club",
+"country": "py",
+"logo": "paraguay/2-de-mayo.webp"
+},
+{
+"key": "paraguay/cerro-porteno",
+"name": "Cerro Porteño",
+"kind": "club",
+"country": "py",
+"logo": "paraguay/cerro-porteno.webp"
+},
+{
+"key": "paraguay/club-atletico-tembetary",
+"name": "Club Atlético Tembetary",
+"kind": "club",
+"country": "py",
+"logo": "paraguay/club-atletico-tembetary.webp"
+},
+{
+"key": "paraguay/deportivo-recoleta",
+"name": "Club Deportivo Recoleta",
+"kind": "club",
+"country": "py",
+"logo": "paraguay/deportivo-recoleta.webp"
+},
+{
+"key": "paraguay/general-caballero-jlm",
+"name": "General Caballero JLM",
+"kind": "club",
+"country": "py",
+"logo": "paraguay/general-caballero-jlm.webp"
+},
+{
+"key": "paraguay/guarani",
+"name": "Guaraní",
+"kind": "club",
+"country": "py",
+"logo": "paraguay/guarani.webp"
+},
+{
+"key": "paraguay/libertad",
+"name": "Libertad",
+"kind": "club",
+"country": "py",
+"logo": "paraguay/libertad.webp"
+},
+{
+"key": "paraguay/nacional",
+"name": "Nacional",
+"kind": "club",
+"country": "py",
+"logo": "paraguay/nacional.webp"
+},
+{
+"key": "paraguay/olimpia",
+"name": "Olimpia",
+"kind": "club",
+"country": "py",
+"logo": "paraguay/olimpia.webp"
+},
+{
+"key": "paraguay/presidente-hayes",
+"name": "Presidente Hayes",
+"kind": "club",
+"country": "py",
+"logo": "paraguay/presidente-hayes.webp"
+},
+{
+"key": "paraguay/rubio-nu",
+"name": "Club Rubio Ñu",
+"kind": "club",
+"country": "py",
+"logo": "paraguay/rubio-nu.webp"
+},
+{
+"key": "paraguay/sportivo-ameliano",
+"name": "Club Sportivo Ameliano",
+"kind": "club",
+"country": "py",
+"logo": "paraguay/sportivo-ameliano.webp"
+},
+{
+"key": "paraguay/sportivo-luqueno",
+"name": "Sportivo Luqueño",
+"kind": "club",
+"country": "py",
+"logo": "paraguay/sportivo-luqueno.webp"
+},
+{
+"key": "paraguay/sportivo-san-lorenzo",
+"name": "Club Sportivo San Lorenzo",
+"kind": "club",
+"country": "py",
+"logo": "paraguay/sportivo-san-lorenzo.webp"
+},
+{
+"key": "paraguay/trinidense",
+"name": "Trinidense",
+"kind": "club",
+"country": "py",
+"logo": "paraguay/trinidense.webp"
+},
+{
+"key": "peru/ada-jaen",
+"name": "ADA Jaén",
+"kind": "club",
+"country": "pe",
+"logo": "peru/ada-jaen.webp"
+},
+{
+"key": "peru/adt",
+"name": "Asociación Deportiva Tarma",
+"kind": "club",
+"country": "pe",
+"logo": "peru/adt.webp"
+},
+{
+"key": "peru/alianza-atletico",
+"name": "Alianza Atlético",
+"kind": "club",
+"country": "pe",
+"logo": "peru/alianza-atletico.webp"
+},
+{
+"key": "peru/alianza-lima",
+"name": "Alianza Lima",
+"kind": "club",
+"country": "pe",
+"logo": "peru/alianza-lima.webp"
+},
+{
+"key": "peru/alianza-universidad",
+"name": "Alianza Universidad",
+"kind": "club",
+"country": "pe",
+"logo": "peru/alianza-universidad.webp"
+},
+{
+"key": "peru/atletico-grau",
+"name": "Atlético Grau",
+"kind": "club",
+"country": "pe",
+"logo": "peru/atletico-grau.webp"
+},
+{
+"key": "peru/ayacucho",
+"name": "Ayacucho",
+"kind": "club",
+"country": "pe",
+"logo": "peru/ayacucho.webp"
+},
+{
+"key": "peru/cienciano-del-cusco",
+"name": "Cienciano del Cusco",
+"kind": "club",
+"country": "pe",
+"logo": "peru/cienciano-del-cusco.webp"
+},
+{
+"key": "peru/comerciantes-unidos",
+"name": "Comerciantes Unidos",
+"kind": "club",
+"country": "pe",
+"logo": "peru/comerciantes-unidos.webp"
+},
+{
+"key": "peru/coronel-bolognesi",
+"name": "Coronel Bolognesi",
+"kind": "club",
+"country": "pe",
+"logo": "peru/coronel-bolognesi.webp"
+},
+{
+"key": "peru/cusco",
+"name": "Cusco FC",
+"kind": "club",
+"country": "pe",
+"logo": "peru/cusco.webp"
+},
+{
+"key": "peru/defensor-lima",
+"name": "Defensor Lima",
+"kind": "club",
+"country": "pe",
+"logo": "peru/defensor-lima.webp"
+},
+{
+"key": "peru/deportivo-garcilaso",
+"name": "Deportivo Garcilaso",
+"kind": "club",
+"country": "pe",
+"logo": "peru/deportivo-garcilaso.webp"
+},
+{
+"key": "peru/deportivo-moquegua",
+"name": "Club Deportivo Moquegua",
+"kind": "club",
+"country": "pe",
+"logo": "peru/deportivo-moquegua.webp"
+},
+{
+"key": "peru/deportivo-municipal",
+"name": "Deportivo Municipal",
+"kind": "club",
+"country": "pe",
+"logo": "peru/deportivo-municipal.webp"
+},
+{
+"key": "peru/fc-cajamarca",
+"name": "FC Cajamarca",
+"kind": "club",
+"country": "pe",
+"logo": "peru/fc-cajamarca.webp"
+},
+{
+"key": "peru/juan-aurich",
+"name": "Juan Aurich",
+"kind": "club",
+"country": "pe",
+"logo": "peru/juan-aurich.webp"
+},
+{
+"key": "peru/juan-pablo-ii",
+"name": "ADC Juan Pablo II",
+"kind": "club",
+"country": "pe",
+"logo": "peru/juan-pablo-ii.webp"
+},
+{
+"key": "peru/los-chankas",
+"name": "Deportivo Los Chankas",
+"kind": "club",
+"country": "pe",
+"logo": "peru/los-chankas.webp"
+},
+{
+"key": "peru/melgar",
+"name": "FBC Melgar",
+"kind": "club",
+"country": "pe",
+"logo": "peru/melgar.webp"
+},
+{
+"key": "peru/sport-boys",
+"name": "Sport Boys",
+"kind": "club",
+"country": "pe",
+"logo": "peru/sport-boys.webp"
+},
+{
+"key": "peru/sport-huancayo",
+"name": "Sport Huancayo",
+"kind": "club",
+"country": "pe",
+"logo": "peru/sport-huancayo.webp"
+},
+{
+"key": "peru/sporting-cristal",
+"name": "Sporting Cristal",
+"kind": "club",
+"country": "pe",
+"logo": "peru/sporting-cristal.webp"
+},
+{
+"key": "peru/sportivo-huracan-arequipa",
+"name": "Sportivo Huracán",
+"kind": "club",
+"country": "pe",
+"logo": "peru/sportivo-huracan-arequipa.webp"
+},
+{
+"key": "peru/union-comercio",
+"name": "Unión Comercio",
+"kind": "club",
+"country": "pe",
+"logo": "peru/union-comercio.webp"
+},
+{
+"key": "peru/universidad-cesar-vallejo",
+"name": "Universidad César Vallejo",
+"kind": "club",
+"country": "pe",
+"logo": "peru/universidad-cesar-vallejo.webp"
+},
+{
+"key": "peru/universidad-san-martin",
+"name": "Universidad San Martín",
+"kind": "club",
+"country": "pe",
+"logo": "peru/universidad-san-martin.webp"
+},
+{
+"key": "peru/universitario",
+"name": "Universitario de Deportes",
+"kind": "club",
+"country": "pe",
+"logo": "peru/universitario.webp"
+},
+{
+"key": "peru/utc",
+"name": "Universidad Técnica de Cajamarca",
+"kind": "club",
+"country": "pe",
+"logo": "peru/utc.webp"
+},
+{
+"key": "portugal/academico-de-viseu",
+"name": "Académico de Viseu",
+"kind": "club",
+"country": "pt",
+"logo": "portugal/academico-de-viseu.webp"
+},
+{
+"key": "portugal/alverca",
+"name": "Alverca",
+"kind": "club",
+"country": "pt",
+"logo": "portugal/alverca.webp"
+},
+{
+"key": "portugal/arouca",
+"name": "Arouca",
+"kind": "club",
+"country": "pt",
+"logo": "portugal/arouca.webp"
+},
+{
+"key": "portugal/benfica",
+"name": "Benfica",
+"kind": "club",
+"country": "pt",
+"logo": "portugal/benfica.webp"
+},
+{
+"key": "portugal/casa-pia-ac",
+"name": "Casa Pia AC",
+"kind": "club",
+"country": "pt",
+"logo": "portugal/casa-pia-ac.webp"
+},
+{
+"key": "portugal/estoril",
+"name": "Estoril",
+"kind": "club",
+"country": "pt",
+"logo": "portugal/estoril.webp"
+},
+{
+"key": "portugal/estrela-da-amadora",
+"name": "Estrela da Amadora",
+"kind": "club",
+"country": "pt",
+"logo": "portugal/estrela-da-amadora.webp"
+},
+{
+"key": "portugal/famalicao",
+"name": "Famalicao",
+"kind": "club",
+"country": "pt",
+"logo": "portugal/famalicao.webp"
+},
+{
+"key": "portugal/fc-porto",
+"name": "FC Porto",
+"kind": "club",
+"country": "pt",
+"logo": "portugal/fc-porto.webp"
+},
+{
+"key": "portugal/gil-vicente",
+"name": "Gil Vicente",
+"kind": "club",
+"country": "pt",
+"logo": "portugal/gil-vicente.webp"
+},
+{
+"key": "portugal/maritimo",
+"name": "Marítimo",
+"kind": "club",
+"country": "pt",
+"logo": "portugal/maritimo.webp"
+},
+{
+"key": "portugal/moreirense",
+"name": "Moreirense",
+"kind": "club",
+"country": "pt",
+"logo": "portugal/moreirense.webp"
+},
+{
+"key": "portugal/nacional-da-madeira",
+"name": "Nacional da Madeira",
+"kind": "club",
+"country": "pt",
+"logo": "portugal/nacional-da-madeira.webp"
+},
+{
+"key": "portugal/rio-ave",
+"name": "Rio Ave",
+"kind": "club",
+"country": "pt",
+"logo": "portugal/rio-ave.webp"
+},
+{
+"key": "portugal/santa-clara",
+"name": "Santa Clara",
+"kind": "club",
+"country": "pt",
+"logo": "portugal/santa-clara.webp"
+},
+{
+"key": "portugal/sc-braga",
+"name": "SC Braga",
+"kind": "club",
+"country": "pt",
+"logo": "portugal/sc-braga.webp"
+},
+{
+"key": "portugal/sporting-cp",
+"name": "Sporting CP",
+"kind": "club",
+"country": "pt",
+"logo": "portugal/sporting-cp.webp"
+},
+{
+"key": "portugal/vitoria-de-guimaraes",
+"name": "Vitória de Guimarães",
+"kind": "club",
+"country": "pt",
+"logo": "portugal/vitoria-de-guimaraes.webp"
+},
+{
+"key": "spain/athletic-club",
+"name": "Athletic Club Bilbao",
+"kind": "club",
+"country": "es",
+"logo": "spain/athletic-club.webp"
+},
+{
+"key": "spain/atletico-madrid",
+"name": "Atletico Madrid",
+"kind": "club",
+"country": "es",
+"logo": "spain/atletico-madrid.webp"
+},
+{
+"key": "spain/barcelona",
+"name": "Barcelona",
+"kind": "club",
+"country": "es",
+"logo": "spain/barcelona.webp"
+},
+{
+"key": "spain/celta",
+"name": "Celta",
+"kind": "club",
+"country": "es",
+"logo": "spain/celta.webp"
+},
+{
+"key": "spain/deportivo",
+"name": "Deportivo Alavés",
+"kind": "club",
+"country": "es",
+"logo": "spain/deportivo.webp"
+},
+{
+"key": "spain/deportivo-la-coruna",
+"name": "Deportivo La Coruña",
+"kind": "club",
+"country": "es",
+"logo": "spain/deportivo-la-coruna.webp"
+},
+{
+"key": "spain/elche",
+"name": "Elche",
+"kind": "club",
+"country": "es",
+"logo": "spain/elche.webp"
+},
+{
+"key": "spain/espanyol",
+"name": "Espanyol",
+"kind": "club",
+"country": "es",
+"logo": "spain/espanyol.webp"
+},
+{
+"key": "spain/getafe",
+"name": "Getafe",
+"kind": "club",
+"country": "es",
+"logo": "spain/getafe.webp"
+},
+{
+"key": "spain/levante",
+"name": "Levante",
+"kind": "club",
+"country": "es",
+"logo": "spain/levante.webp"
+},
+{
+"key": "spain/malaga",
+"name": "Málaga",
+"kind": "club",
+"country": "es",
+"logo": "spain/malaga.webp"
+},
+{
+"key": "spain/osasuna",
+"name": "Osasuna",
+"kind": "club",
+"country": "es",
+"logo": "spain/osasuna.webp"
+},
+{
+"key": "spain/racing",
+"name": "Racing Santander",
+"kind": "club",
+"country": "es",
+"logo": "spain/racing.webp"
+},
+{
+"key": "spain/rayo-vallecano",
+"name": "Rayo Vallecano",
+"kind": "club",
+"country": "es",
+"logo": "spain/rayo-vallecano.webp"
+},
+{
+"key": "spain/real-betis",
+"name": "Real Betis",
+"kind": "club",
+"country": "es",
+"logo": "spain/real-betis.webp"
+},
+{
+"key": "spain/real-madrid",
+"name": "Real Madrid",
+"kind": "club",
+"country": "es",
+"logo": "spain/real-madrid.webp"
+},
+{
+"key": "spain/real-sociedad",
+"name": "Real Sociedad",
+"kind": "club",
+"country": "es",
+"logo": "spain/real-sociedad.webp"
+},
+{
+"key": "spain/sevilla",
+"name": "Sevilla",
+"kind": "club",
+"country": "es",
+"logo": "spain/sevilla.webp"
+},
+{
+"key": "spain/valencia",
+"name": "Valencia",
+"kind": "club",
+"country": "es",
+"logo": "spain/valencia.webp"
+},
+{
+"key": "spain/villarreal",
+"name": "Villarreal",
+"kind": "club",
+"country": "es",
+"logo": "spain/villarreal.webp"
+},
+{
+"key": "uruguay/albion",
+"name": "Albion FC",
+"kind": "club",
+"country": "uy",
+"logo": "uruguay/albion.webp"
+},
+{
+"key": "uruguay/boston-river",
+"name": "Boston River",
+"kind": "club",
+"country": "uy",
+"logo": "uruguay/boston-river.webp"
+},
+{
+"key": "uruguay/central-espanol",
+"name": "Central Español",
+"kind": "club",
+"country": "uy",
+"logo": "uruguay/central-espanol.webp"
+},
+{
+"key": "uruguay/cerro",
+"name": "Cerro",
+"kind": "club",
+"country": "uy",
+"logo": "uruguay/cerro.webp"
+},
+{
+"key": "uruguay/cerro-largo",
+"name": "Cerro Largo",
+"kind": "club",
+"country": "uy",
+"logo": "uruguay/cerro-largo.webp"
+},
+{
+"key": "uruguay/danubio",
+"name": "Danubio",
+"kind": "club",
+"country": "uy",
+"logo": "uruguay/danubio.webp"
+},
+{
+"key": "uruguay/defensor-sporting",
+"name": "Defensor Sporting",
+"kind": "club",
+"country": "uy",
+"logo": "uruguay/defensor-sporting.webp"
+},
+{
+"key": "uruguay/deportivo-maldonado",
+"name": "Deportivo Maldonado",
+"kind": "club",
+"country": "uy",
+"logo": "uruguay/deportivo-maldonado.webp"
+},
+{
+"key": "uruguay/juventud",
+"name": "Juventud",
+"kind": "club",
+"country": "uy",
+"logo": "uruguay/juventud.webp"
+},
+{
+"key": "uruguay/liverpool",
+"name": "Liverpool",
+"kind": "club",
+"country": "uy",
+"logo": "uruguay/liverpool.webp"
+},
+{
+"key": "uruguay/montevideo-city-torque",
+"name": "Montevideo City Torque",
+"kind": "club",
+"country": "uy",
+"logo": "uruguay/montevideo-city-torque.webp"
+},
+{
+"key": "uruguay/montevideo-wanderers",
+"name": "Montevideo Wanderers",
+"kind": "club",
+"country": "uy",
+"logo": "uruguay/montevideo-wanderers.webp"
+},
+{
+"key": "uruguay/nacional",
+"name": "Nacional",
+"kind": "club",
+"country": "uy",
+"logo": "uruguay/nacional.webp"
+},
+{
+"key": "uruguay/penarol",
+"name": "Peñarol",
+"kind": "club",
+"country": "uy",
+"logo": "uruguay/penarol.webp"
+},
+{
+"key": "uruguay/progreso",
+"name": "Progreso",
+"kind": "club",
+"country": "uy",
+"logo": "uruguay/progreso.webp"
+},
+{
+"key": "uruguay/racing-montevideo",
+"name": "Racing",
+"kind": "club",
+"country": "uy",
+"logo": "uruguay/racing-montevideo.webp"
+},
+{
+"key": "venezuela/academia-anzoategui",
+"name": "Academia Anzoátegui",
+"kind": "club",
+"country": "ve",
+"logo": "venezuela/academia-anzoategui.webp"
+},
+{
+"key": "venezuela/academia-puerto-cabello",
+"name": "Academia Puerto Cabello",
+"kind": "club",
+"country": "ve",
+"logo": "venezuela/academia-puerto-cabello.webp"
+},
+{
+"key": "venezuela/carabobo",
+"name": "Carabobo FC",
+"kind": "club",
+"country": "ve",
+"logo": "venezuela/carabobo.webp"
+},
+{
+"key": "venezuela/caracas",
+"name": "Caracas",
+"kind": "club",
+"country": "ve",
+"logo": "venezuela/caracas.webp"
+},
+{
+"key": "venezuela/deportivo-la-guaira",
+"name": "Deportivo La Guaira",
+"kind": "club",
+"country": "ve",
+"logo": "venezuela/deportivo-la-guaira.webp"
+},
+{
+"key": "venezuela/deportivo-tachira",
+"name": "Deportivo Táchira",
+"kind": "club",
+"country": "ve",
+"logo": "venezuela/deportivo-tachira.webp"
+},
+{
+"key": "venezuela/estudiantes-merida",
+"name": "Estudiantes Mérida",
+"kind": "club",
+"country": "ve",
+"logo": "venezuela/estudiantes-merida.webp"
+},
+{
+"key": "venezuela/metropolitanos",
+"name": "Metropolitanos FC",
+"kind": "club",
+"country": "ve",
+"logo": "venezuela/metropolitanos.webp"
+},
+{
+"key": "venezuela/mineros-de-guayana",
+"name": "Mineros de Guayana",
+"kind": "club",
+"country": "ve",
+"logo": "venezuela/mineros-de-guayana.webp"
+},
+{
+"key": "venezuela/monagas",
+"name": "Monagas SC",
+"kind": "club",
+"country": "ve",
+"logo": "venezuela/monagas.webp"
+},
+{
+"key": "venezuela/portuguesa",
+"name": "Portuguesa FC",
+"kind": "club",
+"country": "ve",
+"logo": "venezuela/portuguesa.webp"
+},
+{
+"key": "venezuela/rayo-zuliano",
+"name": "Rayo Zuliano",
+"kind": "club",
+"country": "ve",
+"logo": "venezuela/rayo-zuliano.webp"
+},
+{
+"key": "venezuela/trujillanos-fc",
+"name": "Trujillanos FC",
+"kind": "club",
+"country": "ve",
+"logo": "venezuela/trujillanos-fc.webp"
+},
+{
+"key": "venezuela/universidad-central",
+"name": "Universidad Central",
+"kind": "club",
+"country": "ve",
+"logo": "venezuela/universidad-central.webp"
+},
+{
+"key": "venezuela/yaracuyanos",
+"name": "Yaracuyanos FC",
+"kind": "club",
+"country": "ve",
+"logo": "venezuela/yaracuyanos.webp"
+},
+{
+"key": "venezuela/zamora",
+"name": "Zamora FC",
+"kind": "club",
+"country": "ve",
+"logo": "venezuela/zamora.webp"
+},
+{
+"key": "afghanistan/afghanistan-national-team",
+"name": "Afeganistão",
+"kind": "national",
+"country": "af",
+"flag": "af.svg"
+},
+{
+"key": "albania/albania-national-team",
+"name": "Albânia",
+"kind": "national",
+"country": "al",
+"flag": "al.svg"
+},
+{
+"key": "algeria/algeria-national-team",
+"name": "Argélia",
+"kind": "national",
+"country": "dz",
+"flag": "dz.svg"
+},
+{
+"key": "american-samoa/american-samoa-national-team",
+"name": "Samoa Americana",
+"kind": "national",
+"country": "as",
+"flag": "as.svg"
+},
+{
+"key": "andorra/andorra-national-team",
+"name": "Andorra",
+"kind": "national",
+"country": "ad",
+"flag": "ad.svg"
+},
+{
+"key": "angola/angola-national-team",
+"name": "Angola",
+"kind": "national",
+"country": "ao",
+"flag": "ao.svg"
+},
+{
+"key": "anguilla/anguilla-national-team",
+"name": "Anguila",
+"kind": "national",
+"country": "ai",
+"flag": "ai.svg"
+},
+{
+"key": "antigua-and-barbuda/antigua-and-barbuda-national-team",
+"name": "Antígua e Barbuda",
+"kind": "national",
+"country": "ag",
+"flag": "ag.svg"
+},
+{
+"key": "argentina/argentina-national-team",
+"name": "Argentina",
+"kind": "national",
+"country": "ar",
+"flag": "ar.svg"
+},
+{
+"key": "armenia/armenia-national-team",
+"name": "Armênia",
+"kind": "national",
+"country": "am",
+"flag": "am.svg"
+},
+{
+"key": "aruba/aruba-national-team",
+"name": "Aruba",
+"kind": "national",
+"country": "aw",
+"flag": "aw.svg"
+},
+{
+"key": "australia/australia-national-team",
+"name": "Austrália",
+"kind": "national",
+"country": "au",
+"flag": "au.svg"
+},
+{
+"key": "austria/austria-national-team",
+"name": "Áustria",
+"kind": "national",
+"country": "at",
+"flag": "at.svg"
+},
+{
+"key": "azerbaijan/azerbaijan-national-team",
+"name": "Azerbaijão",
+"kind": "national",
+"country": "az",
+"flag": "az.svg"
+},
+{
+"key": "bahamas/bahamas-national-team",
+"name": "Bahamas",
+"kind": "national",
+"country": "bs",
+"flag": "bs.svg"
+},
+{
+"key": "bahrain/bahrain-national-team",
+"name": "Bahrein",
+"kind": "national",
+"country": "bh",
+"flag": "bh.svg"
+},
+{
+"key": "bangladesh/bangladesh-national-team",
+"name": "Bangladesh",
+"kind": "national",
+"country": "bd",
+"flag": "bd.svg"
+},
+{
+"key": "barbados/barbados-national-team",
+"name": "Barbados",
+"kind": "national",
+"country": "bb",
+"flag": "bb.svg"
+},
+{
+"key": "belarus/belarus-national-team",
+"name": "Belarus",
+"kind": "national",
+"country": "by",
+"flag": "by.svg"
+},
+{
+"key": "belgium/belgium-national-team",
+"name": "Bélgica",
+"kind": "national",
+"country": "be",
+"flag": "be.svg"
+},
+{
+"key": "belize/belize-national-team",
+"name": "Belize",
+"kind": "national",
+"country": "bz",
+"flag": "bz.svg"
+},
+{
+"key": "benin/benin-national-team",
+"name": "Benin",
+"kind": "national",
+"country": "bj",
+"flag": "bj.svg"
+},
+{
+"key": "bermuda/bermuda-national-team",
+"name": "Bermudas",
+"kind": "national",
+"country": "bm",
+"flag": "bm.svg"
+},
+{
+"key": "bhutan/bhutan-national-team",
+"name": "Butão",
+"kind": "national",
+"country": "bt",
+"flag": "bt.svg"
+},
+{
+"key": "bolivia/bolivia-national-team",
+"name": "Bolívia",
+"kind": "national",
+"country": "bo",
+"flag": "bo.svg"
+},
+{
+"key": "bonaire/bonaire-national-team",
+"name": "Bonaire",
+"kind": "national",
+"country": "bq",
+"flag": "bq.svg"
+},
+{
+"key": "bosnia-and-herzegovina/bosnia-and-herzegovina-national-team",
+"name": "Bósnia e Herzegovina",
+"kind": "national",
+"country": "ba",
+"flag": "ba.svg"
+},
+{
+"key": "botswana/botswana-national-team",
+"name": "Botsuana",
+"kind": "national",
+"country": "bw",
+"flag": "bw.svg"
+},
+{
+"key": "brazil/brazil-national-team",
+"name": "Brasil",
+"kind": "national",
+"country": "br",
+"flag": "br.svg"
+},
+{
+"key": "british-virgin-islands/british-virgin-islands-national-team",
+"name": "Ilhas Virgens Britânicas",
+"kind": "national",
+"country": "vg",
+"flag": "vg.svg"
+},
+{
+"key": "brunei/brunei-national-team",
+"name": "Brunei",
+"kind": "national",
+"country": "bn",
+"flag": "bn.svg"
+},
+{
+"key": "bulgaria/bulgaria-national-team",
+"name": "Bulgária",
+"kind": "national",
+"country": "bg",
+"flag": "bg.svg"
+},
+{
+"key": "burkina-faso/burkina-faso-national-team",
+"name": "Burkina Faso",
+"kind": "national",
+"country": "bf",
+"flag": "bf.svg"
+},
+{
+"key": "burundi/burundi-national-team",
+"name": "Burundi",
+"kind": "national",
+"country": "bi",
+"flag": "bi.svg"
+},
+{
+"key": "cabo-verde/cabo-verde-national-team",
+"name": "Cabo Verde",
+"kind": "national",
+"country": "cv",
+"flag": "cv.svg"
+},
+{
+"key": "cambodia/cambodia-national-team",
+"name": "Camboja",
+"kind": "national",
+"country": "kh",
+"flag": "kh.svg"
+},
+{
+"key": "cameroon/cameroon-national-team",
+"name": "Camarões",
+"kind": "national",
+"country": "cm",
+"flag": "cm.svg"
+},
+{
+"key": "canada/canada-national-team",
+"name": "Canadá",
+"kind": "national",
+"country": "ca",
+"flag": "ca.svg"
+},
+{
+"key": "catalonia/catalonia-national-team",
+"name": "Catalonia",
+"kind": "national",
+"country": null,
+"logo": "national/catalonia.webp",
+"flag": null
+},
+{
+"key": "cayman-islands/cayman-islands-national-team",
+"name": "Ilhas Cayman",
+"kind": "national",
+"country": "ky",
+"flag": "ky.svg"
+},
+{
+"key": "central-african-republic/central-african-republic-national-team",
+"name": "República Centro-Africana",
+"kind": "national",
+"country": "cf",
+"flag": "cf.svg"
+},
+{
+"key": "chad/chad-national-team",
+"name": "Chade",
+"kind": "national",
+"country": "td",
+"flag": "td.svg"
+},
+{
+"key": "chile/chile-national-team",
+"name": "Chile",
+"kind": "national",
+"country": "cl",
+"flag": "cl.svg"
+},
+{
+"key": "china/china-national-team",
+"name": "China",
+"kind": "national",
+"country": "cn",
+"flag": "cn.svg"
+},
+{
+"key": "colombia/colombia-national-team",
+"name": "Colômbia",
+"kind": "national",
+"country": "co",
+"flag": "co.svg"
+},
+{
+"key": "comoros/comoros-national-team",
+"name": "Comores",
+"kind": "national",
+"country": "km",
+"flag": "km.svg"
+},
+{
+"key": "congo-dr/congo-dr-national-team",
+"name": "RD Congo",
+"kind": "national",
+"country": "cd",
+"flag": "cd.svg"
+},
+{
+"key": "congo/congo-national-team",
+"name": "Congo",
+"kind": "national",
+"country": "cg",
+"flag": "cg.svg"
+},
+{
+"key": "cook-islands/cook-islands-national-team",
+"name": "Ilhas Cook",
+"kind": "national",
+"country": "ck",
+"flag": "ck.svg"
+},
+{
+"key": "costa-rica/costa-rica-national-team",
+"name": "Costa Rica",
+"kind": "national",
+"country": "cr",
+"flag": "cr.svg"
+},
+{
+"key": "cote-d-ivoire/cote-d-ivoire-national-team",
+"name": "Costa do Marfim",
+"kind": "national",
+"country": "ci",
+"flag": "ci.svg"
+},
+{
+"key": "croatia/croatia-national-team",
+"name": "Croácia",
+"kind": "national",
+"country": "hr",
+"flag": "hr.svg"
+},
+{
+"key": "cuba/cuba-national-team",
+"name": "Cuba",
+"kind": "national",
+"country": "cu",
+"flag": "cu.svg"
+},
+{
+"key": "curacao/curacao-national-team",
+"name": "Curaçao",
+"kind": "national",
+"country": "cw",
+"flag": "cw.svg"
+},
+{
+"key": "cyprus/cyprus-national-team",
+"name": "Chipre",
+"kind": "national",
+"country": "cy",
+"flag": "cy.svg"
+},
+{
+"key": "czech-republic/czech-republic-national-team",
+"name": "República Tcheca",
+"kind": "national",
+"country": "cz",
+"flag": "cz.svg"
+},
+{
+"key": "denmark/denmark-national-team",
+"name": "Dinamarca",
+"kind": "national",
+"country": "dk",
+"flag": "dk.svg"
+},
+{
+"key": "djibouti/djibouti-national-team",
+"name": "Djibuti",
+"kind": "national",
+"country": "dj",
+"flag": "dj.svg"
+},
+{
+"key": "dominica/dominica-national-team",
+"name": "Dominica",
+"kind": "national",
+"country": "dm",
+"flag": "dm.svg"
+},
+{
+"key": "dominican-republic/dominican-republic-national-team",
+"name": "República Dominicana",
+"kind": "national",
+"country": "do",
+"flag": "do.svg"
+},
+{
+"key": "ecuador/ecuador-national-team",
+"name": "Equador",
+"kind": "national",
+"country": "ec",
+"flag": "ec.svg"
+},
+{
+"key": "egypt/egypt-national-team",
+"name": "Egito",
+"kind": "national",
+"country": "eg",
+"flag": "eg.svg"
+},
+{
+"key": "el-salvador/el-salvador-national-team",
+"name": "El Salvador",
+"kind": "national",
+"country": "sv",
+"flag": "sv.svg"
+},
+{
+"key": "england/england-national-team",
+"name": "Inglaterra",
+"kind": "national",
+"country": "gb-eng",
+"flag": "gb-eng.svg"
+},
+{
+"key": "equatorial-guinea/equatorial-guinea-national-team",
+"name": "Guiné Equatorial",
+"kind": "national",
+"country": "gq",
+"flag": "gq.svg"
+},
+{
+"key": "eritrea/eritrea-national-team",
+"name": "Eritreia",
+"kind": "national",
+"country": "er",
+"flag": "er.svg"
+},
+{
+"key": "estonia/estonia-national-team",
+"name": "Estônia",
+"kind": "national",
+"country": "ee",
+"flag": "ee.svg"
+},
+{
+"key": "eswatini/eswatini-national-team",
+"name": "Essuatíni",
+"kind": "national",
+"country": "sz",
+"flag": "sz.svg"
+},
+{
+"key": "ethiopia/ethiopia-national-team",
+"name": "Etiópia",
+"kind": "national",
+"country": "et",
+"flag": "et.svg"
+},
+{
+"key": "faroe-islands/faroe-islands-national-team",
+"name": "Ilhas Faroé",
+"kind": "national",
+"country": "fo",
+"flag": "fo.svg"
+},
+{
+"key": "fiji/fiji-national-team",
+"name": "Fiji",
+"kind": "national",
+"country": "fj",
+"flag": "fj.svg"
+},
+{
+"key": "finland/finland-national-team",
+"name": "Finlândia",
+"kind": "national",
+"country": "fi",
+"flag": "fi.svg"
+},
+{
+"key": "france/france-national-team",
+"name": "França",
+"kind": "national",
+"country": "fr",
+"flag": "fr.svg"
+},
+{
+"key": "french-guiana/french-guiana-national-team",
+"name": "Guiana Francesa",
+"kind": "national",
+"country": "gf",
+"flag": "gf.svg"
+},
+{
+"key": "gabon/gabon-national-team",
+"name": "Gabão",
+"kind": "national",
+"country": "ga",
+"flag": "ga.svg"
+},
+{
+"key": "gambia/gambia-national-team",
+"name": "Gâmbia",
+"kind": "national",
+"country": "gm",
+"flag": "gm.svg"
+},
+{
+"key": "georgia/georgia-national-team",
+"name": "Geórgia",
+"kind": "national",
+"country": "ge",
+"flag": "ge.svg"
+},
+{
+"key": "germany/germany-national-team",
+"name": "Alemanha",
+"kind": "national",
+"country": "de",
+"flag": "de.svg"
+},
+{
+"key": "ghana/ghana-national-team",
+"name": "Gana",
+"kind": "national",
+"country": "gh",
+"flag": "gh.svg"
+},
+{
+"key": "gibraltar/gibraltar-national-team",
+"name": "Gibraltar",
+"kind": "national",
+"country": "gi",
+"flag": "gi.svg"
+},
+{
+"key": "greece/greece-national-team",
+"name": "Grécia",
+"kind": "national",
+"country": "gr",
+"flag": "gr.svg"
+},
+{
+"key": "greenland/greenland-national-team",
+"name": "Groenlândia",
+"kind": "national",
+"country": "gl",
+"flag": "gl.svg"
+},
+{
+"key": "grenada/grenada-national-team",
+"name": "Granada",
+"kind": "national",
+"country": "gd",
+"flag": "gd.svg"
+},
+{
+"key": "guadeloupe/guadeloupe-national-team",
+"name": "Guadalupe",
+"kind": "national",
+"country": "gp",
+"flag": "gp.svg"
+},
+{
+"key": "guam/guam-national-team",
+"name": "Guam",
+"kind": "national",
+"country": "gu",
+"flag": "gu.svg"
+},
+{
+"key": "guatemala/guatemala-national-team",
+"name": "Guatemala",
+"kind": "national",
+"country": "gt",
+"flag": "gt.svg"
+},
+{
+"key": "guinea-bissau/guinea-bissau-national-team",
+"name": "Guiné-Bissau",
+"kind": "national",
+"country": "gw",
+"flag": "gw.svg"
+},
+{
+"key": "guinea/guinea-national-team",
+"name": "Guiné",
+"kind": "national",
+"country": "gn",
+"flag": "gn.svg"
+},
+{
+"key": "guyana/guyana-national-team",
+"name": "Guiana",
+"kind": "national",
+"country": "gy",
+"flag": "gy.svg"
+},
+{
+"key": "haiti/haiti-national-team",
+"name": "Haiti",
+"kind": "national",
+"country": "ht",
+"flag": "ht.svg"
+},
+{
+"key": "honduras/honduras-national-team",
+"name": "Honduras",
+"kind": "national",
+"country": "hn",
+"flag": "hn.svg"
+},
+{
+"key": "hong-kong/hong-kong-national-team",
+"name": "Hong Kong",
+"kind": "national",
+"country": "hk",
+"flag": "hk.svg"
+},
+{
+"key": "hungary/hungary-national-team",
+"name": "Hungria",
+"kind": "national",
+"country": "hu",
+"flag": "hu.svg"
+},
+{
+"key": "iceland/iceland-national-team",
+"name": "Islândia",
+"kind": "national",
+"country": "is",
+"flag": "is.svg"
+},
+{
+"key": "india/india-national-team",
+"name": "Índia",
+"kind": "national",
+"country": "in",
+"flag": "in.svg"
+},
+{
+"key": "indonesia/indonesia-national-team",
+"name": "Indonésia",
+"kind": "national",
+"country": "id",
+"flag": "id.svg"
+},
+{
+"key": "iran/iran-national-team",
+"name": "Irã",
+"kind": "national",
+"country": "ir",
+"flag": "ir.svg"
+},
+{
+"key": "iraq/iraq-national-team",
+"name": "Iraque",
+"kind": "national",
+"country": "iq",
+"flag": "iq.svg"
+},
+{
+"key": "israel/israel-national-team",
+"name": "Israel",
+"kind": "national",
+"country": "il",
+"flag": "il.svg"
+},
+{
+"key": "italy/italy-national-team",
+"name": "Itália",
+"kind": "national",
+"country": "it",
+"flag": "it.svg"
+},
+{
+"key": "jamaica/jamaica-national-team",
+"name": "Jamaica",
+"kind": "national",
+"country": "jm",
+"flag": "jm.svg"
+},
+{
+"key": "japan/japan-national-team",
+"name": "Japão",
+"kind": "national",
+"country": "jp",
+"flag": "jp.svg"
+},
+{
+"key": "jordan/jordan-national-team",
+"name": "Jordânia",
+"kind": "national",
+"country": "jo",
+"flag": "jo.svg"
+},
+{
+"key": "kazakhstan/kazakhstan-national-team",
+"name": "Cazaquistão",
+"kind": "national",
+"country": "kz",
+"flag": "kz.svg"
+},
+{
+"key": "kenya/kenya-national-team",
+"name": "Quênia",
+"kind": "national",
+"country": "ke",
+"flag": "ke.svg"
+},
+{
+"key": "kiribati/kiribati-national-team",
+"name": "Kiribati",
+"kind": "national",
+"country": "ki",
+"flag": "ki.svg"
+},
+{
+"key": "kosovo/kosovo-national-team",
+"name": "Kosovo",
+"kind": "national",
+"country": "xk",
+"flag": "xk.svg"
+},
+{
+"key": "kurdistan/kurdistan-national-team",
+"name": "Curdistão",
+"kind": "national",
+"country": null,
+"logo": "national/kurdistan.webp",
+"flag": null
+},
+{
+"key": "kuwait/kuwait-national-team",
+"name": "Kuwait",
+"kind": "national",
+"country": "kw",
+"flag": "kw.svg"
+},
+{
+"key": "kyrgyzstan/kyrgyzstan-national-team",
+"name": "Quirguistão",
+"kind": "national",
+"country": "kg",
+"flag": "kg.svg"
+},
+{
+"key": "laos/laos-national-team",
+"name": "Laos",
+"kind": "national",
+"country": "la",
+"flag": "la.svg"
+},
+{
+"key": "latvia/latvia-national-team",
+"name": "Letônia",
+"kind": "national",
+"country": "lv",
+"flag": "lv.svg"
+},
+{
+"key": "lebanon/lebanon-national-team",
+"name": "Líbano",
+"kind": "national",
+"country": "lb",
+"flag": "lb.svg"
+},
+{
+"key": "lesotho/lesotho-national-team",
+"name": "Lesoto",
+"kind": "national",
+"country": "ls",
+"flag": "ls.svg"
+},
+{
+"key": "liberia/liberia-national-team",
+"name": "Libéria",
+"kind": "national",
+"country": "lr",
+"flag": "lr.svg"
+},
+{
+"key": "libya/libya-national-team",
+"name": "Líbia",
+"kind": "national",
+"country": "ly",
+"flag": "ly.svg"
+},
+{
+"key": "liechtenstein/liechtenstein-national-team",
+"name": "Liechtenstein",
+"kind": "national",
+"country": "li",
+"flag": "li.svg"
+},
+{
+"key": "lithuania/lithuania-national-team",
+"name": "Lituânia",
+"kind": "national",
+"country": "lt",
+"flag": "lt.svg"
+},
+{
+"key": "luxembourg/luxembourg-national-team",
+"name": "Luxemburgo",
+"kind": "national",
+"country": "lu",
+"flag": "lu.svg"
+},
+{
+"key": "macau/macau-national-team",
+"name": "Macau",
+"kind": "national",
+"country": "mo",
+"flag": "mo.svg"
+},
+{
+"key": "madagascar/madagascar-national-team",
+"name": "Madagascar",
+"kind": "national",
+"country": "mg",
+"flag": "mg.svg"
+},
+{
+"key": "malawi/malawi-national-team",
+"name": "Malawi",
+"kind": "national",
+"country": "mw",
+"flag": "mw.svg"
+},
+{
+"key": "malaysia/malaysia-national-team",
+"name": "Malásia",
+"kind": "national",
+"country": "my",
+"flag": "my.svg"
+},
+{
+"key": "maldives/maldives-national-team",
+"name": "Maldivas",
+"kind": "national",
+"country": "mv",
+"flag": "mv.svg"
+},
+{
+"key": "mali/mali-national-team",
+"name": "Mali",
+"kind": "national",
+"country": "ml",
+"flag": "ml.svg"
+},
+{
+"key": "malta/malta-national-team",
+"name": "Malta",
+"kind": "national",
+"country": "mt",
+"flag": "mt.svg"
+},
+{
+"key": "martinique/martinique-national-team",
+"name": "Martinica",
+"kind": "national",
+"country": "mq",
+"flag": "mq.svg"
+},
+{
+"key": "mauritania/mauritania-national-team",
+"name": "Mauritânia",
+"kind": "national",
+"country": "mr",
+"flag": "mr.svg"
+},
+{
+"key": "mauritius/mauritius-national-team",
+"name": "Maurício",
+"kind": "national",
+"country": "mu",
+"flag": "mu.svg"
+},
+{
+"key": "mexico/mexico-national-team",
+"name": "México",
+"kind": "national",
+"country": "mx",
+"flag": "mx.svg"
+},
+{
+"key": "moldova/moldova-national-team",
+"name": "Moldávia",
+"kind": "national",
+"country": "md",
+"flag": "md.svg"
+},
+{
+"key": "mongolia/mongolia-national-team",
+"name": "Mongólia",
+"kind": "national",
+"country": "mn",
+"flag": "mn.svg"
+},
+{
+"key": "montenegro/montenegro-national-team",
+"name": "Montenegro",
+"kind": "national",
+"country": "me",
+"flag": "me.svg"
+},
+{
+"key": "montserrat/montserrat-national-team",
+"name": "Montserrat",
+"kind": "national",
+"country": "ms",
+"flag": "ms.svg"
+},
+{
+"key": "morocco/morocco-national-team",
+"name": "Marrocos",
+"kind": "national",
+"country": "ma",
+"flag": "ma.svg"
+},
+{
+"key": "mozambique/mozambique-national-team",
+"name": "Moçambique",
+"kind": "national",
+"country": "mz",
+"flag": "mz.svg"
+},
+{
+"key": "myanmar/myanmar-national-team",
+"name": "Mianmar",
+"kind": "national",
+"country": "mm",
+"flag": "mm.svg"
+},
+{
+"key": "namibia/namibia-national-team",
+"name": "Namíbia",
+"kind": "national",
+"country": "na",
+"flag": "na.svg"
+},
+{
+"key": "nauru/nauru-national-team",
+"name": "Nauru",
+"kind": "national",
+"country": "nr",
+"flag": "nr.svg"
+},
+{
+"key": "nepal/nepal-national-team",
+"name": "Nepal",
+"kind": "national",
+"country": "np",
+"flag": "np.svg"
+},
+{
+"key": "netherlands/dutch-national-team",
+"name": "Holanda",
+"kind": "national",
+"country": "nl",
+"flag": "nl.svg"
+},
+{
+"key": "new-caledonia/new-caledonia-national-team",
+"name": "Nova Caledônia",
+"kind": "national",
+"country": "nc",
+"flag": "nc.svg"
+},
+{
+"key": "new-zealand/new-zealand-national-team",
+"name": "Nova Zelândia",
+"kind": "national",
+"country": "nz",
+"flag": "nz.svg"
+},
+{
+"key": "nicaragua/nicaragua-national-team",
+"name": "Nicarágua",
+"kind": "national",
+"country": "ni",
+"flag": "ni.svg"
+},
+{
+"key": "niger/niger-national-team",
+"name": "Níger",
+"kind": "national",
+"country": "ne",
+"flag": "ne.svg"
+},
+{
+"key": "nigeria/nigeria-national-team",
+"name": "Nigéria",
+"kind": "national",
+"country": "ng",
+"flag": "ng.svg"
+},
+{
+"key": "north-korea/north-korea-national-team",
+"name": "Coreia do Norte",
+"kind": "national",
+"country": "kp",
+"flag": "kp.svg"
+},
+{
+"key": "north-macedonia/north-macedonia-national-team",
+"name": "Macedônia do Norte",
+"kind": "national",
+"country": "mk",
+"flag": "mk.svg"
+},
+{
+"key": "northern-ireland/northern-ireland-national-team",
+"name": "Irlanda do Norte",
+"kind": "national",
+"country": "gb-nir",
+"flag": "gb-nir.svg"
+},
+{
+"key": "northern-mariana-islands/northern-mariana-islands-national-team",
+"name": "Ilhas Marianas do Norte",
+"kind": "national",
+"country": "mp",
+"flag": "mp.svg"
+},
+{
+"key": "norway/norway-national-team",
+"name": "Noruega",
+"kind": "national",
+"country": "no",
+"flag": "no.svg"
+},
+{
+"key": "oman/oman-national-team",
+"name": "Omã",
+"kind": "national",
+"country": "om",
+"flag": "om.svg"
+},
+{
+"key": "pakistan/pakistan-national-team",
+"name": "Paquistão",
+"kind": "national",
+"country": "pk",
+"flag": "pk.svg"
+},
+{
+"key": "palau/palau-national-team",
+"name": "Palau",
+"kind": "national",
+"country": "pw",
+"flag": "pw.svg"
+},
+{
+"key": "palestine/palestine-national-team",
+"name": "Palestina",
+"kind": "national",
+"country": "ps",
+"flag": "ps.svg"
+},
+{
+"key": "panama/panama-national-team",
+"name": "Panamá",
+"kind": "national",
+"country": "pa",
+"flag": "pa.svg"
+},
+{
+"key": "papua-new-guinea/papua-new-guinea-national-team",
+"name": "Papua-Nova Guiné",
+"kind": "national",
+"country": "pg",
+"flag": "pg.svg"
+},
+{
+"key": "paraguay/paraguay-national-team",
+"name": "Paraguai",
+"kind": "national",
+"country": "py",
+"flag": "py.svg"
+},
+{
+"key": "peru/peru-national-team",
+"name": "Peru",
+"kind": "national",
+"country": "pe",
+"flag": "pe.svg"
+},
+{
+"key": "philippines/philippines-national-team",
+"name": "Filipinas",
+"kind": "national",
+"country": "ph",
+"flag": "ph.svg"
+},
+{
+"key": "poland/poland-national-team",
+"name": "Polônia",
+"kind": "national",
+"country": "pl",
+"flag": "pl.svg"
+},
+{
+"key": "portugal/portuguese-football-federation",
+"name": "Portugal",
+"kind": "national",
+"country": "pt",
+"flag": "pt.svg"
+},
+{
+"key": "puerto-rico/puerto-rico-national-team",
+"name": "Porto Rico",
+"kind": "national",
+"country": "pr",
+"flag": "pr.svg"
+},
+{
+"key": "qatar/qatar-national-team",
+"name": "Catar",
+"kind": "national",
+"country": "qa",
+"flag": "qa.svg"
+},
+{
+"key": "republic-of-ireland/republic-of-ireland-national-team",
+"name": "Irlanda",
+"kind": "national",
+"country": "ie",
+"flag": "ie.svg"
+},
+{
+"key": "reunion/reunion-national-team",
+"name": "Reunião",
+"kind": "national",
+"country": "re",
+"flag": "re.svg"
+},
+{
+"key": "romania/romania-national-team",
+"name": "Romênia",
+"kind": "national",
+"country": "ro",
+"flag": "ro.svg"
+},
+{
+"key": "russia/russia-national-team",
+"name": "Rússia",
+"kind": "national",
+"country": "ru",
+"flag": "ru.svg"
+},
+{
+"key": "rwanda/rwanda-national-team",
+"name": "Ruanda",
+"kind": "national",
+"country": "rw",
+"flag": "rw.svg"
+},
+{
+"key": "saint-lucia/saint-lucia-national-team",
+"name": "Santa Lúcia",
+"kind": "national",
+"country": "lc",
+"flag": "lc.svg"
+},
+{
+"key": "saint-martin/saint-martin-national-team",
+"name": "São Martinho",
+"kind": "national",
+"country": "mf",
+"flag": "mf.svg"
+},
+{
+"key": "saint-vincent-and-the-grenadines/saint-vincent-and-the-grenadines-national-team",
+"name": "São Vicente e Granadinas",
+"kind": "national",
+"country": "vc",
+"flag": "vc.svg"
+},
+{
+"key": "samoa/samoa-national-team",
+"name": "Samoa",
+"kind": "national",
+"country": "ws",
+"flag": "ws.svg"
+},
+{
+"key": "san-marino/san-marino-national-team",
+"name": "San Marino",
+"kind": "national",
+"country": "sm",
+"flag": "sm.svg"
+},
+{
+"key": "sao-tome-and-principe/sao-tome-and-principe-national-team",
+"name": "São Tomé e Príncipe",
+"kind": "national",
+"country": "st",
+"flag": "st.svg"
+},
+{
+"key": "saudi-arabia/saudi-arabia-national-team",
+"name": "Arábia Saudita",
+"kind": "national",
+"country": "sa",
+"flag": "sa.svg"
+},
+{
+"key": "scotland/scotland-national-team",
+"name": "Escócia",
+"kind": "national",
+"country": "gb-sct",
+"flag": "gb-sct.svg"
+},
+{
+"key": "senegal/senegal-national-team",
+"name": "Senegal",
+"kind": "national",
+"country": "sn",
+"flag": "sn.svg"
+},
+{
+"key": "serbia/serbia-national-team",
+"name": "Sérvia",
+"kind": "national",
+"country": "rs",
+"flag": "rs.svg"
+},
+{
+"key": "seychelles/seychelles-national-team",
+"name": "Seicheles",
+"kind": "national",
+"country": "sc",
+"flag": "sc.svg"
+},
+{
+"key": "sierra-leone/sierra-leone-national-team",
+"name": "Serra Leoa",
+"kind": "national",
+"country": "sl",
+"flag": "sl.svg"
+},
+{
+"key": "singapore/singapore-national-team",
+"name": "Singapura",
+"kind": "national",
+"country": "sg",
+"flag": "sg.svg"
+},
+{
+"key": "sint-maarten/sint-maarten-national-team",
+"name": "Sint Maarten",
+"kind": "national",
+"country": "sx",
+"flag": "sx.svg"
+},
+{
+"key": "slovakia/slovakia-national-team",
+"name": "Eslováquia",
+"kind": "national",
+"country": "sk",
+"flag": "sk.svg"
+},
+{
+"key": "slovenia/slovenia-national-team",
+"name": "Eslovênia",
+"kind": "national",
+"country": "si",
+"flag": "si.svg"
+},
+{
+"key": "solomon-islands/solomon-islands-national-team",
+"name": "Ilhas Salomão",
+"kind": "national",
+"country": "sb",
+"flag": "sb.svg"
+},
+{
+"key": "somalia/somalia-national-team",
+"name": "Somália",
+"kind": "national",
+"country": "so",
+"flag": "so.svg"
+},
+{
+"key": "south-africa/south-africa-national-team",
+"name": "África do Sul",
+"kind": "national",
+"country": "za",
+"flag": "za.svg"
+},
+{
+"key": "south-korea/south-korea-national-team",
+"name": "Coreia do Sul",
+"kind": "national",
+"country": "kr",
+"flag": "kr.svg"
+},
+{
+"key": "south-sudan/south-sudan-national-team",
+"name": "Sudão do Sul",
+"kind": "national",
+"country": "ss",
+"flag": "ss.svg"
+},
+{
+"key": "spain/spain-national-team",
+"name": "Espanha",
+"kind": "national",
+"country": "es",
+"flag": "es.svg"
+},
+{
+"key": "sri-lanka/sri-lanka-national-team",
+"name": "Sri Lanka",
+"kind": "national",
+"country": "lk",
+"flag": "lk.svg"
+},
+{
+"key": "st-kitts-and-nevis/st-kitts-and-nevis-national-team",
+"name": "São Cristóvão e Névis",
+"kind": "national",
+"country": "kn",
+"flag": "kn.svg"
+},
+{
+"key": "sudan/sudan-national-team",
+"name": "Sudão",
+"kind": "national",
+"country": "sd",
+"flag": "sd.svg"
+},
+{
+"key": "suriname/suriname-national-team",
+"name": "Suriname",
+"kind": "national",
+"country": "sr",
+"flag": "sr.svg"
+},
+{
+"key": "sweden/sweden-national-team",
+"name": "Suécia",
+"kind": "national",
+"country": "se",
+"flag": "se.svg"
+},
+{
+"key": "switzerland/switzerland-national-team",
+"name": "Suíça",
+"kind": "national",
+"country": "ch",
+"flag": "ch.svg"
+},
+{
+"key": "syria/syria-national-team",
+"name": "Síria",
+"kind": "national",
+"country": "sy",
+"flag": "sy.svg"
+},
+{
+"key": "tahiti/tahiti-national-team",
+"name": "Taiti",
+"kind": "national",
+"country": "pf",
+"flag": "pf.svg"
+},
+{
+"key": "taiwan/taiwan-national-team",
+"name": "Taiwan",
+"kind": "national",
+"country": "tw",
+"flag": "tw.svg"
+},
+{
+"key": "tajikistan/tajikistan-national-team",
+"name": "Tajiquistão",
+"kind": "national",
+"country": "tj",
+"flag": "tj.svg"
+},
+{
+"key": "tanzania/tanzania-national-team",
+"name": "Tanzânia",
+"kind": "national",
+"country": "tz",
+"flag": "tz.svg"
+},
+{
+"key": "thailand/thailand-national-team",
+"name": "Tailândia",
+"kind": "national",
+"country": "th",
+"flag": "th.svg"
+},
+{
+"key": "timor-leste/timor-leste-national-team",
+"name": "Timor-Leste",
+"kind": "national",
+"country": "tl",
+"flag": "tl.svg"
+},
+{
+"key": "togo/togo-national-team",
+"name": "Togo",
+"kind": "national",
+"country": "tg",
+"flag": "tg.svg"
+},
+{
+"key": "tonga/tonga-national-team",
+"name": "Tonga",
+"kind": "national",
+"country": "to",
+"flag": "to.svg"
+},
+{
+"key": "trinidad-and-tobago/trinidad-and-tobago-national-team",
+"name": "Trinidad e Tobago",
+"kind": "national",
+"country": "tt",
+"flag": "tt.svg"
+},
+{
+"key": "tunisia/tunisia-national-team",
+"name": "Tunísia",
+"kind": "national",
+"country": "tn",
+"flag": "tn.svg"
+},
+{
+"key": "turkey/turkey-national-team",
+"name": "Turquia",
+"kind": "national",
+"country": "tr",
+"flag": "tr.svg"
+},
+{
+"key": "turkmenistan/turkmenistan-national-team",
+"name": "Turcomenistão",
+"kind": "national",
+"country": "tm",
+"flag": "tm.svg"
+},
+{
+"key": "turks-and-caicos-islands/turks-and-caicos-islands-national-team",
+"name": "Ilhas Turks e Caicos",
+"kind": "national",
+"country": "tc",
+"flag": "tc.svg"
+},
+{
+"key": "tuvalu/tuvalu-national-team",
+"name": "Tuvalu",
+"kind": "national",
+"country": "tv",
+"flag": "tv.svg"
+},
+{
+"key": "uae/uae-national-team",
+"name": "Emirados Árabes Unidos",
+"kind": "national",
+"country": "ae",
+"flag": "ae.svg"
+},
+{
+"key": "uganda/uganda-national-team",
+"name": "Uganda",
+"kind": "national",
+"country": "ug",
+"flag": "ug.svg"
+},
+{
+"key": "ukraine/ukraine-national-team",
+"name": "Ucrânia",
+"kind": "national",
+"country": "ua",
+"flag": "ua.svg"
+},
+{
+"key": "uruguay/uruguay-national-team",
+"name": "Uruguai",
+"kind": "national",
+"country": "uy",
+"flag": "uy.svg"
+},
+{
+"key": "us-virgin-islands/us-virgin-islands-national-team",
+"name": "Ilhas Virgens Americanas",
+"kind": "national",
+"country": "vi",
+"flag": "vi.svg"
+},
+{
+"key": "usa/usa-national-team",
+"name": "Estados Unidos",
+"kind": "national",
+"country": "us",
+"flag": "us.svg"
+},
+{
+"key": "uzbekistan/uzbekistan-national-team",
+"name": "Uzbequistão",
+"kind": "national",
+"country": "uz",
+"flag": "uz.svg"
+},
+{
+"key": "vanuatu/vanuatu-national-team",
+"name": "Vanuatu",
+"kind": "national",
+"country": "vu",
+"flag": "vu.svg"
+},
+{
+"key": "vatican-city/vatican-city-national-team",
+"name": "Vaticano",
+"kind": "national",
+"country": "va",
+"flag": "va.svg"
+},
+{
+"key": "venezuela/venezuela-national-team",
+"name": "Venezuela",
+"kind": "national",
+"country": "ve",
+"flag": "ve.svg"
+},
+{
+"key": "vietnam/vietnam-national-team",
+"name": "Vietnã",
+"kind": "national",
+"country": "vn",
+"flag": "vn.svg"
+},
+{
+"key": "wales/wales-national-team",
+"name": "País de Gales",
+"kind": "national",
+"country": "gb-wls",
+"flag": "gb-wls.svg"
+},
+{
+"key": "yemen/yemen-national-team",
+"name": "Iêmen",
+"kind": "national",
+"country": "ye",
+"flag": "ye.svg"
+},
+{
+"key": "zambia/zambia-national-team",
+"name": "Zâmbia",
+"kind": "national",
+"country": "zm",
+"flag": "zm.svg"
+},
+{
+"key": "zanzibar/zanzibar-national-team",
+"name": "Zanzibar",
+"kind": "national",
+"country": null,
+"logo": "national/zanzibar.webp",
+"flag": null
+},
+{
+"key": "zimbabwe/zimbabwe-national-team",
+"name": "Zimbábue",
+"kind": "national",
+"country": "zw",
+"flag": "zw.svg"
+}
+],
+"source": "Escudos: football-logos.cc (marcas de seus respectivos donos; uso de fã, sem fins comerciais). Bandeiras: flag-icons 7.2.3 (MIT)."
+}

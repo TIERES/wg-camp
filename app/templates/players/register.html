@@ -1,16 +1,157 @@
 {% extends 'base.html' %}{% block title %}Cadastro · Campeonatos WE 2002{% endblock %}{% block content %}
 <section class="login account-form">
   <h1>Criar conta</h1>
-  <p>A conta é necessária para usar o <strong>Memory Card online</strong> nas partidas pelo Kaillera.</p>
-  <form method="post">
+  <p>A conta é necessária para se inscrever nos <strong>Campeonatos do WE Camp</strong> e para usar o <strong>Memory Card online</strong> nas partidas pelo Kaillera.</p>
+  <p class="muted required-note">Todos os campos são obrigatórios (<span class="req" aria-hidden="true">*</span>).</p>
+  <form method="post" id="register-form" novalidate data-username-pattern="{{ username_pattern }}" data-check-url="{{ url_for('players.register_check') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>Usuário (o seu nick do Kaillera)<input name="username" value="{{ form.username }}" autocomplete="username" maxlength="31" required></label>
-    <label>E-mail<input type="email" name="email" value="{{ form.email }}" autocomplete="email" required></label>
-    <label>Senha (mínimo 8 caracteres)<input type="password" name="password" autocomplete="new-password" minlength="8" required></label>
-    <label>Repita a senha<input type="password" name="password_confirm" autocomplete="new-password" minlength="8" required></label>
-    <label class="check"><input type="checkbox" name="accept" required><span>Entendo que o usuário deve ser exatamente o meu nick no Kaillera e que <strong>ele não poderá ser alterado</strong> depois.</span></label>
-    <button>Cadastrar</button>
+    <div class="form-row">
+      <label>
+        <span>Usuário (o seu nick do Kaillera) <span class="req" aria-hidden="true">*</span></span>
+        <input name="username" value="{{ form.username }}" autocomplete="username" maxlength="31" required
+               autocapitalize="off" spellcheck="false" aria-describedby="username-hint username-error">
+        <small class="field-hint" id="username-hint">Sem espaços e sem acentos ou ç: o Kaillera não aceita. Use {{ username_allowed }}, de 2 a 31 caracteres.</small>
+        <small class="field-error" id="username-error" aria-live="polite"></small>
+      </label>
+      <label>
+        <span>E-mail <span class="req" aria-hidden="true">*</span></span>
+        <input type="email" name="email" value="{{ form.email }}" autocomplete="email" required aria-describedby="email-error">
+        <small class="field-error" id="email-error" aria-live="polite"></small>
+      </label>
+    </div>
+    <div class="form-row">
+      <label>
+        <span>Senha (mínimo 8 caracteres) <span class="req" aria-hidden="true">*</span></span>
+        <input type="password" name="password" autocomplete="new-password" minlength="8" maxlength="128" required aria-describedby="password-error">
+        <small class="field-error" id="password-error" aria-live="polite"></small>
+      </label>
+      <label>
+        <span>Repita a senha <span class="req" aria-hidden="true">*</span></span>
+        <input type="password" name="password_confirm" autocomplete="new-password" minlength="8" maxlength="128" required aria-describedby="password_confirm-error">
+        <small class="field-error" id="password_confirm-error" aria-live="polite"></small>
+      </label>
+    </div>
+    <label class="check"><input type="checkbox" name="accept" required><span>Entendo que o usuário deve ser exatamente o meu nick no Kaillera e que <strong>ele não poderá ser alterado</strong> depois. <span class="req" aria-hidden="true">*</span></span></label>
+    <p class="field-error" id="form-missing" aria-live="polite"></p>
+    <button id="register-submit">Cadastrar</button>
   </form>
   <p>Já tem conta? <a href="{{ url_for('players.login') }}">Entrar</a></p>
 </section>
+<script>
+(function () {
+  // Confere o formulário enquanto o jogador digita: o botão Cadastrar só
+  // libera com tudo certo (o servidor confere de novo - accounts.py).
+  var form = document.getElementById('register-form');
+  var button = document.getElementById('register-submit');
+  var missing = document.getElementById('form-missing');
+  var pattern = new RegExp(form.dataset.usernamePattern);
+  var email = /^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$/;
+  var f = form.elements;
+  var touched = {};
+  // Conferência no servidor ao sair do campo: usuário/e-mail já cadastrado.
+  var remote = { username: { value: null, message: '', pending: false }, email: { value: null, message: '', pending: false } };
+  var remoteParam = { username: 'usuario', email: 'email' };
+
+  function checkRemote(name) {
+    var value = f[name].value.trim(), state = remote[name];
+    if (!value || state.value === value || localCheck(name)) return;
+    state.value = value; state.pending = true; state.message = '';
+    update();
+    fetch(form.dataset.checkUrl + '?campo=' + remoteParam[name] + '&valor=' + encodeURIComponent(value),
+          { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (data) { if (state.value === value) state.message = data.ok ? '' : data.message; })
+      .catch(function () {})  // sem resposta: libera o campo, o servidor confere ao enviar
+      .then(function () { if (state.value === value) { state.pending = false; update(); } });
+  }
+
+  function usernameError(v) {
+    if (!v) return 'Informe o usuário (o seu nick do Kaillera).';
+    if (/\s/.test(v)) return 'Sem espaços: o Kaillera não aceita espaço no nick.';
+    if (/[^\x00-\x7f]/.test(v)) return 'Sem acentos nem ç (ex.: á, ã, é, ç): eles quebram o nick no Kaillera.';
+    if (v.length < 2) return 'O usuário deve ter pelo menos 2 caracteres.';
+    if (!pattern.test(v)) {
+      var bad = v.split('').filter(function (ch) { return !pattern.test(ch + ch); });
+      return 'Caractere não permitido: ' + bad.filter(function (c, i) { return bad.indexOf(c) === i; }).join(' ') + '.';
+    }
+    return '';
+  }
+
+  var checks = {
+    username: function () { return usernameError(f.username.value); },
+    email: function () {
+      var v = f.email.value.trim();
+      if (!v) return 'Informe o e-mail.';
+      return email.test(v) && v.length <= 254 ? '' : 'Informe um e-mail válido.';
+    },
+    password: function () {
+      var v = f.password.value;
+      if (!v) return 'Informe a senha.';
+      return v.length < 8 ? 'A senha precisa de pelo menos 8 caracteres (faltam ' + (8 - v.length) + ').' : '';
+    },
+    password_confirm: function () {
+      if (!f.password_confirm.value) return 'Repita a senha.';
+      return f.password_confirm.value === f.password.value ? '' : 'As senhas não conferem.';
+    }
+  };
+  var labels = { username: 'Usuário', email: 'E-mail', password: 'Senha', password_confirm: 'Repita a senha' };
+
+  var UNCHECKED = '\u0000';
+
+  function localCheck(name) { return checks[name](); }
+
+  function message(name) {
+    var local = localCheck(name);
+    if (local || !remote[name]) return local;
+    var state = remote[name];
+    // Ainda não verificado (muda ao sair do campo): segura o botão sem mostrar erro.
+    if (state.value !== f[name].value.trim()) return UNCHECKED;
+    return state.pending ? '…' : state.message;
+  }
+
+  function update() {
+    var missingFields = [];
+    Object.keys(checks).forEach(function (name) {
+      var text = message(name);
+      var pending = remote[name] && remote[name].pending && text === '…';
+      var input = f[name];
+      // O usuário é conferido a cada letra (espaço/acento aparecem na hora); os outros, ao sair do campo.
+      var show = text && text !== UNCHECKED && !pending && (touched[name] || (name === 'username' && input.value));
+      var box = document.getElementById(name + '-error');
+      box.textContent = pending ? 'Verificando se já está cadastrado...' : (show ? text : '');
+      box.classList.toggle('checking', pending);
+      input.setAttribute('aria-invalid', show ? 'true' : 'false');
+      input.classList.toggle('invalid', !!show);
+      input.classList.toggle('valid', !text);
+      if (text) missingFields.push(labels[name]);
+    });
+    if (!f.accept.checked) missingFields.push('confirmação do nick');
+    button.disabled = missingFields.length > 0;
+    button.title = missingFields.length ? 'Falta: ' + missingFields.join(', ') : '';
+    missing.textContent = missingFields.length && Object.keys(touched).length ? 'Para cadastrar, falta: ' + missingFields.join(', ') + '.' : '';
+  }
+
+  Object.keys(checks).forEach(function (name) {
+    f[name].addEventListener('input', function () {
+      if (name === 'password' && f.password_confirm.value) touched.password_confirm = true;
+      update();
+    });
+    f[name].addEventListener('blur', function () {
+      touched[name] = true;
+      update();
+      if (remote[name]) checkRemote(name);
+    });
+  });
+  f.accept.addEventListener('change', function () { touched.accept = true; update(); });
+  form.addEventListener('submit', function (e) {
+    Object.keys(checks).forEach(function (name) { touched[name] = true; });
+    update();
+    if (button.disabled) e.preventDefault();
+  });
+  // Voltou do servidor com erro: mostra a situação de cada campo já preenchido.
+  Object.keys(checks).forEach(function (name) { if (f[name].value) touched[name] = true; });
+  update();
+  Object.keys(remote).forEach(function (name) { if (f[name].value) checkRemote(name); });
+})();
+</script>
 {% endblock %}

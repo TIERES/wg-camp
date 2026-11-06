@@ -1,15 +1,15 @@
 {% extends 'base.html' %}{% block content %}
 <div class="page-title"><h1>Arquivos: {{ championship.name }}</h1><a href="{{ url_for('admin.championship_edit', championship_id=championship.id) }}">Editar campeonato</a></div>
 {% if not files %}
-<form method="post" enctype="multipart/form-data" class="form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><h2>Enviar arquivo</h2>
-<label>Arquivo<input type="file" name="file" required></label><label>Nome exibido (opcional)<input name="display_name"></label><label>Descrição (opcional)<textarea name="description"></textarea></label><label>Tipo<select name="file_type"><option value="iso">ISO</option><option value="rom">ROM</option><option value="patch">Patch</option><option value="update">Atualização</option><option value="other">Outro</option></select></label><label class="check"><input type="checkbox" name="is_published" checked> Publicar imediatamente</label><button>Enviar</button></form>
+<form method="post" enctype="multipart/form-data" class="form" data-upload="{{ config.MAX_CONTENT_LENGTH }}" data-upload-label="o arquivo"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><h2>Enviar arquivo</h2>
+<div class="form-row"><label class="wide">Arquivo<input type="file" name="file" required></label><label class="wide">Nome exibido (opcional)<input name="display_name"></label><label>Tipo<select name="file_type"><option value="iso">ISO</option><option value="rom">ROM</option><option value="patch">Patch</option><option value="update">Atualização</option><option value="other">Outro</option></select></label></div><label>Descrição (opcional)<textarea name="description"></textarea></label><label class="check"><input type="checkbox" name="is_published" checked> Publicar imediatamente</label>{% include 'tournaments/_upload_progress.html' %}<button>Enviar</button></form>
 {% else %}
 <p class="notice">Este campeonato já possui um arquivo. Edite ou remova o arquivo atual antes de enviar outro.</p>
 {% endif %}
 <section><h2>Arquivos cadastrados</h2>{% for file in files %}<article class="file"><strong>{{ file.display_name }}</strong><br><small>{{ file.file_type|upper }} · {{ file.file_size | filesize }} · {{ 'Publicado' if file.is_published else 'Oculto' }}</small><a href="{{ url_for('admin.file_edit', file_id=file.id) }}">Editar informações</a>
 <div class="archive-status"><strong>archive.org:</strong>
 {% if file.archive_url %}<a href="{{ file.archive_url }}" rel="noopener noreferrer" target="_blank">{{ file.archive_url }}</a>{% endif %}
-{% if file.id in archive_busy %}<small>{{ 'Enviado; conferindo o MD5 no archive.org antes de remover a cópia local' if file.archive_status == 'verifying' else 'Enviando' }} desde {{ file.archive_updated_at | localtime('%Y-%m-%d %H:%M') }} - atualize a página para acompanhar.</small>
+{% if file.id in archive_busy %}<small>{{ 'Enviado; conferindo o MD5 no archive.org antes de remover a cópia local' if file.archive_status == 'verifying' else 'Enviando' }} desde {{ file.archive_updated_at | localtime('%Y-%m-%d %H:%M') }}.</small><div class="archive-progress" data-archive-status="{{ url_for('admin.file_archive_status', file_id=file.id) }}"></div>
 {% elif file.archive_status in ('error', 'uploading', 'verifying') %}<small class="error">Falhou em {{ file.archive_updated_at | localtime('%Y-%m-%d %H:%M') }}: {{ file.archive_error or 'envio interrompido (servidor reiniciado?)' }}</small>
 {% elif not file.archive_url %}<small>Ainda não enviado.</small>{% elif file.archive_error %}<small class="error">{{ file.archive_error }}</small>{% endif %}
 {% if file.local_removed_at %}<small>Migrada: cópia deste servidor removida em {{ file.local_removed_at | localtime('%Y-%m-%d %H:%M') }}. O download do site redireciona para o archive.org.</small>{% endif %}
@@ -18,4 +18,6 @@
 {% if archive_configured %}<button>{{ 'Enviar novamente para o archive.org' if file.archive_url else 'Enviar para o archive.org' }}</button>{% else %}<button disabled title="Configure ARENA17_IA_ACCESS_KEY / ARENA17_IA_SECRET_KEY no servidor">Enviar para o archive.org (não configurado)</button>{% endif %}
 </form>{% endif %}
 </div><form method="post" action="{{ url_for('admin.file_delete', file_id=file.id) }}" class="delete"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label class="check"><input type="checkbox" name="confirm" value="delete"> Confirmo a exclusão permanente</label><button class="danger">Excluir arquivo</button></form></article>{% else %}<p>Nenhum arquivo enviado.</p>{% endfor %}</section>
+<script src="{{ url_for('static', filename='js/upload-progress.js') }}"></script>
+<script src="{{ url_for('static', filename='js/archive-progress.js') }}"></script>
 {% endblock %}

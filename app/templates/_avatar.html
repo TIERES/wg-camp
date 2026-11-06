@@ -1,0 +1,15 @@
+{# Foto do jogador (players.avatar) ou a inicial do nome quando não tem foto,
+   com o badge do rank de XP (F a A, tournament/xp.py) no canto; rank=false tira o badge.
+   avatar_button: miniatura das listas; o clique abre o resumo do jogador
+   (static/js/player-card.js + tournaments.player_card). #}
+{% macro avatar(player_id, username, size='sm', rank=true) -%}
+{%- set src = player_avatar(player_id) -%}
+{%- if rank and player_id %}{% set r = player_rank(player_id) %}<span class="avatar-wrap avatar-wrap-{{ size }}">{% endif -%}
+{%- if src %}<img class="avatar avatar-{{ size }}" src="{{ src }}" alt="" loading="lazy">
+{%- else %}<span class="avatar avatar-{{ size }} avatar-initial" aria-hidden="true">{{ (username or '?')[:1]|upper }}</span>{% endif -%}
+{%- if rank and player_id %}<span class="rank-badge rank-{{ r.rank }}" title="Rank {{ r.rank }} · {{ r.xp }} XP">{{ r.rank }}</span></span>{% endif -%}
+{%- endmacro %}
+
+{% macro avatar_button(player_id, username, size='sm') -%}
+<button type="button" class="avatar-btn" data-player-card="{{ url_for('tournaments.player_card', nome=username) }}" title="Resumo de {{ username }}" aria-label="Ver resumo de {{ username }}">{{ avatar(player_id, username, size) }}</button>
+{%- endmacro %}

@@ -38,8 +38,10 @@
 <h2>Cadastrar jogo</h2>
 <form method="post" class="form">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <label>Nome<input name="name" maxlength="128" required placeholder="Winning Eleven 2002"></label>
-  <label>Identificador (CRC32:TAMANHO)<input name="content_id" required placeholder="1A2B3C4D:2A3B4C00"></label>
+  <div class="form-row">
+    <label class="wide">Nome<input name="name" maxlength="128" required placeholder="Winning Eleven 2002"></label>
+    <label>Identificador (CRC32:TAMANHO)<input name="content_id" required placeholder="1A2B3C4D:2A3B4C00"></label>
+  </div>
   <p><small>No servidor: <code>flask --app wsgi register-game caminho/do/jogo.cue "Nome"</code> calcula e cadastra.</small></p>
   <button>Cadastrar</button>
 </form>

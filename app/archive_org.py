@@ -8,6 +8,7 @@ import http.client
 import json
 import os
 import urllib.parse
+import time
 import urllib.request
 
 
@@ -15,18 +16,41 @@ class ArchiveOrgError(Exception):
     pass
 
 
+class _ProgressReader:
+    """File wrapper for the PUT body: http.client reads it in blocks, and each
+    block read calls progress(sent_bytes, total_bytes) - at most once per
+    `interval` seconds, plus once at the end."""
+
+    def __init__(self, f, total, progress, interval=1.0):
+        self.f, self.total, self.progress, self.interval = f, total, progress, interval
+        self.sent, self.last = 0, 0.0
+
+    def read(self, size=-1):
+        data = self.f.read(size)
+        self.sent += len(data)
+        moment = time.monotonic()
+        if not data or self.sent >= self.total or moment - self.last >= self.interval:
+            self.last = moment
+            try:
+                self.progress(self.sent, self.total)
+            except Exception:  # noqa: BLE001 - a progress failure never stops the upload
+                pass
+        return data
+
+
 def download_url(identifier, filename):
     return f"https://archive.org/download/{urllib.parse.quote(identifier)}/{urllib.parse.quote(filename)}"
 
 
 def upload_file(identifier, file_path, access_key, secret_key, remote_name=None,
-                content_type="application/octet-stream", item_metadata=None):
+                content_type="application/octet-stream", item_metadata=None, progress=None):
     """PUTs file_path into item `identifier` as `remote_name` (defaults to
     the local basename). With `item_metadata` ({"collection":..,
     "title":.., ...}) the item is created on first upload; without it the
     item must already exist, and its metadata is left untouched. Returns
     the file's direct download URL. Raises ArchiveOrgError on any non-2xx
-    response or connection failure."""
+    response or connection failure. `progress(sent, total)` follows the bytes
+    sent (see _ProgressReader)."""
     if not access_key or not secret_key:
         raise ArchiveOrgError("Chaves do archive.org não configuradas.")
 
@@ -49,7 +73,8 @@ def upload_file(identifier, file_path, access_key, secret_key, remote_name=None,
     conn = http.client.HTTPSConnection("s3.us.archive.org", timeout=300)
     try:
         with open(file_path, "rb") as f:
-            conn.request("PUT", path, body=f, headers=headers)
+            body = _ProgressReader(f, size, progress) if progress else f
+            conn.request("PUT", path, body=body, headers=headers)
             response = conn.getresponse()
             body = response.read()
     except OSError as error:

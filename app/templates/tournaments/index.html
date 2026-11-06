@@ -1,0 +1,143 @@
+{% extends 'base.html' %}{% block title %}Campeonatos · WE Camp{% endblock %}{% block content %}
+{% block heading %}<div class="page-title"><h1>Campeonatos</h1><div class="card-actions"><a class="button secondary" href="{{ url_for('tournaments.ranking') }}">Ranking</a>{% if session.player_id %}<a class="button" href="{{ url_for('tournaments.new') }}">Criar campeonato</a>{% else %}<a class="button" href="{{ url_for('players.login', next=url_for('tournaments.new')) }}">Entre para criar um campeonato</a>{% endif %}</div></div>{% endblock %}
+
+<form method="get" class="filters t-filters" id="t-filters">
+  <select name="status" aria-label="Status">
+    {% if list_endpoint == 'tournaments.my_tournaments' %}
+    <option value="">Inscrições abertas e em andamento</option>
+    <option value="todos" {% if status == 'todos' %}selected{% endif %}>Todos os status</option>
+    {% else %}<option value="">Todos os status</option>{% endif %}
+    {% for key, label in status_labels.items() if key != 'draft' %}<option value="{{ key }}" {% if key == status %}selected{% endif %}>{{ label }}</option>{% endfor %}
+  </select>
+  {% for field, label, value, options in (('nome', 'Nome do campeonato', name, name_options), ('organizador', 'Criado por', organizer, organizer_options)) %}
+  <div class="ac">
+    <input type="search" name="{{ field }}" id="f-{{ field }}" placeholder="{{ label }}" value="{{ value }}" aria-label="{{ label }}"
+           role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="f-{{ field }}-list" autocomplete="off"
+           data-options="{{ options|tojson|forceescape }}">
+    <ul class="ac-list" id="f-{{ field }}-list" role="listbox" hidden></ul>
+  </div>
+  {% endfor %}
+  {% if game %}<input type="hidden" name="jogo" value="{{ game }}">{% endif %}
+  <noscript><button>Filtrar</button></noscript>
+</form>
+<div id="t-results">
+<nav class="game-filter" aria-label="Filtrar por jogo">
+  <a href="{{ url_for(list_endpoint, status=status or None, nome=name or None, organizador=organizer or None) }}" class="game-chip all{% if not game %} active{% endif %}" {% if not game %}aria-current="true"{% endif %}><span>Todos os jogos</span></a>
+  {% for g in games %}
+  <a href="{{ url_for(list_endpoint, status=status or None, jogo=g.id, nome=name or None, organizador=organizer or None) }}" class="game-chip{% if g.id == game %} active{% endif %}" title="{{ g.name }}" {% if g.id == game %}aria-current="true"{% endif %}><img src="{{ game_cover(g.code) }}" alt="" width="200" height="250"><span>{{ g.name|replace('Winning Eleven ', 'WE ') }}</span></a>
+  {% endfor %}
+</nav>
+
+{% if tournaments %}
+<div class="t-cards">
+  {% for t in tournaments %}
+  {% set own = session.player_id and t.organizer_id == session.player_id %}
+  {% set manageable = own or session.user_id %}{% set iso_ok = t.id in iso_ready %}
+  <div class="t-card">
+    <div class="t-side">
+      <div class="t-side-images">
+        {% if t.image %}<img class="t-cover t-image" src="{{ image_url('torneio', t.image) }}" alt="" loading="lazy">{% endif %}
+        <img class="t-cover" src="{{ game_cover(t.game_code) }}" alt="{{ t.game_name }}" width="200" height="250" loading="lazy">
+      </div>
+    </div>
+    <div class="t-body">
+      <span class="t-badges"><span class="badge status-{{ t.status }}">{{ status_labels[t.status] }}</span>{% if t.friends_only %}<span class="badge friends-only" title="Só os amigos de quem criou veem e se inscrevem">Somente amigos</span>{% endif %}</span>
+      <strong class="t-name">{{ t.name }}</strong>
+      <span class="muted">{{ t.game_name }} · {{ format_labels[t.format] }}</span>
+      <span class="t-meta">
+        <span>{{ t.entries }}/{{ t.max_players }} jogadores</span>
+        <span>Inscrição: {{ t.entry_fee_cents|wcash if t.entry_fee_cents else 'grátis' }}</span>
+        {% if t.starts_on %}<span>{{ t.starts_on|date_br }}{% if t.ends_on %} a {{ t.ends_on|date_br }}{% endif %}</span>{% endif %}
+      </span>
+      <small class="muted">{% if own %}Criado por você{% else %}Organizado por {{ t.organizer_name }}{% endif %}</small>
+    </div>
+    {% if iso_ok or manageable %}
+    <div class="t-foot">
+      {% if iso_ok %}<a class="button secondary" href="{{ url_for('tournaments.iso_download', slug=t.slug) }}" title="Baixar {{ t.iso_name }}">Download ISO</a>{% endif %}
+      {% if manageable %}<a class="button" href="{{ url_for('tournaments.manage', slug=t.slug) }}">Gerenciar</a>{% endif %}
+    </div>
+    {% endif %}
+    <a class="t-link" href="{{ url_for('tournaments.show', slug=t.slug) }}" aria-label="{{ t.name }}"></a>
+  </div>
+  {% endfor %}
+</div>
+{% elif name or organizer or status or game %}<p>Nenhum campeonato encontrado com esses filtros.</p>
+{% else %}{% block empty %}<p>Nenhum campeonato por aqui ainda.{% if session.player_id %} Que tal <a href="{{ url_for('tournaments.new') }}">criar o primeiro</a>?{% endif %}</p>{% endblock %}{% endif %}
+</div>
+<script>
+(function () {
+  // Filtros: o status e as escolhas do autocompletar filtram na hora; digitando,
+  // filtra 1,2 s depois da última tecla. Só a lista é trocada, o foco fica no campo.
+  var form = document.getElementById('t-filters');
+  var results = document.getElementById('t-results');
+  var timer = null, request = 0;
+  function plain(s) { return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim(); }
+
+  function apply() {
+    clearTimeout(timer);
+    var params = new URLSearchParams();
+    new FormData(form).forEach(function (value, key) { if (String(value).trim()) params.append(key, String(value).trim()); });
+    var url = location.pathname + (params.toString() ? '?' + params : '');
+    if (url === location.pathname + location.search) return;
+    var mine = ++request;
+    fetch(url).then(function (r) { return r.text(); }).then(function (html) {
+      if (mine !== request) return;  // chegou uma resposta mais nova antes desta
+      var fresh = new DOMParser().parseFromString(html, 'text/html').getElementById('t-results');
+      if (!fresh) { location.href = url; return; }
+      results.innerHTML = fresh.innerHTML;
+      history.replaceState(null, '', url);
+    }).catch(function () { location.href = url; });
+  }
+  function later() { clearTimeout(timer); timer = setTimeout(apply, 1200); }
+
+  form.addEventListener('submit', function (e) { e.preventDefault(); apply(); });
+  form.elements.status.addEventListener('change', apply);
+
+  form.querySelectorAll('.ac input').forEach(function (input) {
+    var options = JSON.parse(input.dataset.options);
+    var list = document.getElementById(input.getAttribute('aria-controls'));
+    var active = -1;
+
+    function close() { list.hidden = true; input.setAttribute('aria-expanded', 'false'); active = -1; }
+    function choose(value) { input.value = value; close(); apply(); }
+    function mark(index) {
+      var items = list.children;
+      if (!items.length) return;
+      active = (index + items.length) % items.length;
+      for (var i = 0; i < items.length; i++) items[i].setAttribute('aria-selected', i === active ? 'true' : 'false');
+      items[active].scrollIntoView({ block: 'nearest' });
+    }
+    function open() {
+      var q = plain(input.value);
+      list.innerHTML = '';
+      options.filter(function (o) { var p = plain(o); return p.indexOf(q) >= 0 && p !== q; }).slice(0, 8).forEach(function (o) {
+        var li = document.createElement('li');
+        li.setAttribute('role', 'option');
+        li.textContent = o;
+        li.addEventListener('mousedown', function (e) { e.preventDefault(); choose(o); });
+        list.appendChild(li);
+      });
+      active = -1;
+      list.hidden = !list.children.length;
+      input.setAttribute('aria-expanded', list.hidden ? 'false' : 'true');
+    }
+
+    input.addEventListener('input', function () { open(); later(); });
+    input.addEventListener('focus', open);
+    input.addEventListener('blur', close);
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (list.hidden) open();
+        mark(active + (e.key === 'ArrowDown' ? 1 : -1));
+      } else if (e.key === 'Enter' && !list.hidden && active >= 0) {
+        e.preventDefault();
+        choose(list.children[active].textContent);
+      } else if (e.key === 'Escape') {
+        close();
+      }
+    });
+  });
+})();
+</script>
+{% endblock %}

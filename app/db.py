@@ -141,6 +141,335 @@ CREATE TABLE IF NOT EXISTS voice_channels (
 """
 
 
+#  Torneios (/torneios - app/tournaments.py, motor em app/tournament/):
+#  - game_titles: os jogos dos torneios (lista fixa em app/tournament/games.py)
+#    (não confundir com `games`, que é o conteúdo da ISO do Memory Card);
+#  - um torneio é uma sequência de fases (tournament_stages): liga, grupos,
+#    fase de liga suíça (Liga dos Campeões) ou mata-mata;
+#  - no mata-mata, tournament_ties é o confronto (agrega ida e volta) e aponta
+#    para onde vão o vencedor (next_tie_id) e o perdedor (disputa de 3º);
+#  - wallet_entries é o livro-caixa do W$ (app/wallet.py), ref_key única.
+TOURNAMENTS_DDL = """
+CREATE TABLE IF NOT EXISTS game_titles (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    platform TEXT NOT NULL DEFAULT '',
+    championship_id INTEGER REFERENCES championships(id) ON DELETE SET NULL,
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tournaments (
+    id INTEGER PRIMARY KEY,
+    slug TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    game_title_id INTEGER NOT NULL REFERENCES game_titles(id) ON DELETE RESTRICT,
+    organizer_id INTEGER NOT NULL REFERENCES players(id) ON DELETE RESTRICT,
+    format TEXT NOT NULL
+        CHECK (format IN ('league', 'league_knockout', 'ucl', 'world_cup', 'libertadores', 'knockout')),
+    status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'registration', 'running', 'finished', 'cancelled')),
+    max_players INTEGER NOT NULL,
+    entry_fee_cents INTEGER NOT NULL DEFAULT 0 CHECK (entry_fee_cents >= 0),
+    prize_split TEXT NOT NULL DEFAULT '60,30,10',
+    settings_json TEXT NOT NULL DEFAULT '{}',
+    rules TEXT NOT NULL DEFAULT '',
+    -- free: o jogador digita o time; choose/draw: times da lista tournament_teams.
+    team_mode TEXT NOT NULL DEFAULT 'free' CHECK (team_mode IN ('free', 'choose', 'draw')),
+    -- Sem uso: seleções aparecem sempre com a bandeira (a opção "escudo da federação" saiu).
+    team_display TEXT NOT NULL DEFAULT 'flag' CHECK (team_display IN ('logo', 'flag')),
+    -- Datas prováveis de início e fim (AAAA-MM-DD), informadas pelo organizador.
+    starts_on TEXT,
+    ends_on TEXT,
+    started_at TEXT,
+    finished_at TEXT,
+    -- Último jogo confirmado (aviso ao organizador; encerra sozinho 24 h depois - notify.py).
+    all_played_at TEXT,
+    -- Imagem do campeonato enviada pelo organizador (arquivo em TOURNAMENT_IMAGES_DIR - app/images.py).
+    image TEXT,
+    -- Somente para amigos: só o organizador, os amigos dele e os inscritos veem o campeonato; só amigos se inscrevem.
+    friends_only INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS tournaments_status_idx ON tournaments(status);
+
+-- ISO do campeonato (app/tournament/iso.py): fica em DOWNLOADS_DIR até o
+-- archive.org confirmar a cópia (mesmo MD5); daí a local é apagada e o
+-- download redireciona para archive_url.
+CREATE TABLE IF NOT EXISTS tournament_isos (
+    tournament_id INTEGER PRIMARY KEY REFERENCES tournaments(id) ON DELETE CASCADE,
+    stored_name TEXT NOT NULL,
+    original_filename TEXT NOT NULL,
+    file_size INTEGER NOT NULL CHECK (file_size >= 0),
+    md5 TEXT NOT NULL,
+    archive_name TEXT NOT NULL,
+    archive_status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (archive_status IN ('pending', 'uploading', 'verifying', 'done', 'error')),
+    archive_url TEXT,
+    archive_error TEXT,
+    archive_updated_at TEXT,
+    local_removed_at TEXT,
+    uploaded_by INTEGER REFERENCES players(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tournament_entries (
+    id INTEGER PRIMARY KEY,
+    tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+    player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE RESTRICT,
+    team_name TEXT NOT NULL DEFAULT '',
+    team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+    fee_ref TEXT,
+    final_position INTEGER,
+    created_at TEXT NOT NULL,
+    UNIQUE (tournament_id, player_id)
+);
+
+-- Um time por jogador e nenhum time repetido no mesmo campeonato.
+CREATE UNIQUE INDEX IF NOT EXISTS tournament_entries_team_idx ON tournament_entries(tournament_id, team_id)
+    WHERE team_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS tournament_entries_team_name_idx
+    ON tournament_entries(tournament_id, team_name COLLATE NOCASE) WHERE team_name != '';
+
+CREATE TABLE IF NOT EXISTS teams (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'club' CHECK (kind IN ('club', 'national', 'custom')),
+    country TEXT NOT NULL DEFAULT '',
+    logo TEXT,
+    flag TEXT,
+    source_key TEXT UNIQUE,
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS team_groups (
+    id INTEGER PRIMARY KEY,
+    slug TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    seq INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS team_group_members (
+    group_id INTEGER NOT NULL REFERENCES team_groups(id) ON DELETE CASCADE,
+    team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    PRIMARY KEY (group_id, team_id)
+);
+
+CREATE TABLE IF NOT EXISTS tournament_teams (
+    tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+    team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    PRIMARY KEY (tournament_id, team_id)
+);
+
+CREATE TABLE IF NOT EXISTS tournament_stages (
+    id INTEGER PRIMARY KEY,
+    tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+    seq INTEGER NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('league', 'groups', 'swiss', 'knockout')),
+    name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'done')),
+    settings_json TEXT NOT NULL DEFAULT '{}',
+    all_played_at TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE (tournament_id, seq)
+);
+
+CREATE TABLE IF NOT EXISTS tournament_groups (
+    id INTEGER PRIMARY KEY,
+    stage_id INTEGER NOT NULL REFERENCES tournament_stages(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    seq INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tournament_group_members (
+    group_id INTEGER NOT NULL REFERENCES tournament_groups(id) ON DELETE CASCADE,
+    entry_id INTEGER NOT NULL REFERENCES tournament_entries(id) ON DELETE CASCADE,
+    draw_order INTEGER NOT NULL,
+    PRIMARY KEY (group_id, entry_id)
+);
+
+CREATE TABLE IF NOT EXISTS tournament_ties (
+    id INTEGER PRIMARY KEY,
+    stage_id INTEGER NOT NULL REFERENCES tournament_stages(id) ON DELETE CASCADE,
+    round INTEGER NOT NULL,
+    position INTEGER NOT NULL,
+    legs INTEGER NOT NULL DEFAULT 1 CHECK (legs IN (1, 2)),
+    is_third_place INTEGER NOT NULL DEFAULT 0,
+    entry_a INTEGER REFERENCES tournament_entries(id) ON DELETE SET NULL,
+    entry_b INTEGER REFERENCES tournament_entries(id) ON DELETE SET NULL,
+    is_bye INTEGER NOT NULL DEFAULT 0,
+    winner_entry_id INTEGER REFERENCES tournament_entries(id) ON DELETE SET NULL,
+    next_tie_id INTEGER REFERENCES tournament_ties(id) ON DELETE SET NULL,
+    next_slot TEXT CHECK (next_slot IN ('a', 'b')),
+    loser_next_tie_id INTEGER REFERENCES tournament_ties(id) ON DELETE SET NULL,
+    loser_next_slot TEXT CHECK (loser_next_slot IN ('a', 'b'))
+);
+
+CREATE INDEX IF NOT EXISTS tournament_ties_stage_idx ON tournament_ties(stage_id, round, position);
+
+CREATE TABLE IF NOT EXISTS tournament_matches (
+    id INTEGER PRIMARY KEY,
+    stage_id INTEGER NOT NULL REFERENCES tournament_stages(id) ON DELETE CASCADE,
+    group_id INTEGER REFERENCES tournament_groups(id) ON DELETE CASCADE,
+    tie_id INTEGER REFERENCES tournament_ties(id) ON DELETE CASCADE,
+    round INTEGER NOT NULL,
+    leg INTEGER NOT NULL DEFAULT 1,
+    home_entry_id INTEGER NOT NULL REFERENCES tournament_entries(id) ON DELETE CASCADE,
+    away_entry_id INTEGER NOT NULL REFERENCES tournament_entries(id) ON DELETE CASCADE,
+    home_goals INTEGER,
+    away_goals INTEGER,
+    home_pens INTEGER,
+    away_pens INTEGER,
+    -- reported/disputed: confirmação entre os jogadores (fase 2).
+    status TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'reported', 'disputed', 'confirmed')),
+    result_version INTEGER NOT NULL DEFAULT 0,
+    -- Placar reportado por um jogador, esperando o adversário (app/tournament/reports.py).
+    reported_by_entry_id INTEGER REFERENCES tournament_entries(id) ON DELETE SET NULL,
+    reported_at TEXT,
+    confirmed_at TEXT,
+    live_session_id INTEGER REFERENCES live_sessions(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS tournament_matches_stage_idx ON tournament_matches(stage_id, round);
+CREATE INDEX IF NOT EXISTS tournament_matches_status_idx ON tournament_matches(status, reported_at);
+
+-- Histórico de cada jogo: reporte, confirmação, contestação, decisão do
+-- organizador/admin, confirmação automática e placar apagado.
+CREATE TABLE IF NOT EXISTS match_reports (
+    id INTEGER PRIMARY KEY,
+    match_id INTEGER NOT NULL REFERENCES tournament_matches(id) ON DELETE CASCADE,
+    action TEXT NOT NULL CHECK (action IN ('report', 'confirm', 'dispute', 'resolve', 'auto_confirm', 'clear')),
+    entry_id INTEGER REFERENCES tournament_entries(id) ON DELETE SET NULL,
+    player_id INTEGER REFERENCES players(id) ON DELETE SET NULL,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    home_goals INTEGER,
+    away_goals INTEGER,
+    home_pens INTEGER,
+    away_pens INTEGER,
+    comment TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS match_reports_match_idx ON match_reports(match_id, id);
+CREATE INDEX IF NOT EXISTS tournament_matches_tie_idx ON tournament_matches(tie_id);
+
+CREATE TABLE IF NOT EXISTS wallet_entries (
+    id INTEGER PRIMARY KEY,
+    player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    amount_cents INTEGER NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('bonus_inicial', 'inscricao', 'reembolso', 'premio', 'vitoria', 'empate',
+                                       'derrota', 'estorno', 'ajuste_admin', 'recarga_pix')),
+    ref_key TEXT NOT NULL UNIQUE,
+    tournament_id INTEGER REFERENCES tournaments(id) ON DELETE SET NULL,
+    match_id INTEGER REFERENCES tournament_matches(id) ON DELETE SET NULL,
+    note TEXT NOT NULL DEFAULT '',
+    created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS wallet_entries_player_idx ON wallet_entries(player_id, id);
+CREATE INDEX IF NOT EXISTS wallet_entries_tournament_idx ON wallet_entries(tournament_id, kind);
+CREATE INDEX IF NOT EXISTS wallet_entries_match_idx ON wallet_entries(match_id);
+
+-- Amizade: pedido de requester para addressee; aceito vira 'accepted', recusado é apagado.
+CREATE TABLE IF NOT EXISTS friendships (
+    id INTEGER PRIMARY KEY,
+    requester_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    addressee_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted')),
+    created_at TEXT NOT NULL,
+    responded_at TEXT,
+    UNIQUE (requester_id, addressee_id),
+    CHECK (requester_id != addressee_id)
+);
+CREATE INDEX IF NOT EXISTS friendships_addressee_idx ON friendships(addressee_id, status);
+
+-- Convite para um campeonato com inscrições abertas (a inscrição continua sendo feita na página do campeonato).
+CREATE TABLE IF NOT EXISTS tournament_invites (
+    id INTEGER PRIMARY KEY,
+    tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+    player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    invited_by INTEGER REFERENCES players(id) ON DELETE SET NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'declined')),
+    created_at TEXT NOT NULL,
+    UNIQUE (tournament_id, player_id)
+);
+CREATE INDEX IF NOT EXISTS tournament_invites_player_idx ON tournament_invites(player_id, status);
+
+-- ISOs cadastradas pela administração do WE Camp (app/tournament/iso_catalog.py),
+-- para os amistosos: nome, jogo base, imagem opcional (TOURNAMENT_IMAGES_DIR) e o
+-- arquivo - uma ISO já enviada num Campeonato (file_id) ou enviada aqui, com o
+-- mesmo fluxo do archive.org das ISOs de campeonato (colunas iguais às de tournament_isos).
+CREATE TABLE IF NOT EXISTS catalog_isos (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    game_title_id INTEGER NOT NULL REFERENCES game_titles(id) ON DELETE RESTRICT,
+    image TEXT,
+    file_id INTEGER REFERENCES files(id) ON DELETE SET NULL,
+    stored_name TEXT,
+    original_filename TEXT,
+    file_size INTEGER,
+    md5 TEXT,
+    archive_name TEXT,
+    archive_status TEXT,
+    archive_url TEXT,
+    archive_error TEXT,
+    archive_updated_at TEXT,
+    local_removed_at TEXT,
+    archive_progress INTEGER,
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    -- ISO enviada por um jogador ("Não encontrou a ISO?"): fica inativa até a
+    -- administração liberar (approved_at), confirmando nome, jogo base e imagem.
+    requested_by INTEGER REFERENCES players(id) ON DELETE SET NULL,
+    approved_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+-- Amistoso entre dois amigos, fora dos campeonatos (app/tournament/friendly.py):
+-- invited -> accepted -> reported (placar proposto por um) -> confirmed (o outro aceitou).
+-- Placar recusado = suspended, até um dos dois propor um placar que o outro aceite.
+-- ranked é decidido na confirmação (proteção contra contas fake): só os que
+-- valem entram no Ranking, no V/E/D e no XP; unranked_reason diz por que não.
+CREATE TABLE IF NOT EXISTS friendly_matches (
+    id INTEGER PRIMARY KEY,
+    -- ISO escolhida (opcional): a de um campeonato ou uma do cadastro; o jogo vem dela.
+    iso_tournament_id INTEGER REFERENCES tournaments(id) ON DELETE SET NULL,
+    iso_catalog_id INTEGER REFERENCES catalog_isos(id) ON DELETE SET NULL,
+    game_title_id INTEGER REFERENCES game_titles(id) ON DELETE SET NULL,
+    home_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    away_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'invited'
+        CHECK (status IN ('invited', 'declined', 'cancelled', 'accepted', 'reported', 'suspended', 'confirmed')),
+    message TEXT NOT NULL DEFAULT '',
+    home_goals INTEGER,
+    away_goals INTEGER,
+    reported_by INTEGER REFERENCES players(id) ON DELETE SET NULL,
+    reported_at TEXT,
+    rejected_by INTEGER REFERENCES players(id) ON DELETE SET NULL,
+    rejected_note TEXT NOT NULL DEFAULT '',
+    ranked INTEGER NOT NULL DEFAULT 0,
+    unranked_reason TEXT NOT NULL DEFAULT '',
+    confirmed_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    CHECK (home_id != away_id)
+);
+CREATE INDEX IF NOT EXISTS friendly_matches_home_idx ON friendly_matches(home_id, status);
+CREATE INDEX IF NOT EXISTS friendly_matches_away_idx ON friendly_matches(away_id, status);
+CREATE INDEX IF NOT EXISTS friendly_matches_confirmed_idx ON friendly_matches(status, ranked, confirmed_at);
+"""
+
+
 def ensure_player_columns(database):
     """Discord vinculado (app/discord.py) - colunas novas de players."""
     columns = {column["name"] for column in database.execute("PRAGMA table_info(players)")}
@@ -149,6 +478,79 @@ def ensure_player_columns(database):
             database.execute(f"ALTER TABLE players ADD COLUMN {column} TEXT")
     database.execute("CREATE UNIQUE INDEX IF NOT EXISTS players_discord_idx ON players(discord_id) "
                      "WHERE discord_id IS NOT NULL")
+    # Carteira W$ (app/wallet.py): saldo somado e quando o saldo inicial foi creditado.
+    if "wallet_cents" not in columns:
+        database.execute("ALTER TABLE players ADD COLUMN wallet_cents INTEGER NOT NULL DEFAULT 0")
+    if "wallet_started_at" not in columns:
+        database.execute("ALTER TABLE players ADD COLUMN wallet_started_at TEXT")
+    # Saldo zerado por um débito por derrota: falta avisar o jogador e a administração
+    # (notify.empty_wallets, depois do commit).
+    if "wallet_empty_pending" not in columns:
+        database.execute("ALTER TABLE players ADD COLUMN wallet_empty_pending INTEGER NOT NULL DEFAULT 0")
+    # Foto do perfil (nome do arquivo em AVATARS_DIR - app/images.py).
+    if "avatar" not in columns:
+        database.execute("ALTER TABLE players ADD COLUMN avatar TEXT")
+
+
+def ensure_tournament_columns(database):
+    """Colunas novas de tournaments e tournament_stages (bancos criados antes delas)."""
+    columns = {column["name"] for column in database.execute("PRAGMA table_info(tournaments)")}
+    if not columns:
+        return  # banco sem torneios ainda - o TOURNAMENTS_DDL cria a tabela completa
+    for column in ("starts_on", "ends_on", "all_played_at", "image"):
+        if column not in columns:
+            database.execute(f"ALTER TABLE tournaments ADD COLUMN {column} TEXT")
+    if "friends_only" not in columns:
+        database.execute("ALTER TABLE tournaments ADD COLUMN friends_only INTEGER NOT NULL DEFAULT 0")
+    stage_columns = {column["name"] for column in database.execute("PRAGMA table_info(tournament_stages)")}
+    if stage_columns and "all_played_at" not in stage_columns:
+        database.execute("ALTER TABLE tournament_stages ADD COLUMN all_played_at TEXT")
+    # Percentual do envio para o archive.org (barra de progresso - static/js/archive-progress.js).
+    for table in ("tournament_isos", "catalog_isos", "files"):
+        table_columns = {column["name"] for column in database.execute(f"PRAGMA table_info({table})")}
+        if table_columns and "archive_progress" not in table_columns:
+            database.execute(f"ALTER TABLE {table} ADD COLUMN archive_progress INTEGER")
+    catalog_columns = {column["name"] for column in database.execute("PRAGMA table_info(catalog_isos)")}
+    for column, kind in (("requested_by", "INTEGER REFERENCES players(id) ON DELETE SET NULL"),
+                         ("approved_at", "TEXT")):
+        if catalog_columns and column not in catalog_columns:
+            database.execute(f"ALTER TABLE catalog_isos ADD COLUMN {column} {kind}")
+
+
+def allow_tournament_formats(database):
+    """Bancos de antes do formato "Pontos corridos + mata-mata" têm o CHECK de
+    tournaments.format sem ele. Como em allow_iso_memcards, a tabela é refeita
+    (mesmos ids e colunas) com a definição atual do TOURNAMENTS_DDL; as outras
+    tabelas continuam apontando para ela pelo nome."""
+    row = database.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tournaments'").fetchone()
+    if row is None or "league_knockout" in row["sql"]:
+        return
+    start = TOURNAMENTS_DDL.index("CREATE TABLE IF NOT EXISTS tournaments (")
+    ddl = TOURNAMENTS_DDL[start:TOURNAMENTS_DDL.index(");", start) + 2]
+    ddl = ddl.replace("CREATE TABLE IF NOT EXISTS tournaments (", "CREATE TABLE tournaments_new (")
+    database.commit()
+    database.execute("PRAGMA foreign_keys = OFF")
+    try:
+        # A tabela nova sozinha primeiro, para saber as colunas em comum (executescript faz COMMIT antes).
+        database.executescript("DROP TABLE IF EXISTS tournaments_new;\n" + ddl)
+        new_columns = {c["name"] for c in database.execute("PRAGMA table_info(tournaments_new)")}
+        columns = ", ".join(c["name"] for c in database.execute("PRAGMA table_info(tournaments)")
+                            if c["name"] in new_columns)
+        database.executescript(f"""
+            BEGIN;
+            INSERT INTO tournaments_new ({columns}) SELECT {columns} FROM tournaments;
+            DROP TABLE tournaments;
+            ALTER TABLE tournaments_new RENAME TO tournaments;
+            COMMIT;
+        """)
+    except Exception:
+        database.rollback()  # a tabela antiga fica como estava
+        raise
+    finally:
+        database.execute("PRAGMA foreign_keys = ON")
+    broken = database.execute("PRAGMA foreign_key_check").fetchall()
+    if broken:
+        raise RuntimeError(f"tournaments: {len(broken)} referência(s) quebrada(s) depois de refazer a tabela")
 
 
 def allow_iso_memcards(database):
@@ -229,6 +631,12 @@ def init_db():
     db.executescript(PLAYERS_DDL)
     db.executescript(SITE_SETTINGS_DDL)
     ensure_player_columns(db)
+    db.executescript(TOURNAMENTS_DDL)
+    ensure_tournament_columns(db)
+    from .tournament.teams import seed_teams
+    from .tournament.games import seed_games
+    seed_teams(db)
+    seed_games(db)
     db.commit()
 
 
@@ -325,6 +733,14 @@ def migrate_db():
     database.executescript(PLAYERS_DDL)
     database.executescript(SITE_SETTINGS_DDL)
     ensure_player_columns(database)
+    ensure_tournament_columns(database)  # antes de refazer a tabela, para copiar as colunas novas
+    allow_tournament_formats(database)
+    database.executescript(TOURNAMENTS_DDL)
+    ensure_tournament_columns(database)
+    from .tournament.teams import seed_teams
+    from .tournament.games import seed_games
+    seed_teams(database)
+    seed_games(database)
     database.execute("CREATE INDEX IF NOT EXISTS live_sessions_game_name_idx ON live_sessions(game_name)")
     database.execute("CREATE INDEX IF NOT EXISTS live_sessions_replay_idx ON live_sessions(status, duration_seconds)")
     rows = database.execute(
