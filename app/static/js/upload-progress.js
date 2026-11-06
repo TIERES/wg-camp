@@ -12,7 +12,7 @@
       if (!file) return;
       e.preventDefault();
       if (file.size > max) {
-        alert('A ISO pode ter no máximo ' + Math.floor(max / 1048576) + ' MB.');
+        toast('A ISO pode ter no máximo ' + Math.floor(max / 1048576) + ' MB.', 'error');
         return;
       }
       var button = form.querySelector('button');
@@ -36,7 +36,7 @@
       xhr.onerror = function () {
         box.hidden = true;
         button.disabled = false;
-        alert('O envio falhou. Confira a conexão e tente de novo.');
+        toast('O envio falhou. Confira a conexão e tente de novo.', 'error');
       };
       box.hidden = false;
       button.disabled = true;

@@ -171,5 +171,46 @@ class FriendsAndInvitesTest(unittest.TestCase):
         self.assertIn("Convites para torneios (1)", self.client(j2).get("/torneios/meus-campeonatos").data.decode())
 
 
+    def test_friends_only_tournament(self):
+        j0, j1, j2, j3 = self.players
+        c0, c1, c2 = self.client(j0), self.client(j1), self.client(j2)
+        c0.post("/torneios/amigos/adicionar", data={"csrf_token": CSRF, "nome": "jog1"})
+        c1.post(f"/torneios/amigos/{j0}/aceitar", data={"csrf_token": CSRF})
+        # jog2 jogou um torneio do jog0, mas não é amigo: no torneio de amigos não pode ser convidado.
+        old = self.create(c0, "Copa Velha")
+        c2.post(f"/torneios/{old['slug']}/inscrever", data={"csrf_token": CSRF, "team_name": "Time 2"})
+        self.mails()
+        c0.post("/torneios/novo", data={
+            "csrf_token": CSRF, "name": "Copa Amigos", "starts_on": "2026-12-01", "rules": "Regras",
+            "game_title_id": self.game, "format": "knockout", "max_players": "2", "entry_fee": "0",
+            "ko_legs": "1", "final_legs": "1", "friends_only": "on", "invite_ids": [str(j1), str(j2)]})
+        t = self.query("SELECT * FROM tournaments WHERE name = 'Copa Amigos'")[0]
+        self.assertEqual(t["friends_only"], 1)
+        self.assertEqual([r[0] for r in self.query("SELECT player_id FROM tournament_invites WHERE tournament_id = ?",
+                                                  t["id"])], [j1])
+        slug = t["slug"]
+        # Fora da lista pública e de Meus campeonatos para quem não é amigo; página dá 404.
+        self.assertNotIn("Copa Amigos", c2.get("/torneios/").data.decode())
+        self.assertNotIn("Copa Amigos", c2.get("/torneios/meus-campeonatos?status=todos").data.decode())
+        self.assertNotIn("Copa Amigos", self.app.test_client().get("/torneios/").data.decode())
+        self.assertEqual(c2.get(f"/torneios/{slug}").status_code, 404)
+        c2.post(f"/torneios/{slug}/inscrever", data={"csrf_token": CSRF, "team_name": "Time 2"})
+        self.assertFalse(self.query("SELECT 1 FROM tournament_entries WHERE tournament_id = ?", t["id"]))
+        # O amigo vê em Meus campeonatos (sem estar inscrito), na lista pública e se inscreve.
+        self.assertIn('t-name">Copa Amigos', c1.get("/torneios/meus-campeonatos").data.decode())
+        self.assertIn("Somente amigos", c1.get("/torneios/").data.decode())
+        self.assertEqual(c1.get(f"/torneios/{slug}").status_code, 200)
+        c1.post(f"/torneios/{slug}/inscrever", data={"csrf_token": CSRF, "team_name": "Time 1"})
+        self.assertEqual(len(self.query("SELECT 1 FROM tournament_entries WHERE tournament_id = ?", t["id"])), 1)
+        # Desfeita a amizade, quem já está inscrito continua vendo.
+        c0.post(f"/torneios/amigos/{j1}/remover", data={"csrf_token": CSRF})
+        self.assertEqual(c1.get(f"/torneios/{slug}").status_code, 200)
+        # Em Gerenciar o organizador tira a marca e o torneio volta a ser público.
+        c0.post(f"/torneios/{slug}/editar", data={"csrf_token": CSRF, "name": "Copa Amigos", "rules": "Regras",
+                                                   "starts_on": "2026-12-01"})
+        self.assertIn("Copa Amigos", c2.get("/torneios/").data.decode())
+        self.assertEqual(c2.get(f"/torneios/{slug}").status_code, 200)
+
+
 if __name__ == "__main__":
     unittest.main()

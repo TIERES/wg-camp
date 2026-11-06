@@ -80,9 +80,17 @@ def _entry_team(db, tournament, team_name, team_id):
     return team["id"], team["name"]
 
 
+def are_friends(db, a, b):
+    return db.execute("SELECT 1 FROM friendships WHERE status = 'accepted' AND ((requester_id = ? AND addressee_id = ?) "
+                      "OR (requester_id = ? AND addressee_id = ?))", (a, b, b, a)).fetchone() is not None
+
+
 def enroll(db, tournament, player_id, team_name="", team_id=None):
     if tournament["status"] != "registration":
         raise TournamentError("As inscrições deste torneio não estão abertas.")
+    if (tournament["friends_only"] and player_id != tournament["organizer_id"]
+            and not are_friends(db, player_id, tournament["organizer_id"])):
+        raise TournamentError("Este torneio é somente para amigos de quem o criou.")
     count = db.execute("SELECT COUNT(*) FROM tournament_entries WHERE tournament_id = ?",
                        (tournament["id"],)).fetchone()[0]
     if count >= tournament["max_players"]:

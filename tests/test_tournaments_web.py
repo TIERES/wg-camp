@@ -68,7 +68,7 @@ class TournamentsWebTest(unittest.TestCase):
         player.post("/torneios/livre/inscrever", data={"csrf_token": CSRF, "team_name": "brasil"})
         entry = self.query("SELECT e.team_name, t.flag FROM tournament_entries e JOIN teams t ON t.id = e.team_id")
         self.assertEqual([tuple(r) for r in entry], [("Brasil", "br.svg")])
-        self.assertIn("/static/teams/", player.get("/torneios/livre?aba=geral").data.decode())
+        self.assertIn("/static/flags/br.svg", player.get("/torneios/livre?aba=geral").data.decode())
 
     def test_user_menu_my_tournaments_and_status(self):
         from app.tournament import store
@@ -126,6 +126,7 @@ class TournamentsWebTest(unittest.TestCase):
             get_db().commit()
         self.assertNotIn('t-name">Copa Minha', player.get("/torneios/meus-campeonatos").data.decode())
         self.assertIn('t-name">Copa Minha', player.get("/torneios/meus-campeonatos?status=finished").data.decode())
+        self.assertIn('t-name">Copa Minha', player.get("/torneios/meus-campeonatos?status=todos").data.decode())
         status = player.get("/torneios/status")
         self.assertEqual(status.status_code, 200)
         self.assertIn("ainda não tem partidas confirmadas", status.data.decode())

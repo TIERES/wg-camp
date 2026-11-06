@@ -7,7 +7,9 @@ pelo admin não são sobrescritos.
 
 teams.logo:  "base:<caminho>"  -> app/static/teams/<caminho>
              "upload:<arquivo>" -> TEAM_LOGOS_DIR (enviado pelo admin)
-teams.flag:  arquivo em app/static/flags (só seleções)
+teams.flag:  arquivo em app/static/flags (só seleções). Seleção aparece sempre
+             com a bandeira; escudo de federação só nas 3 sem bandeira no
+             flag-icons (Catalunha, Curdistão, Zanzibar)
 """
 import base64
 import hashlib
@@ -41,7 +43,7 @@ def seed_teams(db):
         db.execute(
             "INSERT OR IGNORE INTO teams (name, kind, country, logo, flag, source_key, created_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (team["name"], team["kind"], team.get("country") or "", "base:" + team["logo"], team.get("flag"),
+            (team["name"], team["kind"], team.get("country") or "", _base_logo(team), team.get("flag"),
              team["key"], stamp, stamp))
     for seq, group in enumerate(seed["groups"]):
         db.execute("INSERT OR IGNORE INTO team_groups (slug, name, seq, created_at) VALUES (?, ?, ?, ?)",
@@ -50,9 +52,38 @@ def seed_teams(db):
         for key in group["teams"]:
             db.execute("INSERT OR IGNORE INTO team_group_members (group_id, team_id) "
                        "SELECT ?, id FROM teams WHERE source_key = ?", (group_id, key))
+    _fix_national_duplicates(db, seed, stamp)
+    # Escudos de federação saíram da base (seleção = bandeira): limpa os que o banco ainda aponta.
+    db.execute("UPDATE teams SET logo = NULL, updated_at = ? WHERE kind = 'national' AND flag IS NOT NULL "
+               "AND logo LIKE 'base:national/%'", (stamp,))
     db.execute("INSERT OR REPLACE INTO site_settings (key, value, updated_at) VALUES (?, ?, ?)",
                (SEED_SETTING, version, stamp))
     return True
+
+
+def _base_logo(team):
+    return "base:" + team["logo"] if team.get("logo") else None
+
+
+def _fix_national_duplicates(db, seed, stamp):
+    """A primeira base trazia 6 seleções sul-americanas também como clube da liga
+    do país (mesmo source_key, nome em inglês, sem bandeira): o banco ficou com o
+    "clube" e o time aparecia em dois grupos. Corrige o time (mantém o id, então
+    os torneios que já o usam continuam certos) e o tira dos grupos da base que
+    não o listam mais."""
+    slugs = [g["slug"] for g in seed["groups"]]
+    for team in seed["teams"]:
+        if team["kind"] != "national":
+            continue
+        db.execute("UPDATE teams SET name = ?, kind = 'national', country = ?, logo = ?, flag = ?, updated_at = ? "
+                   "WHERE source_key = ? AND kind = 'club' AND logo LIKE 'base:%'",
+                   (team["name"], team.get("country") or "", _base_logo(team), team.get("flag"), stamp,
+                    team["key"]))
+        others = [s for s, g in zip(slugs, seed["groups"]) if team["key"] not in g["teams"]]
+        if others:
+            db.execute(f"DELETE FROM team_group_members WHERE team_id IN (SELECT id FROM teams WHERE source_key = ?) "
+                       f"AND group_id IN (SELECT id FROM team_groups WHERE slug IN ({','.join('?' * len(others))}))",
+                       [team["key"]] + others)
 
 
 def plain_name(value):

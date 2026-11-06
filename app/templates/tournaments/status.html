@@ -1,7 +1,8 @@
-{% extends 'base.html' %}{% from 'tournaments/_stats_macros.html' import player_link %}{% from 'tournaments/_macros.html' import match_line %}
+{% extends 'base.html' %}{% from 'tournaments/_stats_macros.html' import player_link, xp_bar %}{% from 'tournaments/_macros.html' import match_line %}
 {% block title %}Status · WE Camp{% endblock %}{% block content %}
 <div class="page-title"><h1>Status</h1>{% if player_name %}<a class="button secondary" href="{{ url_for('tournaments.player', nome=player_name) }}">Histórico completo</a>{% endif %}</div>
 
+{{ xp_bar(player_rank(session.player_id)) }}
 <div class="stat-tiles">
   <div class="stat-tile"><span>Ranking</span><strong>{{ position ~ 'º' if position else '—' }}</strong></div>
   <div class="stat-tile"><span>Jogos</span><strong>{{ record.played }}</strong></div>
@@ -27,6 +28,7 @@
     <dl>
       <dt>Resultado</dt><dd><span class="recent"><span class="f-{{ outcome(r) }}">{{ outcome(r) }}</span></span> {{ r.goals_for }} x {{ r.goals_against }}{% if r.pens_for is not none %} <small class="muted">({{ r.pens_for }} x {{ r.pens_against }} pên.)</small>{% endif %}</dd>
       <dt>Adversário</dt><dd>{{ player_link(r.opponent_name) }}</dd>
+      {% set delta = match_xp(r.match_id, session.player_id) %}{% if delta is not none %}<dt>Experiência</dt><dd class="xp-delta {{ 'up' if delta > 0 else 'down' if delta < 0 else '' }}">{{ '%+d'|format(delta) }} XP</dd>{% endif %}
       <dt>Campeonato</dt><dd><a href="{{ url_for('tournaments.show', slug=r.slug) }}">{{ r.tournament_name }}</a> <small class="muted">· {{ r.stage_name }}</small></dd>
       <dt>Data e hora</dt><dd>{{ r.played_at|localtime }}</dd>
     </dl>

@@ -2,15 +2,26 @@
 {% block title %}Ranking · WE Camp{% endblock %}{% block content %}
 <div class="page-title"><h1>Ranking dos jogadores</h1><a class="button" href="{{ url_for('tournaments.compare', jogo=game) }}">Comparar jogadores</a></div>
 <p class="muted">Top 10 pelos jogos confirmados em todos os torneios (cancelados não contam). Vitória 3 pontos, empate 1; desempate por vitórias, saldo e gols pró. Jogo decidido nos pênaltis conta como empate.</p>
+<details class="xp-rules">
+  <summary>Como funciona o Rank (XP)</summary>
+  <p>Todo jogador começa no <strong>Rank F</strong> e sobe até o <strong>A</strong> juntando experiência (XP) nas partidas confirmadas de qualquer torneio. O rank aparece na foto de cada jogador.</p>
+  <ul>
+    <li>Vitória contra alguém do mesmo rank: <strong>+{{ xp_rules.base }} XP</strong> para quem ganha e <strong>−{{ xp_rules.base }} XP</strong> para quem perde.</li>
+    <li>Ranks diferentes: cada nível de diferença muda {{ xp_rules.step }} XP. Ganhar de quem está acima vale mais (e ele perde mais); ganhar de quem está abaixo vale menos (no mínimo {{ xp_rules.min }} XP).</li>
+    <li>Empate no mesmo rank: ninguém ganha nem perde. Empate com rank diferente: o de rank menor ganha {{ xp_rules.step }} XP por nível de diferença e o outro perde o mesmo.</li>
+    <li>Jogo decidido nos pênaltis conta como empate. O XP nunca fica negativo, e perder XP pode fazer o jogador cair de rank.</li>
+  </ul>
+  <div class="rank-steps">{% for s in xp_table %}<span><span class="rank-chip rank-{{ s.rank }}">Rank {{ s.rank }}</span> {{ s.min }} XP</span>{% endfor %}</div>
+</details>
 {{ game_filter(games, game) }}
 
 {% if rows %}
 <div class="table-scroll">
 <table class="standings">
-  <thead><tr><th>#</th><th class="name-col">Jogador</th><th title="Pontos">P</th><th title="Jogos">J</th><th title="Vitórias">V</th><th title="Empates">E</th><th title="Derrotas">D</th><th class="hide-sm" title="Gols pró">GP</th><th class="hide-sm" title="Gols contra">GC</th><th title="Saldo">SG</th><th title="Aproveitamento">%</th></tr></thead>
+  <thead><tr><th>#</th><th class="name-col">Jogador</th><th title="Experiência (todos os jogos)">XP</th><th title="Pontos">P</th><th title="Jogos">J</th><th title="Vitórias">V</th><th title="Empates">E</th><th title="Derrotas">D</th><th class="hide-sm" title="Gols pró">GP</th><th class="hide-sm" title="Gols contra">GC</th><th title="Saldo">SG</th><th title="Aproveitamento">%</th></tr></thead>
   <tbody>{% for r in rows %}
     <tr{% if r.player_id == session.player_id %} class="qualified"{% endif %}>
-      <td>{{ loop.index }}</td><td class="name-col"><span class="with-avatar">{{ avatar_button(r.player_id, r.username) }}{{ player_link(r.username, game) }}</span></td><td><strong>{{ r.points }}</strong></td>
+      <td>{{ loop.index }}</td><td class="name-col"><span class="with-avatar">{{ avatar_button(r.player_id, r.username) }}{{ player_link(r.username, game) }}</span></td><td>{{ player_rank(r.player_id).xp }}</td><td><strong>{{ r.points }}</strong></td>
       <td>{{ r.played }}</td><td>{{ r.wins }}</td><td>{{ r.draws }}</td><td>{{ r.losses }}</td>
       <td class="hide-sm">{{ r.goals_for }}</td><td class="hide-sm">{{ r.goals_against }}</td><td>{{ r.goal_diff }}</td><td>{{ r.efficiency }}%</td>
     </tr>

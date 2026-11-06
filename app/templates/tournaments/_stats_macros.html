@@ -34,3 +34,18 @@
 </table>
 </div>
 {%- endmacro %}
+
+{# Barra de experiência até o próximo rank (player_rank -> tournament/xp.py). #}
+{% macro xp_bar(r, compact=false) -%}
+<div class="xp-box{% if compact %} compact{% endif %}">
+  <div class="xp-head">
+    <span class="rank-chip rank-{{ r.rank }}">Rank {{ r.rank }}</span>
+    <strong>{{ r.xp }} XP</strong>
+    <span class="muted">{% if r.max %}Rank máximo{% else %}Faltam <strong>{{ r.missing }} XP</strong> para o Rank {{ r.next }}{% endif %}</span>
+  </div>
+  <div class="xp-bar" role="progressbar" aria-label="Experiência até o próximo rank" aria-valuemin="0" aria-valuemax="{{ r.need or 100 }}" aria-valuenow="{{ r.have if not r.max else 100 }}">
+    <span class="rank-{{ r.rank }}" style="width:{{ r.percent }}%"></span>
+  </div>
+  {% if not r.max %}<div class="xp-scale muted"><span>{{ r.floor }}</span><span>{{ r.have }} / {{ r.need }}</span><span>{{ r.goal }}</span></div>{% endif %}
+</div>
+{%- endmacro %}

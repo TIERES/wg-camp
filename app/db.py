@@ -177,8 +177,8 @@ CREATE TABLE IF NOT EXISTS tournaments (
     rules TEXT NOT NULL DEFAULT '',
     -- free: o jogador digita o time; choose/draw: times da lista tournament_teams.
     team_mode TEXT NOT NULL DEFAULT 'free' CHECK (team_mode IN ('free', 'choose', 'draw')),
-    -- Seleções: escudo da federação (logo) ou bandeira (flag).
-    team_display TEXT NOT NULL DEFAULT 'logo' CHECK (team_display IN ('logo', 'flag')),
+    -- Sem uso: seleções aparecem sempre com a bandeira (a opção "escudo da federação" saiu).
+    team_display TEXT NOT NULL DEFAULT 'flag' CHECK (team_display IN ('logo', 'flag')),
     -- Datas prováveis de início e fim (AAAA-MM-DD), informadas pelo organizador.
     starts_on TEXT,
     ends_on TEXT,
@@ -188,6 +188,8 @@ CREATE TABLE IF NOT EXISTS tournaments (
     all_played_at TEXT,
     -- Imagem do torneio enviada pelo organizador (arquivo em TOURNAMENT_IMAGES_DIR - app/images.py).
     image TEXT,
+    -- Somente para amigos: só o organizador, os amigos dele e os inscritos veem o torneio; só amigos se inscrevem.
+    friends_only INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -435,6 +437,8 @@ def ensure_tournament_columns(database):
     for column in ("starts_on", "ends_on", "all_played_at", "image"):
         if column not in columns:
             database.execute(f"ALTER TABLE tournaments ADD COLUMN {column} TEXT")
+    if "friends_only" not in columns:
+        database.execute("ALTER TABLE tournaments ADD COLUMN friends_only INTEGER NOT NULL DEFAULT 0")
     stage_columns = {column["name"] for column in database.execute("PRAGMA table_info(tournament_stages)")}
     if stage_columns and "all_played_at" not in stage_columns:
         database.execute("ALTER TABLE tournament_stages ADD COLUMN all_played_at TEXT")

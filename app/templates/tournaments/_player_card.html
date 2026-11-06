@@ -1,5 +1,5 @@
 {# Resumo do jogador no popup das listas (tournaments.player_card). #}
-{% from '_avatar.html' import avatar %}{% from 'tournaments/_stats_macros.html' import form_badges %}
+{% from '_avatar.html' import avatar %}{% from 'tournaments/_stats_macros.html' import form_badges, xp_bar %}
 <div class="player-card">
   <form method="dialog" class="player-card-close"><button class="secondary" aria-label="Fechar">✕</button></form>
   <div class="player-card-head">
@@ -9,6 +9,7 @@
       <p class="muted">No WE Camp desde {{ p.created_at|date_br }}</p>
     </div>
   </div>
+  {{ xp_bar(player_rank(p.id), compact=true) }}
   <div class="stat-tiles compact">
     <div class="stat-tile"><span>Ranking</span><strong>{{ position ~ 'º' if position else '—' }}</strong></div>
     <div class="stat-tile"><span>Jogos</span><strong>{{ record.played }}</strong></div>

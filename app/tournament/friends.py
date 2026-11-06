@@ -4,7 +4,8 @@ Amizade: um pedido (friendships.status = 'pending') que o outro jogador aceita
 ou recusa; recusado ou desfeito, a linha é apagada e dá para pedir de novo.
 
 Convite: o organizador chama jogadores para um torneio com inscrições abertas.
-Só pode convidar os amigos dele e quem já jogou algum torneio criado por ele.
+Só pode convidar os amigos dele e quem já jogou algum torneio criado por ele
+(torneio "Somente para amigos": só os amigos).
 O convite não inscreve ninguém - o convidado entra pela página do torneio,
 como qualquer jogador, ou recusa o convite.
 """
@@ -95,12 +96,14 @@ def pending_count(db, me):
 
 # --- Convites -----------------------------------------------------------------
 
-def candidates(db, organizer_id, exclude_tournament_id=None):
+def candidates(db, organizer_id, exclude_tournament_id=None, friends_only=False):
     """Quem o organizador pode convidar: os amigos e quem jogou torneios criados
-    por ele. `tournaments` = esses torneios com os ids dos jogadores, para o
-    botão "jogadores de um torneio seu"."""
+    por ele (com `friends_only`, só os amigos). `tournaments` = esses torneios com
+    os ids dos jogadores, para o botão "jogadores de um torneio seu"."""
     players = {f["id"]: {"id": f["id"], "username": f["username"], "friend": True} for f in friends(db, organizer_id)}
     tournaments = []
+    if friends_only:
+        return {"players": sorted(players.values(), key=lambda p: p["username"].casefold()), "tournaments": tournaments}
     for t in db.execute("SELECT id, name FROM tournaments WHERE organizer_id = ? AND id != ? AND status != 'draft' "
                         "ORDER BY id DESC", (organizer_id, exclude_tournament_id or 0)).fetchall():
         rows = db.execute("SELECT p.id, p.username FROM tournament_entries e JOIN players p ON p.id = e.player_id "
@@ -129,7 +132,8 @@ def invite(db, tournament, invited_by, player_ids):
     convidados agora, para o e-mail."""
     if tournament["status"] != "registration":
         raise TournamentError("Só dá para convidar enquanto as inscrições estão abertas.")
-    allowed = {p["id"] for p in candidates(db, tournament["organizer_id"], tournament["id"])["players"]}
+    allowed = {p["id"] for p in candidates(db, tournament["organizer_id"], tournament["id"],
+                                           tournament["friends_only"])["players"]}
     taken = invite_status(db, tournament["id"])
     wanted = [pid for pid in dict.fromkeys(player_ids)
               if pid in allowed and taken.get(pid) not in ("pending", "enrolled")]

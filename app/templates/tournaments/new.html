@@ -99,9 +99,6 @@
           {% for key, label in team_modes.items() %}<option value="{{ key }}" {% if form.get('team_mode', 'free') == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
         </select>
       </label>
-      <label class="team-only">Seleções aparecem com
-        <select name="team_display"><option value="logo">Escudo da federação</option><option value="flag" {% if form.get('team_display') == 'flag' %}selected{% endif %}>Bandeira do país</option></select>
-      </label>
     </div>
     <div id="team-picker">
       <p class="muted">Marque os times disponíveis (pelo menos um por vaga). Marque um grupo inteiro ou abra o grupo para escolher time a time. Marcados: <strong id="team-count">0</strong></p>
@@ -117,7 +114,7 @@
           <summary><label class="check" onclick="event.stopPropagation()"><input type="checkbox" class="group-toggle"> {{ g.group.name }}</label> <small class="muted">({{ g.teams|length }})</small></summary>
           <div class="team-grid">
           {% for team in g.teams %}
-            <label class="team-option" data-name="{{ team.name|lower }}"><input type="checkbox" name="team_ids" value="{{ team.id }}" {% if team.id in selected %}checked{% endif %}><img class="crest" src="{{ team.image }}" {% if team.kind == 'national' %}data-flag="{{ team.flag_image }}" data-logo="{{ team.image }}"{% endif %} alt="" loading="lazy"> {{ team.name }}</label>
+            <label class="team-option" data-name="{{ team.name|lower }}"><input type="checkbox" name="team_ids" value="{{ team.id }}" {% if team.id in selected %}checked{% endif %}><img class="crest" src="{{ team.image }}" alt="" loading="lazy"> {{ team.name }}</label>
           {% endfor %}
           </div>
         </details>
@@ -127,11 +124,28 @@
   </fieldset>
 
   <label><span>Regulamento / observações <span class="req">*</span></span><textarea name="rules" rows="5" maxlength="5000" required placeholder="Horários, regras do jogo, times permitidos...">{{ form.get('rules', '') }}</textarea></label>
+  <label class="check"><input type="checkbox" name="friends_only" id="friends-only" {% if form.get('friends_only') %}checked{% endif %}> <span><strong>Somente para amigos</strong> <small class="muted">— o torneio deixa de ser público: só os seus amigos veem, se inscrevem e podem ser convidados.</small></span></label>
   <fieldset id="convidar">
     <legend>Convidar jogadores <small class="muted">(opcional)</small></legend>
     <p class="muted">Os marcados recebem um e-mail com o convite e o aviso em "Meus campeonatos". Dá para convidar mais depois, em Gerenciar.</p>
     {{ invite_picker(candidates, selected=invite_selected) }}
   </fieldset>
+  <script>
+  (function () {
+    // Somente para amigos: a lista de convite mostra só os amigos (o servidor também só convida amigos).
+    var box = document.getElementById('friends-only');
+    var picker = document.querySelector('#convidar .invite-picker');
+    if (!box || !picker) return;
+    function sync() {
+      picker.classList.toggle('friends-only', box.checked);
+      if (box.checked) picker.querySelectorAll('.invite-option[data-friend="0"] input[name="invite_ids"]').forEach(function (b) {
+        if (b.checked) { b.checked = false; b.dispatchEvent(new Event('change')); }
+      });
+    }
+    box.addEventListener('change', sync);
+    sync();
+  })();
+  </script>
   <div class="card-actions"><button id="create-button">Criar torneio</button><span class="muted" id="create-hint" hidden>Preencha os campos obrigatórios para criar o torneio.</span></div>
 </form>
 <script>
@@ -176,7 +190,6 @@
   function refreshTeams() {
     var mode = form.elements.team_mode.value;
     picker.hidden = mode === 'free';
-    form.querySelectorAll('.team-only').forEach(function (el) { el.hidden = mode === 'free'; });
     picker.querySelectorAll('input[name=team_ids]').forEach(function (el) { el.disabled = mode === 'free'; });
     var ids = {};
     picker.querySelectorAll('input[name=team_ids]:checked').forEach(function (el) { ids[el.value] = 1; });
@@ -204,10 +217,6 @@
     picker.querySelectorAll('input[name=team_ids][value="' + el.value + '"]').forEach(function (o) { o.checked = el.checked; });
   }
   form.elements.team_mode.addEventListener('change', refreshTeams);
-  form.elements.team_display.addEventListener('change', function () {
-    var flag = this.value === 'flag';
-    picker.querySelectorAll('img[data-flag]').forEach(function (img) { img.src = flag ? img.dataset.flag : img.dataset.logo; });
-  });
   // Busca sem diferenciar acentos/maiúsculas; se nenhum time tem exatamente o nome
   // digitado, oferece criá-lo como time avulso. "Somente times selecionados" mostra
   // só os marcados (com a busca, os marcados que batem com ela).
@@ -243,7 +252,6 @@
       if (seen[el.value]) el.disabled = true; seen[el.value] = 1;
     });
   });
-  form.elements.team_display.dispatchEvent(new Event('change'));
   refreshTeams();
 
   // Time avulso: cria na base (ou acha o que já tem esse nome) e marca na lista.

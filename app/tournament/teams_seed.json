@@ -330,7 +330,6 @@
 "colombia/internacional-de-bogota",
 "colombia/cucuta-deportivo",
 "colombia/jaguares-de-cordoba",
-"colombia/colombia-national-team",
 "colombia/envigado",
 "colombia/la-equidad",
 "colombia/union-magdalena",
@@ -354,7 +353,6 @@
 "paraguay/sportivo-ameliano",
 "paraguay/sportivo-san-lorenzo",
 "paraguay/deportivo-recoleta",
-"paraguay/paraguay-national-team",
 "paraguay/general-caballero-jlm",
 "paraguay/club-atletico-tembetary",
 "paraguay/presidente-hayes"
@@ -382,7 +380,6 @@
 "peru/juan-pablo-ii",
 "peru/deportivo-moquegua",
 "peru/fc-cajamarca",
-"peru/peru-national-team",
 "peru/alianza-universidad",
 "peru/ayacucho",
 "peru/defensor-lima",
@@ -416,7 +413,6 @@
 "ecuador/mushuc-runa",
 "ecuador/guayaquil-city",
 "ecuador/leones-del-norte",
-"ecuador/ecuador-national-team",
 "ecuador/el-nacional",
 "ecuador/vinotinto",
 "ecuador/deportivo-quito"
@@ -442,7 +438,6 @@
 "bolivia/oriente-petrolero",
 "bolivia/abb",
 "bolivia/universitario-de-vinto",
-"bolivia/bolivia-national-team",
 "bolivia/real-santa-cruz",
 "bolivia/universitario-de-sucre"
 ]
@@ -465,7 +460,6 @@
 "venezuela/academia-anzoategui",
 "venezuela/portuguesa",
 "venezuela/trujillanos-fc",
-"venezuela/venezuela-national-team",
 "venezuela/yaracuyanos",
 "venezuela/mineros-de-guayana"
 ]
@@ -950,13 +944,6 @@
 "kind": "club",
 "country": "bo",
 "logo": "bolivia/bolivar.webp"
-},
-{
-"key": "bolivia/bolivia-national-team",
-"name": "Bolivia National Team",
-"kind": "club",
-"country": "bo",
-"logo": "bolivia/bolivia-national-team.webp"
 },
 {
 "key": "bolivia/guabira",
@@ -1498,13 +1485,6 @@
 "logo": "colombia/bucaramanga.webp"
 },
 {
-"key": "colombia/colombia-national-team",
-"name": "Colombia National Team",
-"kind": "club",
-"country": "co",
-"logo": "colombia/colombia-national-team.webp"
-},
-{
 "key": "colombia/cucuta-deportivo",
 "name": "Cúcuta Deportivo",
 "kind": "club",
@@ -1657,13 +1637,6 @@
 "kind": "club",
 "country": "ec",
 "logo": "ecuador/deportivo-quito.webp"
-},
-{
-"key": "ecuador/ecuador-national-team",
-"name": "Ecuador National Team",
-"kind": "club",
-"country": "ec",
-"logo": "ecuador/ecuador-national-team.webp"
 },
 {
 "key": "ecuador/el-nacional",
@@ -2485,13 +2458,6 @@
 "logo": "paraguay/olimpia.webp"
 },
 {
-"key": "paraguay/paraguay-national-team",
-"name": "Paraguay National Team",
-"kind": "club",
-"country": "py",
-"logo": "paraguay/paraguay-national-team.webp"
-},
-{
 "key": "paraguay/presidente-hayes",
 "name": "Presidente Hayes",
 "kind": "club",
@@ -2672,13 +2638,6 @@
 "kind": "club",
 "country": "pe",
 "logo": "peru/melgar.webp"
-},
-{
-"key": "peru/peru-national-team",
-"name": "Peru National Team",
-"kind": "club",
-"country": "pe",
-"logo": "peru/peru-national-team.webp"
 },
 {
 "key": "peru/sport-boys",
@@ -3220,13 +3179,6 @@
 "logo": "venezuela/universidad-central.webp"
 },
 {
-"key": "venezuela/venezuela-national-team",
-"name": "Venezuela National Team",
-"kind": "club",
-"country": "ve",
-"logo": "venezuela/venezuela-national-team.webp"
-},
-{
 "key": "venezuela/yaracuyanos",
 "name": "Yaracuyanos FC",
 "kind": "club",
@@ -3245,7 +3197,6 @@
 "name": "Afeganistão",
 "kind": "national",
 "country": "af",
-"logo": "national/af.webp",
 "flag": "af.svg"
 },
 {
@@ -3253,7 +3204,6 @@
 "name": "Albânia",
 "kind": "national",
 "country": "al",
-"logo": "national/al.webp",
 "flag": "al.svg"
 },
 {
@@ -3261,7 +3211,6 @@
 "name": "Argélia",
 "kind": "national",
 "country": "dz",
-"logo": "national/dz.webp",
 "flag": "dz.svg"
 },
 {
@@ -3269,7 +3218,6 @@
 "name": "Samoa Americana",
 "kind": "national",
 "country": "as",
-"logo": "national/as.webp",
 "flag": "as.svg"
 },
 {
@@ -3277,7 +3225,6 @@
 "name": "Andorra",
 "kind": "national",
 "country": "ad",
-"logo": "national/ad.webp",
 "flag": "ad.svg"
 },
 {
@@ -3285,7 +3232,6 @@
 "name": "Angola",
 "kind": "national",
 "country": "ao",
-"logo": "national/ao.webp",
 "flag": "ao.svg"
 },
 {
@@ -3293,7 +3239,6 @@
 "name": "Anguila",
 "kind": "national",
 "country": "ai",
-"logo": "national/ai.webp",
 "flag": "ai.svg"
 },
 {
@@ -3301,7 +3246,6 @@
 "name": "Antígua e Barbuda",
 "kind": "national",
 "country": "ag",
-"logo": "national/ag.webp",
 "flag": "ag.svg"
 },
 {
@@ -3309,7 +3253,6 @@
 "name": "Argentina",
 "kind": "national",
 "country": "ar",
-"logo": "national/ar.webp",
 "flag": "ar.svg"
 },
 {
@@ -3317,7 +3260,6 @@
 "name": "Armênia",
 "kind": "national",
 "country": "am",
-"logo": "national/am.webp",
 "flag": "am.svg"
 },
 {
@@ -3325,7 +3267,6 @@
 "name": "Aruba",
 "kind": "national",
 "country": "aw",
-"logo": "national/aw.webp",
 "flag": "aw.svg"
 },
 {
@@ -3333,7 +3274,6 @@
 "name": "Austrália",
 "kind": "national",
 "country": "au",
-"logo": "national/au.webp",
 "flag": "au.svg"
 },
 {
@@ -3341,7 +3281,6 @@
 "name": "Áustria",
 "kind": "national",
 "country": "at",
-"logo": "national/at.webp",
 "flag": "at.svg"
 },
 {
@@ -3349,7 +3288,6 @@
 "name": "Azerbaijão",
 "kind": "national",
 "country": "az",
-"logo": "national/az.webp",
 "flag": "az.svg"
 },
 {
@@ -3357,7 +3295,6 @@
 "name": "Bahamas",
 "kind": "national",
 "country": "bs",
-"logo": "national/bs.webp",
 "flag": "bs.svg"
 },
 {
@@ -3365,7 +3302,6 @@
 "name": "Bahrein",
 "kind": "national",
 "country": "bh",
-"logo": "national/bh.webp",
 "flag": "bh.svg"
 },
 {
@@ -3373,7 +3309,6 @@
 "name": "Bangladesh",
 "kind": "national",
 "country": "bd",
-"logo": "national/bd.webp",
 "flag": "bd.svg"
 },
 {
@@ -3381,7 +3316,6 @@
 "name": "Barbados",
 "kind": "national",
 "country": "bb",
-"logo": "national/bb.webp",
 "flag": "bb.svg"
 },
 {
@@ -3389,7 +3323,6 @@
 "name": "Belarus",
 "kind": "national",
 "country": "by",
-"logo": "national/by.webp",
 "flag": "by.svg"
 },
 {
@@ -3397,7 +3330,6 @@
 "name": "Bélgica",
 "kind": "national",
 "country": "be",
-"logo": "national/be.webp",
 "flag": "be.svg"
 },
 {
@@ -3405,7 +3337,6 @@
 "name": "Belize",
 "kind": "national",
 "country": "bz",
-"logo": "national/bz.webp",
 "flag": "bz.svg"
 },
 {
@@ -3413,7 +3344,6 @@
 "name": "Benin",
 "kind": "national",
 "country": "bj",
-"logo": "national/bj.webp",
 "flag": "bj.svg"
 },
 {
@@ -3421,7 +3351,6 @@
 "name": "Bermudas",
 "kind": "national",
 "country": "bm",
-"logo": "national/bm.webp",
 "flag": "bm.svg"
 },
 {
@@ -3429,7 +3358,6 @@
 "name": "Butão",
 "kind": "national",
 "country": "bt",
-"logo": "national/bt.webp",
 "flag": "bt.svg"
 },
 {
@@ -3437,7 +3365,6 @@
 "name": "Bolívia",
 "kind": "national",
 "country": "bo",
-"logo": "national/bo.webp",
 "flag": "bo.svg"
 },
 {
@@ -3445,7 +3372,6 @@
 "name": "Bonaire",
 "kind": "national",
 "country": "bq",
-"logo": "national/bq.webp",
 "flag": "bq.svg"
 },
 {
@@ -3453,7 +3379,6 @@
 "name": "Bósnia e Herzegovina",
 "kind": "national",
 "country": "ba",
-"logo": "national/ba.webp",
 "flag": "ba.svg"
 },
 {
@@ -3461,7 +3386,6 @@
 "name": "Botsuana",
 "kind": "national",
 "country": "bw",
-"logo": "national/bw.webp",
 "flag": "bw.svg"
 },
 {
@@ -3469,7 +3393,6 @@
 "name": "Brasil",
 "kind": "national",
 "country": "br",
-"logo": "national/br.webp",
 "flag": "br.svg"
 },
 {
@@ -3477,7 +3400,6 @@
 "name": "Ilhas Virgens Britânicas",
 "kind": "national",
 "country": "vg",
-"logo": "national/vg.webp",
 "flag": "vg.svg"
 },
 {
@@ -3485,7 +3407,6 @@
 "name": "Brunei",
 "kind": "national",
 "country": "bn",
-"logo": "national/bn.webp",
 "flag": "bn.svg"
 },
 {
@@ -3493,7 +3414,6 @@
 "name": "Bulgária",
 "kind": "national",
 "country": "bg",
-"logo": "national/bg.webp",
 "flag": "bg.svg"
 },
 {
@@ -3501,7 +3421,6 @@
 "name": "Burkina Faso",
 "kind": "national",
 "country": "bf",
-"logo": "national/bf.webp",
 "flag": "bf.svg"
 },
 {
@@ -3509,7 +3428,6 @@
 "name": "Burundi",
 "kind": "national",
 "country": "bi",
-"logo": "national/bi.webp",
 "flag": "bi.svg"
 },
 {
@@ -3517,7 +3435,6 @@
 "name": "Cabo Verde",
 "kind": "national",
 "country": "cv",
-"logo": "national/cv.webp",
 "flag": "cv.svg"
 },
 {
@@ -3525,7 +3442,6 @@
 "name": "Camboja",
 "kind": "national",
 "country": "kh",
-"logo": "national/kh.webp",
 "flag": "kh.svg"
 },
 {
@@ -3533,7 +3449,6 @@
 "name": "Camarões",
 "kind": "national",
 "country": "cm",
-"logo": "national/cm.webp",
 "flag": "cm.svg"
 },
 {
@@ -3541,7 +3456,6 @@
 "name": "Canadá",
 "kind": "national",
 "country": "ca",
-"logo": "national/ca.webp",
 "flag": "ca.svg"
 },
 {
@@ -3557,7 +3471,6 @@
 "name": "Ilhas Cayman",
 "kind": "national",
 "country": "ky",
-"logo": "national/ky.webp",
 "flag": "ky.svg"
 },
 {
@@ -3565,7 +3478,6 @@
 "name": "República Centro-Africana",
 "kind": "national",
 "country": "cf",
-"logo": "national/cf.webp",
 "flag": "cf.svg"
 },
 {
@@ -3573,7 +3485,6 @@
 "name": "Chade",
 "kind": "national",
 "country": "td",
-"logo": "national/td.webp",
 "flag": "td.svg"
 },
 {
@@ -3581,7 +3492,6 @@
 "name": "Chile",
 "kind": "national",
 "country": "cl",
-"logo": "national/cl.webp",
 "flag": "cl.svg"
 },
 {
@@ -3589,7 +3499,6 @@
 "name": "China",
 "kind": "national",
 "country": "cn",
-"logo": "national/cn.webp",
 "flag": "cn.svg"
 },
 {
@@ -3597,7 +3506,6 @@
 "name": "Colômbia",
 "kind": "national",
 "country": "co",
-"logo": "national/co.webp",
 "flag": "co.svg"
 },
 {
@@ -3605,7 +3513,6 @@
 "name": "Comores",
 "kind": "national",
 "country": "km",
-"logo": "national/km.webp",
 "flag": "km.svg"
 },
 {
@@ -3613,7 +3520,6 @@
 "name": "RD Congo",
 "kind": "national",
 "country": "cd",
-"logo": "national/cd.webp",
 "flag": "cd.svg"
 },
 {
@@ -3621,7 +3527,6 @@
 "name": "Congo",
 "kind": "national",
 "country": "cg",
-"logo": "national/cg.webp",
 "flag": "cg.svg"
 },
 {
@@ -3629,7 +3534,6 @@
 "name": "Ilhas Cook",
 "kind": "national",
 "country": "ck",
-"logo": "national/ck.webp",
 "flag": "ck.svg"
 },
 {
@@ -3637,7 +3541,6 @@
 "name": "Costa Rica",
 "kind": "national",
 "country": "cr",
-"logo": "national/cr.webp",
 "flag": "cr.svg"
 },
 {
@@ -3645,7 +3548,6 @@
 "name": "Costa do Marfim",
 "kind": "national",
 "country": "ci",
-"logo": "national/ci.webp",
 "flag": "ci.svg"
 },
 {
@@ -3653,7 +3555,6 @@
 "name": "Croácia",
 "kind": "national",
 "country": "hr",
-"logo": "national/hr.webp",
 "flag": "hr.svg"
 },
 {
@@ -3661,7 +3562,6 @@
 "name": "Cuba",
 "kind": "national",
 "country": "cu",
-"logo": "national/cu.webp",
 "flag": "cu.svg"
 },
 {
@@ -3669,7 +3569,6 @@
 "name": "Curaçao",
 "kind": "national",
 "country": "cw",
-"logo": "national/cw.webp",
 "flag": "cw.svg"
 },
 {
@@ -3677,7 +3576,6 @@
 "name": "Chipre",
 "kind": "national",
 "country": "cy",
-"logo": "national/cy.webp",
 "flag": "cy.svg"
 },
 {
@@ -3685,7 +3583,6 @@
 "name": "República Tcheca",
 "kind": "national",
 "country": "cz",
-"logo": "national/cz.webp",
 "flag": "cz.svg"
 },
 {
@@ -3693,7 +3590,6 @@
 "name": "Dinamarca",
 "kind": "national",
 "country": "dk",
-"logo": "national/dk.webp",
 "flag": "dk.svg"
 },
 {
@@ -3701,7 +3597,6 @@
 "name": "Djibuti",
 "kind": "national",
 "country": "dj",
-"logo": "national/dj.webp",
 "flag": "dj.svg"
 },
 {
@@ -3709,7 +3604,6 @@
 "name": "Dominica",
 "kind": "national",
 "country": "dm",
-"logo": "national/dm.webp",
 "flag": "dm.svg"
 },
 {
@@ -3717,7 +3611,6 @@
 "name": "República Dominicana",
 "kind": "national",
 "country": "do",
-"logo": "national/do.webp",
 "flag": "do.svg"
 },
 {
@@ -3725,7 +3618,6 @@
 "name": "Equador",
 "kind": "national",
 "country": "ec",
-"logo": "national/ec.webp",
 "flag": "ec.svg"
 },
 {
@@ -3733,7 +3625,6 @@
 "name": "Egito",
 "kind": "national",
 "country": "eg",
-"logo": "national/eg.webp",
 "flag": "eg.svg"
 },
 {
@@ -3741,7 +3632,6 @@
 "name": "El Salvador",
 "kind": "national",
 "country": "sv",
-"logo": "national/sv.webp",
 "flag": "sv.svg"
 },
 {
@@ -3749,7 +3639,6 @@
 "name": "Inglaterra",
 "kind": "national",
 "country": "gb-eng",
-"logo": "national/gb-eng.webp",
 "flag": "gb-eng.svg"
 },
 {
@@ -3757,7 +3646,6 @@
 "name": "Guiné Equatorial",
 "kind": "national",
 "country": "gq",
-"logo": "national/gq.webp",
 "flag": "gq.svg"
 },
 {
@@ -3765,7 +3653,6 @@
 "name": "Eritreia",
 "kind": "national",
 "country": "er",
-"logo": "national/er.webp",
 "flag": "er.svg"
 },
 {
@@ -3773,7 +3660,6 @@
 "name": "Estônia",
 "kind": "national",
 "country": "ee",
-"logo": "national/ee.webp",
 "flag": "ee.svg"
 },
 {
@@ -3781,7 +3667,6 @@
 "name": "Essuatíni",
 "kind": "national",
 "country": "sz",
-"logo": "national/sz.webp",
 "flag": "sz.svg"
 },
 {
@@ -3789,7 +3674,6 @@
 "name": "Etiópia",
 "kind": "national",
 "country": "et",
-"logo": "national/et.webp",
 "flag": "et.svg"
 },
 {
@@ -3797,7 +3681,6 @@
 "name": "Ilhas Faroé",
 "kind": "national",
 "country": "fo",
-"logo": "national/fo.webp",
 "flag": "fo.svg"
 },
 {
@@ -3805,7 +3688,6 @@
 "name": "Fiji",
 "kind": "national",
 "country": "fj",
-"logo": "national/fj.webp",
 "flag": "fj.svg"
 },
 {
@@ -3813,7 +3695,6 @@
 "name": "Finlândia",
 "kind": "national",
 "country": "fi",
-"logo": "national/fi.webp",
 "flag": "fi.svg"
 },
 {
@@ -3821,7 +3702,6 @@
 "name": "França",
 "kind": "national",
 "country": "fr",
-"logo": "national/fr.webp",
 "flag": "fr.svg"
 },
 {
@@ -3829,7 +3709,6 @@
 "name": "Guiana Francesa",
 "kind": "national",
 "country": "gf",
-"logo": "national/gf.webp",
 "flag": "gf.svg"
 },
 {
@@ -3837,7 +3716,6 @@
 "name": "Gabão",
 "kind": "national",
 "country": "ga",
-"logo": "national/ga.webp",
 "flag": "ga.svg"
 },
 {
@@ -3845,7 +3723,6 @@
 "name": "Gâmbia",
 "kind": "national",
 "country": "gm",
-"logo": "national/gm.webp",
 "flag": "gm.svg"
 },
 {
@@ -3853,7 +3730,6 @@
 "name": "Geórgia",
 "kind": "national",
 "country": "ge",
-"logo": "national/ge.webp",
 "flag": "ge.svg"
 },
 {
@@ -3861,7 +3737,6 @@
 "name": "Alemanha",
 "kind": "national",
 "country": "de",
-"logo": "national/de.webp",
 "flag": "de.svg"
 },
 {
@@ -3869,7 +3744,6 @@
 "name": "Gana",
 "kind": "national",
 "country": "gh",
-"logo": "national/gh.webp",
 "flag": "gh.svg"
 },
 {
@@ -3877,7 +3751,6 @@
 "name": "Gibraltar",
 "kind": "national",
 "country": "gi",
-"logo": "national/gi.webp",
 "flag": "gi.svg"
 },
 {
@@ -3885,7 +3758,6 @@
 "name": "Grécia",
 "kind": "national",
 "country": "gr",
-"logo": "national/gr.webp",
 "flag": "gr.svg"
 },
 {
@@ -3893,7 +3765,6 @@
 "name": "Groenlândia",
 "kind": "national",
 "country": "gl",
-"logo": "national/gl.webp",
 "flag": "gl.svg"
 },
 {
@@ -3901,7 +3772,6 @@
 "name": "Granada",
 "kind": "national",
 "country": "gd",
-"logo": "national/gd.webp",
 "flag": "gd.svg"
 },
 {
@@ -3909,7 +3779,6 @@
 "name": "Guadalupe",
 "kind": "national",
 "country": "gp",
-"logo": "national/gp.webp",
 "flag": "gp.svg"
 },
 {
@@ -3917,7 +3786,6 @@
 "name": "Guam",
 "kind": "national",
 "country": "gu",
-"logo": "national/gu.webp",
 "flag": "gu.svg"
 },
 {
@@ -3925,7 +3793,6 @@
 "name": "Guatemala",
 "kind": "national",
 "country": "gt",
-"logo": "national/gt.webp",
 "flag": "gt.svg"
 },
 {
@@ -3933,7 +3800,6 @@
 "name": "Guiné-Bissau",
 "kind": "national",
 "country": "gw",
-"logo": "national/gw.webp",
 "flag": "gw.svg"
 },
 {
@@ -3941,7 +3807,6 @@
 "name": "Guiné",
 "kind": "national",
 "country": "gn",
-"logo": "national/gn.webp",
 "flag": "gn.svg"
 },
 {
@@ -3949,7 +3814,6 @@
 "name": "Guiana",
 "kind": "national",
 "country": "gy",
-"logo": "national/gy.webp",
 "flag": "gy.svg"
 },
 {
@@ -3957,7 +3821,6 @@
 "name": "Haiti",
 "kind": "national",
 "country": "ht",
-"logo": "national/ht.webp",
 "flag": "ht.svg"
 },
 {
@@ -3965,7 +3828,6 @@
 "name": "Honduras",
 "kind": "national",
 "country": "hn",
-"logo": "national/hn.webp",
 "flag": "hn.svg"
 },
 {
@@ -3973,7 +3835,6 @@
 "name": "Hong Kong",
 "kind": "national",
 "country": "hk",
-"logo": "national/hk.webp",
 "flag": "hk.svg"
 },
 {
@@ -3981,7 +3842,6 @@
 "name": "Hungria",
 "kind": "national",
 "country": "hu",
-"logo": "national/hu.webp",
 "flag": "hu.svg"
 },
 {
@@ -3989,7 +3849,6 @@
 "name": "Islândia",
 "kind": "national",
 "country": "is",
-"logo": "national/is.webp",
 "flag": "is.svg"
 },
 {
@@ -3997,7 +3856,6 @@
 "name": "Índia",
 "kind": "national",
 "country": "in",
-"logo": "national/in.webp",
 "flag": "in.svg"
 },
 {
@@ -4005,7 +3863,6 @@
 "name": "Indonésia",
 "kind": "national",
 "country": "id",
-"logo": "national/id.webp",
 "flag": "id.svg"
 },
 {
@@ -4013,7 +3870,6 @@
 "name": "Irã",
 "kind": "national",
 "country": "ir",
-"logo": "national/ir.webp",
 "flag": "ir.svg"
 },
 {
@@ -4021,7 +3877,6 @@
 "name": "Iraque",
 "kind": "national",
 "country": "iq",
-"logo": "national/iq.webp",
 "flag": "iq.svg"
 },
 {
@@ -4029,7 +3884,6 @@
 "name": "Israel",
 "kind": "national",
 "country": "il",
-"logo": "national/il.webp",
 "flag": "il.svg"
 },
 {
@@ -4037,7 +3891,6 @@
 "name": "Itália",
 "kind": "national",
 "country": "it",
-"logo": "national/it.webp",
 "flag": "it.svg"
 },
 {
@@ -4045,7 +3898,6 @@
 "name": "Jamaica",
 "kind": "national",
 "country": "jm",
-"logo": "national/jm.webp",
 "flag": "jm.svg"
 },
 {
@@ -4053,7 +3905,6 @@
 "name": "Japão",
 "kind": "national",
 "country": "jp",
-"logo": "national/jp.webp",
 "flag": "jp.svg"
 },
 {
@@ -4061,7 +3912,6 @@
 "name": "Jordânia",
 "kind": "national",
 "country": "jo",
-"logo": "national/jo.webp",
 "flag": "jo.svg"
 },
 {
@@ -4069,7 +3919,6 @@
 "name": "Cazaquistão",
 "kind": "national",
 "country": "kz",
-"logo": "national/kz.webp",
 "flag": "kz.svg"
 },
 {
@@ -4077,7 +3926,6 @@
 "name": "Quênia",
 "kind": "national",
 "country": "ke",
-"logo": "national/ke.webp",
 "flag": "ke.svg"
 },
 {
@@ -4085,7 +3933,6 @@
 "name": "Kiribati",
 "kind": "national",
 "country": "ki",
-"logo": "national/ki.webp",
 "flag": "ki.svg"
 },
 {
@@ -4093,7 +3940,6 @@
 "name": "Kosovo",
 "kind": "national",
 "country": "xk",
-"logo": "national/xk.webp",
 "flag": "xk.svg"
 },
 {
@@ -4109,7 +3955,6 @@
 "name": "Kuwait",
 "kind": "national",
 "country": "kw",
-"logo": "national/kw.webp",
 "flag": "kw.svg"
 },
 {
@@ -4117,7 +3962,6 @@
 "name": "Quirguistão",
 "kind": "national",
 "country": "kg",
-"logo": "national/kg.webp",
 "flag": "kg.svg"
 },
 {
@@ -4125,7 +3969,6 @@
 "name": "Laos",
 "kind": "national",
 "country": "la",
-"logo": "national/la.webp",
 "flag": "la.svg"
 },
 {
@@ -4133,7 +3976,6 @@
 "name": "Letônia",
 "kind": "national",
 "country": "lv",
-"logo": "national/lv.webp",
 "flag": "lv.svg"
 },
 {
@@ -4141,7 +3983,6 @@
 "name": "Líbano",
 "kind": "national",
 "country": "lb",
-"logo": "national/lb.webp",
 "flag": "lb.svg"
 },
 {
@@ -4149,7 +3990,6 @@
 "name": "Lesoto",
 "kind": "national",
 "country": "ls",
-"logo": "national/ls.webp",
 "flag": "ls.svg"
 },
 {
@@ -4157,7 +3997,6 @@
 "name": "Libéria",
 "kind": "national",
 "country": "lr",
-"logo": "national/lr.webp",
 "flag": "lr.svg"
 },
 {
@@ -4165,7 +4004,6 @@
 "name": "Líbia",
 "kind": "national",
 "country": "ly",
-"logo": "national/ly.webp",
 "flag": "ly.svg"
 },
 {
@@ -4173,7 +4011,6 @@
 "name": "Liechtenstein",
 "kind": "national",
 "country": "li",
-"logo": "national/li.webp",
 "flag": "li.svg"
 },
 {
@@ -4181,7 +4018,6 @@
 "name": "Lituânia",
 "kind": "national",
 "country": "lt",
-"logo": "national/lt.webp",
 "flag": "lt.svg"
 },
 {
@@ -4189,7 +4025,6 @@
 "name": "Luxemburgo",
 "kind": "national",
 "country": "lu",
-"logo": "national/lu.webp",
 "flag": "lu.svg"
 },
 {
@@ -4197,7 +4032,6 @@
 "name": "Macau",
 "kind": "national",
 "country": "mo",
-"logo": "national/mo.webp",
 "flag": "mo.svg"
 },
 {
@@ -4205,7 +4039,6 @@
 "name": "Madagascar",
 "kind": "national",
 "country": "mg",
-"logo": "national/mg.webp",
 "flag": "mg.svg"
 },
 {
@@ -4213,7 +4046,6 @@
 "name": "Malawi",
 "kind": "national",
 "country": "mw",
-"logo": "national/mw.webp",
 "flag": "mw.svg"
 },
 {
@@ -4221,7 +4053,6 @@
 "name": "Malásia",
 "kind": "national",
 "country": "my",
-"logo": "national/my.webp",
 "flag": "my.svg"
 },
 {
@@ -4229,7 +4060,6 @@
 "name": "Maldivas",
 "kind": "national",
 "country": "mv",
-"logo": "national/mv.webp",
 "flag": "mv.svg"
 },
 {
@@ -4237,7 +4067,6 @@
 "name": "Mali",
 "kind": "national",
 "country": "ml",
-"logo": "national/ml.webp",
 "flag": "ml.svg"
 },
 {
@@ -4245,7 +4074,6 @@
 "name": "Malta",
 "kind": "national",
 "country": "mt",
-"logo": "national/mt.webp",
 "flag": "mt.svg"
 },
 {
@@ -4253,7 +4081,6 @@
 "name": "Martinica",
 "kind": "national",
 "country": "mq",
-"logo": "national/mq.webp",
 "flag": "mq.svg"
 },
 {
@@ -4261,7 +4088,6 @@
 "name": "Mauritânia",
 "kind": "national",
 "country": "mr",
-"logo": "national/mr.webp",
 "flag": "mr.svg"
 },
 {
@@ -4269,7 +4095,6 @@
 "name": "Maurício",
 "kind": "national",
 "country": "mu",
-"logo": "national/mu.webp",
 "flag": "mu.svg"
 },
 {
@@ -4277,7 +4102,6 @@
 "name": "México",
 "kind": "national",
 "country": "mx",
-"logo": "national/mx.webp",
 "flag": "mx.svg"
 },
 {
@@ -4285,7 +4109,6 @@
 "name": "Moldávia",
 "kind": "national",
 "country": "md",
-"logo": "national/md.webp",
 "flag": "md.svg"
 },
 {
@@ -4293,7 +4116,6 @@
 "name": "Mongólia",
 "kind": "national",
 "country": "mn",
-"logo": "national/mn.webp",
 "flag": "mn.svg"
 },
 {
@@ -4301,7 +4123,6 @@
 "name": "Montenegro",
 "kind": "national",
 "country": "me",
-"logo": "national/me.webp",
 "flag": "me.svg"
 },
 {
@@ -4309,7 +4130,6 @@
 "name": "Montserrat",
 "kind": "national",
 "country": "ms",
-"logo": "national/ms.webp",
 "flag": "ms.svg"
 },
 {
@@ -4317,7 +4137,6 @@
 "name": "Marrocos",
 "kind": "national",
 "country": "ma",
-"logo": "national/ma.webp",
 "flag": "ma.svg"
 },
 {
@@ -4325,7 +4144,6 @@
 "name": "Moçambique",
 "kind": "national",
 "country": "mz",
-"logo": "national/mz.webp",
 "flag": "mz.svg"
 },
 {
@@ -4333,7 +4151,6 @@
 "name": "Mianmar",
 "kind": "national",
 "country": "mm",
-"logo": "national/mm.webp",
 "flag": "mm.svg"
 },
 {
@@ -4341,7 +4158,6 @@
 "name": "Namíbia",
 "kind": "national",
 "country": "na",
-"logo": "national/na.webp",
 "flag": "na.svg"
 },
 {
@@ -4349,7 +4165,6 @@
 "name": "Nauru",
 "kind": "national",
 "country": "nr",
-"logo": "national/nr.webp",
 "flag": "nr.svg"
 },
 {
@@ -4357,7 +4172,6 @@
 "name": "Nepal",
 "kind": "national",
 "country": "np",
-"logo": "national/np.webp",
 "flag": "np.svg"
 },
 {
@@ -4365,7 +4179,6 @@
 "name": "Holanda",
 "kind": "national",
 "country": "nl",
-"logo": "national/nl.webp",
 "flag": "nl.svg"
 },
 {
@@ -4373,7 +4186,6 @@
 "name": "Nova Caledônia",
 "kind": "national",
 "country": "nc",
-"logo": "national/nc.webp",
 "flag": "nc.svg"
 },
 {
@@ -4381,7 +4193,6 @@
 "name": "Nova Zelândia",
 "kind": "national",
 "country": "nz",
-"logo": "national/nz.webp",
 "flag": "nz.svg"
 },
 {
@@ -4389,7 +4200,6 @@
 "name": "Nicarágua",
 "kind": "national",
 "country": "ni",
-"logo": "national/ni.webp",
 "flag": "ni.svg"
 },
 {
@@ -4397,7 +4207,6 @@
 "name": "Níger",
 "kind": "national",
 "country": "ne",
-"logo": "national/ne.webp",
 "flag": "ne.svg"
 },
 {
@@ -4405,7 +4214,6 @@
 "name": "Nigéria",
 "kind": "national",
 "country": "ng",
-"logo": "national/ng.webp",
 "flag": "ng.svg"
 },
 {
@@ -4413,7 +4221,6 @@
 "name": "Coreia do Norte",
 "kind": "national",
 "country": "kp",
-"logo": "national/kp.webp",
 "flag": "kp.svg"
 },
 {
@@ -4421,7 +4228,6 @@
 "name": "Macedônia do Norte",
 "kind": "national",
 "country": "mk",
-"logo": "national/mk.webp",
 "flag": "mk.svg"
 },
 {
@@ -4429,7 +4235,6 @@
 "name": "Irlanda do Norte",
 "kind": "national",
 "country": "gb-nir",
-"logo": "national/gb-nir.webp",
 "flag": "gb-nir.svg"
 },
 {
@@ -4437,7 +4242,6 @@
 "name": "Ilhas Marianas do Norte",
 "kind": "national",
 "country": "mp",
-"logo": "national/mp.webp",
 "flag": "mp.svg"
 },
 {
@@ -4445,7 +4249,6 @@
 "name": "Noruega",
 "kind": "national",
 "country": "no",
-"logo": "national/no.webp",
 "flag": "no.svg"
 },
 {
@@ -4453,7 +4256,6 @@
 "name": "Omã",
 "kind": "national",
 "country": "om",
-"logo": "national/om.webp",
 "flag": "om.svg"
 },
 {
@@ -4461,7 +4263,6 @@
 "name": "Paquistão",
 "kind": "national",
 "country": "pk",
-"logo": "national/pk.webp",
 "flag": "pk.svg"
 },
 {
@@ -4469,7 +4270,6 @@
 "name": "Palau",
 "kind": "national",
 "country": "pw",
-"logo": "national/pw.webp",
 "flag": "pw.svg"
 },
 {
@@ -4477,7 +4277,6 @@
 "name": "Palestina",
 "kind": "national",
 "country": "ps",
-"logo": "national/ps.webp",
 "flag": "ps.svg"
 },
 {
@@ -4485,7 +4284,6 @@
 "name": "Panamá",
 "kind": "national",
 "country": "pa",
-"logo": "national/pa.webp",
 "flag": "pa.svg"
 },
 {
@@ -4493,7 +4291,6 @@
 "name": "Papua-Nova Guiné",
 "kind": "national",
 "country": "pg",
-"logo": "national/pg.webp",
 "flag": "pg.svg"
 },
 {
@@ -4501,7 +4298,6 @@
 "name": "Paraguai",
 "kind": "national",
 "country": "py",
-"logo": "national/py.webp",
 "flag": "py.svg"
 },
 {
@@ -4509,7 +4305,6 @@
 "name": "Peru",
 "kind": "national",
 "country": "pe",
-"logo": "national/pe.webp",
 "flag": "pe.svg"
 },
 {
@@ -4517,7 +4312,6 @@
 "name": "Filipinas",
 "kind": "national",
 "country": "ph",
-"logo": "national/ph.webp",
 "flag": "ph.svg"
 },
 {
@@ -4525,7 +4319,6 @@
 "name": "Polônia",
 "kind": "national",
 "country": "pl",
-"logo": "national/pl.webp",
 "flag": "pl.svg"
 },
 {
@@ -4533,7 +4326,6 @@
 "name": "Portugal",
 "kind": "national",
 "country": "pt",
-"logo": "national/pt.webp",
 "flag": "pt.svg"
 },
 {
@@ -4541,7 +4333,6 @@
 "name": "Porto Rico",
 "kind": "national",
 "country": "pr",
-"logo": "national/pr.webp",
 "flag": "pr.svg"
 },
 {
@@ -4549,7 +4340,6 @@
 "name": "Catar",
 "kind": "national",
 "country": "qa",
-"logo": "national/qa.webp",
 "flag": "qa.svg"
 },
 {
@@ -4557,7 +4347,6 @@
 "name": "Irlanda",
 "kind": "national",
 "country": "ie",
-"logo": "national/ie.webp",
 "flag": "ie.svg"
 },
 {
@@ -4565,7 +4354,6 @@
 "name": "Reunião",
 "kind": "national",
 "country": "re",
-"logo": "national/re.webp",
 "flag": "re.svg"
 },
 {
@@ -4573,7 +4361,6 @@
 "name": "Romênia",
 "kind": "national",
 "country": "ro",
-"logo": "national/ro.webp",
 "flag": "ro.svg"
 },
 {
@@ -4581,7 +4368,6 @@
 "name": "Rússia",
 "kind": "national",
 "country": "ru",
-"logo": "national/ru.webp",
 "flag": "ru.svg"
 },
 {
@@ -4589,7 +4375,6 @@
 "name": "Ruanda",
 "kind": "national",
 "country": "rw",
-"logo": "national/rw.webp",
 "flag": "rw.svg"
 },
 {
@@ -4597,7 +4382,6 @@
 "name": "Santa Lúcia",
 "kind": "national",
 "country": "lc",
-"logo": "national/lc.webp",
 "flag": "lc.svg"
 },
 {
@@ -4605,7 +4389,6 @@
 "name": "São Martinho",
 "kind": "national",
 "country": "mf",
-"logo": "national/mf.webp",
 "flag": "mf.svg"
 },
 {
@@ -4613,7 +4396,6 @@
 "name": "São Vicente e Granadinas",
 "kind": "national",
 "country": "vc",
-"logo": "national/vc.webp",
 "flag": "vc.svg"
 },
 {
@@ -4621,7 +4403,6 @@
 "name": "Samoa",
 "kind": "national",
 "country": "ws",
-"logo": "national/ws.webp",
 "flag": "ws.svg"
 },
 {
@@ -4629,7 +4410,6 @@
 "name": "San Marino",
 "kind": "national",
 "country": "sm",
-"logo": "national/sm.webp",
 "flag": "sm.svg"
 },
 {
@@ -4637,7 +4417,6 @@
 "name": "São Tomé e Príncipe",
 "kind": "national",
 "country": "st",
-"logo": "national/st.webp",
 "flag": "st.svg"
 },
 {
@@ -4645,7 +4424,6 @@
 "name": "Arábia Saudita",
 "kind": "national",
 "country": "sa",
-"logo": "national/sa.webp",
 "flag": "sa.svg"
 },
 {
@@ -4653,7 +4431,6 @@
 "name": "Escócia",
 "kind": "national",
 "country": "gb-sct",
-"logo": "national/gb-sct.webp",
 "flag": "gb-sct.svg"
 },
 {
@@ -4661,7 +4438,6 @@
 "name": "Senegal",
 "kind": "national",
 "country": "sn",
-"logo": "national/sn.webp",
 "flag": "sn.svg"
 },
 {
@@ -4669,7 +4445,6 @@
 "name": "Sérvia",
 "kind": "national",
 "country": "rs",
-"logo": "national/rs.webp",
 "flag": "rs.svg"
 },
 {
@@ -4677,7 +4452,6 @@
 "name": "Seicheles",
 "kind": "national",
 "country": "sc",
-"logo": "national/sc.webp",
 "flag": "sc.svg"
 },
 {
@@ -4685,7 +4459,6 @@
 "name": "Serra Leoa",
 "kind": "national",
 "country": "sl",
-"logo": "national/sl.webp",
 "flag": "sl.svg"
 },
 {
@@ -4693,7 +4466,6 @@
 "name": "Singapura",
 "kind": "national",
 "country": "sg",
-"logo": "national/sg.webp",
 "flag": "sg.svg"
 },
 {
@@ -4701,7 +4473,6 @@
 "name": "Sint Maarten",
 "kind": "national",
 "country": "sx",
-"logo": "national/sx.webp",
 "flag": "sx.svg"
 },
 {
@@ -4709,7 +4480,6 @@
 "name": "Eslováquia",
 "kind": "national",
 "country": "sk",
-"logo": "national/sk.webp",
 "flag": "sk.svg"
 },
 {
@@ -4717,7 +4487,6 @@
 "name": "Eslovênia",
 "kind": "national",
 "country": "si",
-"logo": "national/si.webp",
 "flag": "si.svg"
 },
 {
@@ -4725,7 +4494,6 @@
 "name": "Ilhas Salomão",
 "kind": "national",
 "country": "sb",
-"logo": "national/sb.webp",
 "flag": "sb.svg"
 },
 {
@@ -4733,7 +4501,6 @@
 "name": "Somália",
 "kind": "national",
 "country": "so",
-"logo": "national/so.webp",
 "flag": "so.svg"
 },
 {
@@ -4741,7 +4508,6 @@
 "name": "África do Sul",
 "kind": "national",
 "country": "za",
-"logo": "national/za.webp",
 "flag": "za.svg"
 },
 {
@@ -4749,7 +4515,6 @@
 "name": "Coreia do Sul",
 "kind": "national",
 "country": "kr",
-"logo": "national/kr.webp",
 "flag": "kr.svg"
 },
 {
@@ -4757,7 +4522,6 @@
 "name": "Sudão do Sul",
 "kind": "national",
 "country": "ss",
-"logo": "national/ss.webp",
 "flag": "ss.svg"
 },
 {
@@ -4765,7 +4529,6 @@
 "name": "Espanha",
 "kind": "national",
 "country": "es",
-"logo": "national/es.webp",
 "flag": "es.svg"
 },
 {
@@ -4773,7 +4536,6 @@
 "name": "Sri Lanka",
 "kind": "national",
 "country": "lk",
-"logo": "national/lk.webp",
 "flag": "lk.svg"
 },
 {
@@ -4781,7 +4543,6 @@
 "name": "São Cristóvão e Névis",
 "kind": "national",
 "country": "kn",
-"logo": "national/kn.webp",
 "flag": "kn.svg"
 },
 {
@@ -4789,7 +4550,6 @@
 "name": "Sudão",
 "kind": "national",
 "country": "sd",
-"logo": "national/sd.webp",
 "flag": "sd.svg"
 },
 {
@@ -4797,7 +4557,6 @@
 "name": "Suriname",
 "kind": "national",
 "country": "sr",
-"logo": "national/sr.webp",
 "flag": "sr.svg"
 },
 {
@@ -4805,7 +4564,6 @@
 "name": "Suécia",
 "kind": "national",
 "country": "se",
-"logo": "national/se.webp",
 "flag": "se.svg"
 },
 {
@@ -4813,7 +4571,6 @@
 "name": "Suíça",
 "kind": "national",
 "country": "ch",
-"logo": "national/ch.webp",
 "flag": "ch.svg"
 },
 {
@@ -4821,7 +4578,6 @@
 "name": "Síria",
 "kind": "national",
 "country": "sy",
-"logo": "national/sy.webp",
 "flag": "sy.svg"
 },
 {
@@ -4829,7 +4585,6 @@
 "name": "Taiti",
 "kind": "national",
 "country": "pf",
-"logo": "national/pf.webp",
 "flag": "pf.svg"
 },
 {
@@ -4837,7 +4592,6 @@
 "name": "Taiwan",
 "kind": "national",
 "country": "tw",
-"logo": "national/tw.webp",
 "flag": "tw.svg"
 },
 {
@@ -4845,7 +4599,6 @@
 "name": "Tajiquistão",
 "kind": "national",
 "country": "tj",
-"logo": "national/tj.webp",
 "flag": "tj.svg"
 },
 {
@@ -4853,7 +4606,6 @@
 "name": "Tanzânia",
 "kind": "national",
 "country": "tz",
-"logo": "national/tz.webp",
 "flag": "tz.svg"
 },
 {
@@ -4861,7 +4613,6 @@
 "name": "Tailândia",
 "kind": "national",
 "country": "th",
-"logo": "national/th.webp",
 "flag": "th.svg"
 },
 {
@@ -4869,7 +4620,6 @@
 "name": "Timor-Leste",
 "kind": "national",
 "country": "tl",
-"logo": "national/tl.webp",
 "flag": "tl.svg"
 },
 {
@@ -4877,7 +4627,6 @@
 "name": "Togo",
 "kind": "national",
 "country": "tg",
-"logo": "national/tg.webp",
 "flag": "tg.svg"
 },
 {
@@ -4885,7 +4634,6 @@
 "name": "Tonga",
 "kind": "national",
 "country": "to",
-"logo": "national/to.webp",
 "flag": "to.svg"
 },
 {
@@ -4893,7 +4641,6 @@
 "name": "Trinidad e Tobago",
 "kind": "national",
 "country": "tt",
-"logo": "national/tt.webp",
 "flag": "tt.svg"
 },
 {
@@ -4901,7 +4648,6 @@
 "name": "Tunísia",
 "kind": "national",
 "country": "tn",
-"logo": "national/tn.webp",
 "flag": "tn.svg"
 },
 {
@@ -4909,7 +4655,6 @@
 "name": "Turquia",
 "kind": "national",
 "country": "tr",
-"logo": "national/tr.webp",
 "flag": "tr.svg"
 },
 {
@@ -4917,7 +4662,6 @@
 "name": "Turcomenistão",
 "kind": "national",
 "country": "tm",
-"logo": "national/tm.webp",
 "flag": "tm.svg"
 },
 {
@@ -4925,7 +4669,6 @@
 "name": "Ilhas Turks e Caicos",
 "kind": "national",
 "country": "tc",
-"logo": "national/tc.webp",
 "flag": "tc.svg"
 },
 {
@@ -4933,7 +4676,6 @@
 "name": "Tuvalu",
 "kind": "national",
 "country": "tv",
-"logo": "national/tv.webp",
 "flag": "tv.svg"
 },
 {
@@ -4941,7 +4683,6 @@
 "name": "Emirados Árabes Unidos",
 "kind": "national",
 "country": "ae",
-"logo": "national/ae.webp",
 "flag": "ae.svg"
 },
 {
@@ -4949,7 +4690,6 @@
 "name": "Uganda",
 "kind": "national",
 "country": "ug",
-"logo": "national/ug.webp",
 "flag": "ug.svg"
 },
 {
@@ -4957,7 +4697,6 @@
 "name": "Ucrânia",
 "kind": "national",
 "country": "ua",
-"logo": "national/ua.webp",
 "flag": "ua.svg"
 },
 {
@@ -4965,7 +4704,6 @@
 "name": "Uruguai",
 "kind": "national",
 "country": "uy",
-"logo": "national/uy.webp",
 "flag": "uy.svg"
 },
 {
@@ -4973,7 +4711,6 @@
 "name": "Ilhas Virgens Americanas",
 "kind": "national",
 "country": "vi",
-"logo": "national/vi.webp",
 "flag": "vi.svg"
 },
 {
@@ -4981,7 +4718,6 @@
 "name": "Estados Unidos",
 "kind": "national",
 "country": "us",
-"logo": "national/us.webp",
 "flag": "us.svg"
 },
 {
@@ -4989,7 +4725,6 @@
 "name": "Uzbequistão",
 "kind": "national",
 "country": "uz",
-"logo": "national/uz.webp",
 "flag": "uz.svg"
 },
 {
@@ -4997,7 +4732,6 @@
 "name": "Vanuatu",
 "kind": "national",
 "country": "vu",
-"logo": "national/vu.webp",
 "flag": "vu.svg"
 },
 {
@@ -5005,7 +4739,6 @@
 "name": "Vaticano",
 "kind": "national",
 "country": "va",
-"logo": "national/va.webp",
 "flag": "va.svg"
 },
 {
@@ -5013,7 +4746,6 @@
 "name": "Venezuela",
 "kind": "national",
 "country": "ve",
-"logo": "national/ve.webp",
 "flag": "ve.svg"
 },
 {
@@ -5021,7 +4753,6 @@
 "name": "Vietnã",
 "kind": "national",
 "country": "vn",
-"logo": "national/vn.webp",
 "flag": "vn.svg"
 },
 {
@@ -5029,7 +4760,6 @@
 "name": "País de Gales",
 "kind": "national",
 "country": "gb-wls",
-"logo": "national/gb-wls.webp",
 "flag": "gb-wls.svg"
 },
 {
@@ -5037,7 +4767,6 @@
 "name": "Iêmen",
 "kind": "national",
 "country": "ye",
-"logo": "national/ye.webp",
 "flag": "ye.svg"
 },
 {
@@ -5045,7 +4774,6 @@
 "name": "Zâmbia",
 "kind": "national",
 "country": "zm",
-"logo": "national/zm.webp",
 "flag": "zm.svg"
 },
 {
@@ -5061,7 +4789,6 @@
 "name": "Zimbábue",
 "kind": "national",
 "country": "zw",
-"logo": "national/zw.webp",
 "flag": "zw.svg"
 }
 ],

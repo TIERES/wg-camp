@@ -27,7 +27,7 @@ from .db import get_db, now
 from .players import player_required
 from .security import login_required, validate_csrf
 from .timeutil import format_local
-from .tournament import engine, formats, friends, games as game_catalog, iso, notify, reports, stats, store
+from .tournament import engine, formats, friends, games as game_catalog, iso, notify, reports, stats, store, xp
 from .tournament.store import TournamentError
 from .tournament.teams import KINDS as TEAM_KINDS, TEAM_MODES, generated_badge
 from .wallet import (KINDS, MONEY_SETTINGS, SETTING_LABELS, SIGNED_SETTINGS, InsufficientFunds, ensure_wallet,
@@ -96,6 +96,18 @@ bp.record_once(lambda state: state.app.jinja_env.globals.update(score_tips=SCORE
 
 
 @bp.app_template_global()
+def player_rank(player_id):
+    """Rank (F a A), XP e barra até o próximo rank do jogador (tournament/xp.py)."""
+    return xp.info(player_id)
+
+
+@bp.app_template_global()
+def match_xp(match_id, player_id):
+    """XP que o jogador ganhou (+) ou perdeu (-) numa partida confirmada, ou None."""
+    return xp.match_deltas(match_id).get(player_id)
+
+
+@bp.app_template_global()
 def reported_score(match):
     """Último placar reportado de um jogo ainda não confirmado (para exibir
     antes da confirmação), com cache por requisição."""
@@ -120,7 +132,25 @@ def _load(slug):
         (slug,)).fetchone()
     if tournament is None or (tournament["status"] == "draft" and not can_manage(tournament)):
         abort(404)
+    if tournament["friends_only"] and not can_view(db, tournament):
+        abort(404)
     return tournament
+
+
+def can_view(db, tournament):
+    """Torneio "Somente para amigos": só o organizador (e o admin), os amigos dele e quem já está inscrito."""
+    me = session.get("player_id")
+    if not tournament["friends_only"] or can_manage(tournament):
+        return True
+    return bool(me) and (store.are_friends(db, me, tournament["organizer_id"]) or db.execute(
+        "SELECT 1 FROM tournament_entries WHERE tournament_id = ? AND player_id = ?",
+        (tournament["id"], me)).fetchone() is not None)
+
+
+_FRIEND_OF_ORGANIZER = ("EXISTS (SELECT 1 FROM friendships f WHERE f.status = 'accepted' AND "
+                        "((f.requester_id = t.organizer_id AND f.addressee_id = ?) "
+                        "OR (f.addressee_id = t.organizer_id AND f.requester_id = ?)))")
+_ENROLLED = "t.id IN (SELECT tournament_id FROM tournament_entries WHERE player_id = ?)"
 
 
 def manager_required(view):
@@ -152,11 +182,12 @@ def _run(action, tournament, success, *args):
 
 # --- Telas de leitura ---------------------------------------------------------
 
-def team_image(team, display="logo"):
-    """URL da imagem de um time (linha de `teams`), ou o escudo gerado."""
+def team_image(team):
+    """URL da imagem de um time (linha de `teams`): seleção com a bandeira, clube
+    com o escudo (da base ou enviado pelo admin), ou o escudo gerado."""
     if team is None:
         return generated_badge("?")
-    if display == "flag" and team["flag"]:
+    if team["flag"]:
         return url_for("static", filename="flags/" + team["flag"])
     logo = team["logo"] or ""
     if logo.startswith("base:"):
@@ -190,7 +221,7 @@ def _names(db, tournament):
             names[row["id"]] = Markup('<span class="entry"><span class="entry-name">{}</span></span>').format(
                 row["username"])
             continue
-        image = team_image(row, tournament["team_display"]) if row["name"] else generated_badge(row["team_name"])
+        image = team_image(row) if row["name"] else generated_badge(row["team_name"])
         names[row["id"]] = Markup(
             '<span class="entry"><img class="crest" src="{}" alt="" loading="lazy">'
             '<span class="entry-name">{}<small>{}</small></span></span>').format(image, row["team_name"],
@@ -288,7 +319,11 @@ def _stage_views(db, tournament):
 
 def _tournament_list(template, player_id=None, **extra):
     """Cards de torneios com os filtros de status, jogo, nome e organizador.
-    Com `player_id`, só os torneios em que esse jogador está inscrito ou que ele criou."""
+    Com `player_id` (Meus campeonatos), só os torneios em que esse jogador está
+    inscrito, que ele criou ou, se forem "Somente para amigos", de um amigo dele;
+    sem escolher o status, só os com inscrições abertas e em andamento.
+    Sem `player_id` (lista pública), os "Somente para amigos" só aparecem para
+    quem pode vê-los (can_view)."""
     db = get_db()
     status = request.args.get("status", "")
     game = request.args.get("jogo", type=int)
@@ -297,19 +332,23 @@ def _tournament_list(template, player_id=None, **extra):
            "i.original_filename AS iso_name, i.archive_url AS iso_archive_url, i.local_removed_at AS iso_removed "
            "FROM tournaments t JOIN game_titles g ON g.id = t.game_title_id JOIN players p ON p.id = t.organizer_id "
            "LEFT JOIN tournament_isos i ON i.tournament_id = t.id WHERE t.status != 'draft'")
-    params = []
-    mine = ""
     if player_id:
-        mine = (" AND (t.organizer_id = ? OR t.id IN "
-                "(SELECT tournament_id FROM tournament_entries WHERE player_id = ?))")
-        sql += mine
-        params += [player_id, player_id]
+        scope = f" AND (t.organizer_id = ? OR {_ENROLLED} OR (t.friends_only = 1 AND {_FRIEND_OF_ORGANIZER}))"
+        scope_params = [player_id] * 4
+    elif is_admin():
+        scope, scope_params = "", []
+    else:
+        me = session.get("player_id") or 0
+        scope = f" AND (t.friends_only = 0 OR t.organizer_id = ? OR {_ENROLLED} OR {_FRIEND_OF_ORGANIZER})"
+        scope_params = [me] * 4
+    sql += scope
+    params = list(scope_params)
     if status in STATUS_LABELS:
         sql += " AND t.status = ?"
         params.append(status)
-    elif player_id:
-        # Meus campeonatos: encerrados e cancelados só aparecem escolhendo o status no filtro.
-        sql += " AND t.status NOT IN ('finished', 'cancelled')"
+    elif player_id and status != "todos":
+        # Meus campeonatos: ao abrir, só inscrições abertas e em andamento; "Todos os status" traz tudo.
+        sql += " AND t.status IN ('registration', 'running')"
     if game:
         sql += " AND t.game_title_id = ?"
         params.append(game)
@@ -322,7 +361,7 @@ def _tournament_list(template, player_id=None, **extra):
     organizer = request.args.get("organizador", "").strip()
     suggestions = db.execute(
         "SELECT DISTINCT t.name, p.username FROM tournaments t JOIN players p ON p.id = t.organizer_id "
-        "WHERE t.status != 'draft'" + mine, (player_id, player_id) if player_id else ()).fetchall()
+        "WHERE t.status != 'draft'" + scope, scope_params).fetchall()
     if name or organizer:
         # Organizador escolhido na lista (nome exato) não traz quem só começa igual (TIERES x TIERES1).
         exact = any(_plain(r["username"]) == _plain(organizer) for r in suggestions)
@@ -487,7 +526,7 @@ def show(slug):
             "AND ? IN (m.home_entry_id, m.away_entry_id) ORDER BY m.round, m.leg, m.id",
             (tournament["id"], my_entry["id"])).fetchall()
     # Times da lista (modos choose/draw): todos, com o dono quando já tem.
-    team_list = [dict(row, image=team_image(row, tournament["team_display"])) for row in db.execute(
+    team_list = [dict(row, image=team_image(row)) for row in db.execute(
         "SELECT t.*, p.username AS owner FROM tournament_teams tt JOIN teams t ON t.id = tt.team_id "
         "LEFT JOIN tournament_entries e ON e.tournament_id = tt.tournament_id AND e.team_id = t.id "
         "LEFT JOIN players p ON p.id = e.player_id WHERE tt.tournament_id = ? ORDER BY t.name COLLATE NOCASE",
@@ -496,7 +535,7 @@ def show(slug):
     # bate com um time da base usa esse time (store._entry_team).
     free_teams = []
     if tournament["team_mode"] == "free" and tournament["status"] == "registration" and player_id and not my_entry:
-        free_teams = [{"name": row["name"], "image": team_image(row, tournament["team_display"])} for row in db.execute(
+        free_teams = [{"name": row["name"], "image": team_image(row)} for row in db.execute(
             "SELECT * FROM teams WHERE is_active = 1 ORDER BY name COLLATE NOCASE")]
     iso_row = iso.get(db, tournament["id"])
     return render_template(
@@ -516,7 +555,7 @@ def _team_catalog(db):
     """Grupos de times ativos com as imagens, para escolher os times do torneio."""
     groups = []
     for group in db.execute("SELECT * FROM team_groups ORDER BY seq, name"):
-        teams = [dict(row, image=team_image(row), flag_image=team_image(row, "flag")) for row in db.execute(
+        teams = [dict(row, image=team_image(row)) for row in db.execute(
             "SELECT t.* FROM team_group_members m JOIN teams t ON t.id = m.team_id "
             "WHERE m.group_id = ? AND t.is_active = 1 ORDER BY t.name COLLATE NOCASE", (group["id"],))]
         if teams:
@@ -609,7 +648,7 @@ def new():
             team_mode = form.get("team_mode", "free")
             if team_mode not in TEAM_MODES:
                 raise TournamentError("Escolha como serão os times.")
-            team_display = "flag" if form.get("team_display") == "flag" else "logo"
+            friends_only = 1 if form.get("friends_only") else 0
             team_ids = []
             if team_mode != "free":
                 wanted = {int(v) for v in form.getlist("team_ids") if v.isdigit()}
@@ -636,10 +675,11 @@ def new():
             tournament_id = db.execute(
                 "INSERT INTO tournaments (slug, name, game_title_id, organizer_id, format, status, max_players, "
                 "entry_fee_cents, prize_split, settings_json, rules, team_mode, team_display, starts_on, ends_on, "
-                "image, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'registration', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "image, friends_only, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, 'registration', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (f"tmp-{now()}-{session['player_id']}", name, game_id, session["player_id"], fmt, max_players, fee,
-                 split, json.dumps(config), rules[:5000], team_mode, team_display, starts_on,
-                 ends_on, image_name, now(), now())).lastrowid
+                 split, json.dumps(config), rules[:5000], team_mode, "flag", starts_on,
+                 ends_on, image_name, friends_only, now(), now())).lastrowid
             slug = f"{slugify(name)}-{tournament_id}"
             db.execute("UPDATE tournaments SET slug = ? WHERE id = ?", (slug, tournament_id))
             db.executemany("INSERT INTO tournament_teams (tournament_id, team_id) VALUES (?, ?)",
@@ -768,7 +808,8 @@ def manage(slug):
                            can_advance=can_advance, can_finish=can_finish, is_admin=is_admin(),
                            status_labels=STATUS_LABELS, iso=iso_row, iso_uploading=iso.uploading(iso_row),
                            archive_configured=iso.archive_configured(current_app), **_iso_limits(),
-                           candidates=friends.candidates(db, tournament["organizer_id"], tournament["id"])
+                           candidates=friends.candidates(db, tournament["organizer_id"], tournament["id"],
+                                                         tournament["friends_only"])
                            if tournament["status"] == "registration" else None,
                            invited=friends.invite_status(db, tournament["id"]), invite_labels=friends.INVITE_LABELS)
 
@@ -785,8 +826,10 @@ def edit(tournament):
         flash(str(error), "error")
     else:
         db = get_db()
-        db.execute("UPDATE tournaments SET name = ?, rules = ?, starts_on = ?, ends_on = ?, updated_at = ? WHERE id = ?",
-                   (name, request.form.get("rules", "").strip()[:5000], starts_on, ends_on, now(), tournament["id"]))
+        db.execute("UPDATE tournaments SET name = ?, rules = ?, starts_on = ?, ends_on = ?, friends_only = ?, "
+                   "updated_at = ? WHERE id = ?",
+                   (name, request.form.get("rules", "").strip()[:5000], starts_on, ends_on,
+                    1 if request.form.get("friends_only") else 0, now(), tournament["id"]))
         db.commit()
         flash("Torneio atualizado.", "success")
     return redirect(url_for("tournaments.manage", slug=tournament["slug"]))
@@ -1117,6 +1160,7 @@ def ranking():
     me = session.get("player_id")
     my_name = db.execute("SELECT username FROM players WHERE id = ?", (me,)).fetchone() if me else None
     return render_template("tournaments/ranking.html", rows=stats.ranking(db, game), games=games, game=game,
+                           xp_table=xp.table(), xp_rules={"base": xp.BASE, "step": xp.STEP, "min": xp.MIN_POINTS},
                            my_position=stats.position(db, me, game) if my_name else None,
                            my_name=my_name[0] if my_name else None,
                            my_record=stats.player_record(db, me, game) if me else None)

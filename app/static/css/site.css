@@ -51,6 +51,9 @@ header { flex-wrap:wrap; gap:.5rem 1rem } header nav { flex-wrap:wrap; gap:.4rem
 button.secondary,.button.secondary { background:#374151; color:var(--text) }
 button:disabled { opacity:.5; cursor:not-allowed }
 .badge { display:inline-block; padding:.1rem .55rem; border-radius:999px; font-size:.75rem; font-weight:700; background:#374151; width:max-content }
+.badge.friends-only { background:#7c2d12; color:#ffedd5 }
+.t-badges { display:flex; flex-wrap:wrap; gap:.3rem }
+.invite-picker.friends-only .invite-option[data-friend="0"], .invite-picker.friends-only [data-invite-tournament] { display:none }
 .status-registration { background:#065f46; color:#d1fae5 } .status-running { background:#1e40af; color:#dbeafe }
 .status-finished { background:#4b5563 } .status-cancelled { background:#7f1d1d; color:#fee2e2 }
 .filters { display:flex; flex-wrap:wrap; gap:.5rem; max-width:none; margin:1rem 0 } .filters select { flex:1 1 12rem }
@@ -365,3 +368,41 @@ header nav { align-items:center }
 .player-card-results { list-style:none; margin:0; padding:0 }
 .player-card-results li { display:grid; grid-template-columns:auto auto minmax(0,1fr); align-items:baseline; gap:.1rem .6rem; padding:.4rem 0; border-bottom:1px solid #374151 }
 .player-card-results li small { grid-column:2 / -1 }
+
+/* Toasts (static/js/toast.js): erro, sucesso e informação, com barra do tempo para sumir. */
+.toasts { position:fixed; top:4.5rem; right:1rem; z-index:1000; display:grid; gap:.6rem; width:min(400px, calc(100vw - 2rem)); pointer-events:none }
+.toast { --toast-color:#60a5fa; --toast-bg:#172554; position:relative; overflow:hidden; display:grid; grid-template-columns:auto 1fr auto; align-items:start; gap:.6rem; padding:.8rem .6rem .95rem .85rem; border-radius:8px; border:1px solid var(--toast-color); border-left-width:5px; background:var(--toast-bg); color:#f3f4f6; box-shadow:0 10px 25px rgba(0,0,0,.45); pointer-events:auto; animation:toast-in .2s ease-out }
+.toast.success { --toast-color:#34d399; --toast-bg:#064e3b }
+.toast.error { --toast-color:#f87171; --toast-bg:#4c0f0f }
+.toast-icon { width:1.35rem; height:1.35rem; fill:none; stroke:var(--toast-color); stroke-width:2; stroke-linecap:round; stroke-linejoin:round; margin-top:.05rem }
+.toast-text { margin:0; overflow-wrap:anywhere; line-height:1.4 }
+.toast .toast-close { background:none; color:#d1d5db; padding:0 .3rem; font-size:1.4rem; line-height:1; border-radius:4px; width:auto }
+.toast .toast-close:hover, .toast .toast-close:focus-visible { color:#fff; background:rgba(255,255,255,.12) }
+.toast-bar { position:absolute; left:0; right:0; bottom:0; height:4px; background:var(--toast-color); transform-origin:left; opacity:.85 }
+.toast.armed .toast-bar { animation:toast-progress var(--toast-ms, 5s) linear forwards }
+.toast:hover .toast-bar, .toast:focus-within .toast-bar { animation-play-state:paused }
+.toast.closing { animation:toast-out .25s ease-in forwards }
+@keyframes toast-progress { from { transform:scaleX(1) } to { transform:scaleX(0) } }
+@keyframes toast-in { from { opacity:0; transform:translateX(1.5rem) } to { opacity:1; transform:none } }
+@keyframes toast-out { to { opacity:0; transform:translateX(1.5rem) } }
+@media (max-width:550px) { .toasts { top:4rem; right:1rem; left:1rem; width:auto } }
+@media (prefers-reduced-motion:reduce) { .toast, .toast.closing { animation-duration:.01ms } }
+
+/* Rank por XP (tournament/xp.py): badge na foto, chip, barra de experiência. */
+.rank-F { --rank:#9ca3af } .rank-E { --rank:#22c55e } .rank-D { --rank:#3b82f6 } .rank-C { --rank:#a855f7 } .rank-B { --rank:#ef4444 } .rank-A { --rank:#f59e0b }
+.avatar-wrap { position:relative; display:inline-flex; flex:none; vertical-align:middle; line-height:0 }
+.rank-badge { position:absolute; right:-4px; bottom:-4px; display:grid; place-items:center; min-width:16px; height:16px; padding:0 2px; border-radius:999px; background:var(--rank); color:#111827; border:2px solid var(--bg); font-size:.6rem; font-weight:800; line-height:1; pointer-events:none }
+.avatar-wrap-xs .rank-badge { display:none }
+.avatar-wrap-md .rank-badge { min-width:24px; height:24px; font-size:.8rem; right:-2px; bottom:-2px }
+.avatar-wrap-lg .rank-badge { min-width:32px; height:32px; font-size:1.05rem; border-width:3px; right:0; bottom:0 }
+.rank-chip { display:inline-block; padding:.1rem .55rem; border-radius:999px; background:var(--rank); color:#111827; font-size:.8rem; font-weight:800; white-space:nowrap }
+.xp-box { background:var(--card); border-radius:8px; padding:.9rem 1rem; margin:1rem 0; display:grid; gap:.5rem }
+.xp-box.compact { padding:.6rem .75rem; margin:.5rem 0; background:#111827 }
+.xp-head { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem .9rem }
+.xp-head strong { font-size:1.05rem }
+.xp-bar { height:12px; border-radius:999px; background:#374151; overflow:hidden }
+.xp-bar > span { display:block; height:100%; border-radius:999px; background:var(--rank); transition:width .4s ease }
+.xp-scale { display:flex; justify-content:space-between; font-size:.8rem }
+.xp-delta.up { color:#34d399; font-weight:700 } .xp-delta.down { color:#f87171; font-weight:700 }
+.xp-rules { background:var(--card); border-radius:8px; padding:.75rem 1rem; margin:1rem 0 } .xp-rules summary { cursor:pointer; font-weight:700 }
+.xp-rules ul { padding-left:1.2rem } .rank-steps { display:flex; flex-wrap:wrap; gap:.5rem 1rem; align-items:center }

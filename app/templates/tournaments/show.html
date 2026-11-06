@@ -5,7 +5,7 @@
     {% if t.image %}<img class="t-header-cover t-image" src="{{ image_url('torneio', t.image) }}" alt="Imagem do torneio {{ t.name }}">{% endif %}
     <img class="t-header-cover" src="{{ game_cover(t.game_code) }}" alt="{{ t.game_name }}" width="200" height="250">
   </div>
-  <span class="badge status-{{ t.status }}">{{ status_labels[t.status] }}</span>
+  <span class="badge status-{{ t.status }}">{{ status_labels[t.status] }}</span>{% if t.friends_only %} <span class="badge friends-only" title="Só os amigos de quem criou veem e se inscrevem">Somente amigos</span>{% endif %}
   <h1>{{ t.name }}</h1>
   <p class="muted">{{ t.game_name }}{% if t.platform %} ({{ t.platform }}){% endif %} · {{ format_label }} · organizado por <strong>{{ t.organizer_name }}</strong></p>
   {% if invite %}

@@ -99,6 +99,7 @@
       <label>Fim provável<input type="date" name="ends_on" value="{{ t.ends_on or '' }}"></label>
     </div>
     <label>Regulamento / observações<textarea name="rules" rows="5" maxlength="5000">{{ t.rules }}</textarea></label>
+    <label class="check"><input type="checkbox" name="friends_only" {% if t.friends_only %}checked{% endif %}> <span><strong>Somente para amigos</strong> <small class="muted">— só os amigos de quem criou veem o torneio e se inscrevem (quem já está inscrito continua).</small></span></label>
     <button>Salvar</button>
   </form>
 </section>

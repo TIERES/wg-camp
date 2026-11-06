@@ -63,7 +63,9 @@ class TeamsTest(unittest.TestCase):
                              .fetchone())
         # Todo escudo e bandeira da base existe no disco.
         for logo, flag in self.db.execute("SELECT logo, flag FROM teams"):
-            self.assertTrue((STATIC / "teams" / logo[5:]).is_file(), logo)
+            self.assertTrue(logo or flag)  # seleção: só a bandeira
+            if logo:
+                self.assertTrue((STATIC / "teams" / logo[5:]).is_file(), logo)
             if flag:
                 self.assertTrue((STATIC / "flags" / flag).is_file(), flag)
         # Rodar de novo não duplica nem sobrescreve o que o admin mudou.
@@ -72,6 +74,26 @@ class TeamsTest(unittest.TestCase):
         seed_teams(self.db)
         self.assertEqual(self.db.execute("SELECT COUNT(*) FROM teams").fetchone()[0], teams)
         self.assertEqual(self.db.execute("SELECT COUNT(*) FROM teams WHERE name = 'Mengão'").fetchone()[0], 1)
+
+    def test_seed_has_each_team_in_one_group_and_fixes_old_national_duplicates(self):
+        # Nenhum time em dois grupos da base (seleção só em Seleções, não na liga do país).
+        self.assertIsNone(self.db.execute("SELECT team_id FROM team_group_members GROUP BY team_id "
+                                          "HAVING COUNT(*) > 1").fetchone())
+        # Banco carregado com a base antiga: a Bolívia virou "clube" em inglês e estava também na liga.
+        bolivia = self.db.execute("SELECT id FROM teams WHERE source_key = 'bolivia/bolivia-national-team'").fetchone()[0]
+        self.db.execute("UPDATE teams SET name = 'Bolivia National Team', kind = 'club', flag = NULL, "
+                        "logo = 'base:bolivia/bolivia-national-team.webp' WHERE id = ?", (bolivia,))
+        self.db.execute("INSERT INTO team_group_members SELECT id, ? FROM team_groups WHERE slug = 'bolivia'", (bolivia,))
+        tid = self.tournament("choose", [bolivia])
+        self.db.execute("DELETE FROM site_settings WHERE key = 'teams_seed_version'")
+        seed_teams(self.db)
+        row = self.db.execute("SELECT * FROM teams WHERE id = ?", (bolivia,)).fetchone()
+        self.assertEqual((row["name"], row["kind"], row["flag"], row["logo"]),
+                         ("Bolívia", "national", "bo.svg", None))
+        self.assertNotIn(bolivia, self.team_ids("bolivia"))
+        self.assertIn(bolivia, self.team_ids("selecoes"))
+        self.assertIsNotNone(self.db.execute("SELECT 1 FROM tournament_teams WHERE tournament_id = ? AND team_id = ?",
+                                             (tid, bolivia)).fetchone())
 
     def test_free_mode_requires_unique_name(self):
         t = store.get_tournament(self.db, self.tournament("free", []))
