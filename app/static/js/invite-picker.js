@@ -1,5 +1,5 @@
-// Convites para torneio (_invite_picker.html): marcar todos os amigos, os jogadores
-// de um torneio anterior, limpar e buscar pelo nome. Convidados e inscritos ficam
+// Convites para campeonato (_invite_picker.html): marcar todos os amigos, os jogadores
+// de um campeonato anterior, limpar e buscar pelo nome. Convidados e inscritos ficam
 // marcados e travados (data-locked, fora do formulário); o botão data-invite-submit
 // só habilita quando há alguém novo marcado.
 (function () {

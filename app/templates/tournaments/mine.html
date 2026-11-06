@@ -1,9 +1,9 @@
 {% extends 'tournaments/index.html' %}
 {% block title %}Meus campeonatos · WE Camp{% endblock %}
-{% block heading %}<div class="page-title"><h1>Meus campeonatos</h1><div class="card-actions"><a class="button secondary" href="{{ url_for('tournaments.index') }}">Todos os torneios</a><a class="button" href="{{ url_for('tournaments.new') }}">Criar torneio</a></div></div>
+{% block heading %}<div class="page-title"><h1>Meus campeonatos</h1><div class="card-actions"><a class="button secondary" href="{{ url_for('tournaments.index') }}">Todos os campeonatos</a><a class="button" href="{{ url_for('tournaments.new') }}">Criar campeonato</a></div></div>
 {% if invites %}
 <section class="invites">
-  <h2>Convites para torneios ({{ invites|length }})</h2>
+  <h2>Convites para campeonatos ({{ invites|length }})</h2>
   <ul class="invite-cards">{% for i in invites %}
     <li class="invite-card">
       <img class="t-cover" src="{{ game_cover(i.game_code) }}" alt="" width="200" height="250" loading="lazy">

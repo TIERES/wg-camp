@@ -108,7 +108,7 @@ class FriendlyTest(unittest.TestCase):
         self.give_xp(p0)
         row = self.full(p0, p2, 5, 0)  # p2 não tem XP: amistoso fica fora do ranking
         self.assertEqual(row["ranked"], 0)
-        self.assertIn("p2 ainda não chegou a 20 XP em torneios", row["unranked_reason"])
+        self.assertIn("p2 ainda não chegou a 20 XP em campeonatos", row["unranked_reason"])
         self.assertEqual(stats.player_record(self.db, p0)["played"], 1)
         self.assertEqual(xp.compute(self.db)[0][p0], 20)
 

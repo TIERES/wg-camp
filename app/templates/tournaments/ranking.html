@@ -1,10 +1,10 @@
 {% extends 'base.html' %}{% from '_avatar.html' import avatar_button %}{% from 'tournaments/_stats_macros.html' import game_filter, player_link %}
 {% block title %}Ranking · WE Camp{% endblock %}{% block content %}
 <div class="page-title"><h1>Ranking dos jogadores</h1><a class="button" href="{{ url_for('tournaments.compare', jogo=game) }}">Comparar jogadores</a></div>
-<p class="muted">Top 10 pelos jogos confirmados em todos os torneios (cancelados não contam). Vitória 3 pontos, empate 1; desempate por vitórias, saldo e gols pró. Jogo decidido nos pênaltis conta como empate.</p>
+<p class="muted">Top 10 pelos jogos confirmados em todos os campeonatos (cancelados não contam). Vitória 3 pontos, empate 1; desempate por vitórias, saldo e gols pró. Jogo decidido nos pênaltis conta como empate.</p>
 <details class="xp-rules">
   <summary>Como funciona o Rank (XP)</summary>
-  <p>Todo jogador começa no <strong>Rank F</strong> e sobe até o <strong>A</strong> juntando experiência (XP) nas partidas confirmadas de qualquer torneio. O rank aparece na foto de cada jogador.</p>
+  <p>Todo jogador começa no <strong>Rank F</strong> e sobe até o <strong>A</strong> juntando experiência (XP) nas partidas confirmadas de qualquer campeonato. O rank aparece na foto de cada jogador.</p>
   <ul>
     <li>Vitória contra alguém do mesmo rank: <strong>+{{ xp_rules.base }} XP</strong> para quem ganha e <strong>−{{ xp_rules.base }} XP</strong> para quem perde.</li>
     <li>Ranks diferentes: cada nível de diferença muda {{ xp_rules.step }} XP. Ganhar de quem está acima vale mais (e ele perde mais); ganhar de quem está abaixo vale menos (no mínimo {{ xp_rules.min }} XP).</li>

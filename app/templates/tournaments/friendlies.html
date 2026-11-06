@@ -1,6 +1,6 @@
 {% extends 'base.html' %}{% from 'tournaments/_friendly.html' import friendly_card %}{% block title %}Amistosos · WE Camp{% endblock %}{% block content %}
 <h1>Amistosos</h1>
-<p class="muted">Jogos com seus amigos, fora dos torneios. Quem é chamado aceita o convite. Depois do jogo, um informa o placar e o outro confirma.</p>
+<p class="muted">Jogos com seus amigos, fora dos campeonatos. Quem é chamado aceita o convite. Depois do jogo, um informa o placar e o outro confirma.</p>
 
 <section>
   <h2>Chamar para um amistoso</h2>
@@ -32,7 +32,7 @@
       <h2 id="iso-picker-title">Escolher a ISO</h2>
       <form method="dialog"><button class="secondary" aria-label="Fechar">&times;</button></form>
     </div>
-    <input type="search" id="iso-filter" placeholder="Filtrar pelo nome do torneio ou da ISO..." autocomplete="off" aria-label="Filtrar ISOs">
+    <input type="search" id="iso-filter" placeholder="Filtrar pelo nome do campeonato ou da ISO..." autocomplete="off" aria-label="Filtrar ISOs">
     {% if iso_options %}
     <div class="t-cards iso-cards">
       {% for o in iso_options %}
@@ -42,7 +42,7 @@
           <img class="t-cover" src="{{ game_cover(o.game_code) }}" alt="{{ o.game }}" width="200" height="250" loading="lazy">
         </span></span>
         <span class="t-body">
-          <span class="badge {{ 'iso-catalog' if o.kind == 'catalog' else '' }}">{{ 'ISO do WE Camp' if o.kind == 'catalog' else 'ISO de torneio' }}</span>
+          <span class="badge {{ 'iso-catalog' if o.kind == 'catalog' else '' }}">{{ 'ISO do WE Camp' if o.kind == 'catalog' else 'ISO de campeonato' }}</span>
           <strong class="t-name">{{ o.title }}</strong>
           <span class="muted">{{ o.game }}</span>
           {% if o.filename %}<small class="muted iso-file">{{ o.filename }}</small>{% endif %}
@@ -120,10 +120,10 @@
   <details class="xp-rules">
     <summary>Quando o amistoso vale para o Ranking e o XP</summary>
     <ul>
-      <li>Os dois jogadores precisam já ter chegado a <strong>{{ rules.min_xp }} XP em torneios</strong> (Rank {{ rules.rank }}). O XP de amistosos não conta para isso. Quem chegou lá uma vez continua liberado, mesmo se perder XP depois. Assim, contas novas ou fake não conseguem dar XP para ninguém.{% if rules.my_peak < rules.min_xp %} <span class="muted">Você ainda não chegou: seu maior XP em torneios é {{ rules.my_peak }}.</span>{% else %} <span class="muted">Você já está liberado.</span>{% endif %}</li>
+      <li>Os dois jogadores precisam já ter chegado a <strong>{{ rules.min_xp }} XP em campeonatos</strong> (Rank {{ rules.rank }}). O XP de amistosos não conta para isso. Quem chegou lá uma vez continua liberado, mesmo se perder XP depois. Assim, contas novas ou fake não conseguem dar XP para ninguém.{% if rules.my_peak < rules.min_xp %} <span class="muted">Você ainda não chegou: seu maior XP em campeonatos é {{ rules.my_peak }}.</span>{% else %} <span class="muted">Você já está liberado.</span>{% endif %}</li>
       <li>Vale no máximo <strong>{{ rules.limit }} amistosos por dia</strong> contra o mesmo adversário. Os seguintes ficam só como amistoso.</li>
       <li>Qualquer amigo pode ser convidado. Quando um dos dois ainda não está liberado, o amistoso fica registrado, mas não vale.</li>
-      <li>O amistoso que vale entra no Ranking, no V/E/D e no XP como um jogo de torneio, pelas mesmas regras. Ele não paga W$.</li>
+      <li>O amistoso que vale entra no Ranking, no V/E/D e no XP como um jogo de campeonato, pelas mesmas regras. Ele não paga W$.</li>
       <li>Se um não aceitar o placar, o amistoso fica <strong>suspenso</strong> até um dos dois propor um placar que o outro aceite.</li>
     </ul>
   </details>

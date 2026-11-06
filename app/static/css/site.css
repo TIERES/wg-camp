@@ -468,3 +468,17 @@ header nav { align-items:center }
 .iso-request summary { cursor:pointer } .iso-request[open] summary { margin-bottom:.4rem }
 .my-iso-text { display:grid; gap:.1rem; flex:1 1 12rem; min-width:0 } .my-iso-text small { overflow-wrap:anywhere }
 .badge.iso-pending { background:#78350f; color:#fde68a }
+
+/* Cadastro: campos obrigatórios e conferência enquanto digita (players/register.html) */
+.req { color:#f87171; font-weight:700 }
+.required-note { margin:.2rem 0 .6rem }
+.field-hint { color:#9ca3af; font-size:.8rem }
+.field-error { color:var(--error); font-size:.85rem; min-height:0; margin:0 } .field-error:empty { display:none }
+.account-form input.invalid { border-color:#f87171 } .account-form input.valid { border-color:#34d399 }
+.account-form .form-row { align-items:start }
+.field-error.checking { color:#9ca3af }  /* o aviso embaixo de um campo não empurra o vizinho */
+
+/* Perfil do jogador: espaço entre a foto/nome e os botões; popup com os botões quebrando linha */
+.page-title > .player-title { margin-bottom:.75rem }
+.player-card .card-actions { flex-wrap:wrap }
+.player-card-friend { margin:.75rem 0 1rem } .player-card-friend form { margin:0 }

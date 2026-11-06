@@ -28,7 +28,7 @@ from . import reports, store
 from .store import TournamentError
 
 AUTO_FINISH_HOURS = 24
-SIGNATURE = "\n--\nWE Camp - Torneios\n"
+SIGNATURE = "\n--\nWE Camp - Campeonatos\n"
 ADMIN_EMAIL_SETTING = "torneios_admin_email"
 _EMAIL = re.compile(r"^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$")
 
@@ -103,7 +103,7 @@ def _games_messages(db, tournament, stage, entry_ids, subject, intro):
         messages.append((entry["email"], subject, (
             f"Olá, {entry['username']}!\n\n{intro}\n\n"
             f"Seus jogos:\n{games}\n\nVeja seus confrontos e reporte os placares em:\n{link}\n\n"
-            f"Tabela e todos os jogos do torneio:\n{page}\n")))
+            f"Tabela e todos os jogos do campeonato:\n{page}\n")))
     return messages
 
 
@@ -111,8 +111,8 @@ def tournament_started(db, tournament):
     """Para cada inscrito: os jogos dele na primeira fase e o link de Meus jogos."""
     stage = store.stages_of(db, tournament["id"])[0]
     _deliver(_games_messages(db, tournament, stage, [e["id"] for e in store.entries_of(db, tournament["id"])],
-                             f"O torneio {tournament['name']} começou!",
-                             f"O sorteio foi feito e o torneio {tournament['name']} começou."))
+                             f"O campeonato {tournament['name']} começou!",
+                             f"O sorteio foi feito e o campeonato {tournament['name']} começou."))
 
 
 def stage_started(db, tournament):
@@ -124,7 +124,7 @@ def stage_started(db, tournament):
         for entry_id in row if entry_id})
     _deliver(_games_messages(db, tournament, stage, qualified,
                              f"{tournament['name']}: você está no {stage['name']}!",
-                             f"Você se classificou e a fase {stage['name']} do torneio {tournament['name']} "
+                             f"Você se classificou e a fase {stage['name']} do campeonato {tournament['name']} "
                              "foi sorteada."))
 
 
@@ -137,7 +137,7 @@ def score_reported(db, tournament, match_id):
     deadline = format_local(reports.deadline(db, match), "%d/%m/%Y às %H:%M")
     _deliver([(opponent["email"], f"Confirme o placar: {title}", (
         f"Olá, {opponent['username']}!\n\n{reporter['username']} reportou o placar do jogo "
-        f"{title} no torneio {tournament['name']}:\n\n  {_label(home)} {_score_text(reported)} {_label(away)}\n\n"
+        f"{title} no campeonato {tournament['name']}:\n\n  {_label(home)} {_score_text(reported)} {_label(away)}\n\n"
         f"Confirme ou conteste em:\n{link}\n\n"
         f"Sem resposta até {deadline}, o placar é confirmado automaticamente.\n"))])
 
@@ -150,7 +150,7 @@ def score_disputed(db, tournament, match_id):
                          "LIMIT 1", (match_id,)).fetchone()
     who = _entry(db, dispute["entry_id"]) if dispute and dispute["entry_id"] else None
     by = who["username"] if who else "O sistema"
-    text = f"{by} contestou o placar do jogo {title} no torneio {tournament['name']}.\n\n"
+    text = f"{by} contestou o placar do jogo {title} no campeonato {tournament['name']}.\n\n"
     if reported:
         reporter = _entry(db, reported["entry_id"]) if reported["entry_id"] else None
         text += (f"Placar reportado{' por ' + reporter['username'] if reporter else ''}:\n"
@@ -205,11 +205,11 @@ def check_completion(db, tournament):
     organizer = db.execute("SELECT username, email FROM players WHERE id = ?", (tournament["organizer_id"],)).fetchone()
     limit = format_local((datetime.now(timezone.utc) + timedelta(hours=AUTO_FINISH_HOURS)).replace(microsecond=0)
                          .isoformat(), "%d/%m/%Y às %H:%M")
-    _deliver([(organizer["email"], f"Todos os jogos terminaram: encerre o torneio {tournament['name']}", (
-        f"Olá, {organizer['username']}!\n\nO último jogo do torneio {tournament['name']} foi confirmado.\n\n"
-        "Confira os resultados e encerre o torneio para registrar a classificação final e distribuir o prêmio:\n"
+    _deliver([(organizer["email"], f"Todos os jogos terminaram: encerre o campeonato {tournament['name']}", (
+        f"Olá, {organizer['username']}!\n\nO último jogo do campeonato {tournament['name']} foi confirmado.\n\n"
+        "Confira os resultados e encerre o campeonato para registrar a classificação final e distribuir o prêmio:\n"
         f"{external_url('tournaments.manage', slug=tournament['slug'])}\n\n"
-        f"Se o torneio não for encerrado até {limit}, ele é encerrado automaticamente.\n"))])
+        f"Se o campeonato não for encerrado até {limit}, ele é encerrado automaticamente.\n"))])
 
 
 def _check_stage(db, tournament, stage):
@@ -224,8 +224,8 @@ def _check_stage(db, tournament, stage):
     if not complete:
         return
     organizer = db.execute("SELECT username, email FROM players WHERE id = ?", (tournament["organizer_id"],)).fetchone()
-    _deliver([(organizer["email"], f"{stage['name']} terminou: gere a próxima fase do torneio {tournament['name']}", (
-        f"Olá, {organizer['username']}!\n\nO último jogo da fase {stage['name']} do torneio {tournament['name']} "
+    _deliver([(organizer["email"], f"{stage['name']} terminou: gere a próxima fase do campeonato {tournament['name']}", (
+        f"Olá, {organizer['username']}!\n\nO último jogo da fase {stage['name']} do campeonato {tournament['name']} "
         "foi confirmado.\n\nConfira a classificação e clique em \"Gerar próxima fase\" para sortear o mata-mata "
         f"(os classificados recebem os jogos por e-mail):\n{external_url('tournaments.manage', slug=tournament['slug'])}\n"))])
 
@@ -245,7 +245,7 @@ def sweep(db, at=None):
                 db.commit()
         except TournamentError as error:
             db.rollback()
-            current_app.logger.warning("Encerramento automático do torneio %s falhou: %s", tournament["id"], error)
+            current_app.logger.warning("Encerramento automático do campeonato %s falhou: %s", tournament["id"], error)
 
 
 def auto_finish_at(tournament):
@@ -275,7 +275,7 @@ def empty_wallets(db):
         for admin in admin_emails(db):
             messages.append((admin, f"Jogador sem saldo W$: {p['username']}", (
                 f"O jogador {p['username']} ({p['email']}) ficou sem saldo W$ (W$0,00) depois de um débito por "
-                "derrota.\n\nPara creditar um novo valor, use o ajuste de saldo em Torneios: administração:\n"
+                "derrota.\n\nPara creditar um novo valor, use o ajuste de saldo em Campeonatos: administração:\n"
                 f"{external_url('tournaments_admin.admin_home')}\n")))
     if messages:
         db.commit()
@@ -304,9 +304,9 @@ def tournament_invites(db, tournament, inviter_name, players):
     page = external_url("tournaments.show", slug=tournament["slug"], aba="geral")
     day = "/".join(reversed((tournament["starts_on"] or "").split("-")))
     starts = f"\nInício provável: {day}" if day else ""
-    _deliver([(p["email"], f"Convite para o torneio {tournament['name']}", (
-        f"Olá, {p['username']}!\n\n{inviter_name} convidou você para o torneio \"{tournament['name']}\"."
-        f"{starts}\n\nVeja o torneio e faça a sua inscrição em:\n{page}\n")) for p in players])
+    _deliver([(p["email"], f"Convite para o campeonato {tournament['name']}", (
+        f"Olá, {p['username']}!\n\n{inviter_name} convidou você para o campeonato \"{tournament['name']}\"."
+        f"{starts}\n\nVeja o campeonato e faça a sua inscrição em:\n{page}\n")) for p in players])
 
 
 def friendly_event(db, friendly, to_id, subject, text):

@@ -9,6 +9,14 @@
       <p class="muted">No WE Camp desde {{ p.created_at|date_br }}</p>
     </div>
   </div>
+  {% if session.player_id and session.player_id != p.id %}
+  <div class="player-card-friend">
+    {% if relation == 'friends' %}<span class="friend-tag">Amigos ✓</span>
+    {% elif relation == 'sent' %}<span class="friend-tag">Pedido de amizade enviado</span>
+    {% elif relation == 'received' %}<form method="post" action="{{ url_for('tournaments.friend_action', player_id=p.id, acao='aceitar') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="voltar" value="{{ back }}"><button class="secondary">Aceitar amizade</button></form>
+    {% else %}<form method="post" action="{{ url_for('tournaments.friend_add') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="nome" value="{{ p.username }}"><input type="hidden" name="voltar" value="{{ back }}"><button class="secondary">Adicionar amigo</button></form>{% endif %}
+  </div>
+  {% endif %}
   {{ xp_bar(player_rank(p.id), compact=true) }}
   <div class="stat-tiles compact">
     <div class="stat-tile"><span>Ranking</span><strong>{{ position ~ 'º' if position else '—' }}</strong></div>

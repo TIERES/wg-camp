@@ -21,7 +21,7 @@
 {% macro history_table(rows, outcome, game=none, show_opponent=true) -%}
 <div class="table-scroll">
 <table class="ledger match-history">
-  <thead><tr><th>Data</th><th></th><th>Placar</th>{% if show_opponent %}<th>Adversário</th>{% endif %}<th class="hide-sm">Torneio</th></tr></thead>
+  <thead><tr><th>Data</th><th></th><th>Placar</th>{% if show_opponent %}<th>Adversário</th>{% endif %}<th class="hide-sm">Campeonato</th></tr></thead>
   <tbody>{% for r in rows %}{% set o = outcome(r) %}
     <tr>
       <td>{{ r.played_at|localtime }}</td>

@@ -49,7 +49,7 @@ class TournamentStoreTest(unittest.TestCase):
         tid = self.db.execute(
             "INSERT INTO tournaments (slug, name, game_title_id, organizer_id, format, status, max_players, "
             "entry_fee_cents, settings_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'registration', ?, ?, ?, ?, ?)",
-            (f"t-{fmt}-{players}-{self.rng.random()}", f"Torneio {fmt}", self.game, self.players[0], fmt, players, fee,
+            (f"t-{fmt}-{players}-{self.rng.random()}", f"Campeonato {fmt}", self.game, self.players[0], fmt, players, fee,
              json.dumps(cfg), now(), now())).lastrowid
         t = store.get_tournament(self.db, tid)
         for pid in self.players[:players]:

@@ -17,6 +17,7 @@ from datetime import date
 from functools import wraps
 from pathlib import Path
 from unicodedata import normalize
+from urllib.parse import urlsplit
 
 from flask import (abort, Blueprint, current_app, flash, g, jsonify, redirect, render_template, request,
                    send_from_directory, session, url_for)
@@ -847,7 +848,7 @@ def new():
                 raise TournamentError("Escolha um formato.")
             max_players = int(form.get("max_players") or 0)
             if max_players < 2:
-                raise TournamentError("O torneio precisa de pelo menos 2 vagas.")
+                raise TournamentError("O campeonato precisa de pelo menos 2 vagas.")
             fee = parse_cents(form.get("entry_fee") or "0")
             if fee > max_fee:
                 raise TournamentError(f"A inscrição pode ser de no máximo {format_cents(max_fee)}.")
@@ -884,7 +885,7 @@ def new():
                                         "('draft', 'registration', 'running')", (session["player_id"],)).fetchone()[0]
                 limit = setting(db, "torneios_abertos_por_jogador")
                 if open_count >= limit:
-                    raise TournamentError(f"Você já tem {open_count} torneio(s) em aberto (o limite é {limit}). "
+                    raise TournamentError(f"Você já tem {open_count} campeonato(s) em aberto (o limite é {limit}). "
                                           "Encerre ou cancele um antes de criar outro.")
             # Por último: só grava o arquivo quando o resto do formulário passou.
             upload = request.files.get("image")
@@ -906,8 +907,8 @@ def new():
                            [(tournament_id, team_id) for team_id in team_ids])
             db.commit()
             invited = _send_invites(db, store.get_tournament(db, tournament_id), _invite_ids())
-            flash("Torneio criado com inscrições abertas" + (f" e {invited} convite(s) enviado(s)" if invited else "")
-                  + ". Agora envie a ISO do jogo (com o patch do torneio) aqui em Gerenciar; dá para trocar quando "
+            flash("Campeonato criado com inscrições abertas" + (f" e {invited} convite(s) enviado(s)" if invited else "")
+                  + ". Agora envie a ISO do jogo (com o patch do campeonato) aqui em Gerenciar; dá para trocar quando "
                   "quiser.", "success")
             return redirect(url_for("tournaments.manage", slug=slug, _anchor="iso"))
     selected = {int(v) for v in form.getlist("team_ids") if v.isdigit()} if form else set()
@@ -937,7 +938,7 @@ def leave(slug):
     entry = get_db().execute("SELECT * FROM tournament_entries WHERE tournament_id = ? AND player_id = ?",
                              (tournament["id"], session["player_id"])).fetchone()
     if entry:
-        _run(lambda db, t: store.withdraw(db, t, entry), tournament, "Você saiu do torneio; a inscrição foi devolvida.")
+        _run(lambda db, t: store.withdraw(db, t, entry), tournament, "Você saiu do campeonato; a inscrição foi devolvida.")
     return redirect(url_for("tournaments.show", slug=slug, aba="geral"))
 
 
@@ -1051,7 +1052,7 @@ def edit(tournament):
                    (name, request.form.get("rules", "").strip()[:5000], starts_on, ends_on,
                     1 if request.form.get("friends_only") else 0, now(), tournament["id"]))
         db.commit()
-        flash("Torneio atualizado.", "success")
+        flash("Campeonato atualizado.", "success")
     return redirect(url_for("tournaments.manage", slug=tournament["slug"]))
 
 
@@ -1062,7 +1063,7 @@ def tournament_image(tournament):
     db = get_db()
     old = tournament["image"]
     if request.form.get("acao") == "remover":
-        new_name, message = None, "Imagem do torneio removida."
+        new_name, message = None, "Imagem do campeonato removida."
     else:
         upload = request.files.get("image")
         if not upload or not upload.filename:
@@ -1073,7 +1074,7 @@ def tournament_image(tournament):
         except images.ImageError as error:
             flash(str(error), "error")
             return redirect(url_for("tournaments.manage", slug=tournament["slug"], _anchor="imagem"))
-        message = "Imagem do torneio salva."
+        message = "Imagem do campeonato salva."
     db.execute("UPDATE tournaments SET image = ?, updated_at = ? WHERE id = ?", (new_name, now(), tournament["id"]))
     db.commit()
     images.delete("torneio", old)
@@ -1176,7 +1177,7 @@ def iso_download(slug):
 @bp.post("/<slug>/iniciar")
 @manager_required
 def start(tournament):
-    ok = _run(store.start, tournament, "Sorteio feito: o torneio começou!")
+    ok = _run(store.start, tournament, "Sorteio feito: o campeonato começou!")
     if ok:
         notify.tournament_started(get_db(), store.get_tournament(get_db(), tournament["id"]))
     return redirect(url_for("tournaments.show", slug=tournament["slug"]) if ok
@@ -1425,9 +1426,15 @@ def player_card(nome):
     target = _player_by_name(db, nome)
     if target is None:
         abort(404)
+    # Depois de "Adicionar amigo" no popup, volta para a página onde ele foi aberto.
+    referrer = urlsplit(request.referrer or "")
+    back = referrer.path + (f"?{referrer.query}" if referrer.query else "")
+    if not back.startswith("/torneios"):
+        back = url_for("tournaments.player", nome=target["username"])
     return render_template("tournaments/_player_card.html", p=target, record=stats.player_record(db, target["id"]),
                            position=stats.position(db, target["id"]), rows=stats.history(db, target["id"], limit=5),
-                           outcome=stats.outcome)
+                           outcome=stats.outcome, relation=friends.relation(db, session.get("player_id"), target["id"]),
+                           back=back)
 
 
 @bp.post("/jogadores/<int:player_id>/foto/remover")
@@ -1511,7 +1518,7 @@ def advance(tournament):
 @bp.post("/<slug>/encerrar")
 @manager_required
 def finish(tournament):
-    ok = _run(store.finish, tournament, "Torneio encerrado e prêmio distribuído!")
+    ok = _run(store.finish, tournament, "Campeonato encerrado e prêmio distribuído!")
     return redirect(url_for("tournaments.show", slug=tournament["slug"], aba="geral") if ok
                     else url_for("tournaments.manage", slug=tournament["slug"]))
 
@@ -1520,11 +1527,11 @@ def finish(tournament):
 @manager_required
 def cancel(tournament):
     if tournament["status"] == "running" and not is_admin():
-        flash("Torneio em andamento só pode ser cancelado pela administração do WE Camp.", "error")
+        flash("Campeonato em andamento só pode ser cancelado pela administração do WE Camp.", "error")
     elif request.form.get("confirmar") != "CANCELAR":
         flash('Para cancelar, digite CANCELAR no campo de confirmação.', "error")
     else:
-        _run(store.cancel, tournament, "Torneio cancelado; as inscrições foram devolvidas.")
+        _run(store.cancel, tournament, "Campeonato cancelado; as inscrições foram devolvidas.")
     return redirect(url_for("tournaments.manage", slug=tournament["slug"]))
 
 

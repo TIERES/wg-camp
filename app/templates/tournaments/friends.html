@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% from '_avatar.html' import avatar_button %}{% block title %}Amigos · WE Camp{% endblock %}{% block content %}
 {% macro action(p, acao, label, cls='', form_cls='') %}<form method="post" action="{{ url_for('tournaments.friend_action', player_id=p.id, acao=acao) }}"{% if form_cls %} class="{{ form_cls }}"{% endif %}><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="{{ cls }}">{{ label }}</button></form>{% endmacro %}
 <h1>Amigos</h1>
-<p class="muted">Seus amigos aparecem para convite quando você cria ou edita um torneio, e você pode chamá-los para um <a href="{{ url_for('tournaments.friendlies') }}">amistoso</a>.</p>
+<p class="muted">Seus amigos aparecem para convite quando você cria ou edita um campeonato, e você pode chamá-los para um <a href="{{ url_for('tournaments.friendlies') }}">amistoso</a>.</p>
 
 <form method="post" action="{{ url_for('tournaments.friend_add') }}" class="form friend-add">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -1,6 +1,6 @@
 {% extends 'base.html' %}{% from 'tournaments/_macros.html' import score %}{% block title %}Meus jogos · WE Camp{% endblock %}{% block content %}
 <h1>Meus jogos</h1>
-<p class="muted">Todos os seus jogos, dos torneios em andamento e encerrados. Clique no torneio para ver os jogos.</p>
+<p class="muted">Todos os seus jogos, dos campeonatos em andamento e encerrados. Clique no campeonato para ver os jogos.</p>
 {% set legend = {'ok': 'Resultado confirmado entre os jogadores', 'confirm': 'Resultado para você confirmar', 'none': 'Nenhum resultado informado', 'waiting': 'Você informou o resultado; aguardando o adversário', 'disputed': 'Resultado contestado'} %}
 {% macro kind_of(row) -%}
   {%- set open = row.tournament_status == 'running' -%}
@@ -10,13 +10,13 @@
 {% if groups %}
 {% set organizers = groups|map('first')|map(attribute='organizer_name')|unique|sort|list %}
 <div class="mm-filters" id="mm-filters">
-  {% if groups|length > 1 %}<input type="search" id="mt-filter" placeholder="Buscar torneio pelo nome..." autocomplete="off" aria-label="Buscar torneio">{% endif %}
+  {% if groups|length > 1 %}<input type="search" id="mt-filter" placeholder="Buscar campeonato pelo nome..." autocomplete="off" aria-label="Buscar campeonato">{% endif %}
   <select id="mm-organizer" aria-label="Criado por">
     <option value="">Criado por: todos</option>
     {% for o in organizers %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
   </select>
-  <select id="mm-tstatus" aria-label="Status do torneio">
-    <option value="">Torneio: todos os status</option>
+  <select id="mm-tstatus" aria-label="Status do campeonato">
+    <option value="">Campeonato: todos os status</option>
     <option value="running">Em andamento</option>
     <option value="finished">Encerrado</option>
   </select>
@@ -67,11 +67,11 @@
       </div>
       {% endfor %}
       <p class="muted mt-empty" hidden>Nenhum jogo com esses filtros.</p>
-      <p class="mt-link"><a href="{{ url_for('tournaments.show', slug=first.slug, aba='jogos') }}">Ver o torneio</a></p>
+      <p class="mt-link"><a href="{{ url_for('tournaments.show', slug=first.slug, aba='jogos') }}">Ver o campeonato</a></p>
     </div>
   </details>
-{% else %}<p>Você ainda não tem jogos. <a href="{{ url_for('tournaments.index') }}">Veja os torneios</a> com inscrições abertas.</p>{% endfor %}
-<p class="muted" id="mt-none" hidden>Nenhum torneio com esses filtros.</p>
+{% else %}<p>Você ainda não tem jogos. <a href="{{ url_for('tournaments.index') }}">Veja os campeonatos</a> com inscrições abertas.</p>{% endfor %}
+<p class="muted" id="mt-none" hidden>Nenhum campeonato com esses filtros.</p>
 
 <script>
 (function () {

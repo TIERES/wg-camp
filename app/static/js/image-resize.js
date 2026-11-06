@@ -1,6 +1,6 @@
 // Reduz a imagem no navegador antes do envio (app/images.py só confere tipo e tamanho).
 // <input type="file" data-resize="square:256"> recorta o centro em quadrado (foto do perfil);
-// data-resize="max:600" mantém a proporção com o lado maior em até 600 px (imagem do torneio).
+// data-resize="max:600" mantém a proporção com o lado maior em até 600 px (imagem do campeonato).
 // data-preview="<id>" mostra o resultado num <img> (e data-hide="<id>" esconde o que estava no
 // lugar, como a inicial do nome). Se algo falhar, vai o arquivo original.
 (function () {

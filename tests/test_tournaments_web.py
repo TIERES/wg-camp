@@ -49,7 +49,7 @@ class TournamentsWebTest(unittest.TestCase):
             self.assertIn(href, admin)
         self.assertNotIn(">Entrar<", admin)
         self.assertNotIn(">Cadastre-se<", admin)
-        self.assertNotIn('<a href="/torneios/">Torneios</a>', admin)
+        self.assertNotIn('<a href="/torneios/">Campeonatos</a>', admin)
         self.assertNotIn('- <a href="/admin/">Administração</a>', admin)
 
     def test_free_mode_enroll_finds_existing_team(self):
@@ -169,7 +169,7 @@ class TournamentsWebTest(unittest.TestCase):
         # Filtros por nome e organizador: trecho, sem acento nem maiúsculas.
         self.assertIn("Copa Teste", anon.get("/torneios/?nome=cópa tes").get_data(as_text=True))
         self.assertIn("Copa Teste", anon.get("/torneios/?organizador=JOG0").get_data(as_text=True))
-        self.assertIn("Nenhum torneio encontrado", anon.get("/torneios/?nome=copa&organizador=jog1").get_data(as_text=True))
+        self.assertIn("Nenhum campeonato encontrado", anon.get("/torneios/?nome=copa&organizador=jog1").get_data(as_text=True))
         self.assertIn("&#34;Copa Teste&#34;", anon.get("/torneios/").get_data(as_text=True))
 
         for pid in self.players[:4]:

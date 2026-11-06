@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'tournaments/_macros.html' import match_line, status_chip, leg_flip, stage_rounds %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% from '_avatar.html' import avatar_button %}{% block title %}Gerenciar {{ t.name }} · Torneios WE Camp{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from 'tournaments/_macros.html' import match_line, status_chip, leg_flip, stage_rounds %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% from '_avatar.html' import avatar_button %}{% block title %}Gerenciar {{ t.name }} · Campeonatos WE Camp{% endblock %}{% block content %}
 {# Formulários de resultado de uma lista de jogos (com ou sem Ida/Volta). #}
 {% macro result_forms(ms) %}{% for m in ms %}{% set shown = m if m.status == 'confirmed' else reported_score(m) %}
     <form method="post" action="{{ url_for('tournaments.result', slug=t.slug, match_id=m.id) }}" class="result-form{% if m.status == 'confirmed' %} done{% endif %}" id="jogo-{{ m.id }}">
@@ -15,7 +15,7 @@
     {% endfor %}
 {% endmacro %}
 
-<div class="page-title"><h1>Gerenciar: {{ t.name }}</h1><a href="{{ url_for('tournaments.show', slug=t.slug) }}">Ver página do torneio</a></div>
+<div class="page-title"><h1>Gerenciar: {{ t.name }}</h1><a href="{{ url_for('tournaments.show', slug=t.slug) }}">Ver página do campeonato</a></div>
 <p><span class="badge status-{{ t.status }}">{{ status_labels[t.status] }}</span> {% if is_admin and session.player_id != t.organizer_id %}<small class="muted">Você está gerenciando como administração do WE Camp.</small>{% endif %}</p>
 
 <section class="manage-actions">
@@ -29,8 +29,8 @@
     <p class="muted">Os resultados da fase atual ficam travados depois disso.</p>
   {% endif %}
   {% if can_finish %}
-    <form method="post" action="{{ url_for('tournaments.finish', slug=t.slug) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Encerrar torneio e pagar o prêmio</button></form>
-    <p class="muted">Confira os resultados antes: depois de encerrado, nada mais muda.{% if auto_finish_at %} Se não for encerrado, o torneio encerra sozinho em <strong>{{ auto_finish_at|localtime }}</strong>.{% endif %}</p>
+    <form method="post" action="{{ url_for('tournaments.finish', slug=t.slug) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Encerrar campeonato e pagar o prêmio</button></form>
+    <p class="muted">Confira os resultados antes: depois de encerrado, nada mais muda.{% if auto_finish_at %} Se não for encerrado, o campeonato encerra sozinho em <strong>{{ auto_finish_at|localtime }}</strong>.{% endif %}</p>
   {% endif %}
 </section>
 
@@ -56,7 +56,7 @@
 </section>
 {% endif %}
 
-{# Fases já encerradas (ou todas, com o torneio encerrado): só para conferir. #}
+{# Fases já encerradas (ou todas, com o campeonato encerrado): só para conferir. #}
 {% set past = stages if t.status != 'running' else stages[:-1] %}
 {% for view in past %}
 <section class="stage">
@@ -80,7 +80,7 @@
 {% if candidates is not none %}
 <section id="convidar">
   <h2>Convidar jogadores</h2>
-  <p class="muted">Seus amigos e quem já jogou torneios criados por você. Os convidados recebem um e-mail e o convite em "Meus campeonatos"; a inscrição continua sendo feita por eles.</p>
+  <p class="muted">Seus amigos e quem já jogou campeonatos criados por você. Os convidados recebem um e-mail e o convite em "Meus campeonatos"; a inscrição continua sendo feita por eles.</p>
   <form method="post" action="{{ url_for('tournaments.invite', slug=t.slug) }}" class="form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {{ invite_picker(candidates, invited, invite_labels, submit_label='Enviar convites') }}
@@ -90,7 +90,7 @@
 
 {% if t.status not in ('finished', 'cancelled') %}
 <section>
-  <h2>Dados do torneio</h2>
+  <h2>Dados do campeonato</h2>
   <form method="post" action="{{ url_for('tournaments.edit', slug=t.slug) }}" class="form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-row">
@@ -99,7 +99,7 @@
       <label>Fim provável<input type="date" name="ends_on" value="{{ t.ends_on or '' }}"></label>
     </div>
     <label>Regulamento / observações<textarea name="rules" rows="5" maxlength="5000">{{ t.rules }}</textarea></label>
-    <label class="check"><input type="checkbox" name="friends_only" {% if t.friends_only %}checked{% endif %}> <span><strong>Somente para amigos</strong> <small class="muted">— só os amigos de quem criou veem o torneio e se inscrevem (quem já está inscrito continua).</small></span></label>
+    <label class="check"><input type="checkbox" name="friends_only" {% if t.friends_only %}checked{% endif %}> <span><strong>Somente para amigos</strong> <small class="muted">— só os amigos de quem criou veem o campeonato e se inscrevem (quem já está inscrito continua).</small></span></label>
     <button>Salvar</button>
   </form>
 </section>
@@ -108,14 +108,14 @@
 
 {% if t.status != 'cancelled' %}
 <section id="imagem">
-  <h2>Imagem do torneio</h2>
+  <h2>Imagem do campeonato</h2>
   <div class="t-image-edit">
     <img id="t-image-preview" class="t-image-thumb" src="{{ image_url('torneio', t.image) or '' }}" alt="" {% if not t.image %}hidden{% endif %}>
     <div>
       <p class="muted">Logo ou arte do campeonato; aparece ao lado da capa do jogo na página e nos cards. <strong>Tamanho ideal: 480 × 600 px</strong> (em pé, proporção 4:5, igual à capa); outras proporções aparecem inteiras, com sobra nas laterais ou em cima e embaixo. PNG, JPG ou WebP (PNG/WebP com fundo transparente ficam melhor).</p>
       <form method="post" action="{{ url_for('tournaments.tournament_image', slug=t.slug) }}" enctype="multipart/form-data" class="image-upload-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="file" name="image" accept="image/png,image/jpeg,image/webp" required data-resize="max:600" data-preview="t-image-preview" aria-label="Escolher imagem do torneio">
+        <input type="file" name="image" accept="image/png,image/jpeg,image/webp" required data-resize="max:600" data-preview="t-image-preview" aria-label="Escolher imagem do campeonato">
         <div class="card-actions">
           <button>{{ 'Trocar imagem' if t.image else 'Salvar imagem' }}</button>
           {% if t.image %}<button class="secondary btn-left" name="acao" value="remover" formnovalidate>Remover imagem</button>{% endif %}
@@ -127,8 +127,8 @@
 </section>
 
 <section id="iso">
-  <h2>ISO do torneio</h2>
-  <p class="muted">A ISO do {{ t.game_name }} com o patch deste torneio. Dá para trocar a qualquer momento.</p>
+  <h2>ISO do campeonato</h2>
+  <p class="muted">A ISO do {{ t.game_name }} com o patch deste campeonato. Dá para trocar a qualquer momento.</p>
   {% if iso %}
     <p><strong>{{ iso.original_filename }}</strong> <small>({{ iso.file_size|filesize }})</small><br>
     {% if iso.local_removed_at %}No archive.org: <a href="{{ iso.archive_url }}" rel="noopener">{{ iso.archive_url }}</a>
@@ -146,7 +146,7 @@
   <form method="post" action="{{ url_for('tournaments.iso_upload', slug=t.slug) }}" class="form" enctype="multipart/form-data" data-upload="{{ iso_max_bytes }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>{{ 'Trocar a ISO' if iso else 'Enviar a ISO' }}<input type="file" name="iso" accept="{{ iso_accept }}" required></label>
-    <p class="muted">Vai para o archive.org e fica disponível para download, na página do torneio, para quem estiver logado. Até {{ iso_max_bytes|filesize }} ({{ iso_accept.replace(',', ', ') }}).</p>
+    <p class="muted">Vai para o archive.org e fica disponível para download, na página do campeonato, para quem estiver logado. Até {{ iso_max_bytes|filesize }} ({{ iso_accept.replace(',', ', ') }}).</p>
     {% include 'tournaments/_upload_progress.html' %}
     <button>Enviar ISO</button>
   </form>
@@ -157,12 +157,12 @@
 {% if t.status not in ('finished', 'cancelled') %}
 {% if t.status != 'running' or is_admin %}
 <section>
-  <h2>Cancelar torneio</h2>
+  <h2>Cancelar campeonato</h2>
   <p>Todas as inscrições são devolvidas aos jogadores. Não dá para desfazer.</p>
   <form method="post" action="{{ url_for('tournaments.cancel', slug=t.slug) }}" class="inline-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input name="confirmar" placeholder="Digite CANCELAR" autocomplete="off">
-    <button class="danger">Cancelar torneio</button>
+    <button class="danger">Cancelar campeonato</button>
   </form>
 </section>
 {% endif %}

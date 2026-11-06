@@ -27,7 +27,7 @@
         {% for f in files %}<option value="{{ f.id }}" {% if file_chosen == f.id|string %}selected{% endif %}>{{ f.championship_name }}: {{ f.display_name }} ({{ f.original_filename }})</option>{% endfor %}
       </select></label>
     </div>
-    <p class="muted">A ISO enviada aqui vai para o archive.org, como as dos torneios. Se o archive.org já tiver um arquivo com o mesmo conteúdo, ela não é enviada de novo. Tamanho máximo: {{ iso_max_bytes // 1024 // 1024 }} MB.</p>
+    <p class="muted">A ISO enviada aqui vai para o archive.org, como as dos campeonatos. Se o archive.org já tiver um arquivo com o mesmo conteúdo, ela não é enviada de novo. Tamanho máximo: {{ iso_max_bytes // 1024 // 1024 }} MB.</p>
   </fieldset>
 
   <fieldset>

@@ -186,9 +186,9 @@ CREATE TABLE IF NOT EXISTS tournaments (
     finished_at TEXT,
     -- Último jogo confirmado (aviso ao organizador; encerra sozinho 24 h depois - notify.py).
     all_played_at TEXT,
-    -- Imagem do torneio enviada pelo organizador (arquivo em TOURNAMENT_IMAGES_DIR - app/images.py).
+    -- Imagem do campeonato enviada pelo organizador (arquivo em TOURNAMENT_IMAGES_DIR - app/images.py).
     image TEXT,
-    -- Somente para amigos: só o organizador, os amigos dele e os inscritos veem o torneio; só amigos se inscrevem.
+    -- Somente para amigos: só o organizador, os amigos dele e os inscritos veem o campeonato; só amigos se inscrevem.
     friends_only INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -196,7 +196,7 @@ CREATE TABLE IF NOT EXISTS tournaments (
 
 CREATE INDEX IF NOT EXISTS tournaments_status_idx ON tournaments(status);
 
--- ISO do torneio (app/tournament/iso.py): fica em DOWNLOADS_DIR até o
+-- ISO do campeonato (app/tournament/iso.py): fica em DOWNLOADS_DIR até o
 -- archive.org confirmar a cópia (mesmo MD5); daí a local é apagada e o
 -- download redireciona para archive_url.
 CREATE TABLE IF NOT EXISTS tournament_isos (
@@ -229,7 +229,7 @@ CREATE TABLE IF NOT EXISTS tournament_entries (
     UNIQUE (tournament_id, player_id)
 );
 
--- Um time por jogador e nenhum time repetido no mesmo torneio.
+-- Um time por jogador e nenhum time repetido no mesmo campeonato.
 CREATE UNIQUE INDEX IF NOT EXISTS tournament_entries_team_idx ON tournament_entries(tournament_id, team_id)
     WHERE team_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS tournament_entries_team_name_idx
@@ -393,7 +393,7 @@ CREATE TABLE IF NOT EXISTS friendships (
 );
 CREATE INDEX IF NOT EXISTS friendships_addressee_idx ON friendships(addressee_id, status);
 
--- Convite para um torneio com inscrições abertas (a inscrição continua sendo feita na página do torneio).
+-- Convite para um campeonato com inscrições abertas (a inscrição continua sendo feita na página do campeonato).
 CREATE TABLE IF NOT EXISTS tournament_invites (
     id INTEGER PRIMARY KEY,
     tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
@@ -408,7 +408,7 @@ CREATE INDEX IF NOT EXISTS tournament_invites_player_idx ON tournament_invites(p
 -- ISOs cadastradas pela administração do WE Camp (app/tournament/iso_catalog.py),
 -- para os amistosos: nome, jogo base, imagem opcional (TOURNAMENT_IMAGES_DIR) e o
 -- arquivo - uma ISO já enviada num Campeonato (file_id) ou enviada aqui, com o
--- mesmo fluxo do archive.org das ISOs de torneio (colunas iguais às de tournament_isos).
+-- mesmo fluxo do archive.org das ISOs de campeonato (colunas iguais às de tournament_isos).
 CREATE TABLE IF NOT EXISTS catalog_isos (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
@@ -435,14 +435,14 @@ CREATE TABLE IF NOT EXISTS catalog_isos (
     updated_at TEXT NOT NULL
 );
 
--- Amistoso entre dois amigos, fora dos torneios (app/tournament/friendly.py):
+-- Amistoso entre dois amigos, fora dos campeonatos (app/tournament/friendly.py):
 -- invited -> accepted -> reported (placar proposto por um) -> confirmed (o outro aceitou).
 -- Placar recusado = suspended, até um dos dois propor um placar que o outro aceite.
 -- ranked é decidido na confirmação (proteção contra contas fake): só os que
 -- valem entram no Ranking, no V/E/D e no XP; unranked_reason diz por que não.
 CREATE TABLE IF NOT EXISTS friendly_matches (
     id INTEGER PRIMARY KEY,
-    -- ISO escolhida (opcional): a de um torneio ou uma do cadastro; o jogo vem dela.
+    -- ISO escolhida (opcional): a de um campeonato ou uma do cadastro; o jogo vem dela.
     iso_tournament_id INTEGER REFERENCES tournaments(id) ON DELETE SET NULL,
     iso_catalog_id INTEGER REFERENCES catalog_isos(id) ON DELETE SET NULL,
     game_title_id INTEGER REFERENCES game_titles(id) ON DELETE SET NULL,

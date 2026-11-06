@@ -10,11 +10,12 @@ import sqlite3
 import zipfile
 from functools import wraps
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, session, url_for
+from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from .accounts import (email_error, external_url, find_token, issue_token, password_error,
-                       purge_stale_unverified, recently_sent, revoke_api_tokens, username_error)
+                       purge_stale_unverified, recently_sent, revoke_api_tokens, username_error, USERNAME_ALLOWED,
+                       USERNAME_RE, already_registered)
 from . import images
 from .db import get_db, now
 from .mailer import MailError, send_mail
@@ -71,6 +72,25 @@ def _send_reset(db, player):
     ))
 
 
+@bp.get("/cadastro/verificar")
+def register_check():
+    """Conferência do cadastro ao sair do campo Usuário ou E-mail
+    (players/register.html): formato e se já existe conta com ele."""
+    field = request.args.get("campo")
+    value = (request.args.get("valor") or "").strip()
+    if field == "usuario":
+        error = username_error(value)
+        if not error and already_registered(get_db(), "username", value):
+            error = "Este usuário já está cadastrado. Se a conta é sua, entre ou use \"Esqueci minha senha\"."
+    elif field == "email":
+        error = email_error(value)
+        if not error and already_registered(get_db(), "email", value):
+            error = "Este e-mail já está cadastrado. Use \"Esqueci minha senha\" para recuperar o acesso."
+    else:
+        abort(404)
+    return jsonify({"ok": not error, "message": error or ""})
+
+
 @bp.route("/cadastro", methods=("GET", "POST"))
 def register():
     form = {"username": "", "email": ""}
@@ -109,7 +129,8 @@ def register():
                     f"Enviamos um link de confirmação para {email}. Abra-o em até 48 horas para "
                     "ativar sua conta. Verifique também a caixa de spam."))
         flash(error, "error")
-    return render_template("players/register.html", form=form)
+    return render_template("players/register.html", form=form, username_pattern=USERNAME_RE.pattern,
+                           username_allowed=USERNAME_ALLOWED)
 
 
 @bp.get("/confirmar/<token>")

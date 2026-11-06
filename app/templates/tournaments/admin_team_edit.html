@@ -10,7 +10,7 @@
   </div>
   <label>Escudo (PNG, JPG ou WebP, até 512 KB; de preferência quadrado com fundo transparente)<input type="file" name="logo" accept=".png,.jpg,.jpeg,.webp"></label>
   {% if team and team.logo %}<label class="check"><input type="checkbox" name="remove_logo"> Remover o escudo (usa o escudo gerado com as iniciais{% if team.flag %} ou a bandeira{% endif %})</label>{% endif %}
-  <label class="check"><input type="checkbox" name="is_active" {% if not team or team.is_active %}checked{% endif %}> Ativo (aparece para escolher nos torneios novos)</label>
+  <label class="check"><input type="checkbox" name="is_active" {% if not team or team.is_active %}checked{% endif %}> Ativo (aparece para escolher nos campeonatos novos)</label>
   <fieldset>
     <legend>Grupos</legend>
     <div class="team-grid">{% for g in groups %}<label class="check"><input type="checkbox" name="groups" value="{{ g.id }}" {% if g.id in member_of %}checked{% endif %}> {{ g.name }}</label>{% endfor %}</div>

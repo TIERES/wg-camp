@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% block title %}ISOs · Administração{% endblock %}{% block content %}
 <div class="page-title"><h1>ISOs para amistosos</h1><a class="button" href="{{ url_for('tournaments_admin.admin_iso_edit') }}">Nova ISO</a></div>
-<p><a href="{{ url_for('tournaments_admin.admin_home') }}">← Torneios: administração</a></p>
-<p class="muted">Os jogadores escolhem a ISO do amistoso entre estas e as ISOs enviadas nos torneios. O convite leva o botão de download. Quem não encontra a ISO pode enviá-la pela página de Amistosos. Ela fica aguardando a liberação aqui, e o aviso chega no e-mail da administração.</p>
+<p><a href="{{ url_for('tournaments_admin.admin_home') }}">← Campeonatos: administração</a></p>
+<p class="muted">Os jogadores escolhem a ISO do amistoso entre estas e as ISOs enviadas nos campeonatos. O convite leva o botão de download. Quem não encontra a ISO pode enviá-la pela página de Amistosos. Ela fica aguardando a liberação aqui, e o aviso chega no e-mail da administração.</p>
 
 {% macro archive_cell(row) -%}
   {% if row.file_id %}<span class="muted">do Campeonato</span>

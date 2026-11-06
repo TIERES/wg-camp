@@ -156,9 +156,9 @@ def eligibility(db, row, at=None):
            if peaks.get(pid, 0) < MIN_XP]
     if low:
         who = " e ".join(low)
-        return False, (f"{who} ainda não {'chegaram' if len(low) > 1 else 'chegou'} a {MIN_XP} XP em torneios "
+        return False, (f"{who} ainda não {'chegaram' if len(low) > 1 else 'chegou'} a {MIN_XP} XP em campeonatos "
                        f"(Rank {xp.RANKS[xp.level(MIN_XP)]}): amistoso só vale para o Ranking entre jogadores "
-                       "que já pontuaram em torneios")
+                       "que já pontuaram em campeonatos")
     since = ((at or datetime.now(timezone.utc)) - timedelta(hours=24)).replace(microsecond=0).isoformat()
     count = db.execute(
         "SELECT COUNT(*) FROM friendly_matches WHERE status = 'confirmed' AND ranked = 1 AND confirmed_at > ? "

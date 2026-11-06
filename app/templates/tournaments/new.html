@@ -1,21 +1,21 @@
-{% extends 'base.html' %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% block title %}Criar torneio · WE Camp{% endblock %}{% block content %}
-<h1>Criar torneio</h1>
-{% if not games %}<p class="notice error">Nenhum jogo cadastrado para torneios ainda. Peça à administração do WE Camp.</p>{% else %}
+{% extends 'base.html' %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% block title %}Criar campeonato · WE Camp{% endblock %}{% block content %}
+<h1>Criar campeonato</h1>
+{% if not games %}<p class="notice error">Nenhum jogo cadastrado para campeonatos ainda. Peça à administração do WE Camp.</p>{% else %}
 <form method="post" class="form t-form" id="new-tournament" enctype="multipart/form-data">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <p class="muted">Os campos com <span class="req">*</span> são obrigatórios.</p>
   <div class="form-row">
-    <label class="wide"><span>Nome do torneio <span class="req">*</span></span><input name="name" maxlength="80" minlength="3" required value="{{ form.get('name', '') }}" placeholder="Copa WE Camp de Inverno"></label>
+    <label class="wide"><span>Nome do campeonato <span class="req">*</span></span><input name="name" maxlength="80" minlength="3" required value="{{ form.get('name', '') }}" placeholder="Copa WE Camp de Inverno"></label>
     <label><span>Início provável <span class="req">*</span></span><input type="date" name="starts_on" required value="{{ form.get('starts_on', '') }}"></label>
     <label>Fim provável<input type="date" name="ends_on" value="{{ form.get('ends_on', '') }}"></label>
   </div>
   <fieldset>
-    <legend>Imagem do torneio <small class="muted">(opcional)</small></legend>
+    <legend>Imagem do campeonato <small class="muted">(opcional)</small></legend>
     <div class="t-image-edit">
       <img id="t-image-preview" class="t-image-thumb" alt="" hidden>
       <div>
         <p class="muted">Logo ou arte do campeonato; aparece ao lado da capa do jogo. <strong>Tamanho ideal: 480 × 600 px</strong> (em pé, proporção 4:5, igual à capa); outras proporções aparecem inteiras, com sobra nas laterais ou em cima e embaixo. PNG, JPG ou WebP (PNG/WebP com fundo transparente ficam melhor). Dá para trocar depois, em Gerenciar.</p>
-        <input type="file" name="image" accept="image/png,image/jpeg,image/webp" data-resize="max:600" data-preview="t-image-preview" aria-label="Escolher imagem do torneio">
+        <input type="file" name="image" accept="image/png,image/jpeg,image/webp" data-resize="max:600" data-preview="t-image-preview" aria-label="Escolher imagem do campeonato">
       </div>
     </div>
   </fieldset>
@@ -27,7 +27,7 @@
         <img src="{{ game_cover(g.code) }}" alt="" width="200" height="250"><span>{{ g.name }}{% if g.year %} <small class="muted">({{ g.year }})</small>{% endif %}</span></label>
     {% endfor %}
     </div>
-    <p class="muted">A ISO com o patch do torneio é enviada depois de criar, em Gerenciar.</p>
+    <p class="muted">A ISO com o patch do campeonato é enviada depois de criar, em Gerenciar.</p>
   </fieldset>
   <div class="form-row">
     <label class="wide">Formato
@@ -87,7 +87,7 @@
       <label>Final<select name="final_legs"><option value="1">Jogo único</option><option value="2">Ida e volta</option></select></label>
     </div>
     <label class="check"><input type="checkbox" name="third_place"> Disputa de 3º lugar (entre os eliminados nas semifinais)</label>
-    <p class="muted">Sem a disputa, o 3º lugar é o semifinalista eliminado com a melhor campanha no torneio. Empate no agregado vai para os pênaltis do último jogo.</p>
+    <p class="muted">Sem a disputa, o 3º lugar é o semifinalista eliminado com a melhor campanha no campeonato. Empate no agregado vai para os pênaltis do último jogo.</p>
   </fieldset>
   </div>
 
@@ -124,7 +124,7 @@
   </fieldset>
 
   <label><span>Regulamento / observações <span class="req">*</span></span><textarea name="rules" rows="5" maxlength="5000" required placeholder="Horários, regras do jogo, times permitidos...">{{ form.get('rules', '') }}</textarea></label>
-  <label class="check"><input type="checkbox" name="friends_only" id="friends-only" {% if form.get('friends_only') %}checked{% endif %}> <span><strong>Somente para amigos</strong> <small class="muted">— o torneio deixa de ser público: só os seus amigos veem, se inscrevem e podem ser convidados.</small></span></label>
+  <label class="check"><input type="checkbox" name="friends_only" id="friends-only" {% if form.get('friends_only') %}checked{% endif %}> <span><strong>Somente para amigos</strong> <small class="muted">— o campeonato deixa de ser público: só os seus amigos veem, se inscrevem e podem ser convidados.</small></span></label>
   <fieldset id="convidar">
     <legend>Convidar jogadores <small class="muted">(opcional)</small></legend>
     <p class="muted">Os marcados recebem um e-mail com o convite e o aviso em "Meus campeonatos". Dá para convidar mais depois, em Gerenciar.</p>
@@ -146,7 +146,7 @@
     sync();
   })();
   </script>
-  <div class="card-actions"><button id="create-button">Criar torneio</button><span class="muted" id="create-hint" hidden>Preencha os campos obrigatórios para criar o torneio.</span></div>
+  <div class="card-actions"><button id="create-button">Criar campeonato</button><span class="muted" id="create-hint" hidden>Preencha os campos obrigatórios para criar o campeonato.</span></div>
 </form>
 <script>
 (function () {
@@ -311,7 +311,7 @@
         form.dispatchEvent(new Event('change'));
         looseMsg.textContent = team.existing ? '"' + team.name + '" já estava na lista e foi marcado.'
           : '"' + team.name + '" foi criado em "Times avulsos" (com escudo genérico) e marcado. Ele fica disponível '
-            + 'para os próximos torneios; a administração do WE Camp pode corrigir o nome e enviar o escudo.';
+            + 'para os próximos campeonatos; a administração do WE Camp pode corrigir o nome e enviar o escudo.';
       })
       .catch(function () { looseMsg.hidden = false; looseMsg.textContent = 'Não foi possível adicionar o time. Tente de novo.'; })
       .then(function () { looseAdd.disabled = false; });
@@ -320,7 +320,7 @@
   // Enter na busca: cria o avulso quando o botão está à mostra (e nunca envia o formulário).
   filter.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); addLoose(); } });
 
-  // Prêmio só com inscrição; "Criar torneio" só com os obrigatórios preenchidos.
+  // Prêmio só com inscrição; "Criar campeonato" só com os obrigatórios preenchidos.
   var fee = form.elements.entry_fee, prize = document.getElementById('prize-split');
   var button = document.getElementById('create-button'), hint = document.getElementById('create-hint');
   function filled(name, min) { return form.elements[name].value.trim().length >= (min || 1); }

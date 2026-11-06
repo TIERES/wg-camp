@@ -1,5 +1,5 @@
-{% extends 'base.html' %}{% block title %}Torneios · WE Camp{% endblock %}{% block content %}
-{% block heading %}<div class="page-title"><h1>Torneios</h1><div class="card-actions"><a class="button secondary" href="{{ url_for('tournaments.ranking') }}">Ranking</a>{% if session.player_id %}<a class="button" href="{{ url_for('tournaments.new') }}">Criar torneio</a>{% else %}<a class="button" href="{{ url_for('players.login', next=url_for('tournaments.new')) }}">Entre para criar um torneio</a>{% endif %}</div></div>{% endblock %}
+{% extends 'base.html' %}{% block title %}Campeonatos · WE Camp{% endblock %}{% block content %}
+{% block heading %}<div class="page-title"><h1>Campeonatos</h1><div class="card-actions"><a class="button secondary" href="{{ url_for('tournaments.ranking') }}">Ranking</a>{% if session.player_id %}<a class="button" href="{{ url_for('tournaments.new') }}">Criar campeonato</a>{% else %}<a class="button" href="{{ url_for('players.login', next=url_for('tournaments.new')) }}">Entre para criar um campeonato</a>{% endif %}</div></div>{% endblock %}
 
 <form method="get" class="filters t-filters" id="t-filters">
   <select name="status" aria-label="Status">
@@ -9,7 +9,7 @@
     {% else %}<option value="">Todos os status</option>{% endif %}
     {% for key, label in status_labels.items() if key != 'draft' %}<option value="{{ key }}" {% if key == status %}selected{% endif %}>{{ label }}</option>{% endfor %}
   </select>
-  {% for field, label, value, options in (('nome', 'Nome do torneio', name, name_options), ('organizador', 'Criado por', organizer, organizer_options)) %}
+  {% for field, label, value, options in (('nome', 'Nome do campeonato', name, name_options), ('organizador', 'Criado por', organizer, organizer_options)) %}
   <div class="ac">
     <input type="search" name="{{ field }}" id="f-{{ field }}" placeholder="{{ label }}" value="{{ value }}" aria-label="{{ label }}"
            role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="f-{{ field }}-list" autocomplete="off"
@@ -61,8 +61,8 @@
   </div>
   {% endfor %}
 </div>
-{% elif name or organizer or status or game %}<p>Nenhum torneio encontrado com esses filtros.</p>
-{% else %}{% block empty %}<p>Nenhum torneio por aqui ainda.{% if session.player_id %} Que tal <a href="{{ url_for('tournaments.new') }}">criar o primeiro</a>?{% endif %}</p>{% endblock %}{% endif %}
+{% elif name or organizer or status or game %}<p>Nenhum campeonato encontrado com esses filtros.</p>
+{% else %}{% block empty %}<p>Nenhum campeonato por aqui ainda.{% if session.player_id %} Que tal <a href="{{ url_for('tournaments.new') }}">criar o primeiro</a>?{% endif %}</p>{% endblock %}{% endif %}
 </div>
 <script>
 (function () {

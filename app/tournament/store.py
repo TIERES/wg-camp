@@ -72,7 +72,7 @@ def _entry_team(db, tournament, team_name, team_id):
                            (tournament["id"],)).fetchall()
         if any((team is not None and row["team_id"] == team["id"]) or plain_name(row["team_name"]) == plain_name(name)
                for row in taken):
-            raise TournamentError(f"Já existe um time chamado {name} neste torneio. Escolha outro nome.")
+            raise TournamentError(f"Já existe um time chamado {name} neste campeonato. Escolha outro nome.")
         return (team["id"] if team is not None else None), name
     team = next((t for t in available_teams(db, tournament["id"]) if t["id"] == team_id), None)
     if team is None:
@@ -87,17 +87,17 @@ def are_friends(db, a, b):
 
 def enroll(db, tournament, player_id, team_name="", team_id=None):
     if tournament["status"] != "registration":
-        raise TournamentError("As inscrições deste torneio não estão abertas.")
+        raise TournamentError("As inscrições deste campeonato não estão abertas.")
     if (tournament["friends_only"] and player_id != tournament["organizer_id"]
             and not are_friends(db, player_id, tournament["organizer_id"])):
-        raise TournamentError("Este torneio é somente para amigos de quem o criou.")
+        raise TournamentError("Este campeonato é somente para amigos de quem o criou.")
     count = db.execute("SELECT COUNT(*) FROM tournament_entries WHERE tournament_id = ?",
                        (tournament["id"],)).fetchone()[0]
     if count >= tournament["max_players"]:
-        raise TournamentError("Não há mais vagas neste torneio.")
+        raise TournamentError("Não há mais vagas neste campeonato.")
     if db.execute("SELECT 1 FROM tournament_entries WHERE tournament_id = ? AND player_id = ?",
                   (tournament["id"], player_id)).fetchone():
-        raise TournamentError("Você já está inscrito neste torneio.")
+        raise TournamentError("Você já está inscrito neste campeonato.")
     team_id, team_name = _entry_team(db, tournament, team_name, team_id)
     ensure_wallet(db, player_id)
     fee_ref = None
@@ -119,14 +119,14 @@ def withdraw(db, tournament, entry):
     """Sai do torneio (ou é removido pelo organizador) antes do início, com
     a inscrição devolvida."""
     if tournament["status"] not in ("draft", "registration"):
-        raise TournamentError("O torneio já começou: não dá mais para sair.")
+        raise TournamentError("O campeonato já começou: não dá mais para sair.")
     _refund(db, tournament, entry)
     db.execute("DELETE FROM tournament_entries WHERE id = ?", (entry["id"],))
 
 
 def cancel(db, tournament):
     if tournament["status"] in ("finished", "cancelled"):
-        raise TournamentError("Este torneio já foi encerrado.")
+        raise TournamentError("Este campeonato já foi encerrado.")
     for entry in entries_of(db, tournament["id"]):
         _refund(db, tournament, entry)
     db.execute("UPDATE tournaments SET status = 'cancelled', finished_at = ?, updated_at = ? WHERE id = ?",
@@ -225,7 +225,7 @@ def _knockout_stage(db, tournament, seq, pairs, legs, final_legs, third_place, f
 
 def start(db, tournament, rng=random):
     if tournament["status"] != "registration":
-        raise TournamentError("Abra as inscrições antes de iniciar o torneio.")
+        raise TournamentError("Abra as inscrições antes de iniciar o campeonato.")
     entries = [row["id"] for row in entries_of(db, tournament["id"])]
     config = settings_of(tournament)
     error = formats.config_error(tournament["format"], config, len(entries))
@@ -385,7 +385,7 @@ def record_result(db, tournament, match_id, home_goals, away_goals, home_pens=No
     if match is None or match["tournament_id"] != tournament["id"]:
         raise TournamentError("Jogo não encontrado.")
     if tournament["status"] != "running":
-        raise TournamentError("O torneio não está em andamento.")
+        raise TournamentError("O campeonato não está em andamento.")
     if match["stage_status"] != "running":
         raise TournamentError("Esta fase já foi encerrada: os resultados dela não podem mais mudar.")
     for value in (home_goals, away_goals):
@@ -535,7 +535,7 @@ def final_ranking(db, tournament):
 def finish(db, tournament):
     """Encerra o torneio e paga o prêmio (as inscrições) aos 3 primeiros."""
     if tournament["status"] != "running":
-        raise TournamentError("O torneio não está em andamento.")
+        raise TournamentError("O campeonato não está em andamento.")
     stage = stages_of(db, tournament["id"])[-1]
     if has_next_stage(tournament, stage):
         raise TournamentError("Gere a próxima fase antes de encerrar.")

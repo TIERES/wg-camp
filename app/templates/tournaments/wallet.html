@@ -3,7 +3,7 @@
   <h1>Carteira W$</h1>
   <p class="wallet-balance">{{ player.wallet_cents|wcash }}</p>
   {% if player.wallet_cents <= 0 %}<p class="notice">Seu saldo W$ acabou. A Administração do WE Camp já foi avisada e estará creditando um novo valor na sua carteira.</p>{% endif %}
-  <p class="muted">W$ é o dinheiro dos torneios do WE Camp: paga inscrições e vira prêmio para os 3 primeiros. Cada jogo também rende W$: vitória {{ values.torneios_vitoria|wcash }}, empate {{ values.torneios_empate|wcash }}, derrota {% if values.torneios_derrota < 0 %}desconta {{ (-values.torneios_derrota)|wcash }} (só até zerar o saldo){% else %}{{ values.torneios_derrota|wcash }}{% endif %}. W$ não pode ser trocado por dinheiro de verdade.</p>
+  <p class="muted">W$ é o dinheiro dos campeonatos do WE Camp: paga inscrições e vira prêmio para os 3 primeiros. Cada jogo também rende W$: vitória {{ values.torneios_vitoria|wcash }}, empate {{ values.torneios_empate|wcash }}, derrota {% if values.torneios_derrota < 0 %}desconta {{ (-values.torneios_derrota)|wcash }} (só até zerar o saldo){% else %}{{ values.torneios_derrota|wcash }}{% endif %}. W$ não pode ser trocado por dinheiro de verdade.</p>
 </section>
 <section>
   <h2>Extrato</h2>

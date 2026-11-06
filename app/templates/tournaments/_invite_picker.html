@@ -1,16 +1,16 @@
-{# Lista de jogadores para convidar (amigos + quem jogou torneios do organizador).
+{# Lista de jogadores para convidar (amigos + quem jogou campeonatos do organizador).
    invited: player_id -> 'pending'/'declined'/'enrolled'. Convidados (laranja) e inscritos (verde) aparecem
    marcados e travados, sem name (não vão no formulário); quem recusou pode ser convidado de novo.
    Com submit_label, o rodapé traz Limpar + o botão de envio (data-invite-submit), que só habilita
-   com alguém novo marcado; sem ele (Criar torneio), só o Limpar. #}
+   com alguém novo marcado; sem ele (Criar campeonato), só o Limpar. #}
 {% macro invite_picker(candidates, invited={}, labels={}, selected=(), submit_label=None) %}
 <div class="invite-picker">
   {% if candidates.players %}
   <div class="invite-tools">
     <input type="search" data-invite-filter placeholder="Buscar jogador..." autocomplete="off" aria-label="Buscar jogador">
     {% if candidates.tournaments %}
-    <select data-invite-tournament aria-label="Jogadores de um torneio seu">
-      <option value="">Jogadores de um torneio seu…</option>
+    <select data-invite-tournament aria-label="Jogadores de um campeonato seu">
+      <option value="">Jogadores de um campeonato seu…</option>
       {% for t in candidates.tournaments %}<option value="{{ t.player_ids|join(',') }}">{{ t.name }} ({{ t.player_ids|length }})</option>{% endfor %}
     </select>
     {% endif %}
@@ -31,7 +31,7 @@
     {% if submit_label %}<button data-invite-submit>{{ submit_label }}</button>{% endif %}
   </div>
   {% else %}
-  <p class="muted">Ninguém para convidar ainda: aqui aparecem seus amigos e quem já jogou torneios criados por você. <a href="{{ url_for('tournaments.friends_page') }}">Adicione amigos</a>.</p>
+  <p class="muted">Ninguém para convidar ainda: aqui aparecem seus amigos e quem já jogou campeonatos criados por você. <a href="{{ url_for('tournaments.friends_page') }}">Adicione amigos</a>.</p>
   {% endif %}
 </div>
 <script src="{{ url_for('static', filename='js/invite-picker.js') }}" defer></script>

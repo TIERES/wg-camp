@@ -31,7 +31,7 @@ SETTING_LABELS = {
     "torneios_vitoria": "Prêmio por vitória",
     "torneios_empate": "Prêmio por empate",
     "torneios_derrota": "Débito por derrota",
-    "torneios_abertos_por_jogador": "Torneios em aberto por criador (quantidade, não W$)",
+    "torneios_abertos_por_jogador": "Campeonatos em aberto por criador (quantidade, não W$)",
     "torneios_confirmacao_horas": "Horas para o adversário responder a um placar reportado (depois, confirma sozinho)",
 }
 MONEY_SETTINGS = ("torneios_bonus_inicial", "torneios_inscricao_max", "torneios_vitoria",
@@ -43,7 +43,7 @@ KINDS = {
     "bonus_inicial": "Saldo inicial",
     "inscricao": "Inscrição",
     "reembolso": "Reembolso de inscrição",
-    "premio": "Prêmio do torneio",
+    "premio": "Prêmio do campeonato",
     "vitoria": "Vitória",
     "empate": "Empate",
     "derrota": "Derrota",
