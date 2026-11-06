@@ -1,14 +1,17 @@
 """Estatísticas dos jogadores: vitórias/empates/derrotas, ranking, histórico
 de partidas e comparação entre dois jogadores.
 
-Tudo sai dos jogos confirmados (tournament_matches.status = 'confirmed'),
-que é onde o placar fica gravado - assim o V/E/D acompanha sozinho qualquer
+Tudo sai dos jogos confirmados (tournament_matches.status = 'confirmed',
+mais os amistosos confirmados que valem - friendly.py), que é onde o placar fica gravado - assim o V/E/D acompanha sozinho qualquer
 correção ou placar apagado pelo organizador. Torneios cancelados não contam.
 Como no W$ (store._pay_match), vale o placar do jogo: decisão por pênaltis
 conta como empate.
 """
 
-# Uma linha por jogador por jogo confirmado, do ponto de vista dele.
+# Uma linha por jogador por jogo confirmado, do ponto de vista dele: jogos de
+# torneio (kind 't') e amistosos que valem para o ranking (kind 'a' -
+# friendly.py). match_key identifica a partida nos dois (o id do jogo de
+# torneio; 'a<id>' no amistoso) - é a chave do XP (xp.py) e dos popups.
 _SIDES = """
 WITH sides AS (
     SELECT m.id AS match_id, s.tournament_id, s.name AS stage_name, m.round, m.leg, m.tie_id,
@@ -31,9 +34,17 @@ WITH sides AS (
     JOIN tournament_entries op ON op.id = m.home_entry_id
     WHERE m.status = 'confirmed'
 ), results AS (
-    SELECT sides.*, t.slug, t.name AS tournament_name, t.game_title_id
+    SELECT sides.*, 't' AS kind, sides.match_id AS match_key, t.slug, t.name AS tournament_name, t.game_title_id
     FROM sides JOIN tournaments t ON t.id = sides.tournament_id
     WHERE t.status != 'cancelled'
+    UNION ALL
+    SELECT f.id, NULL, 'Amistoso', NULL, NULL, NULL, f.confirmed_at, f.home_id, f.away_id, NULL, NULL,
+           f.home_goals, f.away_goals, NULL, NULL, 1, 'a', 'a' || f.id, NULL, 'Amistoso', f.game_title_id
+    FROM friendly_matches f WHERE f.status = 'confirmed' AND f.ranked = 1
+    UNION ALL
+    SELECT f.id, NULL, 'Amistoso', NULL, NULL, NULL, f.confirmed_at, f.away_id, f.home_id, NULL, NULL,
+           f.away_goals, f.home_goals, NULL, NULL, 0, 'a', 'a' || f.id, NULL, 'Amistoso', f.game_title_id
+    FROM friendly_matches f WHERE f.status = 'confirmed' AND f.ranked = 1
 )
 """
 

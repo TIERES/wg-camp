@@ -67,7 +67,7 @@
 {% if tab == 'geral' %}
   {% if podium %}
   <section class="podium">
-    {% for e in podium %}<div class="podium-{{ e.final_position }}"><span>{{ e.final_position }}º</span><strong>{{ names[e.id] }}</strong>{% if prizes and loop.index0 < prizes|length and prizes[loop.index0] %}<small>{{ prizes[loop.index0]|wcash }}</small>{% endif %}</div>{% endfor %}
+    {% for e in podium %}<div class="podium-{{ e.final_position }}"><span class="podium-photo">{{ avatar_button(e.player_id, e.username, 'lg' if e.final_position == 1 else 'md') }}</span><span class="podium-place">{{ e.final_position }}º</span><strong>{{ names[e.id] }}</strong>{% if prizes and loop.index0 < prizes|length and prizes[loop.index0] %}<small>{{ prizes[loop.index0]|wcash }}</small>{% endif %}</div>{% endfor %}
   </section>
   {% endif %}
   <section class="t-info">

@@ -4,7 +4,8 @@ lista o arquivo com o mesmo MD5, a cópia local é apagada e o download (só
 para quem está logado) passa a redirecionar para lá.
 
 Vai para o mesmo item das ISOs dos campeonatos (app/admin.py), numa pasta
-por torneio. Se o item já tem um arquivo com o mesmo MD5 (a ISO de um
+por torneio. As ISOs do cadastro da administração (catalog_isos -
+iso_catalog.py) usam o mesmo envio: as funções recebem a tabela. Se o item já tem um arquivo com o mesmo MD5 (a ISO de um
 campeonato ou de outro torneio), nada é enviado: o torneio aponta para ele.
 """
 import threading
@@ -22,6 +23,8 @@ EXTENSIONS = {"iso", "bin", "chd", "zip", "7z", "rar"}
 # Um envio parado em 'uploading' há mais que isso (servidor reiniciado no
 # meio) não impede mais um novo envio.
 STALE = timedelta(hours=3)
+# Tabela com a ISO -> coluna que identifica a linha.
+TABLES = {"tournament_isos": "tournament_id", "catalog_isos": "id"}
 
 
 def get(db, tournament_id):
@@ -47,6 +50,23 @@ def downloadable(row, app):
     """Já dá para baixar: está no archive.org (ou foi enviada e está sendo
     confirmada) ou, em teste local sem proxy, direto deste servidor."""
     return bool(row and (row["archive_url"] or (not row["local_removed_at"] and app.config["SERVE_DOWNLOADS_LOCALLY"])))
+
+
+def status(row, app):
+    """Situação do envio para o archive.org, para a barra de progresso
+    (static/js/archive-progress.js): state = sending | verifying | done |
+    error | local (só neste servidor, sem envio em andamento) | none."""
+    if row is None or not row["stored_name"]:
+        return {"state": "none"}
+    if row["local_removed_at"] or row["archive_status"] == "done":
+        return {"state": "done", "progress": 100, "url": row["archive_url"]}
+    if uploading(row):
+        return {"state": "sending", "progress": row["archive_progress"] or 0}
+    if row["archive_status"] == "verifying":
+        return {"state": "verifying", "progress": 100}
+    if row["archive_status"] == "error":
+        return {"state": "error", "error": row["archive_error"] or "Falha ao enviar para o archive.org."}
+    return {"state": "local", "configured": archive_configured(app)}
 
 
 def uploading(row):
@@ -81,27 +101,31 @@ def archive_configured(app):
     return bool(app.config.get("IA_ACCESS_KEY") and app.config.get("IA_SECRET_KEY"))
 
 
-def start_archive(app, tournament_id):
+def _row(db, table, key):
+    return db.execute(f"SELECT * FROM {table} WHERE {TABLES[table]} = ?", (key,)).fetchone()
+
+
+def start_archive(app, key, table="tournament_isos"):
     """Manda a ISO para o archive.org em segundo plano (na hora, em testes).
     Sem as chaves (ambiente local), a ISO fica só neste servidor."""
-    row = get(get_db(), tournament_id)
-    if row is None or row["local_removed_at"] or not archive_configured(app):
+    row = _row(get_db(), table, key)
+    if row is None or not row["stored_name"] or row["local_removed_at"] or not archive_configured(app):
         return
-    _set(get_db(), row, archive_status="uploading", archive_error=None)
+    _set(get_db(), row, table, archive_status="uploading", archive_error=None, archive_progress=0)
     get_db().commit()
     if app.config.get("TESTING"):
-        _archive(app, tournament_id, row["stored_name"])
+        _archive(app, key, row["stored_name"], table)
     else:
-        threading.Thread(target=_archive, args=(app, tournament_id, row["stored_name"]), daemon=True).start()
+        threading.Thread(target=_archive, args=(app, key, row["stored_name"], table), daemon=True).start()
 
 
-def _set(db, row, **values):
+def _set(db, row, table="tournament_isos", **values):
     """Atualiza a linha só se ela ainda é a desta ISO (o organizador pode ter
     enviado outra no meio do caminho)."""
     values["archive_updated_at"] = values["updated_at"] = now()
     columns = ", ".join(f"{key} = ?" for key in values)
-    db.execute(f"UPDATE tournament_isos SET {columns} WHERE tournament_id = ? AND stored_name = ?",
-               (*values.values(), row["tournament_id"], row["stored_name"]))
+    db.execute(f"UPDATE {table} SET {columns} WHERE {TABLES[table]} = ? AND stored_name = ?",
+               (*values.values(), row[TABLES[table]], row["stored_name"]))
 
 
 def _wait_for_md5(app, remote_name, md5):
@@ -121,11 +145,11 @@ def _wait_for_md5(app, remote_name, md5):
         time.sleep(interval)
 
 
-def _archive(app, tournament_id, stored_name):
+def _archive(app, key, stored_name, table="tournament_isos"):
     with app.app_context():
         db = get_db()
-        row = db.execute("SELECT * FROM tournament_isos WHERE tournament_id = ? AND stored_name = ?",
-                         (tournament_id, stored_name)).fetchone()
+        row = db.execute(f"SELECT * FROM {table} WHERE {TABLES[table]} = ? AND stored_name = ?",
+                         (key, stored_name)).fetchone()
         if row is None:
             return
         try:
@@ -133,22 +157,28 @@ def _archive(app, tournament_id, stored_name):
             remote_name = next((name for name, info in existing.items() if info["md5"] == row["md5"]), None)
             if remote_name is None:
                 remote_name = row["archive_name"]
+
+                def progress(sent, total):
+                    _set(db, row, table, archive_progress=min(100, 100 * sent // max(total, 1)))
+                    db.commit()
+
                 upload_file(ARCHIVE_ITEM, Path(app.config["DOWNLOADS_DIR"]) / stored_name, remote_name=remote_name,
-                            access_key=app.config["IA_ACCESS_KEY"], secret_key=app.config["IA_SECRET_KEY"])
-                _set(db, row, archive_status="verifying", archive_name=remote_name,
+                            access_key=app.config["IA_ACCESS_KEY"], secret_key=app.config["IA_SECRET_KEY"],
+                            progress=progress)
+                _set(db, row, table, archive_status="verifying", archive_name=remote_name,
                      archive_url=download_url(ARCHIVE_ITEM, remote_name))
                 db.commit()
                 if not _wait_for_md5(app, remote_name, row["md5"]):
-                    _set(db, row, archive_status="error",
+                    _set(db, row, table, archive_status="error",
                          archive_error="Enviada, mas o archive.org ainda não lista o arquivo com o mesmo MD5. A cópia "
                                        "deste servidor foi mantida; tente enviar para o archive.org de novo mais tarde.")
                     db.commit()
                     return
         except (ArchiveOrgError, OSError) as error:
-            _set(db, row, archive_status="error", archive_error=str(error))
+            _set(db, row, table, archive_status="error", archive_error=str(error))
             db.commit()
             return
-        _set(db, row, archive_status="done", archive_name=remote_name, archive_url=download_url(ARCHIVE_ITEM, remote_name),
+        _set(db, row, table, archive_status="done", archive_name=remote_name, archive_url=download_url(ARCHIVE_ITEM, remote_name),
              archive_error=None, local_removed_at=now())
         db.commit()
         try:

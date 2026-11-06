@@ -1,6 +1,7 @@
 """Rank por experiência (XP), estilo Fightcade: de F (todos começam aqui) a A.
 
-O XP sai das partidas confirmadas, refeitas em ordem cronológica (como em
+O XP sai das partidas confirmadas (torneios e amistosos que valem -
+friendly.py), refeitas em ordem cronológica (como em
 stats.py, não há tabela: correção de placar, placar apagado ou torneio
 cancelado recalculam tudo sozinhos). O rank de cada jogador é o do XP que ele
 tinha antes de cada partida.
@@ -27,15 +28,23 @@ BASE = 20
 STEP = 5
 MIN_POINTS = 5
 
+# Jogos de torneio (id = id do jogo) e amistosos que valem (id = 'a<id>',
+# como o match_key de stats.py), na ordem em que foram confirmados.
 _MATCHES = """
-SELECT m.id, he.player_id AS home, ae.player_id AS away, m.home_goals, m.away_goals
-FROM tournament_matches m
-JOIN tournament_stages s ON s.id = m.stage_id
-JOIN tournaments t ON t.id = s.tournament_id
-JOIN tournament_entries he ON he.id = m.home_entry_id
-JOIN tournament_entries ae ON ae.id = m.away_entry_id
-WHERE m.status = 'confirmed' AND t.status != 'cancelled'
-ORDER BY COALESCE(m.confirmed_at, m.updated_at), m.id
+SELECT id, home, away, home_goals, away_goals FROM (
+    SELECT m.id, he.player_id AS home, ae.player_id AS away, m.home_goals, m.away_goals,
+           COALESCE(m.confirmed_at, m.updated_at) AS at, 0 AS kind, m.id AS seq
+    FROM tournament_matches m
+    JOIN tournament_stages s ON s.id = m.stage_id
+    JOIN tournaments t ON t.id = s.tournament_id
+    JOIN tournament_entries he ON he.id = m.home_entry_id
+    JOIN tournament_entries ae ON ae.id = m.away_entry_id
+    WHERE m.status = 'confirmed' AND t.status != 'cancelled'
+    UNION ALL
+    SELECT 'a' || f.id, f.home_id, f.away_id, f.home_goals, f.away_goals, f.confirmed_at, 1, f.id
+    FROM friendly_matches f WHERE f.status = 'confirmed' AND f.ranked = 1
+)
+ORDER BY at, kind, seq
 """
 
 
@@ -58,9 +67,19 @@ def compute(db):
     return replay(db.execute(_MATCHES))
 
 
-def replay(matches, xp=None):
+def tournament_peaks(db):
+    """{player_id: maior XP que o jogador já teve contando só os jogos de torneio}
+    - libera os amistosos valendo (friendly.py): quem chegou lá uma vez continua
+    liberado, mesmo perdendo XP depois."""
+    peaks = {}
+    replay([m for m in db.execute(_MATCHES) if not str(m["id"]).startswith("a")], peaks=peaks)
+    return peaks
+
+
+def replay(matches, xp=None, peaks=None):
     """Aplica as partidas (id, home, away, home_goals, away_goals), em ordem, ao XP
-    de cada jogador (`xp`, começando do zero se não vier)."""
+    de cada jogador (`xp`, começando do zero se não vier). Com `peaks`, guarda
+    nele o maior XP de cada jogador ao longo das partidas."""
     xp, deltas = dict(xp or {}), {}
     for m in matches:
         home, away = m["home"], m["away"]
@@ -84,6 +103,9 @@ def replay(matches, xp=None):
                 d_home, d_away = -min(gain, a), gain
         xp[home], xp[away] = a + d_home, b + d_away
         deltas[m["id"]] = {home: d_home, away: d_away}
+        if peaks is not None:
+            for player in (home, away):
+                peaks[player] = max(peaks.get(player, 0), xp[player])
     return xp, deltas
 
 

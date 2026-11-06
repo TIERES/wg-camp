@@ -61,15 +61,15 @@
   {% if card.matches %}
   <div class="recent recent-lg">
     {% for r in card.matches|reverse %}{% set o = outcome(r) %}
-    <button type="button" class="f-btn f-{{ o }}" data-dialog="jogo-{{ r.match_id }}" title="{{ r.goals_for }} x {{ r.goals_against }} · {{ r.tournament_name }}" aria-haspopup="dialog">{{ o }}</button>
+    <button type="button" class="f-btn f-{{ o }}" data-dialog="jogo-{{ r.match_key }}" title="{{ r.goals_for }} x {{ r.goals_against }} · {{ r.tournament_name }}" aria-haspopup="dialog">{{ o }}</button>
     {% endfor %}
   </div>
   <p class="muted">Do mais antigo ao mais recente. Clique para ver o jogo.</p>
-  {% for r in card.matches %}{% set m = games_by_id.get(r.match_id) %}
-  <dialog class="match-dialog" id="jogo-{{ r.match_id }}" aria-label="Jogo de {{ r.tournament_name }}">
+  {% for r in card.matches %}{% set m = games_by_id.get(r.match_id) if r.kind == 't' %}
+  <dialog class="match-dialog" id="jogo-{{ r.match_key }}" aria-label="Jogo de {{ r.tournament_name }}">
     {% if m %}{{ match_line(m, names, r.slug) }}{% endif %}
     <dl>
-      <dt>Campeonato</dt><dd><a href="{{ url_for('tournaments.show', slug=r.slug) }}">{{ r.tournament_name }}</a> <small class="muted">· {{ r.stage_name }}</small></dd>
+      {% if r.kind == 'a' %}<dt>Resultado</dt><dd>{{ r.goals_for }} x {{ r.goals_against }}</dd><dt>Partida</dt><dd><a href="{{ history_url(r) }}">Amistoso</a></dd>{% else %}<dt>Campeonato</dt><dd><a href="{{ url_for('tournaments.show', slug=r.slug) }}">{{ r.tournament_name }}</a> <small class="muted">· {{ r.stage_name }}</small></dd>{% endif %}
       <dt>Data e hora</dt><dd>{{ r.played_at|localtime }}</dd>
     </dl>
     <form method="dialog"><button class="secondary">Fechar</button></form>

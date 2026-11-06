@@ -18,18 +18,18 @@
   {% if last %}
   <div class="recent recent-lg">
     {% for r in last|reverse %}{% set o = outcome(r) %}
-    <button type="button" class="f-btn f-{{ o }}" data-dialog="partida-{{ r.match_id }}" title="{{ r.goals_for }} x {{ r.goals_against }} contra {{ r.opponent_name }}" aria-haspopup="dialog">{{ o }}</button>
+    <button type="button" class="f-btn f-{{ o }}" data-dialog="partida-{{ r.match_key }}" title="{{ r.goals_for }} x {{ r.goals_against }} contra {{ r.opponent_name }}" aria-haspopup="dialog">{{ o }}</button>
     {% endfor %}
   </div>
   <p class="muted">Do mais antigo ao mais recente. Clique para ver a partida.</p>
-  {% for r in last %}{% set m = games_by_id.get(r.match_id) %}
-  <dialog class="match-dialog" id="partida-{{ r.match_id }}" aria-label="Partida de {{ r.tournament_name }}">
+  {% for r in last %}{% set m = games_by_id.get(r.match_id) if r.kind == 't' %}
+  <dialog class="match-dialog" id="partida-{{ r.match_key }}" aria-label="Partida de {{ r.tournament_name }}">
     {% if m %}{{ match_line(m, names, r.slug) }}{% endif %}
     <dl>
       <dt>Resultado</dt><dd><span class="recent"><span class="f-{{ outcome(r) }}">{{ outcome(r) }}</span></span> {{ r.goals_for }} x {{ r.goals_against }}{% if r.pens_for is not none %} <small class="muted">({{ r.pens_for }} x {{ r.pens_against }} pên.)</small>{% endif %}</dd>
       <dt>Adversário</dt><dd>{{ player_link(r.opponent_name) }}</dd>
-      {% set delta = match_xp(r.match_id, session.player_id) %}{% if delta is not none %}<dt>Experiência</dt><dd class="xp-delta {{ 'up' if delta > 0 else 'down' if delta < 0 else '' }}">{{ '%+d'|format(delta) }} XP</dd>{% endif %}
-      <dt>Campeonato</dt><dd><a href="{{ url_for('tournaments.show', slug=r.slug) }}">{{ r.tournament_name }}</a> <small class="muted">· {{ r.stage_name }}</small></dd>
+      {% set delta = match_xp(r.match_key, session.player_id) %}{% if delta is not none %}<dt>Experiência</dt><dd class="xp-delta {{ 'up' if delta > 0 else 'down' if delta < 0 else '' }}">{{ '%+d'|format(delta) }} XP</dd>{% endif %}
+      {% if r.kind == 'a' %}<dt>Partida</dt><dd><a href="{{ history_url(r) }}">Amistoso</a></dd>{% else %}<dt>Campeonato</dt><dd><a href="{{ url_for('tournaments.show', slug=r.slug) }}">{{ r.tournament_name }}</a> <small class="muted">· {{ r.stage_name }}</small></dd>{% endif %}
       <dt>Data e hora</dt><dd>{{ r.played_at|localtime }}</dd>
     </dl>
     <form method="dialog"><button class="secondary">Fechar</button></form>

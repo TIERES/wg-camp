@@ -24,7 +24,8 @@
         if (!ev.lengthComputable) return;
         var pct = Math.floor(ev.loaded * 100 / ev.total);
         bar.value = pct;
-        label.textContent = pct < 100 ? 'Enviando a ISO... ' + pct + '%' : 'Conferindo o arquivo...';
+        label.textContent = pct < 100 ? 'Enviando ' + (form.dataset.uploadLabel || 'a ISO') + '... ' + pct + '%'
+          : 'Conferindo o arquivo...';
       };
       xhr.onload = function () {
         var url = xhr.responseURL || form.action;
@@ -40,7 +41,10 @@
       };
       box.hidden = false;
       button.disabled = true;
-      xhr.send(new FormData(form));
+      var data = new FormData(form);
+      // O botão clicado (ex.: "Liberar ISO") não entra no FormData sozinho.
+      if (e.submitter && e.submitter.name) data.append(e.submitter.name, e.submitter.value);
+      xhr.send(data);
     });
   });
 })();

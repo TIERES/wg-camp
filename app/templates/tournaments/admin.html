@@ -1,6 +1,7 @@
 {% extends 'base.html' %}{% block title %}Torneios · Administração{% endblock %}{% block content %}
 <div class="page-title"><h1>Torneios: administração</h1></div>
 <p class="muted">Como administração do WE Camp você pode gerenciar qualquer torneio (botão "Gerenciar" na página dele), inclusive cancelar torneios em andamento.</p>
+<p><a class="button secondary" href="{{ url_for('tournaments_admin.admin_teams') }}">Times e escudos</a> <a class="button secondary" href="{{ url_for('tournaments_admin.admin_isos') }}">ISOs para amistosos</a></p>
 
 <section>
   <h2>Valores do W$</h2>

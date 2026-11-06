@@ -350,10 +350,18 @@ def _archive_iso(app, file_id, remote_name, replace, remove_local):
         try:
             if replace:
                 delete_file(ISO_ARCHIVE_ITEM_IDENTIFIER, remote_name, **keys)
+
+            def progress(sent, total):
+                # Barra de progresso (static/js/archive-progress.js); renova archive_updated_at.
+                db.execute("UPDATE files SET archive_progress=?, archive_updated_at=? WHERE id=?",
+                           (min(100, 100 * sent // max(total, 1)), now(), file_id))
+                db.commit()
+
             url = upload_file(
                 ISO_ARCHIVE_ITEM_IDENTIFIER,
                 Path(app.config["DOWNLOADS_DIR"]) / entry["stored_name"],
                 remote_name=remote_name,
+                progress=progress,
                 **keys,
             )
         except (ArchiveOrgError, OSError) as error:
@@ -398,6 +406,27 @@ def _archive_upload_in_progress(entry):
     if entry["archive_status"] not in ("uploading", "verifying") or not entry["archive_updated_at"]:
         return False
     return datetime.now(timezone.utc) - datetime.fromisoformat(entry["archive_updated_at"]) < ISO_ARCHIVE_STALE
+
+
+@bp.get("/files/<int:file_id>/archive-status")
+@login_required
+def file_archive_status(file_id):
+    """Situação do envio para o archive.org (barra de progresso - static/js/archive-progress.js)."""
+    entry = get_db().execute("SELECT * FROM files WHERE id=?", (file_id,)).fetchone()
+    if not entry:
+        return ("Não encontrado", 404)
+    if entry["local_removed_at"] or (entry["archive_status"] == "done" and entry["archive_url"]):
+        state = {"state": "done", "progress": 100, "url": entry["archive_url"]}
+    elif entry["archive_status"] == "uploading" and _archive_upload_in_progress(entry):
+        state = {"state": "sending", "progress": entry["archive_progress"] or 0}
+    elif entry["archive_status"] == "verifying" and _archive_upload_in_progress(entry):
+        state = {"state": "verifying", "progress": 100}
+    elif entry["archive_status"] == "error":
+        state = {"state": "error", "error": entry["archive_error"] or "Falha ao enviar para o archive.org."}
+    else:
+        state = {"state": "local", "configured": bool(current_app.config.get("IA_ACCESS_KEY")
+                                                      and current_app.config.get("IA_SECRET_KEY"))}
+    return jsonify(state)
 
 
 @bp.post("/files/<int:file_id>/archive")
@@ -458,7 +487,8 @@ def file_archive(file_id):
         )
 
     db.execute(
-        "UPDATE files SET archive_status='uploading', archive_error=NULL, archive_updated_at=? WHERE id=?",
+        "UPDATE files SET archive_status='uploading', archive_error=NULL, archive_progress=0, archive_updated_at=? "
+        "WHERE id=?",
         (now(), file_id),
     )
     db.commit()

@@ -137,6 +137,7 @@
     {% elif iso.archive_status == 'error' %}<span class="notice error">Não foi para o archive.org: {{ iso.archive_error }}</span>
     {% elif archive_configured %}Ainda não foi enviada para o archive.org.
     {% else %}Só neste servidor (o archive.org não está configurado aqui).{% endif %}</p>
+    {% if not iso.local_removed_at and iso.archive_status in ('uploading', 'verifying') %}<div class="archive-progress" data-archive-status="{{ url_for('tournaments.iso_status', slug=t.slug) }}"></div>{% endif %}
     {% if not iso.local_removed_at and archive_configured and iso.archive_status in ('pending', 'error') %}
     <form method="post" action="{{ url_for('tournaments.iso_retry', slug=t.slug) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Enviar para o archive.org de novo</button></form>
     {% endif %}
@@ -167,6 +168,7 @@
 {% endif %}
 {% endif %}
 <script src="{{ url_for('static', filename='js/upload-progress.js') }}"></script>
+<script src="{{ url_for('static', filename='js/archive-progress.js') }}"></script>
 <script src="{{ url_for('static', filename='js/pens.js') }}"></script>
 <script src="{{ url_for('static', filename='js/leg-flip.js') }}" defer></script>
 {% endblock %}

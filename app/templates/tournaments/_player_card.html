@@ -22,7 +22,7 @@
   {% if rows %}
   <ul class="player-card-results">{% for r in rows %}{% set o = outcome(r) %}
     <li><span class="recent"><span class="f-{{ o }}">{{ o }}</span></span>
-      <a href="{{ url_for('tournaments.match', slug=r.slug, match_id=r.match_id) }}"><strong>{{ r.goals_for }} x {{ r.goals_against }}</strong>{% if r.pens_for is not none %} <small>({{ r.pens_for }} x {{ r.pens_against }} pên.)</small>{% endif %}</a>
+      <a href="{{ history_url(r) }}"><strong>{{ r.goals_for }} x {{ r.goals_against }}</strong>{% if r.pens_for is not none %} <small>({{ r.pens_for }} x {{ r.pens_against }} pên.)</small>{% endif %}</a>
       <span>contra {{ r.opponent_name }}</span>
       <small class="muted">{{ r.tournament_name }} · {{ r.played_at|localtime }}</small></li>
   {% endfor %}</ul>

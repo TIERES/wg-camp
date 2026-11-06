@@ -404,6 +404,69 @@ CREATE TABLE IF NOT EXISTS tournament_invites (
     UNIQUE (tournament_id, player_id)
 );
 CREATE INDEX IF NOT EXISTS tournament_invites_player_idx ON tournament_invites(player_id, status);
+
+-- ISOs cadastradas pela administração do WE Camp (app/tournament/iso_catalog.py),
+-- para os amistosos: nome, jogo base, imagem opcional (TOURNAMENT_IMAGES_DIR) e o
+-- arquivo - uma ISO já enviada num Campeonato (file_id) ou enviada aqui, com o
+-- mesmo fluxo do archive.org das ISOs de torneio (colunas iguais às de tournament_isos).
+CREATE TABLE IF NOT EXISTS catalog_isos (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    game_title_id INTEGER NOT NULL REFERENCES game_titles(id) ON DELETE RESTRICT,
+    image TEXT,
+    file_id INTEGER REFERENCES files(id) ON DELETE SET NULL,
+    stored_name TEXT,
+    original_filename TEXT,
+    file_size INTEGER,
+    md5 TEXT,
+    archive_name TEXT,
+    archive_status TEXT,
+    archive_url TEXT,
+    archive_error TEXT,
+    archive_updated_at TEXT,
+    local_removed_at TEXT,
+    archive_progress INTEGER,
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    -- ISO enviada por um jogador ("Não encontrou a ISO?"): fica inativa até a
+    -- administração liberar (approved_at), confirmando nome, jogo base e imagem.
+    requested_by INTEGER REFERENCES players(id) ON DELETE SET NULL,
+    approved_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+-- Amistoso entre dois amigos, fora dos torneios (app/tournament/friendly.py):
+-- invited -> accepted -> reported (placar proposto por um) -> confirmed (o outro aceitou).
+-- Placar recusado = suspended, até um dos dois propor um placar que o outro aceite.
+-- ranked é decidido na confirmação (proteção contra contas fake): só os que
+-- valem entram no Ranking, no V/E/D e no XP; unranked_reason diz por que não.
+CREATE TABLE IF NOT EXISTS friendly_matches (
+    id INTEGER PRIMARY KEY,
+    -- ISO escolhida (opcional): a de um torneio ou uma do cadastro; o jogo vem dela.
+    iso_tournament_id INTEGER REFERENCES tournaments(id) ON DELETE SET NULL,
+    iso_catalog_id INTEGER REFERENCES catalog_isos(id) ON DELETE SET NULL,
+    game_title_id INTEGER REFERENCES game_titles(id) ON DELETE SET NULL,
+    home_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    away_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'invited'
+        CHECK (status IN ('invited', 'declined', 'cancelled', 'accepted', 'reported', 'suspended', 'confirmed')),
+    message TEXT NOT NULL DEFAULT '',
+    home_goals INTEGER,
+    away_goals INTEGER,
+    reported_by INTEGER REFERENCES players(id) ON DELETE SET NULL,
+    reported_at TEXT,
+    rejected_by INTEGER REFERENCES players(id) ON DELETE SET NULL,
+    rejected_note TEXT NOT NULL DEFAULT '',
+    ranked INTEGER NOT NULL DEFAULT 0,
+    unranked_reason TEXT NOT NULL DEFAULT '',
+    confirmed_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    CHECK (home_id != away_id)
+);
+CREATE INDEX IF NOT EXISTS friendly_matches_home_idx ON friendly_matches(home_id, status);
+CREATE INDEX IF NOT EXISTS friendly_matches_away_idx ON friendly_matches(away_id, status);
+CREATE INDEX IF NOT EXISTS friendly_matches_confirmed_idx ON friendly_matches(status, ranked, confirmed_at);
 """
 
 
@@ -442,6 +505,16 @@ def ensure_tournament_columns(database):
     stage_columns = {column["name"] for column in database.execute("PRAGMA table_info(tournament_stages)")}
     if stage_columns and "all_played_at" not in stage_columns:
         database.execute("ALTER TABLE tournament_stages ADD COLUMN all_played_at TEXT")
+    # Percentual do envio para o archive.org (barra de progresso - static/js/archive-progress.js).
+    for table in ("tournament_isos", "catalog_isos", "files"):
+        table_columns = {column["name"] for column in database.execute(f"PRAGMA table_info({table})")}
+        if table_columns and "archive_progress" not in table_columns:
+            database.execute(f"ALTER TABLE {table} ADD COLUMN archive_progress INTEGER")
+    catalog_columns = {column["name"] for column in database.execute("PRAGMA table_info(catalog_isos)")}
+    for column, kind in (("requested_by", "INTEGER REFERENCES players(id) ON DELETE SET NULL"),
+                         ("approved_at", "TEXT")):
+        if catalog_columns and column not in catalog_columns:
+            database.execute(f"ALTER TABLE catalog_isos ADD COLUMN {column} {kind}")
 
 
 def allow_tournament_formats(database):

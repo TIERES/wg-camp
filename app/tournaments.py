@@ -18,16 +18,18 @@ from functools import wraps
 from pathlib import Path
 from unicodedata import normalize
 
-from flask import (Blueprint, abort, current_app, flash, g, redirect, render_template, request, send_from_directory,
-                   session, url_for)
+from flask import (abort, Blueprint, current_app, flash, g, jsonify, redirect, render_template, request,
+                   send_from_directory, session, url_for)
 from markupsafe import Markup
 
 from . import images
 from .db import get_db, now
 from .players import player_required
 from .security import login_required, validate_csrf
+from .storage import attachment_header
 from .timeutil import format_local
-from .tournament import engine, formats, friends, games as game_catalog, iso, notify, reports, stats, store, xp
+from .tournament import (engine, formats, friendly, friends, games as game_catalog, iso, iso_catalog, notify, reports,
+                         stats, store, xp)
 from .tournament.store import TournamentError
 from .tournament.teams import KINDS as TEAM_KINDS, TEAM_MODES, generated_badge
 from .wallet import (KINDS, MONEY_SETTINGS, SETTING_LABELS, SIGNED_SETTINGS, InsufficientFunds, ensure_wallet,
@@ -105,6 +107,14 @@ def player_rank(player_id):
 def match_xp(match_id, player_id):
     """XP que o jogador ganhou (+) ou perdeu (-) numa partida confirmada, ou None."""
     return xp.match_deltas(match_id).get(player_id)
+
+
+@bp.app_template_global()
+def history_url(row):
+    """Link de uma linha do histórico (stats.history): o jogo do torneio ou o amistoso."""
+    if row["kind"] == "a":
+        return url_for("tournaments.friendly_show", friendly_id=row["match_id"])
+    return url_for("tournaments.match", slug=row["slug"], match_id=row["match_id"])
 
 
 @bp.app_template_global()
@@ -457,6 +467,215 @@ def friend_action(player_id, acao):
     return _back(url_for("tournaments.friends_page"))
 
 
+# --- Amistosos (app/tournament/friendly.py) -----------------------------------
+
+@bp.get("/amistosos")
+@player_required
+def friendlies():
+    db = get_db()
+    me = session["player_id"]
+    rows = friendly.for_player(db, me)
+    pending = [r for r in rows if r["status"] in friendly.OPEN]
+    return render_template("tournaments/friendlies.html", pending=pending,
+                           done=[r for r in rows if r["status"] not in friendly.OPEN],
+                           friends=friends.friends(db, me), chosen=request.args.get("com", ""),
+                           iso_options=iso_catalog.options(db, me), my_isos=iso_catalog.requested_by(db, me),
+                           games=db.execute("SELECT id, name FROM game_titles WHERE is_active = 1 "
+                                            "ORDER BY year, name").fetchall(), **_iso_limits(),
+                           rules={"min_xp": friendly.MIN_XP, "limit": friendly.PAIR_DAILY_LIMIT,
+                                  "rank": xp.RANKS[xp.level(friendly.MIN_XP)],
+                                  "my_peak": xp.tournament_peaks(db).get(me, 0)},
+                           labels=friendly.STATUS_LABELS, needs_me=friendly.needs_me)
+
+
+@bp.post("/amistosos/novo")
+@player_required
+def friendly_new():
+    validate_csrf()
+    db = get_db()
+    me = session["player_id"]
+    try:
+        friendly_id = friendly.invite(db, me, request.form.get("amigo", type=int), request.form.get("iso"),
+                                      request.form.get("mensagem"))
+        db.commit()
+    except TournamentError as error:
+        db.rollback()
+        flash(str(error), "error")
+        return redirect(url_for("tournaments.friendlies", com=request.form.get("com", "")))
+    row = friendly.get(db, friendly_id)
+    notify.friendly_event(db, row, row["away_id"], f"{row['home_name']} chamou você para um amistoso",
+                          f"{row['home_name']} chamou você para um amistoso"
+                          + (f" de {row['game_name']}" if row["game_name"] else "") + "."
+                          + (f"\nISO: {row['iso_title']} ({row['iso_filename']}). Se você não tem, baixe na página "
+                             "do amistoso." if row["iso_title"] else "")
+                          + (f"\n\nRecado: {row['message']}" if row["message"] else "")
+                          + "\n\nAceite ou recuse em:")
+    flash(f"Convite de amistoso enviado para {row['away_name']}.", "success")
+    return redirect(url_for("tournaments.friendly_show", friendly_id=friendly_id))
+
+
+@bp.get("/amistosos/<int:friendly_id>")
+def friendly_show(friendly_id):
+    """O amistoso: os dois jogadores (e o admin) veem sempre; os outros, só depois de confirmado."""
+    db = get_db()
+    row = friendly.get(db, friendly_id)
+    me = session.get("player_id")
+    if row is None or (row["status"] != "confirmed" and me not in (row["home_id"], row["away_id"])
+                       and not is_admin()):
+        abort(404)
+    return render_template("tournaments/friendly.html", f=row, labels=friendly.STATUS_LABELS,
+                           needs_me=friendly.needs_me)
+
+
+def _send_iso_file(stored_name, original_filename, archive_url, local_removed_at, protected=False):
+    """Entrega uma ISO: do archive.org depois de confirmada lá; antes, deste
+    servidor (teste local, ou pelo Nginx - X-Accel - nas ISOs dos Campeonatos)."""
+    if not local_removed_at and stored_name and current_app.config["SERVE_DOWNLOADS_LOCALLY"]:
+        return send_from_directory(current_app.config["DOWNLOADS_DIR"], stored_name, as_attachment=True,
+                                   download_name=original_filename)
+    if archive_url:
+        return redirect(archive_url)
+    if protected and stored_name and not local_removed_at:
+        response = current_app.response_class()
+        response.headers["X-Accel-Redirect"] = f"/_protected_downloads/{stored_name}"
+        response.headers["Content-Disposition"] = attachment_header(original_filename)
+        return response
+    return None
+
+
+@bp.get("/amistosos/<int:friendly_id>/iso")
+@player_required
+def friendly_iso(friendly_id):
+    """A ISO do amistoso, para os dois jogadores (e o admin)."""
+    db = get_db()
+    row = friendly.get(db, friendly_id)
+    if row is None or (session["player_id"] not in (row["home_id"], row["away_id"]) and not is_admin()):
+        abort(404)
+    response = None
+    if row["iso_tournament_id"]:
+        found = iso.get(db, row["iso_tournament_id"])
+        if found and iso.downloadable(found, current_app):
+            response = _send_iso_file(found["stored_name"], found["original_filename"], found["archive_url"],
+                                      found["local_removed_at"])
+    elif row["iso_catalog_id"]:
+        found = iso_catalog.get(db, row["iso_catalog_id"])
+        if found and found["file_id"]:
+            response = _send_iso_file(found["file_stored_name"], found["file_filename"], found["file_archive_url"],
+                                      found["file_local_removed_at"], protected=True)
+        elif found and iso.downloadable(found, current_app):
+            response = _send_iso_file(found["stored_name"], found["original_filename"], found["archive_url"],
+                                      found["local_removed_at"])
+    else:
+        abort(404)
+    if response is None:
+        flash("A ISO ainda está sendo enviada para o archive.org. Tente de novo em alguns minutos.", "error")
+        return redirect(url_for("tournaments.friendly_show", friendly_id=friendly_id))
+    return response
+
+
+@bp.post("/amistosos/isos/enviar")
+def friendly_iso_upload():
+    """O jogador envia a ISO que não achou na lista: vai para o archive.org e
+    fica esperando a administração do WE Camp liberar."""
+    # Sem @player_required + CSRF antes: o tamanho é conferido antes de ler o
+    # formulário (pode ter centenas de MB), como no envio da ISO do torneio.
+    if "player_id" not in session:
+        return redirect(url_for("players.login", next=url_for("tournaments.friendlies")))
+    back = redirect(url_for("tournaments.friendlies", _anchor="minhas-isos"))
+    try:
+        iso.check_size(request, current_app.config["TOURNAMENT_ISO_MAX_BYTES"])
+    except TournamentError as error:
+        flash(str(error), "error")
+        return back
+    validate_csrf()
+    db = get_db()
+    upload = request.files.get("iso")
+    try:
+        catalog_id = iso_catalog.request_upload(db, session["player_id"], request.form.get("name"),
+                                                request.form.get("game_title_id", type=int),
+                                                upload if upload and upload.filename else None)
+        db.commit()
+    except TournamentError as error:
+        db.rollback()
+        flash(f"A ISO não foi enviada: {error}", "error")
+        return back
+    app = current_app._get_current_object()
+    iso.start_archive(app, catalog_id, "catalog_isos")
+    notify.iso_request(db, iso_catalog.get(db, catalog_id))
+    flash("ISO recebida! Ela está indo para o archive.org e a administração do WE Camp vai conferir e liberar. "
+          "Acompanhe em \"Minhas ISOs enviadas\".", "success")
+    return back
+
+
+@bp.get("/isos/<int:catalog_id>/status")
+def catalog_iso_status(catalog_id):
+    """Situação do envio para o archive.org (barra de progresso) - admin ou quem enviou."""
+    row = iso_catalog.get(get_db(), catalog_id)
+    if row is None or not (is_admin() or (session.get("player_id") and session["player_id"] == row["requested_by"])):
+        abort(404)
+    if row["file_id"]:
+        return jsonify({"state": "done", "progress": 100})
+    return jsonify(iso.status(row, current_app))
+
+
+_FRIENDLY_MESSAGES = {
+    "aceitar": "Amistoso aceito! Depois do jogo, um de vocês informa o placar.",
+    "recusar": "Convite recusado.", "cancelar": "Amistoso cancelado.",
+    "placar": "Placar enviado. Agora o adversário precisa confirmar.",
+    "rejeitar": "Você não aceitou o placar: o amistoso fica suspenso até vocês chegarem a um placar.",
+}
+
+
+@bp.post("/amistosos/<int:friendly_id>/<acao>")
+@player_required
+def friendly_action(friendly_id, acao):
+    validate_csrf()
+    db = get_db()
+    me = session["player_id"]
+    form = request.form
+    try:
+        if acao in ("aceitar", "recusar"):
+            row = friendly.respond(db, friendly_id, me, acao == "aceitar")
+        elif acao == "cancelar":
+            row = friendly.cancel(db, friendly_id, me)
+        elif acao == "placar":
+            row = friendly.report(db, friendly_id, me, form.get("home_goals"), form.get("away_goals"))
+        elif acao == "confirmar":
+            row = friendly.confirm(db, friendly_id, me)
+        elif acao == "rejeitar":
+            row = friendly.reject(db, friendly_id, me, form.get("motivo"))
+        else:
+            abort(404)
+        db.commit()
+    except TournamentError as error:
+        db.rollback()
+        flash(str(error), "error")
+        return _back(url_for("tournaments.friendly_show", friendly_id=friendly_id))
+    row = friendly.get(db, friendly_id)
+    other = friendly.opponent_id(row, me)
+    my_name = row["home_name"] if row["home_id"] == me else row["away_name"]
+    score = f"{row['home_name']} {row['home_goals']} x {row['away_goals']} {row['away_name']}"
+    mails = {
+        "aceitar": (f"{my_name} aceitou o amistoso", f"{my_name} aceitou o amistoso de {row['game_name']}. "
+                    "Depois do jogo, informe o placar em:"),
+        "placar": (f"{my_name} informou o placar do amistoso", f"{my_name} informou o placar do amistoso: "
+                   f"{score}.\n\nConfirme ou não aceite em:"),
+        "rejeitar": (f"{my_name} não aceitou o placar do amistoso",
+                     f"{my_name} não aceitou o placar {score}."
+                     + (f"\nMotivo: {row['rejected_note']}" if row["rejected_note"] else "")
+                     + "\n\nO amistoso fica suspenso até um de vocês propor um placar que o outro aceite:"),
+    }
+    if acao in mails:
+        notify.friendly_event(db, row, other, *mails[acao])
+    if acao == "confirmar":
+        flash("Placar confirmado! " + ("O amistoso vale para o Ranking e o XP." if row["ranked"]
+                                       else f"Não vale para o Ranking: {row['unranked_reason']}."),
+              "success" if row["ranked"] else "info")
+    else:
+        flash(_FRIENDLY_MESSAGES[acao], "success")
+    return _back(url_for("tournaments.friendly_show", friendly_id=friendly_id))
+
+
 def _send_invites(db, tournament, player_ids):
     """Grava os convites e manda os e-mails; devolve quantos foram convidados."""
     me = session.get("player_id")
@@ -512,7 +731,8 @@ def show(slug):
     my_entry = next((e for e in entries if e["player_id"] == player_id), None)
     stages = _stage_views(db, tournament)
     config = store.settings_of(tournament)
-    tab = request.args.get("aba", "tabela" if stages else "geral")
+    # Encerrado abre na Visão geral, com os vencedores; em andamento, na tabela.
+    tab = request.args.get("aba", "tabela" if stages and tournament["status"] != "finished" else "geral")
     if tab not in ("geral", "tabela", "jogos"):
         tab = "geral"
     pool = store.prize_pool(db, tournament["id"])
@@ -925,6 +1145,15 @@ def iso_retry(tournament):
     return redirect(url_for("tournaments.manage", slug=tournament["slug"]))
 
 
+@bp.get("/<slug>/iso/status")
+def iso_status(slug):
+    """Situação do envio da ISO do torneio para o archive.org (barra de progresso em Gerenciar)."""
+    tournament = _load(slug)
+    if not can_manage(tournament):
+        abort(403)
+    return jsonify(iso.status(iso.get(get_db(), tournament["id"]), current_app))
+
+
 @bp.get("/<slug>/iso")
 def iso_download(slug):
     """Só para quem está logado. Depois de confirmada no archive.org, a cópia
@@ -1127,19 +1356,27 @@ def my_status():
     me = session["player_id"]
     rows = stats.history(db, me, limit=100)
     last = rows[:10]
-    games_by_id, names = {}, {}
-    if last:
-        ids = [r["match_id"] for r in last]
-        for row in db.execute(f"SELECT * FROM tournament_matches WHERE id IN ({','.join('?' * len(ids))})", ids):
-            games_by_id[row["id"]] = row
-        for tournament_id in {r["tournament_id"] for r in last}:
-            names.update(_names(db, store.get_tournament(db, tournament_id)))
+    games_by_id, names = _match_popups(db, last)
     return render_template("tournaments/status.html", record=stats.player_record(db, me),
                            position=stats.position(db, me), last=last, outcome=stats.outcome,
                            games_by_id=games_by_id, names=names, evolution=stats.evolution(rows),
                            total=len(rows))
 
 # --- Ranking, histórico e comparação (app/tournament/stats.py) ----------------
+
+def _match_popups(db, rows):
+    """Jogos de torneio das linhas do histórico (para o popup de cada um) e os
+    nomes com escudo dos torneios deles. Amistosos não têm (kind 'a')."""
+    rows = [r for r in rows if r["kind"] == "t"]
+    games_by_id, names = {}, {}
+    if rows:
+        ids = [r["match_id"] for r in rows]
+        for row in db.execute(f"SELECT * FROM tournament_matches WHERE id IN ({','.join('?' * len(ids))})", ids):
+            games_by_id[row["id"]] = row
+        for tournament_id in {r["tournament_id"] for r in rows}:
+            names.update(_names(db, store.get_tournament(db, tournament_id)))
+    return games_by_id, names
+
 
 def _game_filter(db):
     """Jogo escolhido no filtro (?jogo=) e a lista de jogos para o <select>."""
@@ -1230,14 +1467,7 @@ def compare():
     me_id = session.get("player_id")
     mine = [{"opponent": other, "matches": stats.history(db, me_id, game, opponent_id=other["id"], limit=5)}
             for other in (a, b) if result and me_id and other["id"] != me_id]
-    rows = [r for card in mine for r in card["matches"]]
-    games_by_id, names = {}, {}
-    if rows:
-        ids = [r["match_id"] for r in rows]
-        for row in db.execute(f"SELECT * FROM tournament_matches WHERE id IN ({','.join('?' * len(ids))})", ids):
-            games_by_id[row["id"]] = row
-        for tournament_id in {r["tournament_id"] for r in rows}:
-            names.update(_names(db, store.get_tournament(db, tournament_id)))
+    games_by_id, names = _match_popups(db, [r for card in mine for r in card["matches"]])
     return render_template("tournaments/compare.html", a=a, b=b, result=result, games=games, game=game,
                            players=[pl["username"] for pl in stats.players_with_matches(db)],
                            outcome=stats.outcome, mine=mine, games_by_id=games_by_id, names=names)
@@ -1503,6 +1733,117 @@ def admin_team_group_new():
     return redirect(url_for("tournaments_admin.admin_teams"))
 
 
+# --- Cadastro de ISOs para os amistosos (app/tournament/iso_catalog.py) --------
+
+@admin_bp.get("/isos")
+@login_required
+def admin_isos():
+    db = get_db()
+    return render_template("tournaments/admin_isos.html", rows=iso_catalog.all_rows(db),
+                           uploading=iso.uploading, filename=iso_catalog.filename)
+
+
+def _iso_form_context(db):
+    return {"games": db.execute("SELECT id, name FROM game_titles WHERE is_active = 1 ORDER BY year, name").fetchall(),
+            "files": iso_catalog.championship_files(db), **_iso_limits()}
+
+
+@admin_bp.route("/isos/nova", methods=("GET", "POST"))
+@admin_bp.route("/isos/<int:catalog_id>", methods=("GET", "POST"))
+def admin_iso_edit(catalog_id=None):
+    # Sem @login_required: o tamanho é conferido antes de ler o formulário
+    # (o CSRF lê o corpo inteiro, que pode ter centenas de MB), como no envio
+    # da ISO do torneio.
+    if not is_admin():
+        return redirect(url_for("admin.login", next=request.path))
+    db = get_db()
+    row = iso_catalog.get(db, catalog_id) if catalog_id else None
+    if catalog_id and row is None:
+        abort(404)
+    if request.method == "POST":
+        try:
+            iso.check_size(request, current_app.config["TOURNAMENT_ISO_MAX_BYTES"])
+        except TournamentError as error:
+            flash(str(error), "error")
+            return redirect(request.path)
+        validate_csrf()
+        form = request.form
+        upload = request.files.get("iso")
+        upload = upload if upload and upload.filename else None
+        image = request.files.get("image")
+        new_image = None
+        try:
+            if image and image.filename:
+                new_image = images.save("torneio", image)
+            pending = bool(row and not row["approved_at"])
+            releasing = pending and "liberar" in form
+            saved_id = iso_catalog.save(db, catalog_id, form.get("name"), form.get("game_title_id", type=int),
+                                        form.get("file_id", type=int), upload,
+                                        ("is_active" in form) and (not pending or releasing))
+            if releasing:
+                iso_catalog.approve(db, saved_id)
+            if new_image or "remove_image" in form:
+                db.execute("UPDATE catalog_isos SET image = ? WHERE id = ?", (new_image, saved_id))
+            db.commit()
+        except (TournamentError, images.ImageError) as error:
+            db.rollback()
+            images.delete("torneio", new_image)
+            flash(str(error), "error")
+            return render_template("tournaments/admin_iso_edit.html", row=row, form=form, **_iso_form_context(db))
+        if row and (new_image or "remove_image" in form):
+            images.delete("torneio", row["image"])
+        if releasing:
+            notify.iso_approved(db, iso_catalog.get(db, saved_id))
+            flash("ISO liberada: ela já aparece para os jogadores escolherem no amistoso.", "success")
+        app = current_app._get_current_object()
+        if upload is not None:
+            iso.start_archive(app, saved_id, "catalog_isos")
+            flash("ISO salva. " + ("Ela está sendo enviada para o archive.org; o download fica disponível quando o "
+                                   "envio terminar." if iso.archive_configured(app)
+                                   else "O archive.org não está configurado neste servidor: a ISO fica só aqui."),
+                  "success")
+        elif not releasing:
+            flash("ISO salva.", "success")
+        return redirect(url_for("tournaments_admin.admin_isos"))
+    return render_template("tournaments/admin_iso_edit.html", row=row, form={}, **_iso_form_context(db))
+
+
+@admin_bp.post("/isos/<int:catalog_id>/recusar")
+@login_required
+def admin_iso_reject(catalog_id):
+    validate_csrf()
+    db = get_db()
+    try:
+        row = iso_catalog.reject(db, catalog_id)
+        db.commit()
+    except TournamentError as error:
+        db.rollback()
+        flash(str(error), "error")
+        return redirect(url_for("tournaments_admin.admin_iso_edit", catalog_id=catalog_id))
+    images.delete("torneio", row["image"])
+    notify.iso_rejected(db, row, request.form.get("motivo"))
+    flash("ISO recusada e removida.", "success")
+    return redirect(url_for("tournaments_admin.admin_isos"))
+
+
+@admin_bp.post("/isos/<int:catalog_id>/archive-org")
+@login_required
+def admin_iso_retry(catalog_id):
+    validate_csrf()
+    db = get_db()
+    row = iso_catalog.get(db, catalog_id)
+    if row is None or not row["stored_name"] or row["local_removed_at"]:
+        flash("Esta ISO não tem cópia neste servidor para enviar.", "error")
+    elif iso.uploading(row):
+        flash("O envio para o archive.org já está em andamento.", "error")
+    elif not iso.archive_configured(current_app):
+        flash("O archive.org não está configurado neste servidor.", "error")
+    else:
+        iso.start_archive(current_app._get_current_object(), catalog_id, "catalog_isos")
+        flash("Enviando a ISO para o archive.org de novo.", "success")
+    return redirect(url_for("tournaments_admin.admin_isos"))
+
+
 # --- Template helpers ---------------------------------------------------------
 
 @bp.app_context_processor
@@ -1529,7 +1870,8 @@ def inject_wallet():
             (player_id,)).fetchone()[0]
         friends_todo = friends.pending_count(db, player_id)
         invites_todo = len(friends.my_invites(db, player_id))
+        friendlies_todo = friendly.todo_count(db, player_id)
     except sqlite3.OperationalError:
         return {}  # banco ainda sem as colunas da carteira
     return {"wallet_balance": row["wallet_cents"] if row else None, "matches_todo": todo,
-            "friends_todo": friends_todo, "invites_todo": invites_todo}
+            "friends_todo": friends_todo, "invites_todo": invites_todo, "friendlies_todo": friendlies_todo}

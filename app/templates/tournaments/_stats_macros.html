@@ -26,9 +26,9 @@
     <tr>
       <td>{{ r.played_at|localtime }}</td>
       <td class="recent"><span class="f-{{ o }}">{{ o }}</span></td>
-      <td><a href="{{ url_for('tournaments.match', slug=r.slug, match_id=r.match_id) }}"><strong>{{ r.goals_for }} x {{ r.goals_against }}</strong>{% if r.pens_for is not none %} <small>({{ r.pens_for }} x {{ r.pens_against }} pên.)</small>{% endif %}</a></td>
+      <td><a href="{{ history_url(r) }}"><strong>{{ r.goals_for }} x {{ r.goals_against }}</strong>{% if r.pens_for is not none %} <small>({{ r.pens_for }} x {{ r.pens_against }} pên.)</small>{% endif %}</a></td>
       {% if show_opponent %}<td>{{ player_link(r.opponent_name, game) }}</td>{% endif %}
-      <td class="hide-sm"><a href="{{ url_for('tournaments.show', slug=r.slug) }}">{{ r.tournament_name }}</a> <small class="muted">· {{ r.stage_name }}</small></td>
+      <td class="hide-sm">{% if r.kind == 'a' %}<a href="{{ history_url(r) }}">Amistoso</a>{% else %}<a href="{{ url_for('tournaments.show', slug=r.slug) }}">{{ r.tournament_name }}</a> <small class="muted">· {{ r.stage_name }}</small>{% endif %}</td>
     </tr>
   {% endfor %}</tbody>
 </table>

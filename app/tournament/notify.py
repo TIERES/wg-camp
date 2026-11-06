@@ -307,3 +307,41 @@ def tournament_invites(db, tournament, inviter_name, players):
     _deliver([(p["email"], f"Convite para o torneio {tournament['name']}", (
         f"Olá, {p['username']}!\n\n{inviter_name} convidou você para o torneio \"{tournament['name']}\"."
         f"{starts}\n\nVeja o torneio e faça a sua inscrição em:\n{page}\n")) for p in players])
+
+
+def friendly_event(db, friendly, to_id, subject, text):
+    """Aviso de um amistoso (convite, aceite, placar, placar não aceito), com o link dele."""
+    to = db.execute("SELECT username, email FROM players WHERE id = ?", (to_id,)).fetchone()
+    if not to:
+        return
+    link = external_url("tournaments.friendly_show", friendly_id=friendly["id"])
+    _deliver([(to["email"], subject, f"Olá, {to['username']}!\n\n{text}\n{link}\n")])
+
+
+def iso_request(db, row):
+    """ISO enviada por um jogador: a administração confere e libera."""
+    link = external_url("tournaments_admin.admin_iso_edit", catalog_id=row["id"])
+    _deliver([(email, f"{row['requester_name']} enviou uma ISO para liberar", (
+        f"{row['requester_name']} ({row['requester_email']}) enviou uma ISO para os amistosos:\n\n"
+        f"Nome: {row['name']}\nJogo base: {row['game_name']}\nArquivo: {row['original_filename']}\n\n"
+        f"Confira o nome, o jogo base, cadastre a imagem e libere em:\n{link}\n")) for email in admin_emails(db)])
+
+
+def iso_approved(db, row):
+    """Avisa quem enviou a ISO que ela foi liberada."""
+    if not row or not row["requester_email"]:
+        return
+    link = external_url("tournaments.friendlies")
+    _deliver([(row["requester_email"], f"Sua ISO {row['name']} foi liberada", (
+        f"Olá, {row['requester_name']}!\n\nA administração do WE Camp liberou a ISO \"{row['name']}\" "
+        f"({row['game_name']}). Ela já aparece para escolher no convite de amistoso:\n{link}\n"))])
+
+
+def iso_rejected(db, row, reason=""):
+    """Avisa quem enviou a ISO que ela foi recusada."""
+    if not row or not row["requester_email"]:
+        return
+    why = f"\nMotivo: {reason.strip()[:300]}" if reason and reason.strip() else ""
+    _deliver([(row["requester_email"], f"Sua ISO {row['name']} não foi liberada", (
+        f"Olá, {row['requester_name']}!\n\nA administração do WE Camp não liberou a ISO \"{row['name']}\"."
+        f"{why}\n"))])

@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from app.db import get_db, init_db
-from app.tournament import xp
+from app.tournament import store, xp
 from tests import test_tournament_stats as stats_tests
 from tests.test_tournament_store import add_player, make_app
 
@@ -111,6 +111,23 @@ class XpWebTest(unittest.TestCase):
         self.db.execute("UPDATE tournaments SET status = 'cancelled' WHERE id = ?", (tid,))
         self.db.commit()
         self.assertEqual(xp.compute(self.db)[0], {})
+
+    def test_finished_tournament_opens_on_overview_with_winner_photos(self):
+        p0, p1, p2 = self.players
+        tid = self.league([p0, p1, p2])
+        self.play(tid, p0, p1, 2, 0)
+        self.play(tid, p0, p2, 1, 0)
+        self.play(tid, p1, p2, 1, 0)
+        slug = self.db.execute("SELECT slug FROM tournaments WHERE id = ?", (tid,)).fetchone()[0]
+        running = self.client(p1).get(f"/torneios/{slug}").data.decode()
+        self.assertIn('href="?aba=tabela" class="active"', running)  # em andamento: tabela
+        store.finish(self.db, store.get_tournament(self.db, tid))
+        self.db.commit()
+        page = self.client(p1).get(f"/torneios/{slug}").data.decode()
+        self.assertIn('href="?aba=geral" class="active"', page)
+        self.assertIn('<div class="podium-1"><span class="podium-photo"><button type="button" class="avatar-btn" '
+                      'data-player-card="/torneios/jogadores/p0/resumo"', page)
+        self.assertIn("avatar avatar-lg", page)  # o campeão com a foto maior
 
 
 if __name__ == "__main__":
