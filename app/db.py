@@ -600,6 +600,70 @@ def add_iso_card_slots(database):
     database.execute("DROP INDEX IF EXISTS memcards_iso_idx")
 
 
+# Partidas ao vivo (app/live.py): o placar que o RetroArch TIERES lê da RAM do
+# Winning Eleven e o kailleraclient.dll manda durante a partida.
+#  - live_matches: uma por partida (a chave junta ISO, jogadores e o frame do
+#    pontapé inicial, igual em todos os PCs dela);
+#  - live_match_reports: o último estado que cada PC mandou;
+#  - iso_team_slots: nome/time de cada slot do jogo, por ISO (aprendido dos
+#    jogos de campeonato ou cadastrado pelo admin).
+LIVE_DDL = """
+CREATE TABLE IF NOT EXISTS live_matches (
+    id INTEGER PRIMARY KEY,
+    match_key TEXT NOT NULL UNIQUE,
+    content_id TEXT NOT NULL DEFAULT '',
+    room TEXT NOT NULL DEFAULT '',
+    players_json TEXT NOT NULL DEFAULT '[]',
+    local_players_json TEXT NOT NULL DEFAULT '[]',
+    visita_players_json TEXT NOT NULL DEFAULT '[]',
+    kickoff_frame INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'live' CHECK (status IN ('live', 'finished', 'abandoned')),
+    period INTEGER NOT NULL DEFAULT 0,
+    clock_left INTEGER NOT NULL DEFAULT 0,
+    half_frames INTEGER NOT NULL DEFAULT 18000,
+    local_slot INTEGER,
+    visita_slot INTEGER,
+    local_goals INTEGER NOT NULL DEFAULT 0,
+    visita_goals INTEGER NOT NULL DEFAULT 0,
+    state_json TEXT NOT NULL DEFAULT '{}',
+    reporters INTEGER NOT NULL DEFAULT 0,
+    -- No fim: 1 = os PCs que mandaram o estado final concordam no placar (2 ou mais).
+    agreed INTEGER NOT NULL DEFAULT 0,
+    tournament_match_id INTEGER REFERENCES tournament_matches(id) ON DELETE SET NULL,
+    friendly_id INTEGER REFERENCES friendly_matches(id) ON DELETE SET NULL,
+    is_test INTEGER NOT NULL DEFAULT 0,
+    started_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    finished_at TEXT
+);
+CREATE INDEX IF NOT EXISTS live_matches_status_idx ON live_matches(status, updated_at);
+CREATE INDEX IF NOT EXISTS live_matches_tournament_match_idx ON live_matches(tournament_match_id);
+
+CREATE TABLE IF NOT EXISTS live_match_reports (
+    live_match_id INTEGER NOT NULL REFERENCES live_matches(id) ON DELETE CASCADE,
+    reporter TEXT NOT NULL COLLATE NOCASE,
+    player_id INTEGER REFERENCES players(id) ON DELETE SET NULL,
+    frame INTEGER NOT NULL DEFAULT 0,
+    final INTEGER NOT NULL DEFAULT 0,
+    state_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (live_match_id, reporter)
+);
+
+CREATE TABLE IF NOT EXISTS iso_team_slots (
+    content_id TEXT NOT NULL,
+    slot INTEGER NOT NULL,
+    ram_name TEXT NOT NULL DEFAULT '',
+    room TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL DEFAULT '',
+    team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+    source TEXT NOT NULL DEFAULT '' CHECK (source IN ('', 'aprendido', 'admin')),
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (content_id, slot)
+);
+"""
+
+
 SITE_SETTINGS_DDL = """
 CREATE TABLE IF NOT EXISTS site_settings (
     key TEXT PRIMARY KEY,
@@ -633,6 +697,7 @@ def init_db():
     ensure_player_columns(db)
     db.executescript(TOURNAMENTS_DDL)
     ensure_tournament_columns(db)
+    db.executescript(LIVE_DDL)
     from .tournament.teams import seed_teams
     from .tournament.games import seed_games
     seed_teams(db)
@@ -737,6 +802,7 @@ def migrate_db():
     allow_tournament_formats(database)
     database.executescript(TOURNAMENTS_DDL)
     ensure_tournament_columns(database)
+    database.executescript(LIVE_DDL)
     from .tournament.teams import seed_teams
     from .tournament.games import seed_games
     seed_teams(database)

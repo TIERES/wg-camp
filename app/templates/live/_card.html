@@ -1,0 +1,30 @@
+{# Card de uma partida ao vivo (app/live.py card()): campeonato/amistoso, tempo, times com quem controla, placar e gols. #}
+{% set a, b = c.teams %}
+<article class="live-card{% if c.status != 'live' %} ended{% endif %}">
+  <div class="live-card-head">
+    <span class="live-context">{% if c.link %}<a href="{{ c.link }}">{{ c.context }}</a>{% else %}{{ c.context }}{% endif %}{% if c.is_test %} <span class="badge live-test">Teste</span>{% endif %}</span>
+    {% if c.status == 'live' and not c.stale %}<span class="live-badge">Ao vivo</span>{% endif %}
+    <span class="live-clock{% if c.status == 'live' and not c.stale %} on{% endif %}">{{ c.clock }}</span>
+  </div>
+  <div class="live-score">
+    {% for t in (a, b) %}
+    <div class="live-team">
+      <img class="live-crest" src="{{ t.image }}" alt="" loading="lazy">
+      <strong>{{ t.name }}</strong>
+      <small>{{ t.players|join(', ') if t.players else 'CPU' }}</small>
+    </div>
+    {% if loop.first %}<div class="live-goals"><span>{{ a.goals }}</span><span class="live-x">×</span><span>{{ b.goals }}</span></div>{% endif %}
+    {% endfor %}
+  </div>
+  {% if a.scorers or b.scorers %}
+  <div class="live-scorers">
+    <ul>{% for g in a.scorers %}<li>{{ g|scorer }}</li>{% endfor %}</ul>
+    <svg class="live-ball" viewBox="0 0 24 24" aria-label="Gols"><circle cx="12" cy="12" r="9"/><path d="m12 7 4 3-1.5 4.5h-5L8 10z"/><path d="M12 3v4M21 10h-5M3 10h5M7 20l2.5-5.5M17 20l-2.5-5.5"/></svg>
+    <ul class="right">{% for g in b.scorers %}<li>{{ g|scorer }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+  <div class="live-card-foot">
+    <small>{{ c.game }}</small>
+    {% if c.status == 'finished' and c.agreed %}<small class="live-agreed">Placar conferido nos {{ c.reporters }} PCs</small>{% endif %}
+  </div>
+</article>

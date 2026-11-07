@@ -1,0 +1,17 @@
+{% extends 'base.html' %}{% block title %}Ao vivo · WE Camp{% endblock %}{% block content %}
+<div class="page-title">
+  <h1>Ao vivo</h1>
+  {% if is_admin %}
+  <span class="live-admin">
+    <a href="{{ url_for('live.admin_slots') }}">Times de cada ISO</a>
+    <form method="post" action="{{ url_for('live.clear_tests') }}" class="inline-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Apagar partidas de teste</button></form>
+  </span>
+  {% endif %}
+</div>
+<p class="muted">Partidas sendo jogadas agora no RetroArch TIERES, com o placar lido do próprio jogo. A página se atualiza sozinha.</p>
+<section data-live-section>
+  <div class="live-cards" data-live-src="{{ url_for('live.cards_fragment') }}">{% include 'live/_cards.html' %}</div>
+  <p class="muted" data-live-empty {% if cards %}hidden{% endif %}>Nenhuma partida agora.</p>
+</section>
+<script src="{{ url_for('static', filename='js/live-cards.js', v='20261107a') }}"></script>
+{% endblock %}
