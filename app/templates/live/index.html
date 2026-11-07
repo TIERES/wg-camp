@@ -21,7 +21,7 @@
   </label>
   <label>De<input type="date" name="de" value="{{ filters.date_from }}"></label>
   <label>Até<input type="date" name="ate" value="{{ filters.date_to }}"></label>
-  <div class="live-filter-actions"><button>Filtrar</button><a class="button secondary" href="{{ url_for('live.index') }}">Limpar filtro</a></div>
+  <div class="live-filter-actions"><a class="button secondary" href="{{ url_for('live.index') }}">Limpar filtro</a><button>Filtrar</button></div>
 </form>
 <section data-live-section>
   <div class="live-cards" data-live-src="{{ cards_url }}">{% include 'live/_cards.html' %}</div>
