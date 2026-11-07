@@ -1,0 +1,23 @@
+{% extends 'base.html' %}{% block title %}Times de cada ISO · Ao vivo{% endblock %}{% block content %}
+<div class="page-title"><h1>Times de cada ISO</h1><a href="{{ url_for('live.index') }}">Ver partidas ao vivo</a></div>
+<p class="muted">O jogo só informa o número do time (slot) na tabela da ISO, e muitos patches não renomeiam essa tabela (no CAN 2025 o slot de Camarões ainda se chama FINLAND). Os slots aparecem aqui conforme as partidas são jogadas. Nos jogos de campeonato o nome é aprendido sozinho, pelo time inscrito de quem controla cada lado; aqui você corrige ou completa. Escolha um time da base para ter o escudo/bandeira, ou digite um nome livre. Deixe vazio para apagar.</p>
+<datalist id="team-names">{% for name in teams %}<option value="{{ name }}">{% endfor %}</datalist>
+{% for (content_id, room), rows in groups.items() %}
+<section>
+  <h2>{{ room or 'Jogo sem nome' }} <small class="muted">{{ content_id }}</small></h2>
+  <div class="table-scroll"><table>
+    <thead><tr><th>Slot</th><th>Nome no jogo</th><th>Time</th><th>Origem</th></tr></thead>
+    <tbody>
+    {% for row in rows %}
+      <tr>
+        <td>{{ row.slot }}</td>
+        <td>{{ row.ram_name or '—' }}</td>
+        <td><form method="post" class="inline-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="content_id" value="{{ row.content_id }}"><input type="hidden" name="slot" value="{{ row.slot }}"><input name="name" list="team-names" value="{{ row.name or row.team_name or '' }}" maxlength="40" placeholder="Time"><button class="secondary">Salvar</button></form></td>
+        <td>{{ {'aprendido': 'Aprendido (campeonato)', 'admin': 'Administração'}.get(row.source, '—') }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% else %}<p>Nenhuma partida ao vivo registrada ainda.</p>{% endfor %}
+{% endblock %}
