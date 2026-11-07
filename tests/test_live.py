@@ -717,10 +717,54 @@ class LiveMatchesTest(unittest.TestCase):
                        "finished_at = ?, updated_at = ?", (old, old))
             db.commit()
         self.cards()
+        # O interrompido soma com o placar de quando parou: 2x2 + (ANDERSHOW 0 x 1 TIERES) = 2 x 3.
         row = self.rows("SELECT * FROM friendly_matches WHERE id = ?", fid)[0]
-        self.assertEqual((row["status"], row["home_goals"], row["away_goals"]), ("reported", 2, 2))
-        notes = {r["kickoff_frame"]: r["game_report"] for r in self.rows("SELECT kickoff_frame, game_report FROM live_matches")}
-        self.assertEqual(notes, {1000: "reportado (soma de 1 jogo)", 40000: "partida interrompida: não soma"})
+        self.assertEqual((row["status"], row["home_goals"], row["away_goals"], row["quitter_id"]), ("reported", 2, 3, None))
+        notes = {r["game_report"] for r in self.rows("SELECT game_report FROM live_matches")}
+        self.assertEqual(notes, {"reportado (soma de 2 jogos)"})
+
+    def test_who_left_mid_game_is_marked_and_loses_triple_xp(self):
+        import struct
+        from app.tournament import xp
+        with self.app.app_context():
+            db = get_db()
+            fid = db.execute("INSERT INTO friendly_matches (home_id, away_id, status, created_at, updated_at) "
+                             "VALUES (?, ?, 'accepted', ?, ?)", (self.tieres, self.anders, now(), now())).lastrowid
+            db.commit()
+        self.play(1000, (1, 1))
+        self.play(40000, (0, 2), finish=False)  # ANDERSHOW ganhava 2 x 0 e TIERES saiu
+        with self.app.app_context():
+            db = get_db()
+            # reap(): sem sinal, vira interrompido com o fim no último informe (há 3 minutos aqui).
+            old = (datetime.now(timezone.utc) - timedelta(minutes=3)).replace(microsecond=0).isoformat()
+            db.execute("UPDATE live_matches SET status = 'abandoned', finished_at = ?, updated_at = ? "
+                       "WHERE kickoff_frame = 40000", (old, old))
+            started = self.rows("SELECT MIN(started_at) AS s FROM live_matches")[0]["s"]
+            # Replay da transmissão: cabeçalho KRC1 + um quadro + TIERES saiu (0x14).
+            krec = b"KRC1" + b"\0" * 396 + bytes([0x12]) + struct.pack("<h", 2) + b"ab" + bytes([0x14]) + b"TIERES\0" + struct.pack("<i", 1)
+            live_dir = Path(self.app.config["LIVE_DIR"])
+            live_dir.mkdir(parents=True, exist_ok=True)
+            (live_dir / "s1.krec").write_bytes(krec)
+            db.execute("INSERT INTO live_sessions (session_id, player_names, status, stored_name, started_at, updated_at, "
+                       "ended_at) VALUES ('s1', 'TIERES, ANDERSHOW', 'finished', 's1.krec', ?, ?, ?)",
+                       ((datetime.fromisoformat(started) - timedelta(minutes=1)).isoformat(), now(), now()))
+            db.commit()
+        self.cards()
+        row = self.rows("SELECT * FROM friendly_matches WHERE id = ?", fid)[0]
+        self.assertEqual((row["status"], row["home_goals"], row["away_goals"], row["quitter_id"]), ("reported", 1, 3, self.tieres))
+        self.assertIn("TIERES saiu no meio do último jogo", self.rows("SELECT game_report FROM live_matches")[0]["game_report"])
+        client = self.app.test_client()
+        with client.session_transaction() as sess:
+            sess["player_id"] = self.anders
+        self.assertIn("perde o triplo de XP", client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True))
+        # XP: quem saiu perde o triplo; quem ganhou ganha o normal.
+        start = {self.tieres: 300, self.anders: 300}
+        normal = xp.replay([{"id": "a1", "home": self.tieres, "away": self.anders, "home_goals": 1, "away_goals": 3,
+                             "quitter": None}], dict(start))[1]["a1"]
+        quit_ = xp.replay([{"id": "a1", "home": self.tieres, "away": self.anders, "home_goals": 1, "away_goals": 3,
+                            "quitter": self.tieres}], dict(start))[1]["a1"]
+        self.assertEqual(quit_[self.anders], normal[self.anders])
+        self.assertEqual(quit_[self.tieres], normal[self.tieres] * 3)
 
     def test_friendly_game_score_confirms_by_itself_in_24h(self):
         from app.tournament import friendly

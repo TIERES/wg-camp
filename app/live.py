@@ -23,6 +23,7 @@ FINLAND e é Camarões). Ordem: o time da inscrição de quem controla o lado
 (iso_team_slots: aprendido ou do admin), o nome da RAM e, por fim, "Time N".
 """
 import hashlib
+from pathlib import Path
 import json
 import re
 from datetime import datetime, timedelta, timezone
@@ -664,12 +665,62 @@ def _session_over(db, nicks, last_finished):
     return False
 
 
+def _krec_drops(path):
+    """Nicks de quem saiu da partida, em ordem, no replay (.krec) da
+    transmissão: registros 0x14 (ver kaillera-client tools/krec_harness/krec.py)."""
+    import struct
+    try:
+        data = Path(path).read_bytes()
+    except OSError:
+        return []
+    pos, drops = (400 if data[:4] == b"KRC1" else 272), []
+    while pos < len(data):
+        kind = data[pos]
+        pos += 1
+        try:
+            if kind == 0x12:
+                (size,) = struct.unpack_from("<h", data, pos)
+                if size < 0:
+                    break
+                pos += 2 + size
+            elif kind == 0x08:
+                pos = data.index(b"\0", data.index(b"\0", pos) + 1) + 1
+            elif kind == 0x14:
+                end = data.index(b"\0", pos)
+                drops.append(data[pos:end].decode("latin-1"))
+                pos = end + 1 + 4
+            else:
+                break
+        except (ValueError, struct.error):
+            break
+    return drops
+
+
+def _session_quitter(db, nicks, game):
+    """Quem saiu da sessão no meio deste jogo (o último, interrompido): o
+    primeiro dos dois a sair no replay da transmissão do Stream ao vivo
+    deles - None sem a transmissão."""
+    from flask import current_app
+    for row in db.execute("SELECT player_names, stored_name FROM live_sessions WHERE status = 'finished' "
+                          "AND started_at <= ? AND ended_at >= ? ORDER BY ended_at",
+                          (game["started_at"], game["updated_at"])):
+        names = {n.strip().casefold() for n in (row["player_names"] or "").split(",")}
+        if not all(nick.casefold() in names for nick in nicks):
+            continue
+        for nick in _krec_drops(Path(current_app.config["LIVE_DIR"]) / row["stored_name"]):
+            if nick.casefold() in {n.casefold() for n in nicks}:
+                return nick
+    return None
+
+
 def _report_friendlies(db):
     """Amistoso: as partidas da sessão (cada uma com o seu card) somam no fim,
     por jogador, e o total vira o placar do amistoso (friendly.report_from_game)
-    quando a sessão acaba - um dos jogadores saiu. Contam os jogos terminados,
-    com o placar final de acordo nos PCs; os dois confirmam ou ele vale sozinho
-    no prazo, contado do fim do último jogo."""
+    quando a sessão acaba - um dos jogadores saiu. Contam os jogos terminados
+    (placar final de acordo nos PCs) e os interrompidos, com o placar de quando
+    pararam; quem saiu no meio do último jogo fica marcado e perde o triplo de
+    XP se o amistoso for confirmado (xp.QUIT_FACTOR). Os dois confirmam ou ele
+    vale sozinho no prazo, contado do fim do último jogo."""
     from .tournament import friendly
     from .tournament.store import TournamentError
     for f in db.execute(
@@ -682,16 +733,21 @@ def _report_friendlies(db):
             "ORDER BY started_at", (f["id"],)).fetchall()
         if any(g["status"] == "live" for g in games):
             continue  # ainda jogando
-        finished = [g for g in games if g["status"] == "finished"]
         last = max((g["finished_at"] or g["updated_at"] for g in games), default=None)
         if not last or last > _ago(REPORT_SETTLE) or not _session_over(db, (f["home_nick"], f["away_nick"]), last):
             continue
-        total, counted, notes = [0, 0], 0, {}
-        for g in finished:
-            finals = {(s["teams"][0]["goals"], s["teams"][1]["goals"]) for s in (
-                json.loads(r["state_json"]) for r in db.execute(
-                    "SELECT state_json FROM live_match_reports WHERE live_match_id = ? AND final = 1", (g["id"],)))}
+        total, counted, notes, quitter = [0, 0], 0, {}, None
+        for g in games:
             row = dict(g, home_nick=f["home_nick"], away_nick=f["away_nick"])
+            if g["status"] == "abandoned":
+                # Interrompido: vale o placar de quando parou.
+                finals = {(g["local_goals"], g["visita_goals"])}
+                if g["id"] == games[-1]["id"]:
+                    quitter = _session_quitter(db, (f["home_nick"], f["away_nick"]), g)
+            else:
+                finals = {(s["teams"][0]["goals"], s["teams"][1]["goals"]) for s in (
+                    json.loads(r["state_json"]) for r in db.execute(
+                        "SELECT state_json FROM live_match_reports WHERE live_match_id = ? AND final = 1", (g["id"],)))}
             score = _home_away(row, next(iter(finals))) if len(finals) == 1 else None
             if score is None:
                 notes[g["id"]] = ("sem o fim mandado pelos PCs" if not finals else "os PCs discordam do placar"
@@ -700,17 +756,18 @@ def _report_friendlies(db):
             total[0] += score[0]
             total[1] += score[1]
             counted += 1
-        outcome = "nenhum jogo terminado para somar"
+        outcome = "nenhum jogo para somar"
         if counted:
+            quitter_id = _player_id(db, quitter) if quitter else None
             try:
-                friendly.report_from_game(db, f["id"], total[0], total[1], last)
+                friendly.report_from_game(db, f["id"], total[0], total[1], last, quitter_id)
                 outcome = "reportado (soma de %d jogo%s)" % (counted, "s" if counted > 1 else "")
+                if quitter:
+                    outcome += "; %s saiu no meio do último jogo" % quitter
             except TournamentError as error:
                 outcome = str(error)[:200]
         for g in games:
-            db.execute("UPDATE live_matches SET game_report = ? WHERE id = ?",
-                       (notes.get(g["id"]) or ("partida interrompida: não soma" if g["status"] == "abandoned" else outcome),
-                        g["id"]))
+            db.execute("UPDATE live_matches SET game_report = ? WHERE id = ?", (notes.get(g["id"]) or outcome, g["id"]))
         db.commit()
 
 

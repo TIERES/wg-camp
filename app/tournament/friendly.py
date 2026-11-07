@@ -126,19 +126,20 @@ def report(db, friendly_id, me, home_goals, away_goals):
     if row["status"] not in ("accepted", "suspended"):
         raise TournamentError("Este amistoso não está aberto para placar.")
     _set(db, friendly_id, status="reported", home_goals=_goals(home_goals), away_goals=_goals(away_goals),
-         reported_by=me, reported_at=now(), game_report=0, first_confirmed_by=None)
+         reported_by=me, reported_at=now(), game_report=0, first_confirmed_by=None, quitter_id=None)
     return row
 
 
-def report_from_game(db, friendly_id, home_goals, away_goals, at):
+def report_from_game(db, friendly_id, home_goals, away_goals, at, quitter_id=None):
     """O placar que o RetroArch TIERES leu do jogo (app/live.py), como um
     placar reportado sem jogador: os dois confirmam, ou ele vale sozinho no
-    prazo contado de `at` (o fim do jogo). Só com o amistoso esperando placar."""
+    prazo contado de `at` (o fim do jogo). Só com o amistoso esperando placar.
+    quitter_id: quem saiu da sessão no meio de um jogo (perde o triplo de XP)."""
     row = get(db, friendly_id)
     if row is None or row["status"] != "accepted":
         raise TournamentError("O amistoso não está esperando placar.")
     _set(db, friendly_id, status="reported", home_goals=_goals(home_goals), away_goals=_goals(away_goals),
-         reported_by=None, reported_at=at, game_report=1, first_confirmed_by=None)
+         reported_by=None, reported_at=at, game_report=1, first_confirmed_by=None, quitter_id=quitter_id)
     return get(db, friendly_id)
 
 

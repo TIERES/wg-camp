@@ -466,6 +466,9 @@ CREATE TABLE IF NOT EXISTS friendly_matches (
     -- (o primeiro fica em first_confirmed_by) ou ele vale sozinho no prazo.
     game_report INTEGER NOT NULL DEFAULT 0,
     first_confirmed_by INTEGER REFERENCES players(id) ON DELETE SET NULL,
+    -- Quem saiu da sessão no meio de um jogo (o placar até ali conta): perde
+    -- o triplo de XP se o amistoso for confirmado (xp.QUIT_FACTOR).
+    quitter_id INTEGER REFERENCES players(id) ON DELETE SET NULL,
     CHECK (home_id != away_id)
 );
 CREATE INDEX IF NOT EXISTS friendly_matches_home_idx ON friendly_matches(home_id, status);
@@ -507,6 +510,9 @@ def ensure_live_columns(database):
         database.execute("ALTER TABLE friendly_matches ADD COLUMN game_report INTEGER NOT NULL DEFAULT 0")
     if columns and "first_confirmed_by" not in columns:
         database.execute("ALTER TABLE friendly_matches ADD COLUMN first_confirmed_by INTEGER "
+                         "REFERENCES players(id) ON DELETE SET NULL")
+    if columns and "quitter_id" not in columns:
+        database.execute("ALTER TABLE friendly_matches ADD COLUMN quitter_id INTEGER "
                          "REFERENCES players(id) ON DELETE SET NULL")
     columns = {column["name"] for column in database.execute("PRAGMA table_info(live_matches)")}
     if columns and "game_report" not in columns:

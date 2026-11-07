@@ -31,6 +31,7 @@
     <strong class="friendly-score-text">{% if f.home_goals is not none and f.status in ('reported', 'suspended', 'confirmed') %}{{ f.home_goals }} x {{ f.away_goals }}{% else %}x{% endif %}</strong>
     <span class="with-avatar away"><a href="{{ url_for('tournaments.player', nome=f.away_name) }}">{{ f.away_name }}</a>{{ avatar_button(f.away_id, f.away_name) }}</span>
   </div>
+  {% if f.quitter_id and f.status in ('reported', 'confirmed') %}<p class="friendly-warn">{{ f.home_name if f.quitter_id == f.home_id else f.away_name }} saiu da partida no meio de um jogo (o placar até ali conta){% if f.status == 'reported' %}: se o placar for confirmado, perde o triplo de XP{% else %} e perdeu o triplo de XP{% endif %}.</p>{% endif %}
   {% if f.message %}<p class="friendly-note"><small class="muted">Recado de {{ f.home_name }}:</small> {{ f.message }}</p>{% endif %}
   {% if f.iso_title %}
   <div class="friendly-iso">
