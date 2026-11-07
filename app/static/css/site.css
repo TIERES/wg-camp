@@ -515,7 +515,8 @@ header nav { align-items:center }
 .live-team { display:grid; justify-items:center; text-align:center; gap:.3rem; min-width:0 } .live-team strong { font-size:1.05rem; overflow-wrap:anywhere } .live-team small { color:#9ca3af; overflow-wrap:anywhere }
 .live-crest { width:56px; height:42px; object-fit:contain; border-radius:4px }
 .live-goals { display:flex; align-items:center; gap:1.25rem; font-size:2.6rem; font-weight:600; line-height:1 } .live-x { font-size:1.4rem; color:#9ca3af }
-.live-mid { display:grid; justify-items:center; gap:.35rem } .live-pens { font-size:.85rem; font-weight:600; color:#d1d5db; white-space:nowrap }
+.live-mid { display:grid; justify-items:center; gap:.35rem }
+.live-tie { display:grid; justify-items:center; gap:.15rem; margin-top:-.35rem; color:#d1d5db; font-size:.9rem; text-align:center } .live-tie small { color:#fdba74 } .live-pens { font-size:.85rem; font-weight:600; color:#d1d5db; white-space:nowrap }
 .live-card.ended .live-goals { color:#d1d5db }
 .live-scorers { display:grid; grid-template-columns:1fr auto 1fr; gap:.75rem; align-items:start; border-top:1px solid #374151; padding-top:.75rem; font-size:.875rem }
 .live-scorers ul { list-style:none; margin:0; padding:0; display:grid; gap:.15rem; min-width:0 } .live-scorers ul.right { text-align:right }

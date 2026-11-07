@@ -384,6 +384,42 @@ def _context(db, match):
     return "Partida livre", None
 
 
+def _tie_view(db, match, sides, goals):
+    """Mata-mata de ida e volta: "Final · Jogo 2 de 2" e, no jogo de volta, o
+    total somando o jogo de ida, na ordem do card (LOCAL, VISITA). O placar da
+    ida vale confirmado ou, enquanto não, o reportado (provisional)."""
+    if not match["tournament_match_id"]:
+        return None
+    row = db.execute(
+        "SELECT m.leg, m.tie_id, m.home_entry_id, m.away_entry_id, s.name AS stage_name, tie.legs, "
+        "hp.username AS home_nick, ap.username AS away_nick FROM tournament_matches m "
+        "JOIN tournament_stages s ON s.id = m.stage_id LEFT JOIN tournament_ties tie ON tie.id = m.tie_id "
+        "JOIN tournament_entries he ON he.id = m.home_entry_id JOIN players hp ON hp.id = he.player_id "
+        "JOIN tournament_entries ae ON ae.id = m.away_entry_id JOIN players ap ON ap.id = ae.player_id "
+        "WHERE m.id = ?", (match["tournament_match_id"],)).fetchone()
+    if row is None or not row["tie_id"] or row["legs"] != 2:
+        return None
+    view = {"label": "%s · Jogo %d de 2" % (row["stage_name"], row["leg"]), "aggregate": None, "provisional": False}
+    if row["leg"] != 2:
+        return view
+    first = db.execute("SELECT * FROM tournament_matches WHERE tie_id = ? AND leg = 1", (row["tie_id"],)).fetchone()
+    score = None
+    if first is not None and first["status"] == "confirmed":
+        score = (first["home_goals"], first["away_goals"])
+    elif first is not None and first["status"] in ("reported", "disputed"):
+        from .tournament.reports import last_report
+        reported = last_report(db, first["id"])
+        if reported and reported["home_goals"] is not None:
+            score, view["provisional"] = (reported["home_goals"], reported["away_goals"]), True
+    entry_of = {row["home_nick"].casefold(): row["home_entry_id"], row["away_nick"].casefold(): row["away_entry_id"]}
+    entries = [next((entry_of[n.casefold()] for n in nicks if n.casefold() in entry_of), None) for nicks in sides]
+    if score is None or None in entries or entries[0] == entries[1]:
+        return view
+    first_goals = {first["home_entry_id"]: score[0], first["away_entry_id"]: score[1]}
+    view["aggregate"] = (goals[0] + first_goals.get(entries[0], 0), goals[1] + first_goals.get(entries[1], 0))
+    return view
+
+
 def _file_name(match):
     return re.sub(r"^PCSX ReARMed:\s*", "", match["room"] or "")
 
@@ -467,7 +503,8 @@ def card(db, match):
             "game": {"name": game["name"], "cover": cover_url(game["code"])} if game else None,
             "tournament": {"name": tournament["name"], "image": image_url("torneio", tournament["image"]),
                            "url": url_for("tournaments.show", slug=tournament["slug"], aba="tabela")} if tournament else None,
-            "pens": state.get("pens"), "teams": views}
+            "pens": state.get("pens"), "teams": views,
+            "tie": _tie_view(db, match, sides, (views[0]["goals"], views[1]["goals"]))}
 
 
 def _local_day(value, end=False):

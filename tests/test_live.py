@@ -453,6 +453,27 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertIn("Pênaltis 2 × 1", html)
         self.assertIn('live-clock on">Pênaltis<', html)
 
+    def test_second_leg_card_shows_the_aggregate(self):
+        from app.tournament import store
+        ida, volta = self.make_tournament()
+        with self.app.app_context():
+            db = get_db()
+            # Ida: ANDERSHOW (mandante) 3 x 1 TIERES.
+            store.record_result(db, store.get_tournament(db, self.rows("SELECT id FROM tournaments")[0]["id"]), ida, 3, 1)
+            db.commit()
+        self.post(state(goals=(1, 1)))  # volta: TIERES (LOCAL) 1 x 1 ANDERSHOW
+        html = self.cards()
+        self.assertIn("Final · Jogo 2 de 2", html)
+        self.assertIn("Total com jogo de ida: 2 - 4", html)
+        self.assertNotIn("ida não confirmada", html)
+
+    def test_first_leg_card_shows_game_1_of_2(self):
+        self.make_tournament()
+        self.post(state(goals=(0, 0)))
+        html = self.cards()
+        self.assertIn("Final · Jogo 1 de 2", html)
+        self.assertNotIn("Total com jogo de ida", html)
+
     def test_penalties_go_into_the_report_of_the_deciding_leg(self):
         from app.tournament import store
         ida, volta = self.make_tournament()

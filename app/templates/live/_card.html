@@ -24,6 +24,9 @@
       {% if c.pens %}<div class="live-pens" title="Disputa de pênaltis">Pênaltis {{ c.pens[0] }} × {{ c.pens[1] }}</div>{% endif %}</div>{% endif %}
     {% endfor %}
   </div>
+  {% if c.tie %}
+  <div class="live-tie">{{ c.tie.label }}{% if c.tie.aggregate %}<span>Total com jogo de ida: {{ c.tie.aggregate[0] }} - {{ c.tie.aggregate[1] }}{% if c.tie.provisional %} <small title="O placar do jogo de ida ainda não foi confirmado pelos jogadores">(ida não confirmada)</small>{% endif %}</span>{% endif %}</div>
+  {% endif %}
   {% if a.scorers or b.scorers %}
   <div class="live-scorers">
     <ul>{% for g in a.scorers %}<li>{{ g|scorer }}</li>{% endfor %}</ul>
