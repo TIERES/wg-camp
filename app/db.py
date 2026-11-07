@@ -335,6 +335,9 @@ CREATE TABLE IF NOT EXISTS tournament_matches (
     reported_at TEXT,
     confirmed_at TEXT,
     live_session_id INTEGER REFERENCES live_sessions(id) ON DELETE SET NULL,
+    -- Quem saiu da sessão do Kaillera no meio do jogo (app/live.py): perde o
+    -- triplo de XP se o placar lido do jogo for confirmado (xp.QUIT_FACTOR).
+    quitter_id INTEGER REFERENCES players(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -513,6 +516,10 @@ def ensure_live_columns(database):
                          "REFERENCES players(id) ON DELETE SET NULL")
     if columns and "quitter_id" not in columns:
         database.execute("ALTER TABLE friendly_matches ADD COLUMN quitter_id INTEGER "
+                         "REFERENCES players(id) ON DELETE SET NULL")
+    columns = {column["name"] for column in database.execute("PRAGMA table_info(tournament_matches)")}
+    if columns and "quitter_id" not in columns:
+        database.execute("ALTER TABLE tournament_matches ADD COLUMN quitter_id INTEGER "
                          "REFERENCES players(id) ON DELETE SET NULL")
     columns = {column["name"] for column in database.execute("PRAGMA table_info(live_matches)")}
     if columns and "game_report" not in columns:

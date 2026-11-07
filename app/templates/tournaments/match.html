@@ -15,6 +15,9 @@
     {% elif live_now %}Ao vivo agora: placar lido do jogo pelo RetroArch TIERES
     {% else %}Ainda sem resultado{% endif %}
   </p>
+  {% if quitter and m.status in ('reported', 'disputed', 'confirmed') %}<p class="friendly-warn">{{ quitter }} saiu da partida no meio do jogo (vale o placar de quando parou){% if m.status == 'confirmed' %} e perdeu o triplo de XP{% else %}: se o placar for confirmado, perde o triplo de XP - mesmo que tenha sido queda de conexão{% endif %}.</p>
+  <p class="friendly-note muted">Joguem até o fim, mesmo faltando pouco tempo. Se a conexão cair, voltem em até 20 minutos e joguem de novo antes de sair: vale a partida nova, sem a penalidade.</p>{% endif %}
+  {% if me and m.status == 'scheduled' and open %}<p class="friendly-note muted">Com os dois logados no WE Camp, o RetroArch TIERES manda o placar sozinho. Joguem até o fim, mesmo faltando pouco tempo: quem sai no meio do jogo (até por queda de conexão) perde o triplo de XP se o placar for confirmado. Se a conexão cair, voltem em até 20 minutos e joguem de novo antes de sair.</p>{% endif %}
   {% if live_now %}<p><a class="match-live-big standings-live" href="{{ live_now.url }}" title="Ver a partida no Ao vivo">Ao vivo</a></p>{% endif %}
   {% if live_now or m.status in ('reported', 'disputed') %}{{ pending_legend(confirm_hours) }}{% endif %}
 </section>

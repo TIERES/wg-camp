@@ -15,9 +15,9 @@ Regras (fixas no sistema):
   fraco ganha STEP * diferença e o mais forte perde o mesmo.
 - O XP nunca fica negativo; perder XP pode fazer o jogador cair de rank.
 - Pênaltis contam como empate (vale o placar do jogo, como no W$ e no V/E/D).
-- Amistoso em que um jogador saiu da sessão no meio de um jogo (quitter_id,
-  live.py): o que ele perder é multiplicado por QUIT_FACTOR; quem ganhou
-  ganha o normal.
+- Jogo de campeonato ou amistoso em que um jogador saiu da sessão no meio
+  de um jogo (quitter_id, live.py): o que ele perder é multiplicado por
+  QUIT_FACTOR; quem ganhou ganha o normal.
 """
 from flask import g
 
@@ -36,7 +36,7 @@ QUIT_FACTOR = 3
 # como o match_key de stats.py), na ordem em que foram confirmados.
 _MATCHES = """
 SELECT id, home, away, home_goals, away_goals, quitter FROM (
-    SELECT m.id, he.player_id AS home, ae.player_id AS away, m.home_goals, m.away_goals, NULL AS quitter,
+    SELECT m.id, he.player_id AS home, ae.player_id AS away, m.home_goals, m.away_goals, m.quitter_id AS quitter,
            COALESCE(m.confirmed_at, m.updated_at) AS at, 0 AS kind, m.id AS seq
     FROM tournament_matches m
     JOIN tournament_stages s ON s.id = m.stage_id

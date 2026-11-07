@@ -152,12 +152,16 @@ def ingest(db, state, players, reporter, player_id, room, is_test=False):
             "AND updated_at >= ? ORDER BY updated_at DESC LIMIT 1",
             (state["content"], json.dumps(players), _ago(JOIN_WINDOW))).fetchone()
     stamp = now()
-    if row is None:
+    if row is None and state["kickoff"]:
         # Partida nova dos mesmos jogadores e ISO: a anterior que ficou aberta foi
-        # abandonada (WE4: saíram pelo menu de pausa; o fork não manda o fim dela).
-        db.execute("UPDATE live_matches SET status = 'abandoned', finished_at = ? WHERE status = 'live' "
-                   "AND content_id = ? AND players_json = ? AND kickoff_frame != ? AND ? != 0",
-                   (stamp, state["content"], json.dumps(players), state["kickoff"], state["kickoff"]))
+        # abandonada (WE4: saíram pelo menu de pausa; o fork não manda o fim dela;
+        # ou um saiu/caiu e voltaram a jogar - com 1P e 2P em qualquer ordem).
+        same = sorted(nick.casefold() for nick in players)
+        for old in db.execute("SELECT id, players_json FROM live_matches WHERE status = 'live' AND content_id = ? "
+                              "AND kickoff_frame != ?", (state["content"], state["kickoff"])).fetchall():
+            if sorted(nick.casefold() for nick in json.loads(old["players_json"])) == same:
+                db.execute("UPDATE live_matches SET status = 'abandoned', finished_at = ? WHERE id = ?", (stamp, old["id"]))
+    if row is None:
         live_id = db.execute(
             "INSERT INTO live_matches (match_key, content_id, room, players_json, kickoff_frame, is_test, started_at, "
             "updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -252,8 +256,10 @@ def detect_context(db, match, local_nick, visita_nick):
     if row:
         db.execute("UPDATE live_matches SET friendly_id = ? WHERE id = ?", (row["id"], match["id"]))
         return
+    # Uma partida interrompida que ainda não virou reporte não prende o jogo:
+    # voltaram e jogaram de novo (_report_abandoned).
     taken = ("SELECT tournament_match_id FROM live_matches WHERE tournament_match_id IS NOT NULL AND id != ? "
-             "AND is_test = ?")
+             "AND is_test = ? AND (status != 'abandoned' OR game_report LIKE 'reportado%')")
     # A ISO tem que ser a do campeonato (content_id dela ou uma ligada pelo
     # admin/aprendida em iso_profiles); campeonato sem ISO identificada vale.
     row = db.execute(
@@ -633,17 +639,63 @@ def report_finished(db):
                    else "não deu para saber quem é o mandante" if score is None else None)
         tournament = store.get_tournament(db, row["tournament_id"])
         if outcome is None:
-            try:
-                reports.report_from_game(db, tournament, row["tournament_match_id"], (*score, *pens),
-                                         row["finished_at"], GAME_REPORT_NOTE % row["id"])
-                outcome = "reportado"
-            except TournamentError as error:
-                outcome = str(error)[:200]
+            # Modo Server: quem ficou segue jogando e o PC dele manda o fim sozinho.
+            outcome = _report_game(db, tournament, row, (*score, *pens), GAME_REPORT_NOTE % row["id"])
         db.execute("UPDATE live_matches SET game_report = ? WHERE id = ?", (outcome, row["id"]))
         db.commit()
-        if outcome == "reportado":
+        if outcome.startswith("reportado"):
             notify.score_from_game(db, tournament, row["tournament_match_id"])
+    _report_abandoned(db)
     _report_friendlies(db)
+
+
+ABANDONED_NOTE = "Partida interrompida no RetroArch TIERES (Ao vivo nº %d): vale o placar de quando parou."
+
+
+def _report_game(db, tournament, row, score, note):
+    """Reporta o placar lido do jogo de campeonato (reports.report_from_game)
+    com quem saiu no meio dele (_game_quitter); devolve a anotação da partida."""
+    from .tournament import reports
+    from .tournament.store import TournamentError
+    quitter = _game_quitter(db, (row["home_nick"], row["away_nick"]), row)
+    if quitter:
+        note += " %s saiu no meio do jogo: perde o triplo de XP se este placar valer." % quitter
+    try:
+        reports.report_from_game(db, tournament, row["tournament_match_id"], score,
+                                 row["finished_at"] or row["updated_at"], note,
+                                 _player_id(db, quitter) if quitter else None)
+    except TournamentError as error:
+        return str(error)[:200]
+    return "reportado" + ("; %s saiu no meio do jogo" % quitter if quitter else "")
+
+
+def _report_abandoned(db):
+    """Jogo de campeonato interrompido (alguém saiu ou caiu: reap, ou partida
+    nova dos dois no ingest): vale o placar de quando parou, como o de um jogo
+    terminado (os dois confirmam ou o prazo), e quem saiu no meio perde o
+    triplo de XP se ele valer. Se voltaram e jogaram de novo o mesmo jogo do
+    campeonato, vale a partida nova - a interrompida espera ela acabar."""
+    from .tournament import notify, store
+    rows = db.execute(_TOURNAMENT_LIVE_SQL + "WHERE m.status = 'abandoned' AND m.is_test = 0 AND m.verified = 1 "
+                      "AND m.game_report IS NULL AND COALESCE(m.finished_at, m.updated_at) <= ?",
+                      (_ago(REPORT_SETTLE),)).fetchall()
+    for row in rows:
+        newer = db.execute("SELECT status FROM live_matches WHERE tournament_match_id = ? AND is_test = 0 AND id > ?",
+                           (row["tournament_match_id"], row["id"])).fetchall()
+        if any(n["status"] == "live" for n in newer):
+            continue  # jogando de novo
+        tournament = store.get_tournament(db, row["tournament_id"])
+        score = _home_away(row, (row["local_goals"] or 0, row["visita_goals"] or 0))
+        if newer:
+            outcome = "jogaram de novo: vale a partida seguinte"
+        elif score is None:
+            outcome = "não deu para saber quem é o mandante"
+        else:
+            outcome = _report_game(db, tournament, row, (*score, None, None), ABANDONED_NOTE % row["id"])
+        db.execute("UPDATE live_matches SET game_report = ? WHERE id = ?", (outcome, row["id"]))
+        db.commit()
+        if outcome.startswith("reportado"):
+            notify.score_from_game(db, tournament, row["tournament_match_id"])
 
 
 # Sem a transmissão do Stream ao vivo para dizer que a sessão do Kaillera
@@ -666,14 +718,17 @@ def _session_over(db, nicks, last_finished):
 
 
 def _krec_drops(path):
-    """Nicks de quem saiu da partida, em ordem, no replay (.krec) da
-    transmissão: registros 0x14 (ver kaillera-client tools/krec_harness/krec.py)."""
+    """(nick, quadro) de quem saiu da partida, em ordem, no replay (.krec) da
+    transmissão: registros 0x14 (ver kaillera-client tools/krec_harness/krec.py).
+    O quadro é o número de registros de controles (0x12, um por quadro) antes
+    dele - o mesmo "frame" que o fork manda no placar ao vivo (os dois contam
+    do início do jogo no Kaillera)."""
     import struct
     try:
         data = Path(path).read_bytes()
     except OSError:
         return []
-    pos, drops = (400 if data[:4] == b"KRC1" else 272), []
+    pos, drops, frame = (400 if data[:4] == b"KRC1" else 272), [], 0
     while pos < len(data):
         kind = data[pos]
         pos += 1
@@ -683,11 +738,12 @@ def _krec_drops(path):
                 if size < 0:
                     break
                 pos += 2 + size
+                frame += 1
             elif kind == 0x08:
                 pos = data.index(b"\0", data.index(b"\0", pos) + 1) + 1
             elif kind == 0x14:
                 end = data.index(b"\0", pos)
-                drops.append(data[pos:end].decode("latin-1"))
+                drops.append((data[pos:end].decode("latin-1"), frame))
                 pos = end + 1 + 4
             else:
                 break
@@ -696,20 +752,37 @@ def _krec_drops(path):
     return drops
 
 
-def _session_quitter(db, nicks, game):
-    """Quem saiu da sessão no meio deste jogo (o último, interrompido): o
-    primeiro dos dois a sair no replay da transmissão do Stream ao vivo
-    deles - None sem a transmissão."""
+# Interrompido: a saída pode vir até um informe do fork depois do último
+# (ele manda a cada mudança e pelo menos a cada 15 s), com folga.
+QUIT_MARGIN_FRAMES = 1200
+
+
+def _game_quitter(db, nicks, game):
+    """Quem saiu da sessão do Kaillera no meio deste jogo: o primeiro dos dois
+    com saída no replay da transmissão do Stream ao vivo (obrigatório com 2+
+    logados) entre o pontapé inicial e o fim - o apito final (no modo Server
+    o jogo segue no PC de quem ficou, que manda o fim sozinho) ou, sem fim,
+    o último informe dos PCs. None sem a transmissão."""
     from flask import current_app
-    for row in db.execute("SELECT player_names, stored_name FROM live_sessions WHERE status = 'finished' "
-                          "AND started_at <= ? AND ended_at >= ? ORDER BY ended_at",
+    finals = [r["frame"] for r in db.execute(
+        "SELECT frame FROM live_match_reports WHERE live_match_id = ? AND final = 1", (game["id"],))]
+    if finals:
+        until = min(finals) - 1
+    else:
+        last = db.execute("SELECT MAX(frame) AS frame FROM live_match_reports WHERE live_match_id = ?",
+                          (game["id"],)).fetchone()["frame"] or 0
+        until = last + QUIT_MARGIN_FRAMES
+    wanted = {nick.casefold(): nick for nick in nicks}
+    for row in db.execute("SELECT player_names, stored_name FROM live_sessions WHERE started_at <= ? "
+                          "AND (status = 'live' OR ended_at >= ?) ORDER BY started_at DESC",
                           (game["started_at"], game["updated_at"])):
         names = {n.strip().casefold() for n in (row["player_names"] or "").split(",")}
-        if not all(nick.casefold() in names for nick in nicks):
+        if not all(nick in names for nick in wanted):
             continue
-        for nick in _krec_drops(Path(current_app.config["LIVE_DIR"]) / row["stored_name"]):
-            if nick.casefold() in {n.casefold() for n in nicks}:
-                return nick
+        for nick, frame in _krec_drops(Path(current_app.config["LIVE_DIR"]) / row["stored_name"]):
+            if nick.casefold() in wanted and game["kickoff_frame"] <= frame <= until:
+                return wanted[nick.casefold()]
+        return None  # a transmissão desta sessão: ninguém saiu no meio
     return None
 
 
@@ -739,11 +812,12 @@ def _report_friendlies(db):
         total, counted, notes, quitter = [0, 0], 0, {}, None
         for g in games:
             row = dict(g, home_nick=f["home_nick"], away_nick=f["away_nick"])
+            if g["id"] == games[-1]["id"]:
+                # Quem saiu no meio do último jogo (terminado no PC de quem ficou, ou interrompido).
+                quitter = _game_quitter(db, (f["home_nick"], f["away_nick"]), g)
             if g["status"] == "abandoned":
                 # Interrompido: vale o placar de quando parou.
                 finals = {(g["local_goals"], g["visita_goals"])}
-                if g["id"] == games[-1]["id"]:
-                    quitter = _session_quitter(db, (f["home_nick"], f["away_nick"]), g)
             else:
                 finals = {(s["teams"][0]["goals"], s["teams"][1]["goals"]) for s in (
                     json.loads(r["state_json"]) for r in db.execute(
