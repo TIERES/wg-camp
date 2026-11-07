@@ -10,7 +10,7 @@
   </div>
   <p class="match-status status-{{ m.status }}">
     {% if m.status == 'confirmed' %}Resultado confirmado
-    {% elif m.status == 'reported' %}Placar {{ 'lido do jogo' if reported.entry_id is none else 'reportado' }}: <strong>{{ reported.home_goals }} x {{ reported.away_goals }}</strong>{% if reported.home_pens is not none %} ({{ reported.home_pens }} x {{ reported.away_pens }} nos pênaltis){% endif %} — esperando {{ 'os jogadores' if reported.entry_id is none else 'o adversário' }} até {{ deadline|localtime }}
+    {% elif m.status == 'reported' %}Placar {{ 'lido do jogo' if reported.entry_id is none else 'reportado' }}: <strong>{{ reported.home_goals }} x {{ reported.away_goals }}</strong>{% if reported.home_pens is not none %} ({{ reported.home_pens }} x {{ reported.away_pens }} nos pênaltis){% endif %} — esperando {{ ('a confirmação dos dois jogadores' if not confirmed_by else 'a confirmação de ' ~ (names[m.away_entry_id if confirmed_by[0] == m.home_entry_id else m.home_entry_id]|striptags)) if reported.entry_id is none else 'o adversário' }} até {{ deadline|localtime }}
     {% elif m.status == 'disputed' %}Resultado contestado{% if dispute %} (o adversário diz {{ dispute.home_goals }} x {{ dispute.away_goals }}){% endif %} — aguardando quem reportou aceitar ou o organizador decidir
     {% elif live_now %}Ao vivo agora: placar lido do jogo pelo RetroArch TIERES
     {% else %}Ainda sem resultado{% endif %}
@@ -21,7 +21,12 @@
 
 {% if open %}
   {% if me %}
-    {% if m.status == 'reported' and m.reported_by_entry_id == me.id %}
+    {% if m.status == 'reported' and m.reported_by_entry_id is none and me.id in confirmed_by %}
+    <section>
+      <h2>Você confirmou o placar {{ reported.home_goals }} x {{ reported.away_goals }}</h2>
+      <p class="muted">Falta o adversário confirmar. Sem resposta até {{ deadline|localtime }}, o placar é confirmado automaticamente.</p>
+    </section>
+    {% elif m.status == 'reported' and m.reported_by_entry_id == me.id %}
     <section>
       <h2>Você reportou o placar</h2>
       <p class="muted">O placar enviado não pode ser alterado. Se houver erro, fale com o organizador: ele pode corrigir o resultado ou liberar um novo reporte.</p>
@@ -58,7 +63,7 @@
     <section>
       {% if reported.entry_id is none %}
       <h2>O jogo terminou {{ reported.home_goals }} x {{ reported.away_goals }}</h2>
-      <p class="muted">Placar lido do próprio jogo pelo RetroArch TIERES. Confirme ou conteste; sem resposta até {{ deadline|localtime }}, ele é confirmado automaticamente.</p>
+      <p class="muted">Placar lido do próprio jogo pelo RetroArch TIERES. Os dois jogadores confirmam{% if confirmed_by %} (o adversário já confirmou){% endif %} ou contestam; sem resposta até {{ deadline|localtime }}, ele é confirmado automaticamente.</p>
       {% else %}
       <h2>O adversário reportou {{ reported.home_goals }} x {{ reported.away_goals }}</h2>
       {% endif %}

@@ -151,7 +151,7 @@ def score_from_game(db, tournament, match_id):
     _deliver([(player["email"], f"Confira o placar: {title}", (
         f"Olá, {player['username']}!\n\nO RetroArch TIERES leu o placar do jogo {title} no campeonato "
         f"{tournament['name']}:\n\n  {_label(home)} {_score_text(reported)} {_label(away)}\n\n"
-        f"Confirme ou conteste em:\n{link}\n\n"
+        f"Os dois jogadores confirmam (ou contestam) em:\n{link}\n\n"
         f"Sem resposta até {deadline}, o placar é confirmado automaticamente.\n")) for player in (home, away)])
 
 

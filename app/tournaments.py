@@ -1324,6 +1324,7 @@ def match(slug, match_id):
         history=reports.history(db, match_id), labels=reports.ACTION_LABELS,
         disputer=reports.disputer(db, match_id) if m["status"] == "disputed" else None,
         reported=reports.last_report(db, match_id) if m["status"] in ("reported", "disputed") else None,
+        confirmed_by=reports.confirmed_by(db, match_id) if m["status"] == "reported" else [],
         dispute=reports.last_dispute(db, match_id) if m["status"] == "disputed" else None,
         deadline=reports.deadline(db, m) if m["status"] == "reported" else None,
         decisive=store.needs_pens(db, m), pens_agg=store.other_legs_goals(db, m), open=tournament["status"] == "running" and m["stage_status"] == "running")
@@ -1360,8 +1361,13 @@ def match_report(slug, match_id):
 @bp.post("/<slug>/jogos/<int:match_id>/confirmar")
 @player_required
 def match_confirm(slug, match_id):
-    return _player_action(slug, match_id, lambda db, t: reports.confirm(db, t, match_id, session["player_id"]),
-                          "Resultado confirmado!")
+    def action(db, t):
+        # Placar lido do jogo: a 1ª confirmação só marca a do jogador (falta o adversário).
+        if not reports.confirm(db, t, match_id, session["player_id"]):
+            flash("Confirmação registrada: falta o adversário confirmar (ou o prazo acabar).", "success")
+        else:
+            flash("Resultado confirmado!", "success")
+    return _player_action(slug, match_id, action, None)
 
 
 @bp.post("/<slug>/jogos/<int:match_id>/aceitar")
@@ -1930,7 +1936,8 @@ def inject_wallet():
             "JOIN tournament_stages s ON s.tournament_id = t.id AND s.status = 'running' "
             "JOIN tournament_matches m ON m.stage_id = s.id AND (m.home_entry_id = e.id OR m.away_entry_id = e.id) "
             "WHERE e.player_id = ? AND t.status = 'running' AND (m.status = 'scheduled' OR "
-            "(m.status = 'reported' AND (m.reported_by_entry_id IS NULL OR m.reported_by_entry_id != e.id)) OR "
+            "(m.status = 'reported' AND (m.reported_by_entry_id != e.id OR (m.reported_by_entry_id IS NULL "
+            "AND NOT EXISTS (SELECT 1 FROM match_reports c WHERE c.match_id = m.id AND c.action = 'confirm' AND c.entry_id = e.id AND c.id > (SELECT MAX(r2.id) FROM match_reports r2 WHERE r2.match_id = m.id AND r2.action = 'report'))))) OR "
             "(m.status = 'disputed' AND EXISTS (SELECT 1 FROM match_reports r WHERE r.match_id = m.id "
             "AND r.action = 'dispute' AND r.home_goals IS NOT NULL AND (m.reported_by_entry_id = e.id OR "
             "(m.reported_by_entry_id IS NULL AND r.entry_id != e.id)))))",

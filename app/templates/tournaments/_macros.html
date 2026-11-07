@@ -46,7 +46,7 @@
   </tbody>
 </table>
 </div>
-{% if table|selectattr('provisional')|list %}<p class="legend provisional-legend"><span class="provisional-dot"></span> em laranja: conta placar que ainda precisa ser confirmado entre os jogadores (jogo ao vivo, placar lido do jogo ou reportado); sem resposta, ele é confirmado sozinho {{ confirm_hours }} h depois do jogo.</p>{% endif %}
+{% if table|selectattr('provisional')|list %}<p class="legend provisional-legend"><span class="provisional-dot"></span> em laranja: conta placar que ainda precisa ser confirmado entre os jogadores (jogo ao vivo, placar lido do jogo - os dois confirmam - ou reportado); sem resposta, ele é confirmado sozinho {{ confirm_hours }} h depois do jogo.</p>{% endif %}
 {%- endmacro %}
 
 {# As tabelas de uma fase de grupos/pontos corridos na aba Tabela. Em
@@ -170,5 +170,5 @@
 {%- endmacro %}
 
 {% macro pending_legend(confirm_hours=24) -%}
-<p class="legend provisional-legend"><span class="provisional-dot"></span> em laranja: placar que ainda precisa ser confirmado entre os jogadores (jogo ao vivo, placar lido do jogo ou reportado); sem resposta, ele é confirmado sozinho {{ confirm_hours }} h depois do jogo.</p>
+<p class="legend provisional-legend"><span class="provisional-dot"></span> em laranja: placar que ainda precisa ser confirmado entre os jogadores (jogo ao vivo, placar lido do jogo - os dois confirmam - ou reportado); sem resposta, ele é confirmado sozinho {{ confirm_hours }} h depois do jogo.</p>
 {%- endmacro %}

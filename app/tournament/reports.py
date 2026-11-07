@@ -1,6 +1,7 @@
 """Resultado informado pelos próprios jogadores (fase 2).
 
   scheduled --reportar--> reported --confirmar--> confirmed
+  (placar lido do jogo, sem quem reportou: os DOIS confirmam, ou o prazo)
                              |  +--organizador libera novo reporte--> scheduled
                              |  +--sem resposta em N horas--> confirmed (automático)
                              +--contestar--> disputed --organizador/admin decide--> confirmed
@@ -113,14 +114,33 @@ def report_from_game(db, tournament, match_id, score, at, comment):
     log(db, match_id, "report", None, score=score, comment=comment)
 
 
+def confirmed_by(db, match_id):
+    """Inscrições que já confirmaram o último placar reportado do jogo."""
+    return [row["entry_id"] for row in db.execute(
+        "SELECT DISTINCT entry_id FROM match_reports WHERE match_id = ? AND action = 'confirm' AND entry_id IS NOT NULL "
+        "AND id > (SELECT COALESCE(MAX(id), 0) FROM match_reports WHERE match_id = ? AND action = 'report')",
+        (match_id, match_id))]
+
+
 def confirm(db, tournament, match_id, player_id):
+    """Confirma o placar do adversário. Placar lido do jogo (sem quem
+    reportou): cada jogador confirma o seu lado e o jogo só fecha com os
+    dois (ou no prazo, auto_confirm). Devolve True quando o jogo fechou."""
     match = _match(db, tournament, match_id)
     entry = player_entry(db, tournament, match, player_id)
     if entry is None or match["status"] != "reported" or match["reported_by_entry_id"] == entry["id"]:
         raise TournamentError("Não há placar do adversário para você confirmar neste jogo.")
     reported = last_report(db, match_id)
+    if match["reported_by_entry_id"] is None:
+        already = confirmed_by(db, match_id)
+        if entry["id"] in already:
+            raise TournamentError("Você já confirmou este placar: falta o adversário confirmar.")
+        if not already:
+            log(db, match_id, "confirm", entry)
+            return False
     _confirm_reported(db, tournament, match, reported)
     log(db, match_id, "confirm", entry)
+    return True
 
 
 def _confirm_reported(db, tournament, match, reported):
@@ -233,7 +253,10 @@ def matches_for_player(db, player_id):
     em andamento primeiro), na ordem da tabela."""
     return db.execute(
         "SELECT m.*, t.id AS tournament_id, t.slug, t.name AS tournament_name, t.status AS tournament_status, "
-        "s.name AS stage_name, s.status AS stage_status, e.id AS my_entry_id, o.username AS organizer_name "
+        "s.name AS stage_name, s.status AS stage_status, e.id AS my_entry_id, o.username AS organizer_name, "
+        # reportado esperando o adversário: o meu reporte, ou o placar lido do jogo que eu já confirmei
+        "(m.status = 'reported' AND (m.reported_by_entry_id = e.id OR (m.reported_by_entry_id IS NULL AND "
+        "EXISTS (SELECT 1 FROM match_reports c WHERE c.match_id = m.id AND c.action = 'confirm' AND c.entry_id = e.id AND c.id > (SELECT MAX(r2.id) FROM match_reports r2 WHERE r2.match_id = m.id AND r2.action = 'report'))))) AS waiting_other "
         "FROM tournament_entries e JOIN tournaments t ON t.id = e.tournament_id "
         "JOIN players o ON o.id = t.organizer_id "
         "JOIN tournament_stages s ON s.tournament_id = t.id "

@@ -310,7 +310,7 @@ class LiveMatchesTest(unittest.TestCase):
         self.cards()  # reap -> report_finished
 
     def test_finished_match_becomes_the_report_and_confirms_in_24h(self):
-        from app.tournament import reports
+        from app.tournament import reports, store
         t, group, (tieres, anders, third) = self.make_league()
         self.finish_live(goals=(2, 1))
         match = self.rows("SELECT * FROM tournament_matches WHERE status != 'confirmed'")[0]
@@ -332,7 +332,29 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertIn("Placar lido do jogo", html)
         self.assertIn("O jogo terminou 1 x 2", html)
         self.assertIn("Confirmar este placar", html)
-        # Sem resposta: confirmado sozinho 24 h depois do fim do jogo.
+        # Os dois confirmam: o primeiro só marca a confirmação dele.
+        with self.app.app_context():
+            db = get_db()
+            tournament = store.get_tournament(db, t)
+            self.assertFalse(reports.confirm(db, tournament, match["id"], self.anders))
+            db.commit()
+            with self.assertRaises(store.TournamentError):
+                reports.confirm(db, tournament, match["id"], self.anders)
+        self.assertEqual(self.rows("SELECT status FROM tournament_matches WHERE id = ?", match["id"])[0]["status"], "reported")
+        html = client.get("/torneios/liga-1/jogos/%d" % match["id"]).get_data(as_text=True)
+        self.assertIn("Você confirmou o placar 1 x 2", html)
+        self.assertNotIn("Confirmar este placar", html)
+        other = self.app.test_client()
+        with other.session_transaction() as sess:
+            sess["player_id"] = self.tieres
+        page = other.get("/torneios/liga-1/jogos/%d" % match["id"]).get_data(as_text=True)
+        self.assertIn("o adversário já confirmou", page)
+        self.assertIn("Confirmar este placar", page)
+        mine = other.get("/torneios/meus-jogos").get_data(as_text=True)
+        self.assertIn("1 para confirmar", mine)
+        waiting = client.get("/torneios/meus-jogos").get_data(as_text=True)
+        self.assertIn("1 aguardando adversário", waiting)
+        # Sem a 2ª confirmação: confirmado sozinho 24 h depois do fim do jogo.
         with self.app.app_context():
             db = get_db()
             self.assertEqual(reports.auto_confirm(db, at=datetime.now(timezone.utc) + timedelta(hours=23)), 0)
@@ -340,6 +362,20 @@ class LiveMatchesTest(unittest.TestCase):
         done = self.rows("SELECT * FROM tournament_matches WHERE id = ?", match["id"])[0]
         self.assertEqual((done["status"], done["home_goals"], done["away_goals"]), ("confirmed", 1, 2))
         self.assertNotIn("em laranja", self.table())
+
+    def test_game_report_needs_both_confirmations(self):
+        from app.tournament import reports, store
+        t, group, entries = self.make_league()
+        self.finish_live(goals=(2, 1))
+        match_id = self.rows("SELECT id FROM tournament_matches WHERE status = 'reported'")[0]["id"]
+        with self.app.app_context():
+            db = get_db()
+            tournament = store.get_tournament(db, t)
+            self.assertFalse(reports.confirm(db, tournament, match_id, self.tieres))
+            self.assertTrue(reports.confirm(db, tournament, match_id, self.anders))
+            db.commit()
+        done = self.rows("SELECT * FROM tournament_matches WHERE id = ?", match_id)[0]
+        self.assertEqual((done["status"], done["home_goals"], done["away_goals"]), ("confirmed", 1, 2))
 
     def test_game_report_can_be_disputed_and_accepted_by_the_other(self):
         from app.tournament import reports, store
