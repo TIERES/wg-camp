@@ -8,7 +8,7 @@
   </span>
   {% endif %}
 </div>
-<p class="muted">Partidas jogadas no RetroArch TIERES, com o placar lido do próprio jogo. Aparecem as {{ limit }} últimas (as ao vivo primeiro); para achar outra, use os filtros. A página se atualiza sozinha.</p>
+<p class="muted">Partidas jogadas no RetroArch TIERES, com o placar lido do próprio jogo. Aparecem as {{ limit }} últimas (as ao vivo primeiro); para achar outra, use os filtros.</p>
 {% set filtered = filters.player or filters.tournament_id or filters.friendlies or filters.date_from or filters.date_to %}
 <form method="get" class="live-filters">
   <label>Jogador<input name="jogador" value="{{ filters.player }}" maxlength="32" placeholder="Nick"></label>
