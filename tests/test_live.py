@@ -293,6 +293,10 @@ class LiveMatchesTest(unittest.TestCase):
         self.post(state(engine="SLPM_862.91"))
         self.assertIn("Winning Eleven 4", self.cards())
 
+    def test_we3_engine_gives_we3_final_version(self):
+        self.post(state(engine="SLPM_861.62"))
+        self.assertIn("Winning Eleven 3: Final Version", self.cards())
+
     def test_new_kickoff_abandons_the_open_match(self):
         self.post(state(period=1, clock=12000, goals=(1, 0)))  # WE4: saíram pelo menu de pausa
         self.post(state(kickoff=62550, goals=(0, 0)))

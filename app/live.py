@@ -49,7 +49,7 @@ JOIN_WINDOW = timedelta(minutes=10)
 MAX_PLAYERS = 8
 # Motor do jogo (executável que o fork lê na RAM) -> jogo base (game_titles.code):
 # o logo do jogo base mesmo com uma ISO que o site não conhece.
-ENGINE_GAMES = {"SLPM_870.56": "we2002", "SLPM_862.91": "we4"}
+ENGINE_GAMES = {"SLPM_870.56": "we2002", "SLPM_862.91": "we4", "SLPM_861.62": "we3fv"}
 NAME_RE = re.compile(r"^[A-Za-z0-9 .'&/-]{2,24}$")
 
 
