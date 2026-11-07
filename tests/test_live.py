@@ -229,6 +229,66 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertIn("Winning Eleven 2002", html)
         self.assertIn("images/games/", html)
 
+    def test_championship_iso_must_match(self):
+        ida, volta = self.make_tournament()
+        with self.app.app_context():
+            db = get_db()
+            t = db.execute("SELECT id FROM tournaments").fetchone()["id"]
+            db.execute("INSERT INTO tournament_isos (tournament_id, stored_name, original_filename, file_size, md5, "
+                       "archive_name, content_id, created_at, updated_at) VALUES (?, 'x.bin', 'Outra.bin', 1, 'm', "
+                       "'torneios/x/Outra.bin', '11111111:10', ?, ?)", (t, now(), now()))
+            db.commit()
+        self.post(state())  # BA9BDE21:1C473F60 não é a ISO do campeonato
+        self.assertIsNone(self.rows("SELECT tournament_match_id FROM live_matches")[0]["tournament_match_id"])
+        self.assertIn("Partida livre", self.cards())
+        # O admin liga esta ISO (outra versão) ao campeonato: o próximo informe já liga a partida.
+        self.admin().post("/admin/ao-vivo/times", data={"csrf_token": CSRF, "content_id": "BA9BDE21:1C473F60",
+                                                        "acao": "perfil", "tournament_id": str(t)})
+        self.post(state(frame=20100))
+        self.assertEqual(self.rows("SELECT tournament_match_id FROM live_matches")[0]["tournament_match_id"], ida)
+        # Com a ISO certa (content_id dela), liga sem precisar do admin.
+        with self.app.app_context():
+            db = get_db()
+            db.execute("DELETE FROM iso_profiles")
+            db.execute("UPDATE tournament_isos SET content_id = 'ba9bde21:1c473f60'")
+            db.commit()
+        self.post(state(kickoff=64000))
+        second = self.rows("SELECT * FROM live_matches ORDER BY id")[1]
+        self.assertEqual(second["tournament_match_id"], volta)
+
+    def test_friendly_iso_must_match(self):
+        with self.app.app_context():
+            db = get_db()
+            game = db.execute("SELECT id FROM game_titles WHERE code = 'we2002'").fetchone()["id"]
+            catalog = db.execute("INSERT INTO catalog_isos (name, game_title_id, original_filename, content_id, is_active, "
+                                 "created_at, updated_at) VALUES ('Euro', ?, 'Euro.bin', '22222222:20', 1, ?, ?)",
+                                 (game, now(), now())).lastrowid
+            db.execute("INSERT INTO friendly_matches (home_id, away_id, status, iso_catalog_id, game_title_id, created_at, "
+                       "updated_at) VALUES (?, ?, 'accepted', ?, ?, ?, ?)", (self.anders, self.tieres, catalog, game,
+                                                                              now(), now()))
+            db.commit()
+        self.post(state())
+        self.assertIsNone(self.rows("SELECT friendly_id FROM live_matches")[0]["friendly_id"])
+        with self.app.app_context():
+            get_db().execute("UPDATE catalog_isos SET content_id = 'BA9BDE21:1C473F60'")
+            get_db().commit()
+        self.post(state(frame=20100))
+        self.assertIsNotNone(self.rows("SELECT friendly_id FROM live_matches")[0]["friendly_id"])
+        self.assertIn("Amistoso", self.cards())
+
+    def test_logos_from_the_exact_iso(self):
+        with self.app.app_context():
+            db = get_db()
+            game = db.execute("SELECT id FROM game_titles WHERE code = 'we2002'").fetchone()["id"]
+            db.execute("INSERT INTO catalog_isos (name, game_title_id, original_filename, content_id, is_active, "
+                       "created_at, updated_at) VALUES ('Euro', ?, 'nome diferente.bin', 'BA9BDE21:1C473F60', 1, ?, ?)",
+                       (game, now(), now()))
+            db.commit()
+        self.post(state())
+        self.assertIn("Winning Eleven 2002", self.cards())
+        page = self.admin().get("/admin/ao-vivo/times").get_data(as_text=True)
+        self.assertIn("É a ISO de amistoso Euro", page)
+
     def test_simulation_does_not_take_the_real_leg(self):
         ida, volta = self.make_tournament()
         self.post(state(), test=True)

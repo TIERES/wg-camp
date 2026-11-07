@@ -492,6 +492,14 @@ def ensure_player_columns(database):
         database.execute("ALTER TABLE players ADD COLUMN avatar TEXT")
 
 
+def ensure_live_columns(database):
+    """Colunas novas das tabelas do Ao vivo (bancos criados antes delas)."""
+    columns = {column["name"] for column in database.execute("PRAGMA table_info(iso_profiles)")}
+    if columns and "catalog_iso_id" not in columns:
+        database.execute("ALTER TABLE iso_profiles ADD COLUMN catalog_iso_id INTEGER "
+                         "REFERENCES catalog_isos(id) ON DELETE SET NULL")
+
+
 def ensure_tournament_columns(database):
     """Colunas novas de tournaments e tournament_stages (bancos criados antes delas)."""
     columns = {column["name"] for column in database.execute("PRAGMA table_info(tournaments)")}
@@ -505,6 +513,11 @@ def ensure_tournament_columns(database):
     stage_columns = {column["name"] for column in database.execute("PRAGMA table_info(tournament_stages)")}
     if stage_columns and "all_played_at" not in stage_columns:
         database.execute("ALTER TABLE tournament_stages ADD COLUMN all_played_at TEXT")
+    # CRC32:TAMANHO do arquivo (o content_id que o RetroArch TIERES manda no placar ao vivo - app/live.py).
+    for table in ("tournament_isos", "catalog_isos"):
+        table_columns = {column["name"] for column in database.execute(f"PRAGMA table_info({table})")}
+        if table_columns and "content_id" not in table_columns:
+            database.execute(f"ALTER TABLE {table} ADD COLUMN content_id TEXT")
     # Percentual do envio para o archive.org (barra de progresso - static/js/archive-progress.js).
     for table in ("tournament_isos", "catalog_isos", "files"):
         table_columns = {column["name"] for column in database.execute(f"PRAGMA table_info({table})")}
@@ -668,6 +681,7 @@ CREATE TABLE IF NOT EXISTS iso_profiles (
     content_id TEXT PRIMARY KEY,
     game_title_id INTEGER REFERENCES game_titles(id) ON DELETE SET NULL,
     tournament_id INTEGER REFERENCES tournaments(id) ON DELETE SET NULL,
+    catalog_iso_id INTEGER REFERENCES catalog_isos(id) ON DELETE SET NULL,
     source TEXT NOT NULL DEFAULT '' CHECK (source IN ('', 'aprendido', 'admin')),
     updated_at TEXT NOT NULL
 );
@@ -708,6 +722,7 @@ def init_db():
     db.executescript(TOURNAMENTS_DDL)
     ensure_tournament_columns(db)
     db.executescript(LIVE_DDL)
+    ensure_live_columns(db)
     from .tournament.teams import seed_teams
     from .tournament.games import seed_games
     seed_teams(db)
@@ -813,6 +828,7 @@ def migrate_db():
     database.executescript(TOURNAMENTS_DDL)
     ensure_tournament_columns(database)
     database.executescript(LIVE_DDL)
+    ensure_live_columns(database)
     from .tournament.teams import seed_teams
     from .tournament.games import seed_games
     seed_teams(database)

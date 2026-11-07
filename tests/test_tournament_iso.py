@@ -1,4 +1,5 @@
 import hashlib
+import zlib
 import io
 import tempfile
 import unittest
@@ -12,6 +13,7 @@ from tests.test_tournament_store import add_player, make_app
 CSRF = "test-csrf"
 ISO = b"PS1 ISO de teste" * 64
 ISO_MD5 = hashlib.md5(ISO).hexdigest()
+ISO_CONTENT = "%08X:%X" % (zlib.crc32(ISO), len(ISO))  # o content_id que o RetroArch TIERES calcula
 ARCHIVE_URL = "https://archive.org/download/one-two-iso/torneios/copa-iso-1/Copa%20Teste.bin"
 
 
@@ -182,8 +184,10 @@ class TournamentIsoTest(unittest.TestCase):
         first = self.iso_row()
         owner.post("/torneios/copa-iso-1/iso", data={"csrf_token": CSRF, "iso": (io.BytesIO(b"nova"), "Copa 2.iso")},
                    content_type="multipart/form-data")
+        self.assertEqual(first["content_id"], ISO_CONTENT)
         second = self.iso_row()
         self.assertEqual(second["original_filename"], "Copa 2.iso")
+        self.assertEqual(second["content_id"], "%08X:%X" % (zlib.crc32(b"nova"), 4))
         self.assertFalse(self.local_path(first).exists())
         self.assertTrue(self.local_path(second).exists())
 
@@ -195,6 +199,29 @@ class TournamentIsoTest(unittest.TestCase):
                                                        "starts_on": "2026-12-01", "ends_on": ""})
         tournament = self.query("SELECT starts_on, ends_on FROM tournaments")[0]
         self.assertEqual((tournament["starts_on"], tournament["ends_on"]), ("2026-12-01", None))
+
+
+    def test_zip_has_no_content_id(self):
+        self.create(filename="Copa.zip")
+        self.assertIsNone(self.iso_row()["content_id"])
+
+    @mock.patch("app.tournament.iso.list_item_files")
+    def test_identify_archived_isos(self, listing):
+        self.create()
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE tournament_isos SET content_id = NULL, local_removed_at = ?, archive_status = 'done'",
+                       (now(),))
+            db.commit()
+        name = self.iso_row()["archive_name"]
+        listing.return_value = {name: {"md5": "outro", "crc32": "deadbeef", "size": 10}}
+        from app.tournament.iso import fill_content_ids
+        with self.app.app_context():
+            self.assertEqual(fill_content_ids(get_db(), self.app), (0, ["Copa Teste.bin"]))  # md5 diferente: não confia
+        listing.return_value = {name: {"md5": ISO_MD5, "crc32": "%08x" % zlib.crc32(ISO), "size": len(ISO)}}
+        with self.app.app_context():
+            self.assertEqual(fill_content_ids(get_db(), self.app), (1, []))
+        self.assertEqual(self.iso_row()["content_id"], ISO_CONTENT)
 
 
 if __name__ == "__main__":

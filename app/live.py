@@ -206,26 +206,38 @@ def detect_context(db, match, local_nick, visita_nick):
     a, b = _player_id(db, local_nick), _player_id(db, visita_nick)
     if not a or not b or a == b:
         return
+    content = match["content_id"]
     taken = ("SELECT tournament_match_id FROM live_matches WHERE tournament_match_id IS NOT NULL AND id != ? "
              "AND is_test = ?")
+    # A ISO tem que ser a do campeonato (content_id dela ou uma ligada pelo
+    # admin/aprendida em iso_profiles); campeonato sem ISO identificada vale.
     row = db.execute(
         "SELECT m.id FROM tournament_matches m JOIN tournament_stages s ON s.id = m.stage_id "
-        "JOIN tournaments t ON t.id = s.tournament_id "
+        "JOIN tournaments t ON t.id = s.tournament_id LEFT JOIN tournament_isos ti ON ti.tournament_id = t.id "
         "JOIN tournament_entries he ON he.id = m.home_entry_id JOIN tournament_entries ae ON ae.id = m.away_entry_id "
         "WHERE t.status = 'running' AND s.status = 'running' AND m.status != 'confirmed' "
         "AND ((he.player_id = ? AND ae.player_id = ?) OR (he.player_id = ? AND ae.player_id = ?)) "
+        "AND (ti.content_id IS NULL OR ti.content_id = ? COLLATE NOCASE OR t.id IN "
+        "(SELECT tournament_id FROM iso_profiles WHERE content_id = ? COLLATE NOCASE)) "
         f"AND m.id NOT IN ({taken}) ORDER BY s.seq, m.round, m.leg, m.id LIMIT 1",
-        (a, b, b, a, match["id"], match["is_test"])).fetchone()
+        (a, b, b, a, content, content, match["id"], match["is_test"])).fetchone()
     if row:
         db.execute("UPDATE live_matches SET tournament_match_id = ? WHERE id = ?", (row["id"], match["id"]))
         if not match["is_test"]:
             learn_slots(db, match["id"])
         return
+    # Amistoso: a ISO escolhida no convite (a de um campeonato ou uma do
+    # cadastro) tem que bater; sem ISO escolhida ou sem identificação, vale.
     row = db.execute(
-        "SELECT id FROM friendly_matches WHERE status IN ('accepted', 'reported', 'suspended') "
-        "AND ((home_id = ? AND away_id = ?) OR (home_id = ? AND away_id = ?)) "
-        "AND id NOT IN (SELECT friendly_id FROM live_matches WHERE friendly_id IS NOT NULL AND id != ? AND is_test = ?) "
-        "ORDER BY created_at LIMIT 1", (a, b, b, a, match["id"], match["is_test"])).fetchone()
+        "SELECT f.id FROM friendly_matches f LEFT JOIN tournament_isos ti ON ti.tournament_id = f.iso_tournament_id "
+        "LEFT JOIN catalog_isos ci ON ci.id = f.iso_catalog_id "
+        "WHERE f.status IN ('accepted', 'reported', 'suspended') "
+        "AND ((f.home_id = ? AND f.away_id = ?) OR (f.home_id = ? AND f.away_id = ?)) "
+        "AND (COALESCE(ti.content_id, ci.content_id) IS NULL OR COALESCE(ti.content_id, ci.content_id) = ? COLLATE NOCASE "
+        "OR EXISTS (SELECT 1 FROM iso_profiles p WHERE p.content_id = ? COLLATE NOCASE "
+        "AND (p.tournament_id = f.iso_tournament_id OR p.catalog_iso_id = f.iso_catalog_id))) "
+        "AND f.id NOT IN (SELECT friendly_id FROM live_matches WHERE friendly_id IS NOT NULL AND id != ? AND is_test = ?) "
+        "ORDER BY f.created_at LIMIT 1", (a, b, b, a, content, content, match["id"], match["is_test"])).fetchone()
     if row:
         db.execute("UPDATE live_matches SET friendly_id = ? WHERE id = ?", (row["id"], match["id"]))
 
@@ -360,6 +372,21 @@ def _profile(db, match):
         row = db.execute("SELECT * FROM iso_profiles WHERE content_id = ?", (match["content_id"],)).fetchone()
         if row:
             game_id, tournament_id = row["game_title_id"], row["tournament_id"]
+            if game_id is None and row["catalog_iso_id"]:
+                catalog = db.execute("SELECT game_title_id FROM catalog_isos WHERE id = ?",
+                                     (row["catalog_iso_id"],)).fetchone()
+                game_id = catalog["game_title_id"] if catalog else None
+    if game_id is None:
+        # A ISO exata (CRC32:TAMANHO) de um campeonato ou do cadastro de amistosos.
+        row = db.execute("SELECT t.id, t.game_title_id FROM tournament_isos i JOIN tournaments t ON t.id = i.tournament_id "
+                         "WHERE i.content_id = ? COLLATE NOCASE AND t.status != 'cancelled' "
+                         "ORDER BY t.updated_at DESC LIMIT 1", (match["content_id"],)).fetchone()
+        if row:
+            game_id, tournament_id = row["game_title_id"], row["id"]
+        else:
+            row = db.execute("SELECT game_title_id FROM catalog_isos WHERE content_id = ? COLLATE NOCASE "
+                             "AND is_active = 1 LIMIT 1", (match["content_id"],)).fetchone()
+            game_id = row["game_title_id"] if row else None
     file_name = _file_name(match)
     if game_id is None and file_name:
         row = db.execute("SELECT t.id, t.game_title_id FROM tournament_isos i JOIN tournaments t ON t.id = i.tournament_id "
@@ -516,10 +543,12 @@ def admin_slots():
         if action == "perfil":
             game_id = request.form.get("game_title_id", type=int) or None
             tournament_id = request.form.get("tournament_id", type=int) or None
+            catalog_id = request.form.get("catalog_iso_id", type=int) or None
             db.execute("INSERT OR IGNORE INTO iso_profiles (content_id, updated_at) VALUES (?, ?)", (content_id, now()))
-            db.execute("UPDATE iso_profiles SET game_title_id = ?, tournament_id = ?, source = ?, updated_at = ? "
-                       "WHERE content_id = ?", (game_id, tournament_id, "admin" if game_id or tournament_id else "",
-                                                now(), content_id))
+            db.execute("UPDATE iso_profiles SET game_title_id = ?, tournament_id = ?, catalog_iso_id = ?, source = ?, "
+                       "updated_at = ? WHERE content_id = ?",
+                       (game_id, tournament_id, catalog_id, "admin" if game_id or tournament_id or catalog_id else "",
+                        now(), content_id))
             flash("Jogo base e campeonato da ISO salvos.", "success")
         elif action == "nomes_do_jogo":
             rows = db.execute("SELECT slot, ram_name FROM iso_team_slots WHERE content_id = ? AND ram_name != '' "
@@ -542,8 +571,42 @@ def admin_slots():
     games = db.execute("SELECT id, name FROM game_titles WHERE is_active = 1 ORDER BY year, name").fetchall()
     tournaments = db.execute("SELECT id, name FROM tournaments WHERE status != 'cancelled' "
                              "ORDER BY name COLLATE NOCASE").fetchall()
+    catalog = db.execute("SELECT id, name FROM catalog_isos WHERE is_active = 1 ORDER BY name COLLATE NOCASE").fetchall()
+    # Qual ISO cadastrada tem cada content_id visto (a do campeonato ou a do cadastro de amistosos).
+    known = {}
+    for row in db.execute("SELECT i.content_id, t.name FROM tournament_isos i JOIN tournaments t ON t.id = i.tournament_id "
+                          "WHERE i.content_id IS NOT NULL"):
+        known.setdefault(row["content_id"].upper(), []).append("ISO do campeonato " + row["name"])
+    for row in db.execute("SELECT content_id, name FROM catalog_isos WHERE content_id IS NOT NULL"):
+        known.setdefault(row["content_id"].upper(), []).append("ISO de amistoso " + row["name"])
+    unidentified = db.execute("SELECT (SELECT COUNT(*) FROM tournament_isos WHERE content_id IS NULL) + "
+                              "(SELECT COUNT(*) FROM catalog_isos WHERE content_id IS NULL "
+                              "AND (file_id IS NOT NULL OR original_filename IS NOT NULL))").fetchone()[0]
     return render_template("live/admin_slots.html", groups=groups, teams=teams, profiles=profiles, games=games,
-                           tournaments=tournaments)
+                           tournaments=tournaments, catalog=catalog, known=known, unidentified=unidentified)
+
+
+@bp.post("/admin/ao-vivo/identificar-isos")
+@login_required
+def identify_isos():
+    """CRC32:TAMANHO das ISOs de campeonato/amistoso que ainda não têm (o
+    mesmo botão de "Jogos do Memory Card online" - app/admin.py)."""
+    from flask import current_app
+    import threading
+    from .admin import _identify_isos, _identify_isos_lock
+    validate_csrf()
+    app = current_app._get_current_object()
+    if app.config.get("TESTING"):
+        found, missing = _identify_isos(app) or (0, [])
+        flash("%d ISO(s) identificada(s).%s" % (found, " Sem identificação: " + ", ".join(missing) if missing else ""),
+              "success" if not missing else "error")
+    elif _identify_isos_lock.locked():
+        flash("A identificação das ISOs já está em andamento.", "error")
+    else:
+        threading.Thread(target=_identify_isos, args=(app,), daemon=True).start()
+        flash("Identificando as ISOs (pelo archive.org ou pela cópia deste servidor). Recarregue em alguns segundos.",
+              "success")
+    return redirect(url_for("live.admin_slots"))
 
 
 @bp.app_template_filter("scorer")

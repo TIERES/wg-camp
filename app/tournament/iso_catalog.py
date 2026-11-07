@@ -97,16 +97,17 @@ def save(db, catalog_id, name, game_id, file_id=None, upload=None, active=True):
             raise TournamentError("O arquivo enviado está vazio.")
         db.execute(
             "UPDATE catalog_isos SET file_id = NULL, stored_name = ?, original_filename = ?, file_size = ?, md5 = ?, "
-            "archive_name = ?, archive_status = 'pending', archive_url = NULL, archive_error = NULL, "
+            "content_id = ?, archive_name = ?, archive_status = 'pending', archive_url = NULL, archive_error = NULL, "
             "archive_updated_at = NULL, local_removed_at = NULL WHERE id = ?",
             (stored["stored_name"], stored["original_filename"], stored["file_size"], stored["md5"],
-             f"{ARCHIVE_FOLDER}/{stored['original_filename']}", catalog_id))
+             iso.content_id_of(stored), f"{ARCHIVE_FOLDER}/{stored['original_filename']}", catalog_id))
         _drop_local(previous)
     elif file_id:
         db.execute(
             "UPDATE catalog_isos SET file_id = ?, stored_name = NULL, original_filename = NULL, file_size = NULL, "
             "md5 = NULL, archive_name = NULL, archive_status = NULL, archive_url = NULL, archive_error = NULL, "
-            "archive_updated_at = NULL, local_removed_at = NULL WHERE id = ?", (file_id, catalog_id))
+            "archive_updated_at = NULL, local_removed_at = NULL, "
+            "content_id = (SELECT content_id FROM files WHERE id = ?) WHERE id = ?", (file_id, file_id, catalog_id))
         _drop_local(previous)
     return catalog_id
 

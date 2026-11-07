@@ -75,6 +75,55 @@ def uploading(row):
     return datetime.now(timezone.utc) - datetime.fromisoformat(row["archive_updated_at"]) < STALE
 
 
+def content_id_of(stored):
+    """CRC32:TAMANHO de uma ISO recém-enviada (storage.store_upload) - o
+    content_id que o RetroArch TIERES calcula do arquivo que o jogador abre;
+    None para .zip/.7z/.rar (o jogo é o que está dentro)."""
+    from ..memcards import content_id_from, is_game_file
+    if not is_game_file(stored["original_filename"]):
+        return None
+    return content_id_from(stored["crc32"], stored["file_size"])
+
+
+def fill_content_ids(db, app):
+    """ISOs de campeonato e de amistoso ainda sem content_id: pela cópia deste
+    servidor ou, nas que já estão no archive.org, pelo crc32 e tamanho que ele
+    lista (o md5 confere que é o mesmo arquivo). Devolve (identificadas,
+    nomes das que não deu)."""
+    from ..memcards import content_id_for_path, content_id_from, is_game_file
+    listing = None
+    found, missing = 0, []
+    rows = [("tournament_isos", "tournament_id", r) for r in db.execute(
+        "SELECT * FROM tournament_isos WHERE content_id IS NULL").fetchall()]
+    rows += [("catalog_isos", "id", r) for r in db.execute(
+        "SELECT * FROM catalog_isos WHERE content_id IS NULL").fetchall()]
+    for table, key, row in rows:
+        content_id = None
+        if table == "catalog_isos" and row["file_id"]:
+            linked = db.execute("SELECT content_id FROM files WHERE id = ?", (row["file_id"],)).fetchone()
+            content_id = linked["content_id"] if linked else None
+        elif row["original_filename"] and is_game_file(row["original_filename"]):
+            local = Path(app.config["DOWNLOADS_DIR"]) / (row["stored_name"] or "")
+            if row["stored_name"] and not row["local_removed_at"] and local.is_file():
+                content_id = content_id_for_path(local)
+            elif row["archive_name"]:
+                if listing is None:
+                    try:
+                        listing = list_item_files(ARCHIVE_ITEM)
+                    except ArchiveOrgError:
+                        listing = {}
+                info = listing.get(row["archive_name"])
+                if info and info.get("crc32") and info.get("size") and info.get("md5") == row["md5"]:
+                    content_id = content_id_from(int(info["crc32"], 16), info["size"])
+        if content_id:
+            db.execute(f"UPDATE {table} SET content_id = ? WHERE {key} = ?", (content_id, row[key]))
+            db.commit()
+            found += 1
+        elif not (table == "catalog_isos" and not row["file_id"] and not row["original_filename"]):
+            missing.append(row["original_filename"] or "ISO %s" % row[key])
+    return found, missing
+
+
 def save(db, tournament, upload, player_id):
     """Guarda a ISO enviada (substitui a anterior) e deixa pronta para o
     archive.org. O commit fica com quem chama."""
@@ -90,9 +139,11 @@ def save(db, tournament, upload, player_id):
         raise TournamentError("O arquivo enviado está vazio.")
     db.execute(
         "INSERT OR REPLACE INTO tournament_isos (tournament_id, stored_name, original_filename, file_size, md5, "
-        "archive_name, archive_status, uploaded_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)",
+        "content_id, archive_name, archive_status, uploaded_by, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)",
         (tournament["id"], stored["stored_name"], stored["original_filename"], stored["file_size"], stored["md5"],
-         f"torneios/{tournament['slug']}/{stored['original_filename']}", player_id, now(), now()))
+         content_id_of(stored), f"torneios/{tournament['slug']}/{stored['original_filename']}", player_id, now(),
+         now()))
     if previous and not previous["local_removed_at"]:
         delete_stored_file(previous["stored_name"])
 
