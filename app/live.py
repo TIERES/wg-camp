@@ -72,18 +72,23 @@ def _text(value, cap):
 
 
 def parse_state(raw):
-    """JSON do fork -> dict validado (ValueError se não serve)."""
+    """JSON do fork -> dict validado (ValueError se não serve). Do v2 em
+    diante o nome de cada time vem da tela de seleção de times (o que os
+    jogadores viram, ex. "PAL99"), com o código de 3 letras; no v1 vinha de
+    uma tabela que muitos patches não renomeiam - não vale."""
     data = json.loads(raw)
+    version = _int(data.get("v") or 1, 1, 99)
     teams = []
     for team in data["teams"][:2]:
         scorers = []
         for item in team.get("scorers", [])[:32]:
             scorers.append([_text(item[0], 24), _int(item[1], 0, 200), _text(item[2] if len(item) > 2 else "", 24)])
-        teams.append({"id": _int(team["id"], 0, 255), "name": _text(team.get("name"), 24),
-                      "goals": _int(team["goals"], 0, 99), "scorers": scorers})
+        teams.append({"id": _int(team["id"], 0, 255), "name": _text(team.get("name"), 24) if version >= 2 else "",
+                      "code": _text(team.get("code"), 3), "goals": _int(team["goals"], 0, 99), "scorers": scorers})
     if len(teams) != 2:
         raise ValueError("teams")
     return {
+        "v": version,
         "content": _text(data["content"], 32),
         "kickoff": _int(data.get("kickoff") or 0, 0, 2 ** 31),
         "frame": _int(data.get("frame") or 0, 0, 2 ** 31),
@@ -278,9 +283,9 @@ def reap(db):
 
 
 def _team_view(db, match, side, team_state, nicks):
-    """Time de um lado: o da inscrição (jogo de campeonato) ou o cadastrado
-    para o slot desta ISO; sem nenhum dos dois, "Não identificado" - o nome da
-    tabela da ISO não vale sozinho (muitos patches não a renomeiam)."""
+    """Time de um lado: o da inscrição (jogo de campeonato), o cadastrado para
+    o slot desta ISO ou o nome da tela de seleção de times (estado v2, ou o
+    último visto deste slot); sem nenhum, "Não identificado"."""
     from .tournaments import team_image
     slot = team_state.get("id")
     name, team = (None, None)
@@ -292,6 +297,10 @@ def _team_view(db, match, side, team_state, nicks):
         if row and (row["name"] or row["team_id"]):
             name = row["name"] or row["team_name"]
             team = db.execute("SELECT * FROM teams WHERE id = ?", (row["team_id"],)).fetchone() if row["team_id"] else None
+        elif NAME_RE.match(team_state.get("name") or ""):
+            name = team_state["name"]
+        elif row and row["ram_name"]:
+            name = row["ram_name"]
     image = team_image(team) if team else generated_badge(name or "?")
     return {"name": name or UNKNOWN_TEAM, "known": bool(name), "image": image, "goals": team_state.get("goals", 0),
             "players": list(nicks), "scorers": team_state.get("scorers", [])}

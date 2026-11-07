@@ -12,10 +12,10 @@ CSRF = "test-csrf"
 
 
 def state(kickoff=1000, frame=20000, period=0, clock=9000, goals=(1, 0), final=False, pads=(0, 1),
-          names=("GRECIA", "CROACIA"), slots=(16, 18), scorers=None):
+          names=("GRECIA", "CROACIA"), slots=(16, 18), scorers=None, v=1):
     scorers = scorers or ([["S.Vryzas", 17, "Karagounis"]] * goals[0], [["J.Leko", 20, ""]] * goals[1])
     return json.dumps({
-        "v": 1, "content": "BA9BDE21:1C473F60", "kickoff": kickoff, "frame": frame, "period": period,
+        "v": v, "content": "BA9BDE21:1C473F60", "kickoff": kickoff, "frame": frame, "period": period,
         "clock": clock, "half": 18000, "final": int(final), "pads": list(pads),
         "teams": [{"id": slots[i], "name": names[i], "goals": goals[i], "scorers": scorers[i]} for i in (0, 1)],
     })
@@ -76,15 +76,36 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertRegex(html, r"\d\d/\d\d/\d{4} \d\d:\d\d · Euro vs Copa America")
         self.assertIn("TIERES", self.app.test_client().get("/ao-vivo").get_data(as_text=True))
 
+    def test_v1_names_are_ignored(self):
+        # v1: o nome vinha de uma tabela que patches como o CAN não renomeiam (FINLAND = Camarões).
+        self.post(state(names=("FINLAND", "CROACIA")))
+        self.assertNotIn("FINLAND", self.cards())
+        self.assertEqual(self.rows("SELECT ram_name FROM iso_team_slots WHERE slot = 16")[0]["ram_name"], "")
+
+    def test_select_screen_names(self):
+        # v2: o nome da tela de seleção de times ("PAL99", "IND84"), como o jogo mostra.
+        self.post(state(names=("PAL99", "IND84"), v=2))
+        html = self.cards()
+        self.assertIn("PAL99", html)
+        self.assertIn("IND84", html)
+        self.assertNotIn("Não identificado", html)
+        # Um estado sem o nome (PC que entrou no meio) usa o último visto do slot.
+        self.post(state(frame=40000, period=1, names=("", ""), v=2), reporter="ANDERSHOW")
+        self.assertIn("PAL99", self.cards())
+        # O cadastro do admin ganha do nome do jogo.
+        self.admin().post("/admin/ao-vivo/times", data={"csrf_token": CSRF, "content_id": "BA9BDE21:1C473F60",
+                                                        "slot": "16", "name": "Palmeiras"})
+        html = self.cards()
+        self.assertIn("Palmeiras", html)
+        self.assertNotIn("PAL99", html)
+
     def test_admin_uses_the_game_names(self):
-        self.post(state())
-        self.post(state(frame=40000, period=1, names=("", "")))  # no 2º tempo a tabela some da RAM
+        self.post(state(v=2))
         self.admin().post("/admin/ao-vivo/times", data={"csrf_token": CSRF, "content_id": "BA9BDE21:1C473F60",
                                                         "acao": "nomes_do_jogo"})
-        html = self.cards()
-        self.assertIn("Grecia", html)
-        self.assertIn("Croacia", html)
-        self.assertNotIn("Não identificado", html)
+        rows = self.rows("SELECT name, source FROM iso_team_slots ORDER BY slot")
+        self.assertEqual([(r["name"], r["source"]) for r in rows], [("Grecia", "admin"), ("Croacia", "admin")])
+        self.assertIn("Grecia", self.cards())
 
     def test_cpu_and_unknown_players(self):
         self.post(state(pads=(0, 255)))
@@ -160,7 +181,7 @@ class LiveMatchesTest(unittest.TestCase):
     def test_tournament_ida_then_volta(self):
         ida, volta = self.make_tournament()
         # CAN-like: a tabela da ISO diz FINLAND/CROACIA, mas a inscrição manda.
-        self.post(state(goals=(4, 4), names=("FINLAND", "CROACIA")))
+        self.post(state(goals=(4, 4), names=("FINLAND", "CROACIA"), v=2))
         first = self.rows("SELECT * FROM live_matches")[0]
         self.assertEqual(first["tournament_match_id"], ida)
         html = self.cards()
@@ -252,7 +273,7 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertEqual(self.cards(so_ao_vivo="1"), "")
 
     def test_admin_names_a_slot(self):
-        self.post(state(names=("FINLAND", "CROACIA")))
+        self.post(state(names=("FINLAND", "CROACIA"), v=2))
         admin = self.admin()
         self.assertIn("FINLAND", admin.get("/admin/ao-vivo/times").get_data(as_text=True))
         admin.post("/admin/ao-vivo/times", data={"csrf_token": CSRF, "content_id": "BA9BDE21:1C473F60", "slot": "16",

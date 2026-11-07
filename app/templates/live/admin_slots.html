@@ -1,6 +1,6 @@
 {% extends 'base.html' %}{% block title %}Times e jogo de cada ISO · Ao vivo{% endblock %}{% block content %}
 <div class="page-title"><h1>Times e jogo de cada ISO</h1><a href="{{ url_for('live.index') }}">Ver partidas ao vivo</a></div>
-<p class="muted">O jogo só informa o número do time (slot) na tabela da ISO, e muitos patches não renomeiam essa tabela (no CAN 2025 o slot de Camarões ainda se chama FINLAND). Por isso o card mostra "Não identificado" até o slot ter um time. Nos jogos de campeonato o time é aprendido sozinho, pelo time inscrito de quem controla cada lado; aqui você corrige ou completa. Escolha um time da base para ter o escudo/bandeira, ou digite um nome livre. Deixe vazio para apagar. Quando os nomes do jogo estiverem certos (como no Euro vs Copa America), use "Usar os nomes do jogo".</p>
+<p class="muted">O card mostra o nome que o jogo exibe na tela de seleção de times (ex.: PAL99), que o RetroArch TIERES guarda antes do pontapé inicial. Quando esse nome não serve, cadastre o time certo de cada slot aqui: nos jogos de campeonato ele é aprendido sozinho, pelo time inscrito de quem controla cada lado. Escolha um time da base para ter o escudo/bandeira, ou digite um nome livre; deixe vazio para apagar. "Usar os nomes do jogo" copia o nome da seleção para os slots sem time.</p>
 <datalist id="team-names">{% for name in teams %}<option value="{{ name }}">{% endfor %}</datalist>
 {% for (content_id, room), rows in groups.items() %}{% set profile = profiles.get(content_id) %}
 <section class="live-iso">
