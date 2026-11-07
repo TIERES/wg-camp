@@ -756,7 +756,9 @@ class LiveMatchesTest(unittest.TestCase):
         client = self.app.test_client()
         with client.session_transaction() as sess:
             sess["player_id"] = self.anders
-        self.assertIn("perde o triplo de XP", client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True))
+        page = client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True)
+        self.assertIn("perde o triplo de XP - mesmo que tenha sido queda de conexão", page)
+        self.assertIn("voltem em até 20 minutos e terminem outra partida", page)
         # XP: quem saiu perde o triplo; quem ganhou ganha o normal.
         start = {self.tieres: 300, self.anders: 300}
         normal = xp.replay([{"id": "a1", "home": self.tieres, "away": self.anders, "home_goals": 1, "away_goals": 3,
