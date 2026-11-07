@@ -9,7 +9,8 @@
   {% endif %}
 </div>
 <p class="muted">Partidas jogadas no RetroArch TIERES, com o placar lido do próprio jogo. Aparecem as {{ limit }} últimas (as ao vivo primeiro); para achar outra, use os filtros.</p>
-{% set filtered = filters.player or filters.tournament_id or filters.friendlies or filters.date_from or filters.date_to %}
+{% set filtered = filters.player or filters.tournament_id or filters.friendlies or filters.date_from or filters.date_to or filters.match_id %}
+{% if filters.match_id %}<p class="muted">Mostrando só a partida escolhida na tabela do campeonato. <a href="{{ url_for('live.index') }}">Ver todas</a></p>{% endif %}
 <form method="get" class="live-filters">
   <label>Jogador<input name="jogador" value="{{ filters.player }}" maxlength="32" placeholder="Nick"></label>
   <label>Campeonato
@@ -27,5 +28,5 @@
   <div class="live-cards" data-live-src="{{ cards_url }}">{% include 'live/_cards.html' %}</div>
   <p class="muted" data-live-empty {% if cards %}hidden{% endif %}>Nenhuma partida{% if filtered %} com esses filtros{% else %} ainda{% endif %}.</p>
 </section>
-<script src="{{ url_for('static', filename='js/live-cards.js', v='20261107b') }}"></script>
+<script src="{{ url_for('static', filename='js/live-cards.js', v='20261107c') }}"></script>
 {% endblock %}

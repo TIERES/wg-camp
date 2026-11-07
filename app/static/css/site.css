@@ -490,16 +490,26 @@ header nav { align-items:center }
 .live-logos { display:flex; gap:.4rem; align-items:center } .live-logos:empty { display:none } .live-game { width:34px; height:42px; object-fit:cover; border-radius:3px } .live-tournament { height:42px; max-width:64px; object-fit:contain; border-radius:4px; display:block }
 .live-context { flex:1 1 auto; min-width:0; overflow-wrap:anywhere; display:grid } .live-context small { font-size:.78rem } .live-context a { color:#9ca3af } .live-context a:hover { color:var(--accent) }
 .live-status { flex:0 0 auto; display:grid; justify-items:end; gap:.15rem; text-align:right } .live-badge { color:#4ade80; font-weight:700 }
-/* Tempo de jogo ao vivo: um risco que vai e volta embaixo (como no placar do Google);
-   --live-phase (static/js/live-cards.js) mantém o vaivém sem saltar quando o card recarrega. */
-.live-clock { text-align:right } .live-clock.on { color:#4ade80; font-weight:600; position:relative; padding-bottom:6px }
-.live-clock.on::after { content:""; position:absolute; left:0; bottom:0; width:12px; height:2px; border-radius:2px; background:#4ade80; animation:live-sweep 1.4s ease-in-out infinite alternate; animation-delay:var(--live-phase, 0s) }
-@keyframes live-sweep { from { left:0 } to { left:calc(100% - 12px) } }
-@media (prefers-reduced-motion:reduce) { .live-clock.on::after { animation:none; left:auto; right:0 } }
-/* Tabela do campeonato: "Ao vivo" no grupo com jogo rolando e o placar ao lado dos dois times. */
-.standings-live { margin:.1rem 0 .35rem; color:#4ade80; font-size:.85rem; font-weight:600 }
-.live-mini { display:inline-block; margin-left:.45rem; padding:.05rem .35rem; border-radius:4px; font-size:.72rem; font-weight:700; line-height:1.3; color:#fff; background:#4b5563; vertical-align:middle; white-space:nowrap }
-.live-mini.win { background:#15803d } .live-mini.loss { background:#b91c1c }
+/* Ao vivo: um risco embaixo do tempo de jogo (e do "Ao vivo" da tabela) que estica
+   para a direita, some, volta esticando e some de novo, como no placar do Google.
+   --live-phase (static/js) põe todos na mesma fase e evita o salto quando recarregam. */
+.live-clock { text-align:right } .live-clock.on { color:#4ade80; font-weight:600 }
+.live-clock.on,.standings-live { position:relative; padding-bottom:6px }
+.live-clock.on::after,.standings-live::after { content:""; position:absolute; bottom:0; left:0; right:100%; height:2px; border-radius:2px; background:#4ade80; animation:live-sweep 2.4s ease-in-out infinite; animation-delay:var(--live-phase, 0s) }
+@keyframes live-sweep { 0% { left:0; right:100% } 25% { left:0; right:0 } 50% { left:100%; right:0 } 75% { left:0; right:0 } 100% { left:0; right:100% } }
+@media (prefers-reduced-motion:reduce) { .live-clock.on::after,.standings-live::after { animation:none; right:0 } }
+/* Tabela do campeonato: "Ao vivo" (link para os jogos dele no Ao vivo) no grupo com jogo
+   rolando, o placar ao lado dos dois times (link para a partida) e, em amarelo, as
+   linhas que somam placar ainda não confirmado. */
+.standings-live { display:inline-block; margin:.1rem 0 .45rem; color:#4ade80; font-size:.85rem; font-weight:600; text-decoration:none } .standings-live:hover { color:#86efac }
+.live-mini { display:inline-block; margin-left:.45rem; padding:.05rem .35rem; border-radius:4px; font-size:.72rem; font-weight:700; line-height:1.3; color:#fff; background:#4b5563; vertical-align:middle; white-space:nowrap; text-decoration:none }
+.live-mini.win { background:#15803d } .live-mini.loss { background:#b91c1c } a.live-mini:hover { filter:brightness(1.2); color:#fff }
+.standings tr.provisional td:not(.name-col):not(.recent) { color:#fbbf24 } .standings tr.provisional td:not(.name-col):not(.recent) strong { color:#fbbf24 }
+.standings .recent span.prov { outline:1px dashed #fbbf24; outline-offset:1px }
+.match-line-live { position:relative } .match-line-live .match-line { padding-bottom:1.55rem }
+.round-card > .match-line-live:first-child .match-line { border-top:0 }
+.match-live { position:absolute; left:50%; bottom:.3rem; transform:translateX(-50%); margin:0; padding-bottom:4px; font-size:.75rem }
+.provisional-legend { margin:.35rem 0 0 } .provisional-dot { display:inline-block; width:.7rem; height:.7rem; border-radius:2px; background:#fbbf24; vertical-align:middle }
 .live-score { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:.75rem }
 .live-team { display:grid; justify-items:center; text-align:center; gap:.3rem; min-width:0 } .live-team strong { font-size:1.05rem; overflow-wrap:anywhere } .live-team small { color:#9ca3af; overflow-wrap:anywhere }
 .live-crest { width:56px; height:42px; object-fit:contain; border-radius:4px }

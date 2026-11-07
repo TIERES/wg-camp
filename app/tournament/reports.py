@@ -99,6 +99,20 @@ def report(db, tournament, match_id, player_id, score, comment=""):
     log(db, match_id, "report", entry, score=score, comment=comment)
 
 
+def report_from_game(db, tournament, match_id, score, at, comment):
+    """O placar que o RetroArch TIERES leu do jogo (app/live.py), como um
+    reporte sem jogador (reported_by_entry_id NULL): qualquer um dos dois
+    confirma ou contesta, e sem resposta no prazo ele é confirmado sozinho - o
+    prazo conta de `at`, o fim do jogo. Só para jogo ainda sem placar."""
+    match = _match(db, tournament, match_id)
+    if match["status"] != "scheduled":
+        raise TournamentError("O jogo já tem placar informado pelos jogadores.")
+    _check_score(db, tournament, match_id, score)
+    db.execute("UPDATE tournament_matches SET status = 'reported', reported_by_entry_id = NULL, reported_at = ?, "
+               "updated_at = ? WHERE id = ?", (at, now(), match_id))
+    log(db, match_id, "report", None, score=score, comment=comment)
+
+
 def confirm(db, tournament, match_id, player_id):
     match = _match(db, tournament, match_id)
     entry = player_entry(db, tournament, match, player_id)
@@ -125,6 +139,13 @@ def dispute(db, tournament, match_id, player_id, comment, score=None):
     log(db, match_id, "dispute", entry, score=score or (None, None, None, None), comment=comment)
 
 
+def disputer(db, match_id):
+    """Inscrição de quem fez a última contestação do jogo (ou None)."""
+    row = db.execute("SELECT entry_id FROM match_reports WHERE match_id = ? AND action = 'dispute' "
+                     "AND entry_id IS NOT NULL ORDER BY id DESC LIMIT 1", (match_id,)).fetchone()
+    return row["entry_id"] if row else None
+
+
 def last_dispute(db, match_id):
     """Última contestação de um jogo que traz o placar que o adversário diz ser o certo."""
     return db.execute("SELECT * FROM match_reports WHERE match_id = ? AND action = 'dispute' "
@@ -133,11 +154,14 @@ def last_dispute(db, match_id):
 
 def accept_dispute(db, tournament, match_id, player_id):
     """Quem reportou aceita o placar da contestação: o jogo é confirmado sem
-    precisar do organizador."""
+    precisar do organizador. Placar lido do jogo (sem quem reportou): aceita
+    o jogador que não contestou."""
     match = _match(db, tournament, match_id)
     entry = player_entry(db, tournament, match, player_id)
     disputed = last_dispute(db, match_id) if match["status"] == "disputed" else None
-    if entry is None or disputed is None or match["reported_by_entry_id"] != entry["id"]:
+    mine = entry is not None and (match["reported_by_entry_id"] == entry["id"] or (
+        match["reported_by_entry_id"] is None and disputed is not None and disputed["entry_id"] != entry["id"]))
+    if entry is None or disputed is None or not mine:
         raise TournamentError("Não há placar de contestação para você aceitar neste jogo.")
     score = (disputed["home_goals"], disputed["away_goals"], disputed["home_pens"], disputed["away_pens"])
     store.record_result(db, tournament, match_id, *score)

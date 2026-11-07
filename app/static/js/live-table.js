@@ -1,40 +1,34 @@
-// Aba Tabela do campeonato (tournaments/show.html): a cada poucos segundos,
-// "Ao vivo" nos grupos com jogo rolando e o placar ao lado dos dois times
-// (app/live.py tournament_live: verde ganhando, vermelho perdendo, cinza empatando).
+// Aba Tabela do campeonato em andamento (tournaments/show.html): a cada poucos
+// segundos recarrega as tabelas de grupos/pontos corridos (tournaments.live_tables)
+// - "Ao vivo" no grupo com jogo rolando, o placar ao lado dos dois times e a
+// classificação com os placares ainda não confirmados (app/live.py, store.group_tables).
 (function () {
   var EVERY = 10000;
-  document.querySelectorAll('[data-live-table]').forEach(function (box) {
-    function apply(data) {
-      var groups = (data.groups || []).map(String);
-      var entries = data.entries || {};
-      box.querySelectorAll('[data-live-group]').forEach(function (group) {
-        var label = group.querySelector('.standings-live');
-        if (label) label.hidden = groups.indexOf(group.dataset.liveGroup) < 0;
-      });
-      box.querySelectorAll('tr[data-entry]').forEach(function (row) {
-        var info = entries[row.dataset.entry];
-        var cell = row.querySelector('.name-col');
-        var tag = cell && cell.querySelector('.live-mini');
-        if (!cell) return;
-        if (!info) {
-          if (tag) tag.remove();
-          return;
-        }
-        if (!tag) {
-          tag = document.createElement('span');
-          tag.title = 'Jogando agora';
-          cell.appendChild(tag);
-        }
-        tag.className = 'live-mini ' + info.result;
-        tag.textContent = info.score;
-      });
-    }
-    function load() {
-      fetch(box.dataset.liveTable, { credentials: 'same-origin' })
-        .then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (data) { if (data) apply(data); })
-        .catch(function () {});
-    }
-    setInterval(load, EVERY);
-  });
+  var SWEEP = 2400;  // um ciclo do risco embaixo do "Ao vivo" (site.css, live-sweep)
+  // Mesma fase para todos, tirada do relógio: o risco não salta quando a tabela recarrega.
+  function phase(root) {
+    var delay = -((Date.now() % SWEEP) / 1000) + 's';
+    root.querySelectorAll('.standings-live').forEach(function (el) { el.style.setProperty('--live-phase', delay); });
+  }
+  phase(document);  // também o "Ao vivo" da aba Jogos
+  var blocks = document.querySelectorAll('[data-live-stage]');
+  if (!blocks.length) return;
+  var url = blocks[0].dataset.liveUrl;
+  function load() {
+    if (document.hidden) return;
+    fetch(url, { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.text() : null; })
+      .then(function (html) {
+        if (html === null) return;
+        var fresh = document.createElement('div');
+        fresh.innerHTML = html;
+        fresh.querySelectorAll('[data-live-stage]').forEach(function (block) {
+          var old = document.querySelector('.groups[data-live-stage="' + block.dataset.liveStage + '"]');
+          if (old) old.innerHTML = block.innerHTML;
+        });
+        phase(document);
+      })
+      .catch(function () {});
+  }
+  setInterval(load, EVERY);
 })();

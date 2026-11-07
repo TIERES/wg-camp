@@ -1,0 +1,6 @@
+{# As tabelas de grupos/pontos corridos da aba Tabela (tournaments.live_tables),
+   que static/js/live-table.js troca na página a cada poucos segundos. #}
+{% from 'tournaments/_macros.html' import stage_groups %}
+{% for view in stages if view.stage.kind != 'knockout' %}
+<div data-live-stage="{{ view.stage.id }}">{{ stage_groups(view, names, t, live_table, confirm_hours) }}</div>
+{% endfor %}

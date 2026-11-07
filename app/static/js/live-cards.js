@@ -3,7 +3,7 @@
 // some quando não há nenhum (na página /ao-vivo, mostra o aviso [data-live-empty]).
 (function () {
   var EVERY = 10000;
-  var SWEEP = 2800;  // ida e volta do risco embaixo do tempo (site.css, live-sweep)
+  var SWEEP = 2400;  // um ciclo do risco embaixo do tempo (site.css, live-sweep)
   // Todos os riscos na mesma fase, tirada do relógio: o card novo continua de onde o antigo estava.
   function phase(root) {
     var delay = -((Date.now() % SWEEP) / 1000) + 's';

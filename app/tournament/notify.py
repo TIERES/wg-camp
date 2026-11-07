@@ -142,6 +142,19 @@ def score_reported(db, tournament, match_id):
         f"Sem resposta até {deadline}, o placar é confirmado automaticamente.\n"))])
 
 
+def score_from_game(db, tournament, match_id):
+    """Para os dois jogadores: o placar que o RetroArch TIERES leu do jogo e o
+    link para confirmar ou contestar."""
+    match, home, away, title, link = _match_context(db, tournament, match_id)
+    reported = reports.last_report(db, match_id)
+    deadline = format_local(reports.deadline(db, match), "%d/%m/%Y às %H:%M")
+    _deliver([(player["email"], f"Confira o placar: {title}", (
+        f"Olá, {player['username']}!\n\nO RetroArch TIERES leu o placar do jogo {title} no campeonato "
+        f"{tournament['name']}:\n\n  {_label(home)} {_score_text(reported)} {_label(away)}\n\n"
+        f"Confirme ou conteste em:\n{link}\n\n"
+        f"Sem resposta até {deadline}, o placar é confirmado automaticamente.\n")) for player in (home, away)])
+
+
 def score_disputed(db, tournament, match_id):
     """Para os dois jogadores e o organizador: os dois placares e o motivo da contestação."""
     match, home, away, title, link = _match_context(db, tournament, match_id)

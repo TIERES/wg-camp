@@ -498,6 +498,9 @@ def ensure_live_columns(database):
     if columns and "catalog_iso_id" not in columns:
         database.execute("ALTER TABLE iso_profiles ADD COLUMN catalog_iso_id INTEGER "
                          "REFERENCES catalog_isos(id) ON DELETE SET NULL")
+    columns = {column["name"] for column in database.execute("PRAGMA table_info(live_matches)")}
+    if columns and "game_report" not in columns:
+        database.execute("ALTER TABLE live_matches ADD COLUMN game_report TEXT")
 
 
 def ensure_tournament_columns(database):
@@ -647,7 +650,10 @@ CREATE TABLE IF NOT EXISTS live_matches (
     is_test INTEGER NOT NULL DEFAULT 0,
     started_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    finished_at TEXT
+    finished_at TEXT,
+    -- Jogo de campeonato encerrado: o placar lido virou o reporte do jogo
+    -- ('reportado') ou o motivo de não ter virado (live.report_finished).
+    game_report TEXT
 );
 CREATE INDEX IF NOT EXISTS live_matches_status_idx ON live_matches(status, updated_at);
 CREATE INDEX IF NOT EXISTS live_matches_tournament_match_idx ON live_matches(tournament_match_id);

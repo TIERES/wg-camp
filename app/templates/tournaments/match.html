@@ -10,7 +10,7 @@
   </div>
   <p class="match-status status-{{ m.status }}">
     {% if m.status == 'confirmed' %}Resultado confirmado
-    {% elif m.status == 'reported' %}Placar reportado: <strong>{{ reported.home_goals }} x {{ reported.away_goals }}</strong>{% if reported.home_pens is not none %} ({{ reported.home_pens }} x {{ reported.away_pens }} nos pênaltis){% endif %} — esperando o adversário até {{ deadline|localtime }}
+    {% elif m.status == 'reported' %}Placar {{ 'lido do jogo' if reported.entry_id is none else 'reportado' }}: <strong>{{ reported.home_goals }} x {{ reported.away_goals }}</strong>{% if reported.home_pens is not none %} ({{ reported.home_pens }} x {{ reported.away_pens }} nos pênaltis){% endif %} — esperando {{ 'os jogadores' if reported.entry_id is none else 'o adversário' }} até {{ deadline|localtime }}
     {% elif m.status == 'disputed' %}Resultado contestado{% if dispute %} (o adversário diz {{ dispute.home_goals }} x {{ dispute.away_goals }}){% endif %} — aguardando quem reportou aceitar ou o organizador decidir
     {% else %}Ainda sem resultado{% endif %}
   </p>
@@ -34,7 +34,7 @@
         <p class="muted">Confira antes de enviar: depois o placar não pode ser alterado por você. O adversário confirma ou contesta; sem resposta no prazo, o placar é confirmado automaticamente.</p>
       </form>
     </section>
-    {% elif m.status == 'disputed' and m.reported_by_entry_id == me.id %}
+    {% elif m.status == 'disputed' and (m.reported_by_entry_id == me.id or (m.reported_by_entry_id is none and disputer and disputer != me.id)) %}
     <section>
       {% if dispute %}
       <h2>O adversário contestou: diz que foi {{ dispute.home_goals }} x {{ dispute.away_goals }}{% if dispute.home_pens is not none %} ({{ dispute.home_pens }} x {{ dispute.away_pens }} nos pênaltis){% endif %}</h2>
@@ -42,7 +42,7 @@
       <p class="muted">Se ele estiver certo, aceite e o resultado é confirmado na hora. Se não, o organizador decide.</p>
       <form method="post" action="{{ url_for('tournaments.match_accept', slug=t.slug, match_id=m.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Aceitar o placar {{ dispute.home_goals }} x {{ dispute.away_goals }}</button></form>
       {% else %}
-      <h2>O adversário contestou o seu placar</h2>
+      <h2>O adversário contestou {{ 'o placar lido do jogo' if m.reported_by_entry_id is none else 'o seu placar' }}</h2>
       <p class="muted">Ele não informou outro placar: o organizador vai decidir.</p>
       {% endif %}
     </section>
@@ -53,7 +53,12 @@
     </section>
     {% elif m.status == 'reported' %}
     <section>
+      {% if reported.entry_id is none %}
+      <h2>O jogo terminou {{ reported.home_goals }} x {{ reported.away_goals }}</h2>
+      <p class="muted">Placar lido do próprio jogo pelo RetroArch TIERES. Confirme ou conteste; sem resposta até {{ deadline|localtime }}, ele é confirmado automaticamente.</p>
+      {% else %}
       <h2>O adversário reportou {{ reported.home_goals }} x {{ reported.away_goals }}</h2>
+      {% endif %}
       {% if reported.comment %}<p class="quote">“{{ reported.comment }}”</p>{% endif %}
       <form method="post" action="{{ url_for('tournaments.match_confirm', slug=t.slug, match_id=m.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Confirmar este placar</button></form>
       <details class="dispute">

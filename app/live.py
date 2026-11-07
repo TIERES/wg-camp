@@ -301,6 +301,7 @@ def reap(db):
                "ELSE 'abandoned' END, finished_at = COALESCE(finished_at, updated_at) "
                "WHERE status = 'live' AND updated_at < ?", (_ago(GONE),))
     db.commit()
+    report_finished(db)
 
 
 def _team_view(db, match, side, team_state, nicks):
@@ -455,10 +456,11 @@ def _local_day(value, end=False):
 
 
 def list_cards(db, tournament_id=None, friendlies=False, only_live=False, recent_only=False, player="", date_from="",
-               date_to="", limit=CARDS_LIMIT):
+               date_to="", match_id=None, limit=CARDS_LIMIT):
     """As últimas partidas (ao vivo primeiro), com os filtros da página:
     tournament_id = os jogos daquele campeonato; friendlies = o que não é jogo
-    de campeonato (amistosos cadastrados e partidas livres)."""
+    de campeonato (amistosos cadastrados e partidas livres); match_id = só
+    aquela partida (o placar ao lado do time na tabela do campeonato)."""
     reap(db)
     where, params = [], []
     if only_live:
@@ -474,6 +476,9 @@ def list_cards(db, tournament_id=None, friendlies=False, only_live=False, recent
         params.append(tournament_id)
     elif friendlies:
         where.append("m.tournament_match_id IS NULL")
+    if match_id:
+        where.append("m.id = ?")
+        params.append(match_id)
     if player:
         where.append("m.players_json LIKE ?")
         params.append("%" + player.replace("%", "").replace("_", "") + "%")
@@ -490,35 +495,86 @@ def list_cards(db, tournament_id=None, friendlies=False, only_live=False, recent
     return [card(db, row) for row in rows]
 
 
+_TOURNAMENT_LIVE_SQL = (
+    "SELECT m.*, tm.group_id, tm.home_entry_id, tm.away_entry_id, hp.username AS home_nick, "
+    "ap.username AS away_nick, s.tournament_id FROM live_matches m "
+    "JOIN tournament_matches tm ON tm.id = m.tournament_match_id JOIN tournament_stages s ON s.id = tm.stage_id "
+    "JOIN tournament_entries he ON he.id = tm.home_entry_id JOIN players hp ON hp.id = he.player_id "
+    "JOIN tournament_entries ae ON ae.id = tm.away_entry_id JOIN players ap ON ap.id = ae.player_id ")
+
+
+def _home_away(row, goals):
+    """(gols do mandante, do visitante) do jogo de campeonato a partir dos gols
+    (LOCAL, VISITA) do jogo e de quem controla cada lado, ou None."""
+    sides = [{nick.casefold() for nick in json.loads(row[key] or "[]")}
+             for key in ("local_players_json", "visita_players_json")]
+    home = next((i for i in (0, 1) if row["home_nick"].casefold() in sides[i]), None)
+    away = next((i for i in (0, 1) if row["away_nick"].casefold() in sides[i]), None)
+    if home is None or away is None or home == away:
+        return None
+    return goals[home], goals[away]
+
+
 def tournament_live(db, tournament_id):
     """Jogos do campeonato rolando agora (com sinal), para a tabela: os grupos
-    com jogo ao vivo e, por inscrição, o placar do ponto de vista do time
-    ("1-0") e se ele está ganhando, perdendo ou empatando. As simulações só
-    aparecem para o admin, como nos cards."""
+    com jogo ao vivo, por inscrição o placar do ponto de vista do time ("1-0",
+    ganhando/perdendo/empatando, link para a partida no Ao vivo) e, por jogo,
+    o placar (mandante, visitante) que a tabela soma como não confirmado e o
+    link da partida no Ao vivo (aba Jogos).
+    As simulações só aparecem para o admin, como nos cards."""
     rows = db.execute(
-        "SELECT m.local_goals, m.visita_goals, m.local_players_json, m.visita_players_json, tm.group_id, "
-        "tm.home_entry_id, tm.away_entry_id, hp.username AS home_nick, ap.username AS away_nick "
-        "FROM live_matches m JOIN tournament_matches tm ON tm.id = m.tournament_match_id "
-        "JOIN tournament_stages s ON s.id = tm.stage_id "
-        "JOIN tournament_entries he ON he.id = tm.home_entry_id JOIN players hp ON hp.id = he.player_id "
-        "JOIN tournament_entries ae ON ae.id = tm.away_entry_id JOIN players ap ON ap.id = ae.player_id "
-        "WHERE s.tournament_id = ? AND m.status = 'live' AND m.updated_at >= ?" + ("" if _is_admin() else " AND m.is_test = 0"),
-        (tournament_id, _ago(STALE))).fetchall()
-    groups, entries = set(), {}
+        _TOURNAMENT_LIVE_SQL + "WHERE s.tournament_id = ? AND m.status = 'live' AND m.updated_at >= ?"
+        + ("" if _is_admin() else " AND m.is_test = 0"), (tournament_id, _ago(STALE))).fetchall()
+    groups, entries, matches, match_urls = set(), {}, {}, {}
     for row in rows:
-        sides = [{nick.casefold() for nick in json.loads(row[key] or "[]")}
-                 for key in ("local_players_json", "visita_players_json")]
-        goals = (row["local_goals"] or 0, row["visita_goals"] or 0)
-        for entry, nick in ((row["home_entry_id"], row["home_nick"]), (row["away_entry_id"], row["away_nick"])):
-            side = next((i for i in (0, 1) if nick.casefold() in sides[i]), None)
-            if side is None:
-                continue
-            mine, theirs = goals[side], goals[1 - side]
-            entries[entry] = {"score": "%d-%d" % (mine, theirs),
+        score = _home_away(row, (row["local_goals"] or 0, row["visita_goals"] or 0))
+        if score is None:
+            continue
+        matches[row["tournament_match_id"]] = score
+        link = url_for("live.index", partida=row["id"])
+        match_urls[row["tournament_match_id"]] = link
+        for entry, mine, theirs in ((row["home_entry_id"], score[0], score[1]), (row["away_entry_id"], score[1], score[0])):
+            entries[entry] = {"score": "%d-%d" % (mine, theirs), "url": link,
                               "result": "win" if mine > theirs else "loss" if mine < theirs else "draw"}
         if row["group_id"]:
             groups.add(row["group_id"])
-    return {"groups": sorted(groups), "entries": entries}
+    return {"groups": groups, "entries": entries, "matches": matches, "match_urls": match_urls}
+
+
+# O 2º PC manda o fim logo depois do 1º: espera isso antes de reportar.
+REPORT_SETTLE = timedelta(minutes=1)
+GAME_REPORT_NOTE = "Placar lido do jogo pelo RetroArch TIERES (Ao vivo nº %d)."
+
+
+def report_finished(db):
+    """Jogo de campeonato que terminou no RetroArch TIERES (algum PC mandou o
+    fim, e os que mandaram concordam): o placar lido vira o reporte do jogo
+    (tournament/reports.py report_from_game). Os jogadores confirmam ou
+    contestam; sem resposta, confirma sozinho no prazo (torneios_confirmacao_horas,
+    24 h, contado do fim do jogo). Simulações nunca."""
+    from .tournament import notify, reports, store
+    from .tournament.store import TournamentError
+    rows = db.execute(_TOURNAMENT_LIVE_SQL + "WHERE m.status = 'finished' AND m.is_test = 0 "
+                      "AND m.game_report IS NULL AND m.finished_at <= ?", (_ago(REPORT_SETTLE),)).fetchall()
+    for row in rows:
+        finals = {(s["teams"][0]["goals"], s["teams"][1]["goals"]) for s in (
+            json.loads(r["state_json"]) for r in db.execute(
+                "SELECT state_json FROM live_match_reports WHERE live_match_id = ? AND final = 1", (row["id"],)))}
+        score = _home_away(row, next(iter(finals))) if len(finals) == 1 else None
+        outcome = ("sem o fim mandado pelos PCs" if not finals else "os PCs discordam do placar" if len(finals) > 1
+                   else "não deu para saber quem é o mandante" if score is None else None)
+        tournament = store.get_tournament(db, row["tournament_id"])
+        if outcome is None:
+            try:
+                reports.report_from_game(db, tournament, row["tournament_match_id"], (*score, None, None),
+                                         row["finished_at"], GAME_REPORT_NOTE % row["id"])
+                outcome = "reportado"
+            except TournamentError as error:
+                outcome = str(error)[:200]
+        db.execute("UPDATE live_matches SET game_report = ? WHERE id = ?", (outcome, row["id"]))
+        db.commit()
+        if outcome == "reportado":
+            notify.score_from_game(db, tournament, row["tournament_match_id"])
 
 
 FRIENDLIES = "amistosos"  # o valor de "Amistosos" no filtro de campeonato
@@ -529,6 +585,7 @@ def _filters():
     championship = args.get("campeonato", "")
     return {"player": args.get("jogador", "").strip()[:32], "friendlies": championship == FRIENDLIES,
             "tournament_id": int(championship) if championship.isdigit() else None,
+            "match_id": int(args["partida"]) if args.get("partida", "").isdigit() else None,
             "date_from": args.get("de", ""), "date_to": args.get("ate", "")}
 
 
@@ -553,12 +610,6 @@ def cards_fragment():
     cards = list_cards(get_db(), only_live=request.args.get("so_ao_vivo") == "1", recent_only=recent,
                        limit=4 if recent else CARDS_LIMIT, **_filters())
     return render_template("live/_cards.html", cards=cards)
-
-
-@bp.get("/ao-vivo/campeonato/<int:tournament_id>")
-def tournament_table(tournament_id):
-    """O que a aba Tabela do campeonato atualiza a cada poucos segundos."""
-    return tournament_live(get_db(), tournament_id)
 
 
 @bp.post("/ao-vivo/limpar-testes")

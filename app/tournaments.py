@@ -240,8 +240,32 @@ def _names(db, tournament):
     return names
 
 
-def _stage_views(db, tournament):
-    """Fases com tabelas, jogos por rodada e chaves, prontas para o template."""
+def _provisional(db, tournament, live_table):
+    """Placares ainda não confirmados que a tabela soma (marcados como tal):
+    jogos rolando agora (Ao vivo) e placares reportados esperando confirmação
+    (pelos jogadores ou lidos do jogo). {jogo: (gols do mandante, do visitante)}"""
+    scores = {}
+    for row in db.execute(
+            "SELECT m.id FROM tournament_matches m JOIN tournament_stages s ON s.id = m.stage_id "
+            "WHERE s.tournament_id = ? AND s.status = 'running' AND m.status = 'reported'", (tournament["id"],)):
+        reported = reports.last_report(db, row["id"])
+        if reported and reported["home_goals"] is not None:
+            scores[row["id"]] = (reported["home_goals"], reported["away_goals"])
+    scores.update(live_table["matches"])
+    return scores
+
+
+def _live_table_view(db, tournament):
+    """A aba Tabela de campeonato em andamento: os jogos ao vivo (app/live.py)
+    e as fases com os placares não confirmados somados."""
+    from . import live
+    live_table = live.tournament_live(db, tournament["id"])
+    return live_table, _stage_views(db, tournament, _provisional(db, tournament, live_table))
+
+
+def _stage_views(db, tournament, provisional=None):
+    """Fases com tabelas, jogos por rodada e chaves, prontas para o template.
+    provisional: placares não confirmados que as tabelas somam (_provisional)."""
     views = []
     for stage in store.stages_of(db, tournament["id"]):
         matches = db.execute("SELECT * FROM tournament_matches WHERE stage_id = ? ORDER BY round, tie_id, leg, id",
@@ -291,7 +315,7 @@ def _stage_views(db, tournament):
                     if not rounds[round_no]:
                         del rounds[round_no]
         else:
-            for group, table in store.group_tables(db, stage["id"]):
+            for group, table in store.group_tables(db, stage["id"], provisional):
                 view["groups"].append({"group": group, "table": table})
             names = {r: f"Rodada {r}" for r in rounds}
             if view["settings"].get("legs") == 2 and stage["kind"] in ("league", "groups"):
@@ -759,14 +783,18 @@ def show(slug):
         free_teams = [{"name": row["name"], "image": team_image(row)} for row in db.execute(
             "SELECT * FROM teams WHERE is_active = 1 ORDER BY name COLLATE NOCASE")]
     iso_row = iso.get(db, tournament["id"])
-    # Aba Tabela de campeonato em andamento: "Ao vivo" e o placar dos jogos rolando agora.
+    # Campeonato em andamento: na aba Tabela, "Ao vivo", o placar dos jogos
+    # rolando agora e a classificação com os placares ainda não confirmados;
+    # na aba Jogos, o link "Ao vivo" no jogo que está rolando.
     live_table = None
     if tab == "tabela" and tournament["status"] == "running":
+        live_table, stages = _live_table_view(db, tournament)
+    elif tab == "jogos" and tournament["status"] == "running":
         from . import live
         live_table = live.tournament_live(db, tournament["id"])
     return render_template(
         "tournaments/show.html", t=tournament, entries=entries, my_entry=my_entry, stages=stages, tab=tab,
-        live_table=live_table,
+        live_table=live_table, confirm_hours=setting(db, "torneios_confirmacao_horas"),
         team_list=team_list, free_teams=free_teams, team_modes=TEAM_MODES, crests=_crests(names), my_pending=my_pending,
         names=names, can_manage=can_manage(tournament), iso=iso_row, iso_ready=iso.downloadable(iso_row, current_app),
         format_label=formats.FORMATS[tournament["format"]], summary=formats.describe(tournament["format"], config),
@@ -774,6 +802,19 @@ def show(slug):
         prizes=engine.split_prize(pool, split, 3) if pool else [],
         podium=sorted((e for e in entries if e["final_position"]), key=lambda e: e["final_position"]),
         invite=friends.my_invite(db, tournament["id"], player_id) if player_id and not my_entry else None)
+
+
+@bp.get("/<slug>/tabela-ao-vivo")
+def live_tables(slug):
+    """As tabelas de grupos/pontos corridos da aba Tabela, que ela recarrega a
+    cada poucos segundos (static/js/live-table.js) enquanto o campeonato anda."""
+    db = get_db()
+    tournament = _load(slug)
+    if tournament["status"] != "running":
+        return ""
+    live_table, stages = _live_table_view(db, tournament)
+    return render_template("tournaments/_live_tables.html", t=tournament, stages=stages, live_table=live_table,
+                           names=_names(db, tournament), confirm_hours=setting(db, "torneios_confirmacao_horas"))
 
 
 # --- Jogador: criar, inscrever-se, carteira -----------------------------------
@@ -1272,6 +1313,7 @@ def match(slug, match_id):
     return render_template(
         "tournaments/match.html", t=tournament, m=m, names=names, me=me, manager=manager, h2h=h2h,
         history=reports.history(db, match_id), labels=reports.ACTION_LABELS,
+        disputer=reports.disputer(db, match_id) if m["status"] == "disputed" else None,
         reported=reports.last_report(db, match_id) if m["status"] in ("reported", "disputed") else None,
         dispute=reports.last_dispute(db, match_id) if m["status"] == "disputed" else None,
         deadline=reports.deadline(db, m) if m["status"] == "reported" else None,
@@ -1505,6 +1547,8 @@ def _auto_confirm_reports():
     try:
         db = get_db()
         disputed = []
+        from . import live
+        live.reap(db)  # jogos do Ao vivo encerrados viram reporte (live.report_finished)
         reports.auto_confirm(db, disputed=disputed)
         for tournament_id, match_id in disputed:
             notify.score_disputed(db, store.get_tournament(db, tournament_id), match_id)
@@ -1877,9 +1921,10 @@ def inject_wallet():
             "JOIN tournament_stages s ON s.tournament_id = t.id AND s.status = 'running' "
             "JOIN tournament_matches m ON m.stage_id = s.id AND (m.home_entry_id = e.id OR m.away_entry_id = e.id) "
             "WHERE e.player_id = ? AND t.status = 'running' AND (m.status = 'scheduled' OR "
-            "(m.status = 'reported' AND m.reported_by_entry_id != e.id) OR "
-            "(m.status = 'disputed' AND m.reported_by_entry_id = e.id AND EXISTS (SELECT 1 FROM match_reports r "
-            "WHERE r.match_id = m.id AND r.action = 'dispute' AND r.home_goals IS NOT NULL)))",
+            "(m.status = 'reported' AND (m.reported_by_entry_id IS NULL OR m.reported_by_entry_id != e.id)) OR "
+            "(m.status = 'disputed' AND EXISTS (SELECT 1 FROM match_reports r WHERE r.match_id = m.id "
+            "AND r.action = 'dispute' AND r.home_goals IS NOT NULL AND (m.reported_by_entry_id = e.id OR "
+            "(m.reported_by_entry_id IS NULL AND r.entry_id != e.id)))))",
             (player_id,)).fetchone()[0]
         friends_todo = friends.pending_count(db, player_id)
         invites_todo = len(friends.my_invites(db, player_id))

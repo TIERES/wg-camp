@@ -242,32 +242,122 @@ class LiveMatchesTest(unittest.TestCase):
             db.commit()
             return t, group, entries
 
+    def table(self):
+        return self.app.test_client().get("/torneios/liga-1/tabela-ao-vivo").get_data(as_text=True)
+
     def test_league_table_shows_the_live_score(self):
         t, group, (tieres, anders, third) = self.make_league()
-        page = lambda: self.app.test_client().get("/torneios/liga-1").get_data(as_text=True)
-        self.assertNotIn('class="live-mini', page())
-        self.assertRegex(page(), r'<p class="standings-live" hidden>Ao vivo</p>')
-        self.post(state(goals=(1, 0)))
-        data = self.app.test_client().get("/ao-vivo/campeonato/%d" % t).get_json()
-        self.assertEqual(data["groups"], [group])
-        self.assertEqual(data["entries"], {str(tieres): {"score": "1-0", "result": "win"},
-                                           str(anders): {"score": "0-1", "result": "loss"}})
-        html = page()
-        self.assertIn('<p class="standings-live">Ao vivo</p>', html)
-        self.assertIn('<span class="live-mini win" title="Jogando agora">1-0</span>', html)
-        self.assertIn('<span class="live-mini loss" title="Jogando agora">0-1</span>', html)
-        self.assertIn("live-table.js", html)
-        # Sem sinal há mais de 2 minutos, ou encerrado: some da tabela.
+        page = self.app.test_client().get("/torneios/liga-1").get_data(as_text=True)
+        self.assertIn('data-live-stage=', page)
+        for tab in ("tabela", "geral", "jogos"):  # sem card do Ao vivo na página do torneio
+            self.assertNotIn("data-live-section", self.app.test_client().get("/torneios/liga-1?aba=" + tab).get_data(as_text=True))
+        self.assertNotIn("live-mini", page)
+        self.assertNotIn("standings-live", page)
+        self.post(state(goals=(1, 0)))  # LOCAL = TIERES (Grécia), visitante no campeonato
+        live_id = self.rows("SELECT id FROM live_matches")[0]["id"]
+        html = self.table()
+        self.assertIn('<a class="standings-live" href="/ao-vivo?campeonato=%d"' % t, html)
+        self.assertIn('<a class="live-mini win" href="/ao-vivo?partida=%d" title="Jogando agora: ver a partida no Ao vivo">1-0</a>' % live_id, html)
+        self.assertIn('<a class="live-mini loss" href="/ao-vivo?partida=%d" title="Jogando agora: ver a partida no Ao vivo">0-1</a>' % live_id, html)
+        # A classificação já soma o jogo, em amarelo, com a legenda.
+        first_row = html[html.index("<tbody>"):].split("</tr>")[0]
+        self.assertIn("provisional", first_row)
+        self.assertIn("Grécia", first_row)
+        self.assertIn("<td><strong>3</strong></td>", first_row)
+        self.assertIn("em amarelo", html)
+        self.assertIn("24 h depois do jogo", html)
+        self.assertIn('<span class="f-V prov">V</span>', html)
+        # Aba Jogos: "Ao vivo" no jogo rolando, link para a partida.
+        games = self.app.test_client().get("/torneios/liga-1?aba=jogos").get_data(as_text=True)
+        self.assertIn('<a class="match-live standings-live" href="/ao-vivo?partida=%d"' % live_id, games)
+        # O placar leva ao Ao vivo filtrado naquela partida.
+        self.assertEqual(self.cards(partida=str(live_id)).count('<article class="live-card'), 1)
+        self.assertEqual(self.cards(partida="999").count('<article class="live-card'), 0)
+        self.assertIn("Mostrando só a partida", self.app.test_client().get("/ao-vivo?partida=%d" % live_id).get_data(as_text=True))
+        # Sem sinal há mais de 2 minutos: some da tabela (e da conta).
         with self.app.app_context():
             db = get_db()
             db.execute("UPDATE live_matches SET updated_at = ?", ((datetime.now(timezone.utc) - timedelta(minutes=3)).isoformat(),))
             db.commit()
-        self.assertEqual(self.app.test_client().get("/ao-vivo/campeonato/%d" % t).get_json(), {"groups": [], "entries": {}})
+        html = self.table()
+        self.assertNotIn("live-mini", html)
+        self.assertNotIn("provisional", html)
         self.post(state(goals=(1, 1), frame=20500))
-        self.assertNotIn(str(third), self.app.test_client().get("/ao-vivo/campeonato/%d" % t).get_json()["entries"])
-        self.assertIn('<span class="live-mini draw" title="Jogando agora">1-1</span>', page())
-        self.post(state(goals=(1, 1), period=1, clock=0, final=True, frame=90000))
-        self.assertNotIn('class="live-mini', page())
+        self.assertIn('<a class="live-mini draw"', self.table())
+        self.assertNotIn("TERCEIRO</small></span></span><a", self.table())
+
+    def finish_live(self, goals=(2, 1), test=False, other_final=None):
+        """Partida ao vivo da liga até o fim (os 2 PCs), encerrada há 2 minutos."""
+        self.post(state(goals=goals), test=test)
+        self.post(state(goals=goals, period=1, clock=0, final=True, frame=90000), test=test)
+        self.post(state(goals=other_final or goals, period=1, clock=0, final=True, frame=90000), reporter="ANDERSHOW", test=test)
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE live_matches SET finished_at = ?", ((datetime.now(timezone.utc) - timedelta(minutes=2)).replace(microsecond=0).isoformat(),))
+            db.commit()
+        self.cards()  # reap -> report_finished
+
+    def test_finished_match_becomes_the_report_and_confirms_in_24h(self):
+        from app.tournament import reports
+        t, group, (tieres, anders, third) = self.make_league()
+        self.finish_live(goals=(2, 1))
+        match = self.rows("SELECT * FROM tournament_matches WHERE status != 'confirmed'")[0]
+        live = self.rows("SELECT * FROM live_matches")[0]
+        self.assertEqual((match["status"], match["reported_by_entry_id"], match["reported_at"]),
+                         ("reported", None, live["finished_at"]))
+        self.assertEqual(live["game_report"], "reportado")
+        report = self.rows("SELECT * FROM match_reports WHERE match_id = ?", match["id"])[0]
+        # Mandante no campeonato = ANDERSHOW (Croácia): 1 x 2.
+        self.assertEqual((report["action"], report["home_goals"], report["away_goals"], report["entry_id"]), ("report", 1, 2, None))
+        self.assertIn("RetroArch TIERES", report["comment"])
+        # Tabela: conta o placar reportado, em amarelo.
+        self.assertIn("em amarelo", self.table())
+        # Página do jogo: placar lido do jogo, qualquer um dos dois confirma ou contesta.
+        client = self.app.test_client()
+        with client.session_transaction() as sess:
+            sess["player_id"] = self.anders
+        html = client.get("/torneios/liga-1/jogos/%d" % match["id"]).get_data(as_text=True)
+        self.assertIn("Placar lido do jogo", html)
+        self.assertIn("O jogo terminou 1 x 2", html)
+        self.assertIn("Confirmar este placar", html)
+        # Sem resposta: confirmado sozinho 24 h depois do fim do jogo.
+        with self.app.app_context():
+            db = get_db()
+            self.assertEqual(reports.auto_confirm(db, at=datetime.now(timezone.utc) + timedelta(hours=23)), 0)
+            self.assertEqual(reports.auto_confirm(db, at=datetime.now(timezone.utc) + timedelta(hours=24, minutes=1)), 1)
+        done = self.rows("SELECT * FROM tournament_matches WHERE id = ?", match["id"])[0]
+        self.assertEqual((done["status"], done["home_goals"], done["away_goals"]), ("confirmed", 1, 2))
+        self.assertNotIn("em amarelo", self.table())
+
+    def test_game_report_can_be_disputed_and_accepted_by_the_other(self):
+        from app.tournament import reports, store
+        t, group, (tieres, anders, third) = self.make_league()
+        self.finish_live(goals=(2, 1))
+        match_id = self.rows("SELECT id FROM tournament_matches WHERE status = 'reported'")[0]["id"]
+        with self.app.app_context():
+            db = get_db()
+            tournament = store.get_tournament(db, t)
+            reports.dispute(db, tournament, match_id, self.anders, "foi 2 x 2", (2, 2, None, None))
+            db.commit()
+            with self.assertRaises(store.TournamentError):
+                reports.accept_dispute(db, tournament, match_id, self.anders)  # quem contestou não aceita
+            reports.accept_dispute(db, tournament, match_id, self.tieres)
+            db.commit()
+        done = self.rows("SELECT * FROM tournament_matches WHERE id = ?", match_id)[0]
+        self.assertEqual((done["status"], done["home_goals"], done["away_goals"]), ("confirmed", 2, 2))
+
+    def test_no_game_report_for_tests_or_disagreeing_pcs(self):
+        t, group, entries = self.make_league()
+        self.finish_live(goals=(2, 1), other_final=(2, 2))
+        self.assertEqual(self.rows("SELECT status FROM tournament_matches WHERE status != 'confirmed'")[0]["status"], "scheduled")
+        self.assertEqual(self.rows("SELECT game_report FROM live_matches")[0]["game_report"], "os PCs discordam do placar")
+        with self.app.app_context():
+            db = get_db()
+            db.execute("DELETE FROM live_matches")
+            db.commit()
+        self.finish_live(goals=(3, 0), test=True)
+        self.assertEqual(self.rows("SELECT status FROM tournament_matches WHERE status != 'confirmed'")[0]["status"], "scheduled")
+        self.assertIsNone(self.rows("SELECT game_report FROM live_matches")[0]["game_report"])
 
     def test_profile_from_iso_file_name(self):
         with self.app.app_context():

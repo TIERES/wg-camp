@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from '_avatar.html' import avatar_button %}{% from 'tournaments/_macros.html' import standings, bracket, match_line, stage_rounds %}
+{% extends 'base.html' %}{% from '_avatar.html' import avatar_button %}{% from 'tournaments/_macros.html' import standings, stage_groups, bracket, match_line, stage_rounds %}
 {% block title %}{{ t.name }} · Campeonatos WE Camp{% endblock %}{% block content %}
 <section class="t-header">
   <div class="t-header-images">
@@ -51,13 +51,9 @@
   </div>
 </section>
 
-{# Jogos deste campeonato ao vivo ou encerrados há pouco (app/live.py). #}
-<section class="live-home" data-live-section hidden>
-  <div class="live-home-head"><h2>Ao vivo</h2><a href="{{ url_for('live.index') }}">Todas as partidas</a></div>
-  <div class="live-cards" data-live-src="{{ url_for('live.cards_fragment', campeonato=t.id, recentes=1) }}"></div>
-</section>
-<script src="{{ url_for('static', filename='js/live-cards.js', v='20261107b') }}"></script>
-{% if live_table is not none %}<script src="{{ url_for('static', filename='js/live-table.js', v='20261107a') }}" defer></script>{% endif %}
+{# Os jogos ao vivo não têm card aqui: a aba Tabela mostra "Ao vivo" e os placares
+   nas próprias tabelas, e a aba Jogos um link "Ao vivo" no jogo rolando (app/live.py). #}
+{% if live_table is not none %}<script src="{{ url_for('static', filename='js/live-table.js', v='20261107c') }}" defer></script>{% endif %}
 
 {% if my_pending %}
 <section class="my-pending">
@@ -115,12 +111,8 @@
     {% if view.stage.kind == 'knockout' %}{{ bracket(view, names, crests, t.slug, my_entry.id if my_entry else none) }}
     {% else %}
       {% if view.highlight %}<p class="legend"><span class="qualified-dot"></span> classificado{% if view.playoff %} direto · <span class="playoff-dot"></span> playoff{% endif %}</p>{% endif %}
-      <div class="groups"{% if live_table is not none %} data-live-table="{{ url_for('live.tournament_table', tournament_id=t.id) }}"{% endif %}>
-      {% for g in view.groups %}
-        <div class="group" data-live-group="{{ g.group.id }}">{% if view.stage.kind == 'groups' %}<h3>{{ g.group.name }}</h3>{% endif %}
-        {% if live_table is not none %}<p class="standings-live"{% if g.group.id not in live_table.groups %} hidden{% endif %}>Ao vivo</p>{% endif %}
-        {{ standings(g.table, names, view.highlight or 0, view.playoff or 0, live_table) }}</div>
-      {% endfor %}
+      <div class="groups"{% if live_table is not none %} data-live-stage="{{ view.stage.id }}" data-live-url="{{ url_for('tournaments.live_tables', slug=t.slug) }}"{% endif %}>
+      {{ stage_groups(view, names, t, live_table, confirm_hours) }}
       </div>
     {% endif %}
   </section>
@@ -130,7 +122,7 @@
   {% for view in stages %}
   <section class="stage">
     <h2>{{ view.stage.name }}</h2>
-    {{ stage_rounds(view, names, t.slug) }}
+    {{ stage_rounds(view, names, t.slug, live_table) }}
   </section>
   {% endfor %}
 {% endif %}
