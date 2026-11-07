@@ -6,6 +6,9 @@ seed_games() roda no migrate_db/init_db: marca os jogos da lista pelo nome
 (o "Winning Eleven 2002" que já existia continua com o mesmo id) e desativa
 os outros - torneios antigos de um jogo desativado continuam aparecendo.
 
+Só os jogos cujo placar o RetroArch TIERES sabe ler (app/live.py, os mapas
+de RAM do fork): um jogo base novo entra aqui junto com o mapa dele.
+
 Capa (200 x 250): app/static/images/games/<code>.webp/.jpg/.png; sem ela,
 vale a capa provisória <code>.svg.
 """
@@ -17,10 +20,8 @@ from ..db import now
 
 # (code, nome, ano) - na ordem de lançamento.
 GAMES = (
-    ("we3", "Winning Eleven 3", 1998),
     ("we3fv", "Winning Eleven 3: Final Version", 1998),
     ("we4", "Winning Eleven 4", 1999),
-    ("we2000", "Winning Eleven 2000", 2000),
     ("we2002", "Winning Eleven 2002", 2002),
 )
 COVER_DIR = "images/games"
@@ -43,7 +44,9 @@ def seed_games(db):
         else:
             db.execute("INSERT INTO game_titles (code, name, year, platform, is_active, created_at, updated_at) "
                        "VALUES (?, ?, ?, 'PS1', 1, ?, ?)", (code, name, year, now(), now()))
-    db.execute("UPDATE game_titles SET is_active = 0, updated_at = ? WHERE code IS NULL AND is_active = 1", (now(),))
+    codes = [code for code, _name, _year in GAMES]
+    db.execute(f"UPDATE game_titles SET is_active = 0, updated_at = ? WHERE is_active = 1 "
+               f"AND (code IS NULL OR code NOT IN ({','.join('?' * len(codes))}))", (now(), *codes))
 
 
 def cover_url(code):

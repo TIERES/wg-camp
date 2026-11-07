@@ -47,6 +47,9 @@ RECENT = timedelta(hours=6)
 # partida ao vivo dos mesmos jogadores/ISO atualizada há menos que isso.
 JOIN_WINDOW = timedelta(minutes=10)
 MAX_PLAYERS = 8
+# Motor do jogo (executável que o fork lê na RAM) -> jogo base (game_titles.code):
+# o logo do jogo base mesmo com uma ISO que o site não conhece.
+ENGINE_GAMES = {"SLPM_870.56": "we2002", "SLPM_862.91": "we4"}
 NAME_RE = re.compile(r"^[A-Za-z0-9 .'&/-]{2,24}$")
 
 
@@ -89,6 +92,7 @@ def parse_state(raw):
         raise ValueError("teams")
     return {
         "v": version,
+        "engine": _text(data.get("engine"), 16),
         "content": _text(data["content"], 32),
         "kickoff": _int(data.get("kickoff") or 0, 0, 2 ** 31),
         "frame": _int(data.get("frame") or 0, 0, 2 ** 31),
@@ -139,6 +143,11 @@ def ingest(db, state, players, reporter, player_id, room, is_test=False):
             (state["content"], json.dumps(players), _ago(JOIN_WINDOW))).fetchone()
     stamp = now()
     if row is None:
+        # Partida nova dos mesmos jogadores e ISO: a anterior que ficou aberta foi
+        # abandonada (WE4: saíram pelo menu de pausa; o fork não manda o fim dela).
+        db.execute("UPDATE live_matches SET status = 'abandoned', finished_at = ? WHERE status = 'live' "
+                   "AND content_id = ? AND players_json = ? AND kickoff_frame != ? AND ? != 0",
+                   (stamp, state["content"], json.dumps(players), state["kickoff"], state["kickoff"]))
         live_id = db.execute(
             "INSERT INTO live_matches (match_key, content_id, room, players_json, kickoff_frame, is_test, started_at, "
             "updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -176,7 +185,7 @@ def refresh(db, live_id):
         "UPDATE live_matches SET status = ?, period = ?, clock_left = ?, half_frames = ?, local_slot = ?, visita_slot = ?, "
         "local_goals = ?, visita_goals = ?, state_json = ?, local_players_json = ?, visita_players_json = ?, "
         "reporters = ?, agreed = ?, updated_at = ?, finished_at = COALESCE(finished_at, ?) WHERE id = ?",
-        ("finished" if finished else "live", best["period"], best["clock"], best["half"], best["teams"][0]["id"],
+        ("finished" if finished else ("abandoned" if match["status"] == "abandoned" else "live"), best["period"], best["clock"], best["half"], best["teams"][0]["id"],
          best["teams"][1]["id"], best["teams"][0]["goals"], best["teams"][1]["goals"], json.dumps(best),
          json.dumps(local), json.dumps(visita), len(reports), int(len(finals) >= 2 and len(scores) == 1), now(),
          now() if finished else None, live_id))
@@ -387,6 +396,10 @@ def _profile(db, match):
             row = db.execute("SELECT game_title_id FROM catalog_isos WHERE content_id = ? COLLATE NOCASE "
                              "AND is_active = 1 LIMIT 1", (match["content_id"],)).fetchone()
             game_id = row["game_title_id"] if row else None
+    if game_id is None:
+        engine = json.loads(match["state_json"] or "{}").get("engine")
+        row = db.execute("SELECT id FROM game_titles WHERE code = ?", (ENGINE_GAMES.get(engine),)).fetchone()
+        game_id = row["id"] if row else None
     file_name = _file_name(match)
     if game_id is None and file_name:
         row = db.execute("SELECT t.id, t.game_title_id FROM tournament_isos i JOIN tournaments t ON t.id = i.tournament_id "

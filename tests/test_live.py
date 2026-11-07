@@ -12,10 +12,10 @@ CSRF = "test-csrf"
 
 
 def state(kickoff=1000, frame=20000, period=0, clock=9000, goals=(1, 0), final=False, pads=(0, 1),
-          names=("GRECIA", "CROACIA"), slots=(16, 18), scorers=None, v=1):
+          names=("GRECIA", "CROACIA"), slots=(16, 18), scorers=None, v=1, engine=None):
     scorers = scorers or ([["S.Vryzas", 17, "Karagounis"]] * goals[0], [["J.Leko", 20, ""]] * goals[1])
     return json.dumps({
-        "v": v, "content": "BA9BDE21:1C473F60", "kickoff": kickoff, "frame": frame, "period": period,
+        "v": v, "engine": engine, "content": "BA9BDE21:1C473F60", "kickoff": kickoff, "frame": frame, "period": period,
         "clock": clock, "half": 18000, "final": int(final), "pads": list(pads),
         "teams": [{"id": slots[i], "name": names[i], "goals": goals[i], "scorers": scorers[i]} for i in (0, 1)],
     })
@@ -288,6 +288,24 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertIn("Winning Eleven 2002", self.cards())
         page = self.admin().get("/admin/ao-vivo/times").get_data(as_text=True)
         self.assertIn("É a ISO de amistoso Euro", page)
+
+    def test_engine_gives_the_base_game(self):
+        self.post(state(engine="SLPM_862.91"))
+        self.assertIn("Winning Eleven 4", self.cards())
+
+    def test_new_kickoff_abandons_the_open_match(self):
+        self.post(state(period=1, clock=12000, goals=(1, 0)))  # WE4: saíram pelo menu de pausa
+        self.post(state(kickoff=62550, goals=(0, 0)))
+        first, second = self.rows("SELECT status FROM live_matches ORDER BY id")
+        self.assertEqual((first["status"], second["status"]), ("abandoned", "live"))
+        self.assertIn("Interrompido", self.cards())
+        # Um informe atrasado do outro PC sobre a partida abandonada não a reabre.
+        self.post(state(period=1, clock=11900, goals=(1, 0), frame=20030), reporter="ANDERSHOW")
+        self.assertEqual(self.rows("SELECT status FROM live_matches ORDER BY id")[0]["status"], "abandoned")
+
+    def test_only_three_base_games(self):
+        rows = self.rows("SELECT code FROM game_titles WHERE is_active = 1 ORDER BY year")
+        self.assertEqual([r["code"] for r in rows], ["we3fv", "we4", "we2002"])
 
     def test_simulation_does_not_take_the_real_leg(self):
         ida, volta = self.make_tournament()

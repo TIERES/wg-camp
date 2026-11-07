@@ -144,7 +144,7 @@ class TournamentsWebTest(unittest.TestCase):
 
         owner = self.client(self.players[0])
         new_page = owner.get("/torneios/novo").get_data(as_text=True)
-        self.assertEqual(new_page.count('name="game_title_id"'), 5)  # os 5 Winning Eleven do PS1
+        self.assertEqual(new_page.count('name="game_title_id"'), 3)  # WE3 Final Version, WE4 e WE2002
         self.assertIn("images/games/we3fv.svg", new_page)
         too_expensive = owner.post("/torneios/novo", data={
             "csrf_token": CSRF, "name": "Copa Teste", "starts_on": "2026-12-01", "rules": "Regras", "game_title_id": game_id, "format": "knockout",
