@@ -377,7 +377,10 @@ def _context(db, match):
                 parts.append("Ida" if row["leg"] == 1 else "Volta")
             return " · ".join(p for p in parts if p), url_for("tournaments.show", slug=row["slug"], aba="tabela")
     if match["friendly_id"]:
-        return "Amistoso", url_for("tournaments.friendly_show", friendly_id=match["friendly_id"])
+        # A página do amistoso é só dos dois jogadores: o link, só para eles.
+        row = db.execute("SELECT home_id, away_id FROM friendly_matches WHERE id = ?", (match["friendly_id"],)).fetchone()
+        mine = row is not None and session.get("player_id") in (row["home_id"], row["away_id"])
+        return "Amistoso", url_for("tournaments.friendly_show", friendly_id=match["friendly_id"]) if mine else None
     return "Partida livre", None
 
 
@@ -600,6 +603,34 @@ def report_finished(db):
         db.commit()
         if outcome == "reportado":
             notify.score_from_game(db, tournament, row["tournament_match_id"])
+    _report_friendlies(db)
+
+
+def _report_friendlies(db):
+    """O mesmo para os amistosos: o placar lido vira o placar do amistoso
+    (friendly.report_from_game), que os dois confirmam ou vale sozinho no prazo."""
+    from .tournament import friendly
+    from .tournament.store import TournamentError
+    rows = db.execute(
+        "SELECT m.*, hp.username AS home_nick, ap.username AS away_nick FROM live_matches m "
+        "JOIN friendly_matches f ON f.id = m.friendly_id JOIN players hp ON hp.id = f.home_id "
+        "JOIN players ap ON ap.id = f.away_id WHERE m.status = 'finished' AND m.is_test = 0 AND m.verified = 1 "
+        "AND m.game_report IS NULL AND m.finished_at <= ?", (_ago(REPORT_SETTLE),)).fetchall()
+    for row in rows:
+        finals = {(s["teams"][0]["goals"], s["teams"][1]["goals"]) for s in (
+            json.loads(r["state_json"]) for r in db.execute(
+                "SELECT state_json FROM live_match_reports WHERE live_match_id = ? AND final = 1", (row["id"],)))}
+        score = _home_away(row, next(iter(finals))) if len(finals) == 1 else None
+        outcome = ("sem o fim mandado pelos PCs" if not finals else "os PCs discordam do placar" if len(finals) > 1
+                   else "não deu para saber quem é o mandante" if score is None else None)
+        if outcome is None:
+            try:
+                friendly.report_from_game(db, row["friendly_id"], *score, row["finished_at"])
+                outcome = "reportado"
+            except TournamentError as error:
+                outcome = str(error)[:200]
+        db.execute("UPDATE live_matches SET game_report = ? WHERE id = ?", (outcome, row["id"]))
+        db.commit()
 
 
 FRIENDLIES = "amistosos"  # o valor de "Amistosos" no filtro de campeonato

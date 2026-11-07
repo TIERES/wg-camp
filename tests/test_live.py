@@ -583,8 +583,67 @@ class LiveMatchesTest(unittest.TestCase):
                        "VALUES (?, ?, 'accepted', ?, ?)", (self.anders, self.tieres, now(), now()))
             db.commit()
         self.post(state())
-        self.assertIsNotNone(self.rows("SELECT friendly_id FROM live_matches")[0]["friendly_id"])
+        friendly_id = self.rows("SELECT friendly_id FROM live_matches")[0]["friendly_id"]
+        self.assertIsNotNone(friendly_id)
         self.assertIn("Amistoso", self.cards())
+        # A página do amistoso é só dos dois: o link, só para eles.
+        link = 'href="/torneios/amistosos/%d"' % friendly_id
+        self.assertNotIn(link, self.cards())
+        player = self.app.test_client()
+        with player.session_transaction() as sess:
+            sess["player_id"] = self.tieres
+        self.assertIn(link, self.cards(player))
+
+    def test_friendly_gets_the_game_score_and_needs_both(self):
+        from app.tournament import friendly
+        with self.app.app_context():
+            db = get_db()
+            fid = db.execute("INSERT INTO friendly_matches (home_id, away_id, status, created_at, updated_at) "
+                             "VALUES (?, ?, 'accepted', ?, ?)", (self.anders, self.tieres, now(), now())).lastrowid
+            db.commit()
+        # LOCAL do jogo = TIERES (visitante no amistoso): 3 x 1 no jogo = 1 x 3 no amistoso.
+        self.post(state(goals=(3, 1)))
+        self.post(state(goals=(3, 1), period=1, clock=0, final=True, frame=90000))
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE live_matches SET finished_at = ?",
+                       ((datetime.now(timezone.utc) - timedelta(minutes=2)).replace(microsecond=0).isoformat(),))
+            db.commit()
+        self.cards()  # reap -> report_finished
+        row = self.rows("SELECT * FROM friendly_matches WHERE id = ?", fid)[0]
+        live = self.rows("SELECT finished_at, game_report FROM live_matches")[0]
+        self.assertEqual((row["status"], row["home_goals"], row["away_goals"], row["reported_by"], row["game_report"],
+                          row["reported_at"]), ("reported", 1, 3, None, 1, live["finished_at"]))
+        self.assertEqual(live["game_report"], "reportado")
+        # Os dois confirmam: o primeiro só marca a dele.
+        client = self.app.test_client()
+        with client.session_transaction() as sess:
+            sess["player_id"] = self.tieres
+            sess["csrf_token"] = CSRF
+        page = client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True)
+        self.assertIn("placar lido do jogo", page)
+        client.post("/torneios/amistosos/%d/confirmar" % fid, data={"csrf_token": CSRF})
+        row = self.rows("SELECT * FROM friendly_matches WHERE id = ?", fid)[0]
+        self.assertEqual((row["status"], row["first_confirmed_by"]), ("reported", self.tieres))
+        self.assertIn("Você confirmou o placar lido do jogo", client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True))
+        with self.app.app_context():
+            db = get_db()
+            friendly.confirm(db, fid, self.anders)
+            db.commit()
+        self.assertEqual(self.rows("SELECT status FROM friendly_matches WHERE id = ?", fid)[0]["status"], "confirmed")
+
+    def test_friendly_game_score_confirms_by_itself_in_24h(self):
+        from app.tournament import friendly
+        with self.app.app_context():
+            db = get_db()
+            fid = db.execute("INSERT INTO friendly_matches (home_id, away_id, status, created_at, updated_at) "
+                             "VALUES (?, ?, 'accepted', ?, ?)", (self.tieres, self.anders, now(), now())).lastrowid
+            friendly.report_from_game(db, fid, 2, 0, now())
+            db.commit()
+            self.assertEqual(friendly.auto_confirm(db, at=datetime.now(timezone.utc) + timedelta(hours=23)), 0)
+            self.assertEqual(friendly.auto_confirm(db, at=datetime.now(timezone.utc) + timedelta(hours=24, minutes=1)), 1)
+        row = self.rows("SELECT * FROM friendly_matches WHERE id = ?", fid)[0]
+        self.assertEqual((row["status"], row["home_goals"], row["away_goals"]), ("confirmed", 2, 0))
 
     def test_test_matches_only_for_admin(self):
         self.post(state(), test=True)

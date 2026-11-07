@@ -462,6 +462,10 @@ CREATE TABLE IF NOT EXISTS friendly_matches (
     confirmed_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
+    -- Placar lido do jogo (Ao vivo, live.report_finished): os dois confirmam
+    -- (o primeiro fica em first_confirmed_by) ou ele vale sozinho no prazo.
+    game_report INTEGER NOT NULL DEFAULT 0,
+    first_confirmed_by INTEGER REFERENCES players(id) ON DELETE SET NULL,
     CHECK (home_id != away_id)
 );
 CREATE INDEX IF NOT EXISTS friendly_matches_home_idx ON friendly_matches(home_id, status);
@@ -498,6 +502,12 @@ def ensure_live_columns(database):
     if columns and "catalog_iso_id" not in columns:
         database.execute("ALTER TABLE iso_profiles ADD COLUMN catalog_iso_id INTEGER "
                          "REFERENCES catalog_isos(id) ON DELETE SET NULL")
+    columns = {column["name"] for column in database.execute("PRAGMA table_info(friendly_matches)")}
+    if columns and "game_report" not in columns:
+        database.execute("ALTER TABLE friendly_matches ADD COLUMN game_report INTEGER NOT NULL DEFAULT 0")
+    if columns and "first_confirmed_by" not in columns:
+        database.execute("ALTER TABLE friendly_matches ADD COLUMN first_confirmed_by INTEGER "
+                         "REFERENCES players(id) ON DELETE SET NULL")
     columns = {column["name"] for column in database.execute("PRAGMA table_info(live_matches)")}
     if columns and "game_report" not in columns:
         database.execute("ALTER TABLE live_matches ADD COLUMN game_report TEXT")

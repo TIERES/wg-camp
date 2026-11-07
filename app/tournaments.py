@@ -120,6 +120,12 @@ def history_url(row):
 
 
 @bp.app_template_global()
+def friendly_deadline(row):
+    """Até quando o placar de amistoso lido do jogo espera os jogadores."""
+    return friendly.deadline(get_db(), row)
+
+
+@bp.app_template_global()
 def reported_score(match):
     """Último placar reportado de um jogo ainda não confirmado (para exibir
     antes da confirmação), com cache por requisição."""
@@ -694,7 +700,9 @@ def friendly_action(friendly_id, acao):
     }
     if acao in mails:
         notify.friendly_event(db, row, other, *mails[acao])
-    if acao == "confirmar":
+    if acao == "confirmar" and row["status"] != "confirmed":
+        flash("Confirmação registrada: falta o adversário confirmar (ou o prazo acabar).", "success")
+    elif acao == "confirmar":
         flash("Placar confirmado! " + ("O amistoso vale para o Ranking e o XP." if row["ranked"]
                                        else f"Não vale para o Ranking: {row['unranked_reason']}."),
               "success" if row["ranked"] else "info")
@@ -1565,6 +1573,7 @@ def _auto_confirm_reports():
         from . import live
         live.reap(db)  # jogos do Ao vivo encerrados viram reporte (live.report_finished)
         reports.auto_confirm(db, disputed=disputed)
+        friendly.auto_confirm(db)  # placares de amistoso lidos do jogo, sem resposta no prazo
         for tournament_id, match_id in disputed:
             notify.score_disputed(db, store.get_tournament(db, tournament_id), match_id)
         notify.sweep(db)  # avisa o fim dos jogos e encerra quem passou do prazo
