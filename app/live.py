@@ -113,11 +113,14 @@ def match_key(content, players, kickoff):
 @api_bp.post("/match")
 def api_match():
     """Estado da partida mandado pelo DLL: form com state (JSON do fork),
-    players (nicks em ordem 1P, 2P...), reporter (o nick de quem manda, quando
-    sem login), room (o jogo da sala) e test=1 (simulações - só o admin vê)."""
+    players (nicks em ordem 1P, 2P...), room (o jogo da sala) e test=1.
+    Só com o token da conta WE Camp de um dos jogadores (o DLL não manda sem
+    login); a chave do DLL só vale para as simulações (test=1, só o admin vê,
+    reporter = o nick)."""
     player = _api_player()
-    if player is None and not _api_key_ok():
-        return _error(401, "invalid_token", "Faca login novamente.")
+    is_test = request.form.get("test") == "1"
+    if player is None and not (is_test and _api_key_ok()):
+        return _error(401, "invalid_token", "Entre na sua conta WE Camp (botao Conta WE Camp) para o placar ao vivo.")
     try:
         state = parse_state(request.form.get("state", ""))
     except (KeyError, TypeError, ValueError, IndexError):
@@ -126,9 +129,11 @@ def api_match():
     reporter = player["username"] if player else _text(request.form.get("reporter"), 32)
     if not players or not reporter or not state["content"]:
         return _error(400, "bad_state", "Faltam jogadores ou o jogo.")
+    if player and reporter.casefold() not in {nick.casefold() for nick in players}:
+        return _error(400, "not_a_player", "O seu nick no Kaillera tem que ser o usuario da sua conta WE Camp.")
     db = get_db()
     live_id = ingest(db, state, players, reporter, player["id"] if player else None,
-                     _text(request.form.get("room"), 120), request.form.get("test") == "1")
+                     _text(request.form.get("room"), 120), is_test)
     db.commit()
     return _reply(ok=1, id=live_id)
 
@@ -171,6 +176,13 @@ def _sides(players, pads):
     return sides
 
 
+def _all_logged_in(db, players, reports):
+    """Cada jogador da partida mandou o placar do próprio PC, logado na conta
+    dele (o nick dele é o usuário dessa conta)?"""
+    senders = {r["player_id"] for r in reports if r["player_id"]}
+    return bool(players) and all(_player_id(db, nick) in senders for nick in players)
+
+
 def refresh(db, live_id):
     """Recalcula a partida a partir dos informes dos PCs."""
     match = db.execute("SELECT * FROM live_matches WHERE id = ?", (live_id,)).fetchone()
@@ -181,14 +193,15 @@ def refresh(db, live_id):
     scores = {(s["teams"][0]["goals"], s["teams"][1]["goals"]) for s in finals}
     local, visita = _sides(json.loads(match["players_json"]), best["pads"])
     finished = bool(finals)
+    verified = 1 if match["is_test"] else int(_all_logged_in(db, json.loads(match["players_json"]), reports))
     db.execute(
         "UPDATE live_matches SET status = ?, period = ?, clock_left = ?, half_frames = ?, local_slot = ?, visita_slot = ?, "
         "local_goals = ?, visita_goals = ?, state_json = ?, local_players_json = ?, visita_players_json = ?, "
-        "reporters = ?, agreed = ?, updated_at = ?, finished_at = COALESCE(finished_at, ?) WHERE id = ?",
+        "reporters = ?, agreed = ?, verified = ?, updated_at = ?, finished_at = COALESCE(finished_at, ?) WHERE id = ?",
         ("finished" if finished else ("abandoned" if match["status"] == "abandoned" else "live"), best["period"], best["clock"], best["half"], best["teams"][0]["id"],
          best["teams"][1]["id"], best["teams"][0]["goals"], best["teams"][1]["goals"], json.dumps(best),
-         json.dumps(local), json.dumps(visita), len(reports), int(len(finals) >= 2 and len(scores) == 1), now(),
-         now() if finished else None, live_id))
+         json.dumps(local), json.dumps(visita), len(reports), int(len(finals) >= 2 and len(scores) == 1), verified,
+         now(), now() if finished else None, live_id))
     for side, team in enumerate(best["teams"]):
         ram_name = team["name"] if NAME_RE.match(team["name"]) else ""
         db.execute("INSERT OR IGNORE INTO iso_team_slots (content_id, slot, updated_at) VALUES (?, ?, ?)",
@@ -197,7 +210,8 @@ def refresh(db, live_id):
                    "WHERE content_id = ? AND slot = ?",
                    (match["room"], ram_name, ram_name, match["content_id"], team["id"]))
     match = db.execute("SELECT * FROM live_matches WHERE id = ?", (live_id,)).fetchone()
-    if match["tournament_match_id"] is None and match["friendly_id"] is None and len(local) == 1 and len(visita) == 1:
+    if (verified and match["tournament_match_id"] is None and match["friendly_id"] is None
+            and len(local) == 1 and len(visita) == 1):
         detect_context(db, match, local[0], visita[0])
 
 
@@ -462,7 +476,7 @@ def list_cards(db, tournament_id=None, friendlies=False, only_live=False, recent
     de campeonato (amistosos cadastrados e partidas livres); match_id = só
     aquela partida (o placar ao lado do time na tabela do campeonato)."""
     reap(db)
-    where, params = [], []
+    where, params = ["m.verified = 1"], []  # só com os dois jogadores logados (refresh)
     if only_live:
         where.append("m.status = 'live'")
     elif recent_only:
@@ -523,7 +537,7 @@ def tournament_live(db, tournament_id):
     link da partida no Ao vivo (aba Jogos).
     As simulações só aparecem para o admin, como nos cards."""
     rows = db.execute(
-        _TOURNAMENT_LIVE_SQL + "WHERE s.tournament_id = ? AND m.status = 'live' AND m.updated_at >= ?"
+        _TOURNAMENT_LIVE_SQL + "WHERE s.tournament_id = ? AND m.status = 'live' AND m.verified = 1 AND m.updated_at >= ?"
         + ("" if _is_admin() else " AND m.is_test = 0"), (tournament_id, _ago(STALE))).fetchall()
     groups, entries, matches, match_urls = set(), {}, {}, {}
     for row in rows:
@@ -554,7 +568,7 @@ def report_finished(db):
     24 h, contado do fim do jogo). Simulações nunca."""
     from .tournament import notify, reports, store
     from .tournament.store import TournamentError
-    rows = db.execute(_TOURNAMENT_LIVE_SQL + "WHERE m.status = 'finished' AND m.is_test = 0 "
+    rows = db.execute(_TOURNAMENT_LIVE_SQL + "WHERE m.status = 'finished' AND m.is_test = 0 AND m.verified = 1 "
                       "AND m.game_report IS NULL AND m.finished_at <= ?", (_ago(REPORT_SETTLE),)).fetchall()
     for row in rows:
         finals = {(s["teams"][0]["goals"], s["teams"][1]["goals"]) for s in (

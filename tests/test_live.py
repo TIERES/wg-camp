@@ -4,6 +4,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from app.accounts import issue_token
 from app.db import get_db, init_db, now
 from tests.test_tournament_store import add_player, make_app
 
@@ -33,14 +34,35 @@ class LiveMatchesTest(unittest.TestCase):
             db.execute("INSERT INTO users (username, password_hash, created_at, updated_at) VALUES ('adm', 'x', ?, ?)",
                        (now(), now()))
             db.commit()
+        self.tokens = {}
 
     def tearDown(self):
         self.temp.cleanup()
 
-    def post(self, st, reporter="TIERES", players="TIERES,ANDERSHOW", test=False, key=KEY):
-        return self.app.test_client().post("/api/live/match", headers={"X-Api-Key": key}, data={
-            "state": st, "players": players, "reporter": reporter, "room": "PCSX ReARMed: Euro vs Copa America 2004.bin",
-            "test": "1" if test else "0"})
+    def token(self, name):
+        """Token de API da conta (criada se faltar) - o login do DLL."""
+        if name not in self.tokens:
+            with self.app.app_context():
+                db = get_db()
+                row = db.execute("SELECT id FROM players WHERE username = ? COLLATE NOCASE", (name,)).fetchone()
+                self.tokens[name] = issue_token(db, row["id"] if row else add_player(db, name), "api")
+                db.commit()
+        return self.tokens[name]
+
+    def post(self, st, reporter=None, players="TIERES,ANDERSHOW", test=False, key=None):
+        """Como o DLL manda: com o token da conta de quem manda (reporter; sem
+        ele, o PC de cada jogador, todos logados). Simulação (test) ou key: a
+        chave do DLL."""
+        data = {"state": st, "players": players, "room": "PCSX ReARMed: Euro vs Copa America 2004.bin",
+                "test": "1" if test else "0"}
+        client = self.app.test_client()
+        if test or key:
+            return client.post("/api/live/match", headers={"X-Api-Key": key or KEY}, data=dict(data, reporter=reporter or "TIERES"))
+        reply = None
+        for name in ([reporter] if reporter else players.split(",")):
+            reply = client.post("/api/live/match", headers={"Authorization": "Bearer " + self.token(name)},
+                                data=dict(data, reporter=name))
+        return reply
 
     def rows(self, sql, *args):
         with self.app.app_context():
@@ -58,8 +80,23 @@ class LiveMatchesTest(unittest.TestCase):
 
     def test_auth_and_bad_state(self):
         self.assertEqual(self.post(state(), key="errada").status_code, 401)
+        # Partida de verdade só com a conta: a chave do DLL vale só para simulação.
+        reply = self.app.test_client().post("/api/live/match", headers={"X-Api-Key": KEY}, data={
+            "state": state(), "players": "TIERES,ANDERSHOW", "reporter": "TIERES", "room": "x", "test": "0"})
+        self.assertEqual(reply.status_code, 401)
+        # Logado, mas sem ser um dos jogadores da partida.
+        self.assertEqual(self.post(state(), reporter="ESTRANHO").status_code, 400)
         self.assertEqual(self.post("{nada").status_code, 400)
         self.assertEqual(self.post(json.dumps({"content": "x", "teams": []})).status_code, 400)
+
+    def test_needs_both_players_logged_in(self):
+        self.post(state(), reporter="TIERES")  # o adversário sem login: o DLL dele não manda
+        match = self.rows("SELECT * FROM live_matches")[0]
+        self.assertEqual((match["verified"], match["reporters"]), (0, 1))
+        self.assertEqual(self.cards(), "")
+        self.post(state(frame=20030), reporter="ANDERSHOW")
+        self.assertEqual(self.rows("SELECT verified FROM live_matches")[0]["verified"], 1)
+        self.assertIn("TIERES", self.cards())
 
     def test_two_pcs_one_match_and_card(self):
         self.assertIn("ok=1", self.post(state()).get_data(as_text=True))

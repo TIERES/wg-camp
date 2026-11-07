@@ -501,6 +501,9 @@ def ensure_live_columns(database):
     columns = {column["name"] for column in database.execute("PRAGMA table_info(live_matches)")}
     if columns and "game_report" not in columns:
         database.execute("ALTER TABLE live_matches ADD COLUMN game_report TEXT")
+    if columns and "verified" not in columns:
+        # As partidas de antes da regra ficam de fora (mandadas sem login garantido).
+        database.execute("ALTER TABLE live_matches ADD COLUMN verified INTEGER NOT NULL DEFAULT 0")
 
 
 def ensure_tournament_columns(database):
@@ -653,7 +656,10 @@ CREATE TABLE IF NOT EXISTS live_matches (
     finished_at TEXT,
     -- Jogo de campeonato encerrado: o placar lido virou o reporte do jogo
     -- ('reportado') ou o motivo de não ter virado (live.report_finished).
-    game_report TEXT
+    game_report TEXT,
+    -- 1 = cada jogador mandou o placar do próprio PC, logado na conta dele
+    -- (live.refresh); só assim a partida aparece, entra em campeonato e reporta.
+    verified INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS live_matches_status_idx ON live_matches(status, updated_at);
 CREATE INDEX IF NOT EXISTS live_matches_tournament_match_idx ON live_matches(tournament_match_id);
