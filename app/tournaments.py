@@ -759,8 +759,14 @@ def show(slug):
         free_teams = [{"name": row["name"], "image": team_image(row)} for row in db.execute(
             "SELECT * FROM teams WHERE is_active = 1 ORDER BY name COLLATE NOCASE")]
     iso_row = iso.get(db, tournament["id"])
+    # Aba Tabela de campeonato em andamento: "Ao vivo" e o placar dos jogos rolando agora.
+    live_table = None
+    if tab == "tabela" and tournament["status"] == "running":
+        from . import live
+        live_table = live.tournament_live(db, tournament["id"])
     return render_template(
         "tournaments/show.html", t=tournament, entries=entries, my_entry=my_entry, stages=stages, tab=tab,
+        live_table=live_table,
         team_list=team_list, free_teams=free_teams, team_modes=TEAM_MODES, crests=_crests(names), my_pending=my_pending,
         names=names, can_manage=can_manage(tournament), iso=iso_row, iso_ready=iso.downloadable(iso_row, current_app),
         format_label=formats.FORMATS[tournament["format"]], summary=formats.describe(tournament["format"], config),

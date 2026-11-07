@@ -17,14 +17,18 @@
 </{{ 'a' if slug else 'div' }}>
 {%- endmacro %}
 
-{% macro standings(table, names, highlight=0, playoff=0) -%}
+{# live: app/live.py tournament_live() - placar ao lado de quem está jogando agora
+   (verde ganhando, vermelho perdendo, cinza empatando); a aba Tabela o
+   atualiza (static/js/live-table.js). #}
+{% macro standings(table, names, highlight=0, playoff=0, live=none) -%}
 <div class="table-scroll">
 <table class="standings">
   <thead><tr><th>#</th><th class="name-col">Jogador</th><th title="Pontos">P</th><th title="Jogos">J</th><th title="Vitórias">V</th><th title="Empates">E</th><th title="Derrotas">D</th><th class="hide-sm" title="Gols pró">GP</th><th class="hide-sm" title="Gols contra">GC</th><th title="Saldo">SG</th><th class="hide-sm">Últimos</th></tr></thead>
   <tbody>
   {% for row in table %}
-    <tr class="{% if row.position <= highlight %}qualified{% elif row.position <= highlight + playoff %}playoff{% endif %}">
-      <td>{{ row.position }}</td><td class="name-col">{{ names[row.entry_id] }}</td><td><strong>{{ row.points }}</strong></td>
+    <tr data-entry="{{ row.entry_id }}" class="{% if row.position <= highlight %}qualified{% elif row.position <= highlight + playoff %}playoff{% endif %}">
+      {% set now_playing = live.entries.get(row.entry_id) if live else none %}
+      <td>{{ row.position }}</td><td class="name-col">{{ names[row.entry_id] }}{% if now_playing %}<span class="live-mini {{ now_playing.result }}" title="Jogando agora">{{ now_playing.score }}</span>{% endif %}</td><td><strong>{{ row.points }}</strong></td>
       <td>{{ row.played }}</td><td>{{ row.won }}</td><td>{{ row.drawn }}</td><td>{{ row.lost }}</td>
       <td class="hide-sm">{{ row.goals_for }}</td><td class="hide-sm">{{ row.goals_against }}</td><td>{{ row.goal_diff }}</td>
       <td class="hide-sm recent">{% for f in row.form %}<span class="f-{{ f }}">{{ f }}</span>{% endfor %}</td>

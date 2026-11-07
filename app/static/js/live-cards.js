@@ -3,11 +3,19 @@
 // some quando não há nenhum (na página /ao-vivo, mostra o aviso [data-live-empty]).
 (function () {
   var EVERY = 10000;
+  var SWEEP = 2800;  // ida e volta do risco embaixo do tempo (site.css, live-sweep)
+  // Todos os riscos na mesma fase, tirada do relógio: o card novo continua de onde o antigo estava.
+  function phase(root) {
+    var delay = -((Date.now() % SWEEP) / 1000) + 's';
+    root.querySelectorAll('.live-clock.on').forEach(function (el) { el.style.setProperty('--live-phase', delay); });
+  }
+  phase(document);
   document.querySelectorAll('[data-live-src]').forEach(function (box) {
     var section = box.closest('[data-live-section]');
     var empty = section && section.querySelector('[data-live-empty]');
     function show(html) {
       box.innerHTML = html;
+      phase(box);
       var any = box.children.length > 0;
       if (empty) empty.hidden = any;
       else if (section) section.hidden = !any;

@@ -490,6 +490,37 @@ def list_cards(db, tournament_id=None, friendlies=False, only_live=False, recent
     return [card(db, row) for row in rows]
 
 
+def tournament_live(db, tournament_id):
+    """Jogos do campeonato rolando agora (com sinal), para a tabela: os grupos
+    com jogo ao vivo e, por inscrição, o placar do ponto de vista do time
+    ("1-0") e se ele está ganhando, perdendo ou empatando. As simulações só
+    aparecem para o admin, como nos cards."""
+    rows = db.execute(
+        "SELECT m.local_goals, m.visita_goals, m.local_players_json, m.visita_players_json, tm.group_id, "
+        "tm.home_entry_id, tm.away_entry_id, hp.username AS home_nick, ap.username AS away_nick "
+        "FROM live_matches m JOIN tournament_matches tm ON tm.id = m.tournament_match_id "
+        "JOIN tournament_stages s ON s.id = tm.stage_id "
+        "JOIN tournament_entries he ON he.id = tm.home_entry_id JOIN players hp ON hp.id = he.player_id "
+        "JOIN tournament_entries ae ON ae.id = tm.away_entry_id JOIN players ap ON ap.id = ae.player_id "
+        "WHERE s.tournament_id = ? AND m.status = 'live' AND m.updated_at >= ?" + ("" if _is_admin() else " AND m.is_test = 0"),
+        (tournament_id, _ago(STALE))).fetchall()
+    groups, entries = set(), {}
+    for row in rows:
+        sides = [{nick.casefold() for nick in json.loads(row[key] or "[]")}
+                 for key in ("local_players_json", "visita_players_json")]
+        goals = (row["local_goals"] or 0, row["visita_goals"] or 0)
+        for entry, nick in ((row["home_entry_id"], row["home_nick"]), (row["away_entry_id"], row["away_nick"])):
+            side = next((i for i in (0, 1) if nick.casefold() in sides[i]), None)
+            if side is None:
+                continue
+            mine, theirs = goals[side], goals[1 - side]
+            entries[entry] = {"score": "%d-%d" % (mine, theirs),
+                              "result": "win" if mine > theirs else "loss" if mine < theirs else "draw"}
+        if row["group_id"]:
+            groups.add(row["group_id"])
+    return {"groups": sorted(groups), "entries": entries}
+
+
 FRIENDLIES = "amistosos"  # o valor de "Amistosos" no filtro de campeonato
 
 
@@ -522,6 +553,12 @@ def cards_fragment():
     cards = list_cards(get_db(), only_live=request.args.get("so_ao_vivo") == "1", recent_only=recent,
                        limit=4 if recent else CARDS_LIMIT, **_filters())
     return render_template("live/_cards.html", cards=cards)
+
+
+@bp.get("/ao-vivo/campeonato/<int:tournament_id>")
+def tournament_table(tournament_id):
+    """O que a aba Tabela do campeonato atualiza a cada poucos segundos."""
+    return tournament_live(get_db(), tournament_id)
 
 
 @bp.post("/ao-vivo/limpar-testes")

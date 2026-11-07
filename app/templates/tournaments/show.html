@@ -56,7 +56,8 @@
   <div class="live-home-head"><h2>Ao vivo</h2><a href="{{ url_for('live.index') }}">Todas as partidas</a></div>
   <div class="live-cards" data-live-src="{{ url_for('live.cards_fragment', campeonato=t.id, recentes=1) }}"></div>
 </section>
-<script src="{{ url_for('static', filename='js/live-cards.js', v='20261107a') }}"></script>
+<script src="{{ url_for('static', filename='js/live-cards.js', v='20261107b') }}"></script>
+{% if live_table is not none %}<script src="{{ url_for('static', filename='js/live-table.js', v='20261107a') }}" defer></script>{% endif %}
 
 {% if my_pending %}
 <section class="my-pending">
@@ -114,10 +115,11 @@
     {% if view.stage.kind == 'knockout' %}{{ bracket(view, names, crests, t.slug, my_entry.id if my_entry else none) }}
     {% else %}
       {% if view.highlight %}<p class="legend"><span class="qualified-dot"></span> classificado{% if view.playoff %} direto · <span class="playoff-dot"></span> playoff{% endif %}</p>{% endif %}
-      <div class="groups">
+      <div class="groups"{% if live_table is not none %} data-live-table="{{ url_for('live.tournament_table', tournament_id=t.id) }}"{% endif %}>
       {% for g in view.groups %}
-        <div class="group">{% if view.stage.kind == 'groups' %}<h3>{{ g.group.name }}</h3>{% endif %}
-        {{ standings(g.table, names, view.highlight or 0, view.playoff or 0) }}</div>
+        <div class="group" data-live-group="{{ g.group.id }}">{% if view.stage.kind == 'groups' %}<h3>{{ g.group.name }}</h3>{% endif %}
+        {% if live_table is not none %}<p class="standings-live"{% if g.group.id not in live_table.groups %} hidden{% endif %}>Ao vivo</p>{% endif %}
+        {{ standings(g.table, names, view.highlight or 0, view.playoff or 0, live_table) }}</div>
       {% endfor %}
       </div>
     {% endif %}

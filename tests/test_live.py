@@ -217,6 +217,58 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertIn('<option value="amistosos" selected>Amistosos</option>', page)
         self.assertIn("Limpar filtro", page)
 
+    def make_league(self):
+        """Pontos corridos em andamento, 3 inscritos: TIERES x ANDERSHOW na rodada 1."""
+        with self.app.app_context():
+            db = get_db()
+            third = add_player(db, "TERCEIRO")
+            game = db.execute("SELECT id FROM game_titles WHERE code = 'we2002'").fetchone()["id"]
+            t = db.execute("INSERT INTO tournaments (slug, name, game_title_id, organizer_id, format, status, max_players, "
+                           "settings_json, created_at, updated_at) VALUES ('liga-1', 'Liga WE Camp', ?, ?, 'league', 'running', 4, "
+                           "'{\"legs\": 1}', ?, ?)",
+                           (game, self.tieres, now(), now())).lastrowid
+            entries = [db.execute("INSERT INTO tournament_entries (tournament_id, player_id, team_name, created_at) "
+                                  "VALUES (?, ?, ?, ?)", (t, player, team, now())).lastrowid
+                       for player, team in ((self.tieres, "Grécia"), (self.anders, "Croácia"), (third, "Itália"))]
+            stage = db.execute("INSERT INTO tournament_stages (tournament_id, seq, kind, name, created_at) "
+                               "VALUES (?, 1, 'league', 'Liga', ?)", (t, now())).lastrowid
+            group = db.execute("INSERT INTO tournament_groups (stage_id, name, seq) VALUES (?, 'Liga', 1)", (stage,)).lastrowid
+            for order, entry in enumerate(entries):
+                db.execute("INSERT INTO tournament_group_members (group_id, entry_id, draw_order) VALUES (?, ?, ?)",
+                           (group, entry, order))
+            # Mandante no campeonato = ANDERSHOW, mas no jogo o LOCAL é o TIERES (controle 1).
+            db.execute("INSERT INTO tournament_matches (stage_id, group_id, round, home_entry_id, away_entry_id, "
+                       "created_at, updated_at) VALUES (?, ?, 1, ?, ?, ?, ?)", (stage, group, entries[1], entries[0], now(), now()))
+            db.commit()
+            return t, group, entries
+
+    def test_league_table_shows_the_live_score(self):
+        t, group, (tieres, anders, third) = self.make_league()
+        page = lambda: self.app.test_client().get("/torneios/liga-1").get_data(as_text=True)
+        self.assertNotIn('class="live-mini', page())
+        self.assertRegex(page(), r'<p class="standings-live" hidden>Ao vivo</p>')
+        self.post(state(goals=(1, 0)))
+        data = self.app.test_client().get("/ao-vivo/campeonato/%d" % t).get_json()
+        self.assertEqual(data["groups"], [group])
+        self.assertEqual(data["entries"], {str(tieres): {"score": "1-0", "result": "win"},
+                                           str(anders): {"score": "0-1", "result": "loss"}})
+        html = page()
+        self.assertIn('<p class="standings-live">Ao vivo</p>', html)
+        self.assertIn('<span class="live-mini win" title="Jogando agora">1-0</span>', html)
+        self.assertIn('<span class="live-mini loss" title="Jogando agora">0-1</span>', html)
+        self.assertIn("live-table.js", html)
+        # Sem sinal há mais de 2 minutos, ou encerrado: some da tabela.
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE live_matches SET updated_at = ?", ((datetime.now(timezone.utc) - timedelta(minutes=3)).isoformat(),))
+            db.commit()
+        self.assertEqual(self.app.test_client().get("/ao-vivo/campeonato/%d" % t).get_json(), {"groups": [], "entries": {}})
+        self.post(state(goals=(1, 1), frame=20500))
+        self.assertNotIn(str(third), self.app.test_client().get("/ao-vivo/campeonato/%d" % t).get_json()["entries"])
+        self.assertIn('<span class="live-mini draw" title="Jogando agora">1-1</span>', page())
+        self.post(state(goals=(1, 1), period=1, clock=0, final=True, frame=90000))
+        self.assertNotIn('class="live-mini', page())
+
     def test_profile_from_iso_file_name(self):
         with self.app.app_context():
             db = get_db()
