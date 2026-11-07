@@ -437,15 +437,28 @@ def clear_result(db, tournament, match_id):
 
 # --- Classificação, avanço de fase e encerramento ----------------------------
 
-def group_tables(db, stage_id):
-    """[(grupo, classificação)] de uma fase de liga/grupos/suíça."""
+def group_tables(db, stage_id, provisional=None):
+    """[(grupo, classificação)] de uma fase de liga/grupos/suíça. provisional
+    = {jogo: (gols do mandante, do visitante)} de jogos ainda não confirmados
+    que entram na conta (depois dos confirmados); cada linha diz em
+    "provisional" quantos deles somou."""
     tables = []
     for group in db.execute("SELECT * FROM tournament_groups WHERE stage_id = ? ORDER BY seq", (stage_id,)):
         members = [row["entry_id"] for row in db.execute(
             "SELECT entry_id FROM tournament_group_members WHERE group_id = ? ORDER BY draw_order", (group["id"],))]
         played = db.execute("SELECT * FROM tournament_matches WHERE group_id = ? AND status = 'confirmed' "
                             "ORDER BY round, confirmed_at", (group["id"],)).fetchall()
-        tables.append((group, engine.standings(members, _results(played))))
+        extra = []
+        if provisional:
+            for match in db.execute("SELECT * FROM tournament_matches WHERE group_id = ? AND status != 'confirmed' "
+                                    "ORDER BY round, id", (group["id"],)):
+                if match["id"] in provisional:
+                    home_goals, away_goals = provisional[match["id"]]
+                    extra.append(engine.Result(match["home_entry_id"], match["away_entry_id"], home_goals, away_goals))
+        table = engine.standings(members, _results(played) + extra)
+        for row in table:
+            row["provisional"] = sum(row["entry_id"] in (r.home, r.away) for r in extra)
+        tables.append((group, table))
     return tables
 
 

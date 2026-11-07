@@ -1,14 +1,20 @@
 {% extends 'base.html' %}{% block title %}Times e jogo de cada ISO · Ao vivo{% endblock %}{% block content %}
 <div class="page-title"><h1>Times e jogo de cada ISO</h1><a href="{{ url_for('live.index') }}">Ver partidas ao vivo</a></div>
-<p class="muted">O jogo só informa o número do time (slot) na tabela da ISO, e muitos patches não renomeiam essa tabela (no CAN 2025 o slot de Camarões ainda se chama FINLAND). Por isso o card mostra "Não identificado" até o slot ter um time. Nos jogos de campeonato o time é aprendido sozinho, pelo time inscrito de quem controla cada lado; aqui você corrige ou completa. Escolha um time da base para ter o escudo/bandeira, ou digite um nome livre. Deixe vazio para apagar. Quando os nomes do jogo estiverem certos (como no Euro vs Copa America), use "Usar os nomes do jogo".</p>
+<p class="muted">O card mostra o nome que o jogo exibe na tela de seleção de times (ex.: PAL99), que o RetroArch TIERES guarda antes do pontapé inicial. Quando esse nome não serve, cadastre o time certo de cada slot aqui: nos jogos de campeonato ele é aprendido sozinho, pelo time inscrito de quem controla cada lado. Escolha um time da base para ter o escudo/bandeira, ou digite um nome livre; deixe vazio para apagar. "Usar os nomes do jogo" copia o nome da seleção para os slots sem time.</p>
+<p class="muted">Cada partida traz a identificação da ISO que o jogador abriu (CRC32:TAMANHO do arquivo). Ela só vai para o jogo de um campeonato ou para um amistoso quando bate com a ISO dele - a enviada no campeonato, a do cadastro de amistosos ou uma ligada aqui (outra versão da mesma ISO, como um .chd). Campeonato ou amistoso cuja ISO ainda não foi identificada continua valendo só pelos jogadores.</p>
+{% if unidentified %}
+<form method="post" action="{{ url_for('live.identify_isos') }}" class="inline-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Identificar {{ unidentified }} ISO(s) de campeonato/amistoso</button><small class="muted">Pelo crc32 que o archive.org lista (sem baixar) ou pela cópia deste servidor.</small></form>
+{% endif %}
 <datalist id="team-names">{% for name in teams %}<option value="{{ name }}">{% endfor %}</datalist>
 {% for (content_id, room), rows in groups.items() %}{% set profile = profiles.get(content_id) %}
 <section class="live-iso">
   <h2>{{ room or 'Jogo sem nome' }} <small class="muted">{{ content_id }}</small></h2>
+  <p class="muted">{% if known.get(content_id.upper()) %}É a {{ known[content_id.upper()]|join(', ') }}.{% else %}Não é nenhuma ISO cadastrada{% if not profile or not (profile.tournament_id or profile.catalog_iso_id) %} - ligue abaixo, se for outra versão de uma delas{% endif %}.{% endif %}</p>
   <form method="post" class="inline-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="content_id" value="{{ content_id }}"><input type="hidden" name="acao" value="perfil">
     <label>Jogo base<select name="game_title_id"><option value="">—</option>{% for g in games %}<option value="{{ g.id }}" {% if profile and profile.game_title_id == g.id %}selected{% endif %}>{{ g.name }}</option>{% endfor %}</select></label>
     <label>Campeonato<select name="tournament_id"><option value="">—</option>{% for t in tournaments %}<option value="{{ t.id }}" {% if profile and profile.tournament_id == t.id %}selected{% endif %}>{{ t.name }}</option>{% endfor %}</select></label>
+    <label>ISO de amistoso<select name="catalog_iso_id"><option value="">—</option>{% for c in catalog %}<option value="{{ c.id }}" {% if profile and profile.catalog_iso_id == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></label>
     <button class="secondary">Salvar</button>
     {% if profile and profile.source == 'aprendido' %}<small class="muted">Aprendido de um jogo de campeonato.</small>{% endif %}
   </form>

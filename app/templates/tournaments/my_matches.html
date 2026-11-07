@@ -4,7 +4,7 @@
 {% set legend = {'ok': 'Resultado confirmado entre os jogadores', 'confirm': 'Resultado para você confirmar', 'none': 'Nenhum resultado informado', 'waiting': 'Você informou o resultado; aguardando o adversário', 'disputed': 'Resultado contestado'} %}
 {% macro kind_of(row) -%}
   {%- set open = row.tournament_status == 'running' -%}
-  {%- set mine_reported = row.status == 'reported' and row.reported_by_entry_id == row.my_entry_id -%}
+  {%- set mine_reported = row.status == 'reported' and row.waiting_other -%}
   {{- 'ok' if row.status == 'confirmed' else 'confirm' if (open and row.status == 'reported' and not mine_reported) else 'none' if row.status == 'scheduled' else 'disputed' if row.status == 'disputed' else 'waiting' -}}
 {%- endmacro %}
 {% if groups %}
@@ -30,8 +30,8 @@
   {% set open = first.tournament_status == 'running' %}
   {% set todo = ms|selectattr('status', 'equalto', 'scheduled')|selectattr('stage_status', 'equalto', 'running')|list|length if open else 0 %}
   {% set done = ms|selectattr('status', 'equalto', 'confirmed')|list|length %}
-  {% set to_confirm = ms|selectattr('status', 'equalto', 'reported')|rejectattr('reported_by_entry_id', 'equalto', first.my_entry_id)|list|length %}
-  {% set waiting = ms|selectattr('status', 'equalto', 'reported')|selectattr('reported_by_entry_id', 'equalto', first.my_entry_id)|list|length %}
+  {% set to_confirm = ms|selectattr('status', 'equalto', 'reported')|rejectattr('waiting_other')|list|length %}
+  {% set waiting = ms|selectattr('status', 'equalto', 'reported')|selectattr('waiting_other')|list|length %}
   {% set disputed = ms|selectattr('status', 'equalto', 'disputed')|list|length %}
   {% set ns = namespace(kinds=[]) %}
   {% for row in ms %}{% set k = kind_of(row)|trim %}{% if k not in ns.kinds %}{% set ns.kinds = ns.kinds + [k] %}{% endif %}{% endfor %}

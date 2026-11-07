@@ -47,6 +47,9 @@ RECENT = timedelta(hours=6)
 # partida ao vivo dos mesmos jogadores/ISO atualizada há menos que isso.
 JOIN_WINDOW = timedelta(minutes=10)
 MAX_PLAYERS = 8
+# Motor do jogo (executável que o fork lê na RAM) -> jogo base (game_titles.code):
+# o logo do jogo base mesmo com uma ISO que o site não conhece.
+ENGINE_GAMES = {"SLPM_870.56": "we2002", "SLPM_862.91": "we4", "SLPM_861.62": "we3fv"}
 NAME_RE = re.compile(r"^[A-Za-z0-9 .'&/-]{2,24}$")
 
 
@@ -72,18 +75,24 @@ def _text(value, cap):
 
 
 def parse_state(raw):
-    """JSON do fork -> dict validado (ValueError se não serve)."""
+    """JSON do fork -> dict validado (ValueError se não serve). Do v2 em
+    diante o nome de cada time vem da tela de seleção de times (o que os
+    jogadores viram, ex. "PAL99"), com o código de 3 letras; no v1 vinha de
+    uma tabela que muitos patches não renomeiam - não vale."""
     data = json.loads(raw)
+    version = _int(data.get("v") or 1, 1, 99)
     teams = []
     for team in data["teams"][:2]:
         scorers = []
         for item in team.get("scorers", [])[:32]:
             scorers.append([_text(item[0], 24), _int(item[1], 0, 200), _text(item[2] if len(item) > 2 else "", 24)])
-        teams.append({"id": _int(team["id"], 0, 255), "name": _text(team.get("name"), 24),
-                      "goals": _int(team["goals"], 0, 99), "scorers": scorers})
+        teams.append({"id": _int(team["id"], 0, 255), "name": _text(team.get("name"), 24) if version >= 2 else "",
+                      "code": _text(team.get("code"), 3), "goals": _int(team["goals"], 0, 99), "scorers": scorers})
     if len(teams) != 2:
         raise ValueError("teams")
     return {
+        "v": version,
+        "engine": _text(data.get("engine"), 16),
         "content": _text(data["content"], 32),
         "kickoff": _int(data.get("kickoff") or 0, 0, 2 ** 31),
         "frame": _int(data.get("frame") or 0, 0, 2 ** 31),
@@ -104,11 +113,14 @@ def match_key(content, players, kickoff):
 @api_bp.post("/match")
 def api_match():
     """Estado da partida mandado pelo DLL: form com state (JSON do fork),
-    players (nicks em ordem 1P, 2P...), reporter (o nick de quem manda, quando
-    sem login), room (o jogo da sala) e test=1 (simulações - só o admin vê)."""
+    players (nicks em ordem 1P, 2P...), room (o jogo da sala) e test=1.
+    Só com o token da conta WE Camp de um dos jogadores (o DLL não manda sem
+    login); a chave do DLL só vale para as simulações (test=1, só o admin vê,
+    reporter = o nick)."""
     player = _api_player()
-    if player is None and not _api_key_ok():
-        return _error(401, "invalid_token", "Faca login novamente.")
+    is_test = request.form.get("test") == "1"
+    if player is None and not (is_test and _api_key_ok()):
+        return _error(401, "invalid_token", "Entre na sua conta WE Camp (botao Conta WE Camp) para o placar ao vivo.")
     try:
         state = parse_state(request.form.get("state", ""))
     except (KeyError, TypeError, ValueError, IndexError):
@@ -117,9 +129,11 @@ def api_match():
     reporter = player["username"] if player else _text(request.form.get("reporter"), 32)
     if not players or not reporter or not state["content"]:
         return _error(400, "bad_state", "Faltam jogadores ou o jogo.")
+    if player and reporter.casefold() not in {nick.casefold() for nick in players}:
+        return _error(400, "not_a_player", "O seu nick no Kaillera tem que ser o usuario da sua conta WE Camp.")
     db = get_db()
     live_id = ingest(db, state, players, reporter, player["id"] if player else None,
-                     _text(request.form.get("room"), 120), request.form.get("test") == "1")
+                     _text(request.form.get("room"), 120), is_test)
     db.commit()
     return _reply(ok=1, id=live_id)
 
@@ -134,6 +148,11 @@ def ingest(db, state, players, reporter, player_id, room, is_test=False):
             (state["content"], json.dumps(players), _ago(JOIN_WINDOW))).fetchone()
     stamp = now()
     if row is None:
+        # Partida nova dos mesmos jogadores e ISO: a anterior que ficou aberta foi
+        # abandonada (WE4: saíram pelo menu de pausa; o fork não manda o fim dela).
+        db.execute("UPDATE live_matches SET status = 'abandoned', finished_at = ? WHERE status = 'live' "
+                   "AND content_id = ? AND players_json = ? AND kickoff_frame != ? AND ? != 0",
+                   (stamp, state["content"], json.dumps(players), state["kickoff"], state["kickoff"]))
         live_id = db.execute(
             "INSERT INTO live_matches (match_key, content_id, room, players_json, kickoff_frame, is_test, started_at, "
             "updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -157,6 +176,13 @@ def _sides(players, pads):
     return sides
 
 
+def _all_logged_in(db, players, reports):
+    """Cada jogador da partida mandou o placar do próprio PC, logado na conta
+    dele (o nick dele é o usuário dessa conta)?"""
+    senders = {r["player_id"] for r in reports if r["player_id"]}
+    return bool(players) and all(_player_id(db, nick) in senders for nick in players)
+
+
 def refresh(db, live_id):
     """Recalcula a partida a partir dos informes dos PCs."""
     match = db.execute("SELECT * FROM live_matches WHERE id = ?", (live_id,)).fetchone()
@@ -167,14 +193,15 @@ def refresh(db, live_id):
     scores = {(s["teams"][0]["goals"], s["teams"][1]["goals"]) for s in finals}
     local, visita = _sides(json.loads(match["players_json"]), best["pads"])
     finished = bool(finals)
+    verified = 1 if match["is_test"] else int(_all_logged_in(db, json.loads(match["players_json"]), reports))
     db.execute(
         "UPDATE live_matches SET status = ?, period = ?, clock_left = ?, half_frames = ?, local_slot = ?, visita_slot = ?, "
         "local_goals = ?, visita_goals = ?, state_json = ?, local_players_json = ?, visita_players_json = ?, "
-        "reporters = ?, agreed = ?, updated_at = ?, finished_at = COALESCE(finished_at, ?) WHERE id = ?",
-        ("finished" if finished else "live", best["period"], best["clock"], best["half"], best["teams"][0]["id"],
+        "reporters = ?, agreed = ?, verified = ?, updated_at = ?, finished_at = COALESCE(finished_at, ?) WHERE id = ?",
+        ("finished" if finished else ("abandoned" if match["status"] == "abandoned" else "live"), best["period"], best["clock"], best["half"], best["teams"][0]["id"],
          best["teams"][1]["id"], best["teams"][0]["goals"], best["teams"][1]["goals"], json.dumps(best),
-         json.dumps(local), json.dumps(visita), len(reports), int(len(finals) >= 2 and len(scores) == 1), now(),
-         now() if finished else None, live_id))
+         json.dumps(local), json.dumps(visita), len(reports), int(len(finals) >= 2 and len(scores) == 1), verified,
+         now(), now() if finished else None, live_id))
     for side, team in enumerate(best["teams"]):
         ram_name = team["name"] if NAME_RE.match(team["name"]) else ""
         db.execute("INSERT OR IGNORE INTO iso_team_slots (content_id, slot, updated_at) VALUES (?, ?, ?)",
@@ -183,7 +210,8 @@ def refresh(db, live_id):
                    "WHERE content_id = ? AND slot = ?",
                    (match["room"], ram_name, ram_name, match["content_id"], team["id"]))
     match = db.execute("SELECT * FROM live_matches WHERE id = ?", (live_id,)).fetchone()
-    if match["tournament_match_id"] is None and match["friendly_id"] is None and len(local) == 1 and len(visita) == 1:
+    if (verified and match["tournament_match_id"] is None and match["friendly_id"] is None
+            and len(local) == 1 and len(visita) == 1):
         detect_context(db, match, local[0], visita[0])
 
 
@@ -201,26 +229,38 @@ def detect_context(db, match, local_nick, visita_nick):
     a, b = _player_id(db, local_nick), _player_id(db, visita_nick)
     if not a or not b or a == b:
         return
+    content = match["content_id"]
     taken = ("SELECT tournament_match_id FROM live_matches WHERE tournament_match_id IS NOT NULL AND id != ? "
              "AND is_test = ?")
+    # A ISO tem que ser a do campeonato (content_id dela ou uma ligada pelo
+    # admin/aprendida em iso_profiles); campeonato sem ISO identificada vale.
     row = db.execute(
         "SELECT m.id FROM tournament_matches m JOIN tournament_stages s ON s.id = m.stage_id "
-        "JOIN tournaments t ON t.id = s.tournament_id "
+        "JOIN tournaments t ON t.id = s.tournament_id LEFT JOIN tournament_isos ti ON ti.tournament_id = t.id "
         "JOIN tournament_entries he ON he.id = m.home_entry_id JOIN tournament_entries ae ON ae.id = m.away_entry_id "
         "WHERE t.status = 'running' AND s.status = 'running' AND m.status != 'confirmed' "
         "AND ((he.player_id = ? AND ae.player_id = ?) OR (he.player_id = ? AND ae.player_id = ?)) "
+        "AND (ti.content_id IS NULL OR ti.content_id = ? COLLATE NOCASE OR t.id IN "
+        "(SELECT tournament_id FROM iso_profiles WHERE content_id = ? COLLATE NOCASE)) "
         f"AND m.id NOT IN ({taken}) ORDER BY s.seq, m.round, m.leg, m.id LIMIT 1",
-        (a, b, b, a, match["id"], match["is_test"])).fetchone()
+        (a, b, b, a, content, content, match["id"], match["is_test"])).fetchone()
     if row:
         db.execute("UPDATE live_matches SET tournament_match_id = ? WHERE id = ?", (row["id"], match["id"]))
         if not match["is_test"]:
             learn_slots(db, match["id"])
         return
+    # Amistoso: a ISO escolhida no convite (a de um campeonato ou uma do
+    # cadastro) tem que bater; sem ISO escolhida ou sem identificação, vale.
     row = db.execute(
-        "SELECT id FROM friendly_matches WHERE status IN ('accepted', 'reported', 'suspended') "
-        "AND ((home_id = ? AND away_id = ?) OR (home_id = ? AND away_id = ?)) "
-        "AND id NOT IN (SELECT friendly_id FROM live_matches WHERE friendly_id IS NOT NULL AND id != ? AND is_test = ?) "
-        "ORDER BY created_at LIMIT 1", (a, b, b, a, match["id"], match["is_test"])).fetchone()
+        "SELECT f.id FROM friendly_matches f LEFT JOIN tournament_isos ti ON ti.tournament_id = f.iso_tournament_id "
+        "LEFT JOIN catalog_isos ci ON ci.id = f.iso_catalog_id "
+        "WHERE f.status IN ('accepted', 'reported', 'suspended') "
+        "AND ((f.home_id = ? AND f.away_id = ?) OR (f.home_id = ? AND f.away_id = ?)) "
+        "AND (COALESCE(ti.content_id, ci.content_id) IS NULL OR COALESCE(ti.content_id, ci.content_id) = ? COLLATE NOCASE "
+        "OR EXISTS (SELECT 1 FROM iso_profiles p WHERE p.content_id = ? COLLATE NOCASE "
+        "AND (p.tournament_id = f.iso_tournament_id OR p.catalog_iso_id = f.iso_catalog_id))) "
+        "AND f.id NOT IN (SELECT friendly_id FROM live_matches WHERE friendly_id IS NOT NULL AND id != ? AND is_test = ?) "
+        "ORDER BY f.created_at LIMIT 1", (a, b, b, a, content, content, match["id"], match["is_test"])).fetchone()
     if row:
         db.execute("UPDATE live_matches SET friendly_id = ? WHERE id = ?", (row["id"], match["id"]))
 
@@ -275,12 +315,13 @@ def reap(db):
                "ELSE 'abandoned' END, finished_at = COALESCE(finished_at, updated_at) "
                "WHERE status = 'live' AND updated_at < ?", (_ago(GONE),))
     db.commit()
+    report_finished(db)
 
 
 def _team_view(db, match, side, team_state, nicks):
-    """Time de um lado: o da inscrição (jogo de campeonato) ou o cadastrado
-    para o slot desta ISO; sem nenhum dos dois, "Não identificado" - o nome da
-    tabela da ISO não vale sozinho (muitos patches não a renomeiam)."""
+    """Time de um lado: o da inscrição (jogo de campeonato), o cadastrado para
+    o slot desta ISO ou o nome da tela de seleção de times (estado v2, ou o
+    último visto deste slot); sem nenhum, "Não identificado"."""
     from .tournaments import team_image
     slot = team_state.get("id")
     name, team = (None, None)
@@ -292,6 +333,10 @@ def _team_view(db, match, side, team_state, nicks):
         if row and (row["name"] or row["team_id"]):
             name = row["name"] or row["team_name"]
             team = db.execute("SELECT * FROM teams WHERE id = ?", (row["team_id"],)).fetchone() if row["team_id"] else None
+        elif NAME_RE.match(team_state.get("name") or ""):
+            name = team_state["name"]
+        elif row and row["ram_name"]:
+            name = row["ram_name"]
     image = team_image(team) if team else generated_badge(name or "?")
     return {"name": name or UNKNOWN_TEAM, "known": bool(name), "image": image, "goals": team_state.get("goals", 0),
             "players": list(nicks), "scorers": team_state.get("scorers", [])}
@@ -321,7 +366,7 @@ def _context(db, match):
                 parts.append("Rodada %d" % row["round"])
             if row["legs"] == 2:
                 parts.append("Ida" if row["leg"] == 1 else "Volta")
-            return " · ".join(p for p in parts if p), url_for("tournaments.match", slug=row["slug"], match_id=row["id"])
+            return " · ".join(p for p in parts if p), url_for("tournaments.show", slug=row["slug"], aba="tabela")
     if match["friendly_id"]:
         return "Amistoso", url_for("tournaments.friendly_show", friendly_id=match["friendly_id"])
     return "Partida livre", None
@@ -351,6 +396,25 @@ def _profile(db, match):
         row = db.execute("SELECT * FROM iso_profiles WHERE content_id = ?", (match["content_id"],)).fetchone()
         if row:
             game_id, tournament_id = row["game_title_id"], row["tournament_id"]
+            if game_id is None and row["catalog_iso_id"]:
+                catalog = db.execute("SELECT game_title_id FROM catalog_isos WHERE id = ?",
+                                     (row["catalog_iso_id"],)).fetchone()
+                game_id = catalog["game_title_id"] if catalog else None
+    if game_id is None:
+        # A ISO exata (CRC32:TAMANHO) de um campeonato ou do cadastro de amistosos.
+        row = db.execute("SELECT t.id, t.game_title_id FROM tournament_isos i JOIN tournaments t ON t.id = i.tournament_id "
+                         "WHERE i.content_id = ? COLLATE NOCASE AND t.status != 'cancelled' "
+                         "ORDER BY t.updated_at DESC LIMIT 1", (match["content_id"],)).fetchone()
+        if row:
+            game_id, tournament_id = row["game_title_id"], row["id"]
+        else:
+            row = db.execute("SELECT game_title_id FROM catalog_isos WHERE content_id = ? COLLATE NOCASE "
+                             "AND is_active = 1 LIMIT 1", (match["content_id"],)).fetchone()
+            game_id = row["game_title_id"] if row else None
+    if game_id is None:
+        engine = json.loads(match["state_json"] or "{}").get("engine")
+        row = db.execute("SELECT id FROM game_titles WHERE code = ?", (ENGINE_GAMES.get(engine),)).fetchone()
+        game_id = row["id"] if row else None
     file_name = _file_name(match)
     if game_id is None and file_name:
         row = db.execute("SELECT t.id, t.game_title_id FROM tournament_isos i JOIN tournaments t ON t.id = i.tournament_id "
@@ -390,7 +454,7 @@ def card(db, match):
             "when": format_local(match["started_at"], "%d/%m/%Y %H:%M"),
             "game": {"name": game["name"], "cover": cover_url(game["code"])} if game else None,
             "tournament": {"name": tournament["name"], "image": image_url("torneio", tournament["image"]),
-                           "url": url_for("tournaments.show", slug=tournament["slug"])} if tournament else None,
+                           "url": url_for("tournaments.show", slug=tournament["slug"], aba="tabela")} if tournament else None,
             "teams": views}
 
 
@@ -406,12 +470,13 @@ def _local_day(value, end=False):
 
 
 def list_cards(db, tournament_id=None, friendlies=False, only_live=False, recent_only=False, player="", date_from="",
-               date_to="", limit=CARDS_LIMIT):
+               date_to="", match_id=None, limit=CARDS_LIMIT):
     """As últimas partidas (ao vivo primeiro), com os filtros da página:
     tournament_id = os jogos daquele campeonato; friendlies = o que não é jogo
-    de campeonato (amistosos cadastrados e partidas livres)."""
+    de campeonato (amistosos cadastrados e partidas livres); match_id = só
+    aquela partida (o placar ao lado do time na tabela do campeonato)."""
     reap(db)
-    where, params = [], []
+    where, params = ["m.verified = 1"], []  # só com os dois jogadores logados (refresh)
     if only_live:
         where.append("m.status = 'live'")
     elif recent_only:
@@ -425,6 +490,9 @@ def list_cards(db, tournament_id=None, friendlies=False, only_live=False, recent
         params.append(tournament_id)
     elif friendlies:
         where.append("m.tournament_match_id IS NULL")
+    if match_id:
+        where.append("m.id = ?")
+        params.append(match_id)
     if player:
         where.append("m.players_json LIKE ?")
         params.append("%" + player.replace("%", "").replace("_", "") + "%")
@@ -441,6 +509,88 @@ def list_cards(db, tournament_id=None, friendlies=False, only_live=False, recent
     return [card(db, row) for row in rows]
 
 
+_TOURNAMENT_LIVE_SQL = (
+    "SELECT m.*, tm.group_id, tm.home_entry_id, tm.away_entry_id, hp.username AS home_nick, "
+    "ap.username AS away_nick, s.tournament_id FROM live_matches m "
+    "JOIN tournament_matches tm ON tm.id = m.tournament_match_id JOIN tournament_stages s ON s.id = tm.stage_id "
+    "JOIN tournament_entries he ON he.id = tm.home_entry_id JOIN players hp ON hp.id = he.player_id "
+    "JOIN tournament_entries ae ON ae.id = tm.away_entry_id JOIN players ap ON ap.id = ae.player_id ")
+
+
+def _home_away(row, goals):
+    """(gols do mandante, do visitante) do jogo de campeonato a partir dos gols
+    (LOCAL, VISITA) do jogo e de quem controla cada lado, ou None."""
+    sides = [{nick.casefold() for nick in json.loads(row[key] or "[]")}
+             for key in ("local_players_json", "visita_players_json")]
+    home = next((i for i in (0, 1) if row["home_nick"].casefold() in sides[i]), None)
+    away = next((i for i in (0, 1) if row["away_nick"].casefold() in sides[i]), None)
+    if home is None or away is None or home == away:
+        return None
+    return goals[home], goals[away]
+
+
+def tournament_live(db, tournament_id):
+    """Jogos do campeonato rolando agora (com sinal), para a tabela: os grupos
+    com jogo ao vivo, por inscrição o placar do ponto de vista do time ("1-0",
+    ganhando/perdendo/empatando, link para a partida no Ao vivo) e, por jogo,
+    o placar (mandante, visitante) que a tabela soma como não confirmado e o
+    link da partida no Ao vivo (aba Jogos).
+    As simulações só aparecem para o admin, como nos cards."""
+    rows = db.execute(
+        _TOURNAMENT_LIVE_SQL + "WHERE s.tournament_id = ? AND m.status = 'live' AND m.verified = 1 AND m.updated_at >= ?"
+        + ("" if _is_admin() else " AND m.is_test = 0"), (tournament_id, _ago(STALE))).fetchall()
+    groups, entries, matches, match_urls = set(), {}, {}, {}
+    for row in rows:
+        score = _home_away(row, (row["local_goals"] or 0, row["visita_goals"] or 0))
+        if score is None:
+            continue
+        matches[row["tournament_match_id"]] = score
+        link = url_for("live.index", partida=row["id"])
+        match_urls[row["tournament_match_id"]] = link
+        for entry, mine, theirs in ((row["home_entry_id"], score[0], score[1]), (row["away_entry_id"], score[1], score[0])):
+            entries[entry] = {"score": "%d-%d" % (mine, theirs), "url": link,
+                              "result": "win" if mine > theirs else "loss" if mine < theirs else "draw"}
+        if row["group_id"]:
+            groups.add(row["group_id"])
+    return {"groups": groups, "entries": entries, "matches": matches, "match_urls": match_urls}
+
+
+# O 2º PC manda o fim logo depois do 1º: espera isso antes de reportar.
+REPORT_SETTLE = timedelta(minutes=1)
+GAME_REPORT_NOTE = "Placar lido do jogo pelo RetroArch TIERES (Ao vivo nº %d)."
+
+
+def report_finished(db):
+    """Jogo de campeonato que terminou no RetroArch TIERES (algum PC mandou o
+    fim, e os que mandaram concordam): o placar lido vira o reporte do jogo
+    (tournament/reports.py report_from_game). Os jogadores confirmam ou
+    contestam; sem resposta, confirma sozinho no prazo (torneios_confirmacao_horas,
+    24 h, contado do fim do jogo). Simulações nunca."""
+    from .tournament import notify, reports, store
+    from .tournament.store import TournamentError
+    rows = db.execute(_TOURNAMENT_LIVE_SQL + "WHERE m.status = 'finished' AND m.is_test = 0 AND m.verified = 1 "
+                      "AND m.game_report IS NULL AND m.finished_at <= ?", (_ago(REPORT_SETTLE),)).fetchall()
+    for row in rows:
+        finals = {(s["teams"][0]["goals"], s["teams"][1]["goals"]) for s in (
+            json.loads(r["state_json"]) for r in db.execute(
+                "SELECT state_json FROM live_match_reports WHERE live_match_id = ? AND final = 1", (row["id"],)))}
+        score = _home_away(row, next(iter(finals))) if len(finals) == 1 else None
+        outcome = ("sem o fim mandado pelos PCs" if not finals else "os PCs discordam do placar" if len(finals) > 1
+                   else "não deu para saber quem é o mandante" if score is None else None)
+        tournament = store.get_tournament(db, row["tournament_id"])
+        if outcome is None:
+            try:
+                reports.report_from_game(db, tournament, row["tournament_match_id"], (*score, None, None),
+                                         row["finished_at"], GAME_REPORT_NOTE % row["id"])
+                outcome = "reportado"
+            except TournamentError as error:
+                outcome = str(error)[:200]
+        db.execute("UPDATE live_matches SET game_report = ? WHERE id = ?", (outcome, row["id"]))
+        db.commit()
+        if outcome == "reportado":
+            notify.score_from_game(db, tournament, row["tournament_match_id"])
+
+
 FRIENDLIES = "amistosos"  # o valor de "Amistosos" no filtro de campeonato
 
 
@@ -449,6 +599,7 @@ def _filters():
     championship = args.get("campeonato", "")
     return {"player": args.get("jogador", "").strip()[:32], "friendlies": championship == FRIENDLIES,
             "tournament_id": int(championship) if championship.isdigit() else None,
+            "match_id": int(args["partida"]) if args.get("partida", "").isdigit() else None,
             "date_from": args.get("de", ""), "date_to": args.get("ate", "")}
 
 
@@ -507,10 +658,12 @@ def admin_slots():
         if action == "perfil":
             game_id = request.form.get("game_title_id", type=int) or None
             tournament_id = request.form.get("tournament_id", type=int) or None
+            catalog_id = request.form.get("catalog_iso_id", type=int) or None
             db.execute("INSERT OR IGNORE INTO iso_profiles (content_id, updated_at) VALUES (?, ?)", (content_id, now()))
-            db.execute("UPDATE iso_profiles SET game_title_id = ?, tournament_id = ?, source = ?, updated_at = ? "
-                       "WHERE content_id = ?", (game_id, tournament_id, "admin" if game_id or tournament_id else "",
-                                                now(), content_id))
+            db.execute("UPDATE iso_profiles SET game_title_id = ?, tournament_id = ?, catalog_iso_id = ?, source = ?, "
+                       "updated_at = ? WHERE content_id = ?",
+                       (game_id, tournament_id, catalog_id, "admin" if game_id or tournament_id or catalog_id else "",
+                        now(), content_id))
             flash("Jogo base e campeonato da ISO salvos.", "success")
         elif action == "nomes_do_jogo":
             rows = db.execute("SELECT slot, ram_name FROM iso_team_slots WHERE content_id = ? AND ram_name != '' "
@@ -533,8 +686,42 @@ def admin_slots():
     games = db.execute("SELECT id, name FROM game_titles WHERE is_active = 1 ORDER BY year, name").fetchall()
     tournaments = db.execute("SELECT id, name FROM tournaments WHERE status != 'cancelled' "
                              "ORDER BY name COLLATE NOCASE").fetchall()
+    catalog = db.execute("SELECT id, name FROM catalog_isos WHERE is_active = 1 ORDER BY name COLLATE NOCASE").fetchall()
+    # Qual ISO cadastrada tem cada content_id visto (a do campeonato ou a do cadastro de amistosos).
+    known = {}
+    for row in db.execute("SELECT i.content_id, t.name FROM tournament_isos i JOIN tournaments t ON t.id = i.tournament_id "
+                          "WHERE i.content_id IS NOT NULL"):
+        known.setdefault(row["content_id"].upper(), []).append("ISO do campeonato " + row["name"])
+    for row in db.execute("SELECT content_id, name FROM catalog_isos WHERE content_id IS NOT NULL"):
+        known.setdefault(row["content_id"].upper(), []).append("ISO de amistoso " + row["name"])
+    unidentified = db.execute("SELECT (SELECT COUNT(*) FROM tournament_isos WHERE content_id IS NULL) + "
+                              "(SELECT COUNT(*) FROM catalog_isos WHERE content_id IS NULL "
+                              "AND (file_id IS NOT NULL OR original_filename IS NOT NULL))").fetchone()[0]
     return render_template("live/admin_slots.html", groups=groups, teams=teams, profiles=profiles, games=games,
-                           tournaments=tournaments)
+                           tournaments=tournaments, catalog=catalog, known=known, unidentified=unidentified)
+
+
+@bp.post("/admin/ao-vivo/identificar-isos")
+@login_required
+def identify_isos():
+    """CRC32:TAMANHO das ISOs de campeonato/amistoso que ainda não têm (o
+    mesmo botão de "Jogos do Memory Card online" - app/admin.py)."""
+    from flask import current_app
+    import threading
+    from .admin import _identify_isos, _identify_isos_lock
+    validate_csrf()
+    app = current_app._get_current_object()
+    if app.config.get("TESTING"):
+        found, missing = _identify_isos(app) or (0, [])
+        flash("%d ISO(s) identificada(s).%s" % (found, " Sem identificação: " + ", ".join(missing) if missing else ""),
+              "success" if not missing else "error")
+    elif _identify_isos_lock.locked():
+        flash("A identificação das ISOs já está em andamento.", "error")
+    else:
+        threading.Thread(target=_identify_isos, args=(app,), daemon=True).start()
+        flash("Identificando as ISOs (pelo archive.org ou pela cópia deste servidor). Recarregue em alguns segundos.",
+              "success")
+    return redirect(url_for("live.admin_slots"))
 
 
 @bp.app_template_filter("scorer")

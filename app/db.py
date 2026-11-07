@@ -492,6 +492,20 @@ def ensure_player_columns(database):
         database.execute("ALTER TABLE players ADD COLUMN avatar TEXT")
 
 
+def ensure_live_columns(database):
+    """Colunas novas das tabelas do Ao vivo (bancos criados antes delas)."""
+    columns = {column["name"] for column in database.execute("PRAGMA table_info(iso_profiles)")}
+    if columns and "catalog_iso_id" not in columns:
+        database.execute("ALTER TABLE iso_profiles ADD COLUMN catalog_iso_id INTEGER "
+                         "REFERENCES catalog_isos(id) ON DELETE SET NULL")
+    columns = {column["name"] for column in database.execute("PRAGMA table_info(live_matches)")}
+    if columns and "game_report" not in columns:
+        database.execute("ALTER TABLE live_matches ADD COLUMN game_report TEXT")
+    if columns and "verified" not in columns:
+        # As partidas de antes da regra ficam de fora (mandadas sem login garantido).
+        database.execute("ALTER TABLE live_matches ADD COLUMN verified INTEGER NOT NULL DEFAULT 0")
+
+
 def ensure_tournament_columns(database):
     """Colunas novas de tournaments e tournament_stages (bancos criados antes delas)."""
     columns = {column["name"] for column in database.execute("PRAGMA table_info(tournaments)")}
@@ -505,6 +519,11 @@ def ensure_tournament_columns(database):
     stage_columns = {column["name"] for column in database.execute("PRAGMA table_info(tournament_stages)")}
     if stage_columns and "all_played_at" not in stage_columns:
         database.execute("ALTER TABLE tournament_stages ADD COLUMN all_played_at TEXT")
+    # CRC32:TAMANHO do arquivo (o content_id que o RetroArch TIERES manda no placar ao vivo - app/live.py).
+    for table in ("tournament_isos", "catalog_isos"):
+        table_columns = {column["name"] for column in database.execute(f"PRAGMA table_info({table})")}
+        if table_columns and "content_id" not in table_columns:
+            database.execute(f"ALTER TABLE {table} ADD COLUMN content_id TEXT")
     # Percentual do envio para o archive.org (barra de progresso - static/js/archive-progress.js).
     for table in ("tournament_isos", "catalog_isos", "files"):
         table_columns = {column["name"] for column in database.execute(f"PRAGMA table_info({table})")}
@@ -634,7 +653,13 @@ CREATE TABLE IF NOT EXISTS live_matches (
     is_test INTEGER NOT NULL DEFAULT 0,
     started_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    finished_at TEXT
+    finished_at TEXT,
+    -- Jogo de campeonato encerrado: o placar lido virou o reporte do jogo
+    -- ('reportado') ou o motivo de não ter virado (live.report_finished).
+    game_report TEXT,
+    -- 1 = cada jogador mandou o placar do próprio PC, logado na conta dele
+    -- (live.refresh); só assim a partida aparece, entra em campeonato e reporta.
+    verified INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS live_matches_status_idx ON live_matches(status, updated_at);
 CREATE INDEX IF NOT EXISTS live_matches_tournament_match_idx ON live_matches(tournament_match_id);
@@ -668,6 +693,7 @@ CREATE TABLE IF NOT EXISTS iso_profiles (
     content_id TEXT PRIMARY KEY,
     game_title_id INTEGER REFERENCES game_titles(id) ON DELETE SET NULL,
     tournament_id INTEGER REFERENCES tournaments(id) ON DELETE SET NULL,
+    catalog_iso_id INTEGER REFERENCES catalog_isos(id) ON DELETE SET NULL,
     source TEXT NOT NULL DEFAULT '' CHECK (source IN ('', 'aprendido', 'admin')),
     updated_at TEXT NOT NULL
 );
@@ -708,6 +734,7 @@ def init_db():
     db.executescript(TOURNAMENTS_DDL)
     ensure_tournament_columns(db)
     db.executescript(LIVE_DDL)
+    ensure_live_columns(db)
     from .tournament.teams import seed_teams
     from .tournament.games import seed_games
     seed_teams(db)
@@ -813,6 +840,7 @@ def migrate_db():
     database.executescript(TOURNAMENTS_DDL)
     ensure_tournament_columns(database)
     database.executescript(LIVE_DDL)
+    ensure_live_columns(database)
     from .tournament.teams import seed_teams
     from .tournament.games import seed_games
     seed_teams(database)

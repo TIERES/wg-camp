@@ -992,7 +992,10 @@ def _identify_isos(app):
     try:
         with app.app_context():
             from .memcards import fill_championship_content_ids
-            return fill_championship_content_ids(get_db())
+            from .tournament.iso import fill_content_ids
+            found, missing = fill_championship_content_ids(get_db())
+            more, still = fill_content_ids(get_db(), app)
+            return found + more, missing + still
     except Exception:
         app.logger.exception("Falha ao identificar as ISOs dos campeonatos")
         return None
