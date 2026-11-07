@@ -196,11 +196,13 @@ def _player_id(db, nick):
 
 def detect_context(db, match, local_nick, visita_nick):
     """Liga a partida ao próximo jogo de campeonato entre os dois (ainda sem
-    placar e sem outra partida ao vivo ligada) ou a um amistoso aceito."""
+    placar e sem outra partida ao vivo ligada) ou a um amistoso aceito. As
+    simulações (is_test) só disputam os jogos entre si e não ensinam slots."""
     a, b = _player_id(db, local_nick), _player_id(db, visita_nick)
     if not a or not b or a == b:
         return
-    taken = "SELECT tournament_match_id FROM live_matches WHERE tournament_match_id IS NOT NULL AND id != ?"
+    taken = ("SELECT tournament_match_id FROM live_matches WHERE tournament_match_id IS NOT NULL AND id != ? "
+             "AND is_test = ?")
     row = db.execute(
         "SELECT m.id FROM tournament_matches m JOIN tournament_stages s ON s.id = m.stage_id "
         "JOIN tournaments t ON t.id = s.tournament_id "
@@ -208,16 +210,17 @@ def detect_context(db, match, local_nick, visita_nick):
         "WHERE t.status = 'running' AND s.status = 'running' AND m.status != 'confirmed' "
         "AND ((he.player_id = ? AND ae.player_id = ?) OR (he.player_id = ? AND ae.player_id = ?)) "
         f"AND m.id NOT IN ({taken}) ORDER BY s.seq, m.round, m.leg, m.id LIMIT 1",
-        (a, b, b, a, match["id"])).fetchone()
+        (a, b, b, a, match["id"], match["is_test"])).fetchone()
     if row:
         db.execute("UPDATE live_matches SET tournament_match_id = ? WHERE id = ?", (row["id"], match["id"]))
-        learn_slots(db, match["id"])
+        if not match["is_test"]:
+            learn_slots(db, match["id"])
         return
     row = db.execute(
         "SELECT id FROM friendly_matches WHERE status IN ('accepted', 'reported', 'suspended') "
         "AND ((home_id = ? AND away_id = ?) OR (home_id = ? AND away_id = ?)) "
-        "AND id NOT IN (SELECT friendly_id FROM live_matches WHERE friendly_id IS NOT NULL AND id != ?) "
-        "ORDER BY created_at LIMIT 1", (a, b, b, a, match["id"])).fetchone()
+        "AND id NOT IN (SELECT friendly_id FROM live_matches WHERE friendly_id IS NOT NULL AND id != ? AND is_test = ?) "
+        "ORDER BY created_at LIMIT 1", (a, b, b, a, match["id"], match["is_test"])).fetchone()
     if row:
         db.execute("UPDATE live_matches SET friendly_id = ? WHERE id = ?", (row["id"], match["id"]))
 
