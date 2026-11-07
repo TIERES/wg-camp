@@ -122,7 +122,7 @@
   {% for view in stages %}
   <section class="stage">
     <h2>{{ view.stage.name }}</h2>
-    {{ stage_rounds(view, names, t.slug, live_table) }}
+    {{ stage_rounds(view, names, t.slug, live_table, confirm_hours) }}
   </section>
   {% endfor %}
 {% endif %}

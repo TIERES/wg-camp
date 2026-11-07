@@ -264,12 +264,24 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertIn("provisional", first_row)
         self.assertIn("Grécia", first_row)
         self.assertIn("<td><strong>3</strong></td>", first_row)
-        self.assertIn("em amarelo", html)
+        self.assertIn("em laranja", html)
         self.assertIn("24 h depois do jogo", html)
         self.assertIn('<span class="f-V prov">V</span>', html)
-        # Aba Jogos: "Ao vivo" no jogo rolando, link para a partida.
+        # Aba Jogos e página do jogo: o placar ao vivo (mandante ANDERSHOW: 0 x 1), em laranja,
+        # "Ao vivo" com link para a partida e a legenda.
         games = self.app.test_client().get("/torneios/liga-1?aba=jogos").get_data(as_text=True)
         self.assertIn('<a class="match-live standings-live" href="/ao-vivo?partida=%d"' % live_id, games)
+        self.assertIn('score-reported score-live', games)
+        self.assertIn("<strong>0 x 1</strong>", games)
+        self.assertIn("em laranja", games)
+        match_id = self.rows("SELECT id FROM tournament_matches")[0]["id"]
+        detail = self.app.test_client().get("/torneios/liga-1/jogos/%d" % match_id).get_data(as_text=True)
+        self.assertIn("<strong>0 x 1</strong>", detail)
+        self.assertIn("Ao vivo agora", detail)
+        self.assertIn('href="/ao-vivo?partida=%d"' % live_id, detail)
+        self.assertIn("em laranja", detail)
+        # O card do Ao vivo leva à aba Tabela do torneio.
+        self.assertIn('href="/torneios/liga-1?aba=tabela"', self.cards())
         # O placar leva ao Ao vivo filtrado naquela partida.
         self.assertEqual(self.cards(partida=str(live_id)).count('<article class="live-card'), 1)
         self.assertEqual(self.cards(partida="999").count('<article class="live-card'), 0)
@@ -310,8 +322,8 @@ class LiveMatchesTest(unittest.TestCase):
         # Mandante no campeonato = ANDERSHOW (Croácia): 1 x 2.
         self.assertEqual((report["action"], report["home_goals"], report["away_goals"], report["entry_id"]), ("report", 1, 2, None))
         self.assertIn("RetroArch TIERES", report["comment"])
-        # Tabela: conta o placar reportado, em amarelo.
-        self.assertIn("em amarelo", self.table())
+        # Tabela: conta o placar reportado, em laranja.
+        self.assertIn("em laranja", self.table())
         # Página do jogo: placar lido do jogo, qualquer um dos dois confirma ou contesta.
         client = self.app.test_client()
         with client.session_transaction() as sess:
@@ -327,7 +339,7 @@ class LiveMatchesTest(unittest.TestCase):
             self.assertEqual(reports.auto_confirm(db, at=datetime.now(timezone.utc) + timedelta(hours=24, minutes=1)), 1)
         done = self.rows("SELECT * FROM tournament_matches WHERE id = ?", match["id"])[0]
         self.assertEqual((done["status"], done["home_goals"], done["away_goals"]), ("confirmed", 1, 2))
-        self.assertNotIn("em amarelo", self.table())
+        self.assertNotIn("em laranja", self.table())
 
     def test_game_report_can_be_disputed_and_accepted_by_the_other(self):
         from app.tournament import reports, store

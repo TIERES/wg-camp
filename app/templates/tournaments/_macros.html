@@ -1,8 +1,11 @@
 {# Placar do jogo: o confirmado ou, antes disso, o reportado por um jogador.
    A cor diz o status (verde confirmado, laranja aguardando, vermelho contestado). #}
-{% macro score(m) -%}
+{# live_score: (mandante, visitante) do jogo rolando agora (app/live.py) - na cor de
+   placar ainda não confirmado, como o reportado. #}
+{% macro score(m, live_score=none) -%}
 {% set r = m if m.status == 'confirmed' else reported_score(m) %}
-{% if r and r.home_goals is not none %}<span class="score-val score-{{ m.status }}" title="{{ score_tips[m.status] }}" tabindex="0"><strong>{{ r.home_goals }} x {{ r.away_goals }}</strong>{% if r.home_pens is not none %} <small>({{ r.home_pens }} x {{ r.away_pens }} pên.)</small>{% endif %}</span>{% else %}<span class="muted" title="{{ score_tips.scheduled }}">x</span>{% endif %}
+{% if live_score and m.status != 'confirmed' %}<span class="score-val score-reported score-live" title="{{ score_tips.live }}" tabindex="0"><strong>{{ live_score[0] }} x {{ live_score[1] }}</strong></span>
+{%- elif r and r.home_goals is not none %}<span class="score-val score-{{ m.status }}" title="{{ score_tips[m.status] }}" tabindex="0"><strong>{{ r.home_goals }} x {{ r.away_goals }}</strong>{% if r.home_pens is not none %} <small>({{ r.home_pens }} x {{ r.away_pens }} pên.)</small>{% endif %}</span>{% else %}<span class="muted" title="{{ score_tips.scheduled }}">x</span>{% endif %}
 {%- endmacro %}
 
 {% macro status_chip(m) -%}
@@ -11,11 +14,11 @@
 
 {# live_url: o jogo está rolando agora (app/live.py tournament_live) - "Ao vivo"
    embaixo do placar, link para a partida no Ao vivo (fora do link do jogo). #}
-{% macro match_line(m, names, slug=none, live_url=none) -%}
+{% macro match_line(m, names, slug=none, live_url=none, live_score=none) -%}
 {% if live_url %}<div class="match-line-live">{% endif %}
 <{{ 'a' if slug else 'div' }} class="match-line{% if m.status == 'confirmed' %} done{% endif %}" id="jogo-{{ m.id }}"{% if slug %} href="{{ url_for('tournaments.match', slug=slug, match_id=m.id) }}"{% endif %}>
   <span class="home">{{ names[m.home_entry_id] }}</span>
-  <span class="score">{{ score(m) }}</span>
+  <span class="score">{{ score(m, live_score) }}</span>
   <span class="away">{{ names[m.away_entry_id] }}</span>
 </{{ 'a' if slug else 'div' }}>
 {% if live_url %}<a class="match-live standings-live" href="{{ live_url }}" title="Ver a partida no Ao vivo">Ao vivo</a></div>{% endif %}
@@ -24,7 +27,8 @@
 {# live: app/live.py tournament_live() - placar ao lado de quem está jogando agora
    (verde ganhando, vermelho perdendo, cinza empatando), com link para a
    partida no Ao vivo. Linha com placar ainda não confirmado somado
-   (row.provisional, store.group_tables) fica em amarelo, com a legenda. #}
+   (row.provisional, store.group_tables) fica em laranja (a cor do placar
+   reportado), com a legenda. #}
 {% macro standings(table, names, highlight=0, playoff=0, live=none, confirm_hours=24) -%}
 <div class="table-scroll">
 <table class="standings">
@@ -42,7 +46,7 @@
   </tbody>
 </table>
 </div>
-{% if table|selectattr('provisional')|list %}<p class="legend provisional-legend"><span class="provisional-dot"></span> em amarelo: conta placar ainda não confirmado pelos jogadores (jogo ao vivo ou placar reportado); sem resposta, ele é confirmado sozinho {{ confirm_hours }} h depois do jogo.</p>{% endif %}
+{% if table|selectattr('provisional')|list %}<p class="legend provisional-legend"><span class="provisional-dot"></span> em laranja: conta placar que ainda precisa ser confirmado entre os jogadores (jogo ao vivo, placar lido do jogo ou reportado); sem resposta, ele é confirmado sozinho {{ confirm_hours }} h depois do jogo.</p>{% endif %}
 {%- endmacro %}
 
 {# As tabelas de uma fase de grupos/pontos corridos na aba Tabela. Em
@@ -150,13 +154,21 @@
 
 {# Rodadas de uma fase, sem recolher (aba Jogos e conferência em Gerenciar).
    Ida e volta: botões Ida/Volta fora do card, como na chave. #}
-{% macro stage_rounds(view, names, slug, live=none) -%}
+{# live: app/live.py tournament_live() - placar e "Ao vivo" nos jogos rolando agora;
+   a legenda aparece quando a fase tem placar ainda não confirmado. #}
+{% macro stage_rounds(view, names, slug, live=none, confirm_hours=24) -%}
 {% set urls = live.match_urls if live else {} %}
+{% set scores = live.matches if live else {} %}
 {% for rnd in view.rounds %}
 <div class="round-legs">
   {% if rnd.name != 'Turno e returno' %}<h4 class="round-title">{{ rnd.name }}</h4>{% endif %}
-  {% if rnd.legs %}{% call(leg) leg_flip(rnd.legs[0], rnd.legs[1]) %}<div class="round-card">{% for m in rnd.legs[leg] %}{{ match_line(m, names, slug, urls.get(m.id)) }}{% endfor %}</div>{% endcall %}
-  {% else %}<div class="round-card">{% for m in rnd.matches %}{{ match_line(m, names, slug, urls.get(m.id)) }}{% endfor %}</div>{% endif %}
+  {% if rnd.legs %}{% call(leg) leg_flip(rnd.legs[0], rnd.legs[1]) %}<div class="round-card">{% for m in rnd.legs[leg] %}{{ match_line(m, names, slug, urls.get(m.id), scores.get(m.id)) }}{% endfor %}</div>{% endcall %}
+  {% else %}<div class="round-card">{% for m in rnd.matches %}{{ match_line(m, names, slug, urls.get(m.id), scores.get(m.id)) }}{% endfor %}</div>{% endif %}
 </div>
 {% else %}<p class="muted">Sem jogos.</p>{% endfor %}
+{% if view.pending or (view.match_ids and scores.keys()|select('in', view.match_ids)|list) %}{{ pending_legend(confirm_hours) }}{% endif %}
+{%- endmacro %}
+
+{% macro pending_legend(confirm_hours=24) -%}
+<p class="legend provisional-legend"><span class="provisional-dot"></span> em laranja: placar que ainda precisa ser confirmado entre os jogadores (jogo ao vivo, placar lido do jogo ou reportado); sem resposta, ele é confirmado sozinho {{ confirm_hours }} h depois do jogo.</p>
 {%- endmacro %}

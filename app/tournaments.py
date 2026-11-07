@@ -89,6 +89,7 @@ SCORE_TIPS = {
     "confirmed": "Resultado confirmado",
     "disputed": "Placar contestado: aguardando quem reportou aceitar a correção ou o organizador decidir",
     "partial": "Agregado parcial: os 2 jogos ainda não foram confirmados",
+    "live": "Ao vivo: placar lido do jogo pelo RetroArch TIERES, ainda precisa ser confirmado entre os jogadores",
 }
 
 
@@ -271,7 +272,8 @@ def _stage_views(db, tournament, provisional=None):
         matches = db.execute("SELECT * FROM tournament_matches WHERE stage_id = ? ORDER BY round, tie_id, leg, id",
                              (stage["id"],)).fetchall()
         view = {"stage": stage, "settings": store.settings_of(stage), "rounds": [], "groups": [], "bracket": [],
-                "highlight": 0, "playoff": 0}
+                "highlight": 0, "playoff": 0, "match_ids": [m["id"] for m in matches],
+                "pending": any(m["status"] in ("reported", "disputed") for m in matches)}
         rounds = {}
         for match in matches:
             rounds.setdefault(match["round"], []).append(match)
@@ -1310,8 +1312,15 @@ def match(slug, match_id):
     home, away = sides.get(m["home_entry_id"]), sides.get(m["away_entry_id"])
     h2h = {"home": home["username"], "away": away["username"],
            "record": stats.player_record(db, home["player_id"], opponent_id=away["player_id"])} if home and away else None
+    live_now = None
+    if tournament["status"] == "running" and m["status"] != "confirmed":
+        from . import live
+        rolling = live.tournament_live(db, tournament["id"])
+        if match_id in rolling["matches"]:
+            live_now = {"score": rolling["matches"][match_id], "url": rolling["match_urls"][match_id]}
     return render_template(
-        "tournaments/match.html", t=tournament, m=m, names=names, me=me, manager=manager, h2h=h2h,
+        "tournaments/match.html", t=tournament, m=m, names=names, me=me, manager=manager, h2h=h2h, live_now=live_now,
+        confirm_hours=setting(db, "torneios_confirmacao_horas"),
         history=reports.history(db, match_id), labels=reports.ACTION_LABELS,
         disputer=reports.disputer(db, match_id) if m["status"] == "disputed" else None,
         reported=reports.last_report(db, match_id) if m["status"] in ("reported", "disputed") else None,

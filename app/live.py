@@ -352,7 +352,7 @@ def _context(db, match):
                 parts.append("Rodada %d" % row["round"])
             if row["legs"] == 2:
                 parts.append("Ida" if row["leg"] == 1 else "Volta")
-            return " · ".join(p for p in parts if p), url_for("tournaments.match", slug=row["slug"], match_id=row["id"])
+            return " · ".join(p for p in parts if p), url_for("tournaments.show", slug=row["slug"], aba="tabela")
     if match["friendly_id"]:
         return "Amistoso", url_for("tournaments.friendly_show", friendly_id=match["friendly_id"])
     return "Partida livre", None
@@ -440,7 +440,7 @@ def card(db, match):
             "when": format_local(match["started_at"], "%d/%m/%Y %H:%M"),
             "game": {"name": game["name"], "cover": cover_url(game["code"])} if game else None,
             "tournament": {"name": tournament["name"], "image": image_url("torneio", tournament["image"]),
-                           "url": url_for("tournaments.show", slug=tournament["slug"])} if tournament else None,
+                           "url": url_for("tournaments.show", slug=tournament["slug"], aba="tabela")} if tournament else None,
             "teams": views}
 
 
