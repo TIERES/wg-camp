@@ -1,17 +1,24 @@
-{# Card de uma partida ao vivo (app/live.py card()): campeonato/amistoso, tempo, times com quem controla, placar e gols. #}
+{# Card de uma partida ao vivo (app/live.py card()): jogo base/campeonato, tempo, times com quem controla, placar e gols. #}
 {% set a, b = c.teams %}
 <article class="live-card{% if c.status != 'live' %} ended{% endif %}">
   <div class="live-card-head">
-    <span class="live-context">{% if c.link %}<a href="{{ c.link }}">{{ c.context }}</a>{% else %}{{ c.context }}{% endif %}{% if c.is_test %} <span class="badge live-test">Teste</span>{% endif %}</span>
-    {% if c.status == 'live' and not c.stale %}<span class="live-badge">Ao vivo</span>{% endif %}
-    <span class="live-clock{% if c.status == 'live' and not c.stale %} on{% endif %}">{{ c.clock }}</span>
+    {% if c.game or (c.tournament and c.tournament.image) %}<span class="live-logos">
+      {% if c.game %}<img class="live-game" src="{{ c.game.cover }}" alt="{{ c.game.name }}" title="{{ c.game.name }}" loading="lazy">{% endif %}
+      {% if c.tournament and c.tournament.image %}<a href="{{ c.tournament.url }}"><img class="live-tournament" src="{{ c.tournament.image }}" alt="{{ c.tournament.name }}" title="{{ c.tournament.name }}" loading="lazy"></a>{% endif %}
+    </span>{% endif %}
+    <span class="live-context">{% if c.link %}<a href="{{ c.link }}">{{ c.context }}</a>{% else %}{{ c.context }}{% endif %}{% if c.is_test %} <span class="badge live-test">Teste</span>{% endif %}
+      {% if c.game %}<small>{{ c.game.name }}{% if c.tournament and not c.link %} · <a href="{{ c.tournament.url }}">{{ c.tournament.name }}</a>{% endif %}</small>{% endif %}</span>
+    <span class="live-status">
+      {% if c.status == 'live' and not c.stale %}<span class="live-badge">Ao vivo</span>{% endif %}
+      <span class="live-clock{% if c.status == 'live' and not c.stale %} on{% endif %}">{{ c.clock }}</span>
+    </span>
   </div>
   <div class="live-score">
     {% for t in (a, b) %}
-    <div class="live-team">
+    <div class="live-team{% if not t.known %} unknown{% endif %}">
       <img class="live-crest" src="{{ t.image }}" alt="" loading="lazy">
       <strong>{{ t.name }}</strong>
-      <small>{{ t.players|join(', ') if t.players else 'CPU' }}</small>
+      <small>{{ t.players|join(', ') }}</small>
     </div>
     {% if loop.first %}<div class="live-goals"><span>{{ a.goals }}</span><span class="live-x">×</span><span>{{ b.goals }}</span></div>{% endif %}
     {% endfor %}
@@ -24,7 +31,7 @@
   </div>
   {% endif %}
   <div class="live-card-foot">
-    <small>{{ c.game }}</small>
+    <small>{{ c.when }} · {{ c.file }}</small>
     {% if c.status == 'finished' and c.agreed %}<small class="live-agreed">Placar conferido nos {{ c.reporters }} PCs</small>{% endif %}
   </div>
 </article>

@@ -68,17 +68,46 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertEqual(len(match), 1)
         self.assertEqual((match[0]["reporters"], match[0]["local_goals"], match[0]["status"]), (2, 1, "live"))
         html = self.cards()
-        for text in ("Grecia", "Croacia", "TIERES", "ANDERSHOW", "1º tempo · 22&#39;", "S.Vryzas 17'",
-                     "assist. Karagounis", "Partida livre", "Ao vivo"):
+        # Sem campeonato nem cadastro, o nome da tabela da ISO não vale sozinho.
+        for text in ("Não identificado", "TIERES", "ANDERSHOW", "1º tempo · 22&#39;", "S.Vryzas 17'",
+                     "assist. Karagounis", "Partida livre", "Ao vivo", "Euro vs Copa America 2004.bin"):
             self.assertIn(text, html)
-        self.assertIn("Grecia", self.app.test_client().get("/ao-vivo").get_data(as_text=True))
+        self.assertNotIn("Grecia", html)
+        self.assertRegex(html, r"\d\d/\d\d/\d{4} \d\d:\d\d · Euro vs Copa America")
+        self.assertIn("TIERES", self.app.test_client().get("/ao-vivo").get_data(as_text=True))
 
-    def test_name_seen_earlier_survives(self):
+    def test_admin_uses_the_game_names(self):
         self.post(state())
-        self.post(state(frame=40000, period=1, names=("", "")))
+        self.post(state(frame=40000, period=1, names=("", "")))  # no 2º tempo a tabela some da RAM
+        self.admin().post("/admin/ao-vivo/times", data={"csrf_token": CSRF, "content_id": "BA9BDE21:1C473F60",
+                                                        "acao": "nomes_do_jogo"})
         html = self.cards()
         self.assertIn("Grecia", html)
-        self.assertNotIn("Time 16", html)
+        self.assertIn("Croacia", html)
+        self.assertNotIn("Não identificado", html)
+
+    def test_cpu_and_unknown_players(self):
+        self.post(state(pads=(0, 255)))
+        html = self.cards()
+        self.assertIn("CPU", html)
+        self.post(state(kickoff=7000, pads=(255, 255)))
+        self.assertIn("Player 2", self.cards())
+
+    def test_filters_and_limit(self):
+        for n in range(12):
+            self.post(state(kickoff=1000 + n, goals=(n % 3, 0), final=True), players="TIERES,P%d" % n)
+        self.post(state(kickoff=99), players="Fulano,Beltrano")
+        html = self.cards()
+        self.assertEqual(html.count('<article class="live-card'), 10)
+        self.assertEqual(self.cards(jogador="beltr").count('<article class="live-card'), 1)
+        self.assertEqual(self.cards(jogador="P11").count('<article class="live-card'), 1)
+        today = datetime.now().strftime("%Y-%m-%d")
+        self.assertEqual(self.cards(de="2000-01-01", ate="2000-01-02"), "")
+        self.assertEqual(self.cards(de=today, ate=today, jogador="Fulano").count('<article class="live-card'), 1)
+        page = self.app.test_client().get("/ao-vivo?jogador=Fulano").get_data(as_text=True)
+        self.assertIn("Beltrano", page)
+        self.assertIn("/ao-vivo/cards?jogador=Fulano", page)
+        self.assertNotIn("P11", page)
 
     def test_final_agreement(self):
         self.post(state(period=1, clock=0, goals=(4, 4), final=True))
@@ -145,10 +174,32 @@ class LiveMatchesTest(unittest.TestCase):
         second = self.rows("SELECT * FROM live_matches ORDER BY id")[1]
         self.assertEqual(second["tournament_match_id"], volta)
         self.assertIn("Euro WE Camp · Final · Volta", self.cards())
-        self.assertIn("Euro WE Camp", self.cards(campeonato=self.rows("SELECT id FROM tournaments")[0]["id"]))
-        # Partida livre depois (amistoso/ISO): o slot aprendido dá o nome.
+        tournament_id = self.rows("SELECT id FROM tournaments")[0]["id"]
+        self.assertIn("Euro WE Camp", self.cards(campeonato=tournament_id))
+        self.assertIn("Euro 2004", self.cards())  # jogo base do campeonato
+        profile = self.rows("SELECT * FROM iso_profiles")[0]
+        self.assertEqual((profile["tournament_id"], profile["source"]), (tournament_id, "aprendido"))
+        # Partida livre depois (amistoso/ISO): o slot aprendido dá o nome, a ISO dá o jogo e o campeonato.
         self.post(state(kickoff=99000, goals=(0, 0)), players="TIERES,outro")
-        self.assertIn("Grécia", self.cards())
+        html = self.cards(jogador="outro")
+        self.assertIn("Grécia", html)
+        self.assertIn("Partida livre", html)
+        self.assertIn("Euro 2004", html)
+        self.assertIn("Euro WE Camp", html)
+        self.assertEqual(self.cards(campeonato=tournament_id).count('<article class="live-card'), 3)
+        self.assertEqual(self.cards(campeonato=tournament_id, recentes="1").count('<article class="live-card'), 3)
+
+    def test_profile_from_iso_file_name(self):
+        with self.app.app_context():
+            db = get_db()
+            game = db.execute("SELECT id FROM game_titles WHERE code = 'we2002'").fetchone()["id"]
+            db.execute("INSERT INTO catalog_isos (name, game_title_id, original_filename, is_active, created_at, "
+                       "updated_at) VALUES ('Euro', ?, 'Euro vs Copa America 2004.bin', 1, ?, ?)", (game, now(), now()))
+            db.commit()
+        self.post(state())
+        html = self.cards()
+        self.assertIn("Winning Eleven 2002", html)
+        self.assertIn("images/games/", html)
 
     def test_simulation_does_not_take_the_real_leg(self):
         ida, volta = self.make_tournament()
@@ -171,9 +222,9 @@ class LiveMatchesTest(unittest.TestCase):
 
     def test_test_matches_only_for_admin(self):
         self.post(state(), test=True)
-        self.assertNotIn("Grecia", self.cards())
+        self.assertNotIn("S.Vryzas", self.cards())
         admin = self.admin()
-        self.assertIn("Grecia", self.cards(admin))
+        self.assertIn("S.Vryzas", self.cards(admin))
         self.assertIn("Teste", self.cards(admin))
         admin.post("/ao-vivo/limpar-testes", data={"csrf_token": CSRF})
         self.assertEqual(len(self.rows("SELECT * FROM live_matches")), 0)

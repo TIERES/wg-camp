@@ -661,6 +661,16 @@ CREATE TABLE IF NOT EXISTS iso_team_slots (
     updated_at TEXT NOT NULL,
     PRIMARY KEY (content_id, slot)
 );
+
+-- Jogo base e campeonato de cada ISO (logos dos cards): aprendido do jogo de
+-- campeonato ligado à partida, achado pelo nome do arquivo ou do admin.
+CREATE TABLE IF NOT EXISTS iso_profiles (
+    content_id TEXT PRIMARY KEY,
+    game_title_id INTEGER REFERENCES game_titles(id) ON DELETE SET NULL,
+    tournament_id INTEGER REFERENCES tournaments(id) ON DELETE SET NULL,
+    source TEXT NOT NULL DEFAULT '' CHECK (source IN ('', 'aprendido', 'admin')),
+    updated_at TEXT NOT NULL
+);
 """
 
 
