@@ -150,6 +150,15 @@ class LiveMatchesTest(unittest.TestCase):
         self.post(state(kickoff=99000, goals=(0, 0)), players="TIERES,outro")
         self.assertIn("Grécia", self.cards())
 
+    def test_simulation_does_not_take_the_real_leg(self):
+        ida, volta = self.make_tournament()
+        self.post(state(), test=True)
+        self.assertEqual(self.rows("SELECT tournament_match_id FROM live_matches")[0]["tournament_match_id"], ida)
+        self.assertEqual(self.rows("SELECT source FROM iso_team_slots WHERE slot = 16")[0]["source"], "")
+        self.post(state(kickoff=5000))
+        real = self.rows("SELECT * FROM live_matches WHERE is_test = 0")[0]
+        self.assertEqual(real["tournament_match_id"], ida)
+
     def test_friendly_context(self):
         with self.app.app_context():
             db = get_db()
