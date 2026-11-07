@@ -9,21 +9,23 @@
   {% endif %}
 </div>
 <p class="muted">Partidas jogadas no RetroArch TIERES, com o placar lido do próprio jogo. Aparecem as {{ limit }} últimas (as ao vivo primeiro); para achar outra, use os filtros. A página se atualiza sozinha.</p>
-<form method="get" class="filters live-filters">
+{% set filtered = filters.player or filters.tournament_id or filters.friendlies or filters.date_from or filters.date_to %}
+<form method="get" class="live-filters">
   <label>Jogador<input name="jogador" value="{{ filters.player }}" maxlength="32" placeholder="Nick"></label>
   <label>Campeonato
     <select name="campeonato">
       <option value="">Todos</option>
+      <option value="amistosos" {% if filters.friendlies %}selected{% endif %}>Amistosos</option>
       {% for t in tournaments %}<option value="{{ t.id }}" {% if t.id == filters.tournament_id %}selected{% endif %}>{{ t.name }}</option>{% endfor %}
     </select>
   </label>
   <label>De<input type="date" name="de" value="{{ filters.date_from }}"></label>
   <label>Até<input type="date" name="ate" value="{{ filters.date_to }}"></label>
-  <span class="live-filter-actions"><button>Filtrar</button>{% if filters.player or filters.tournament_id or filters.date_from or filters.date_to %} <a href="{{ url_for('live.index') }}">Limpar</a>{% endif %}</span>
+  <div class="live-filter-actions"><button>Filtrar</button><a class="button secondary" href="{{ url_for('live.index') }}">Limpar filtro</a></div>
 </form>
 <section data-live-section>
   <div class="live-cards" data-live-src="{{ cards_url }}">{% include 'live/_cards.html' %}</div>
-  <p class="muted" data-live-empty {% if cards %}hidden{% endif %}>Nenhuma partida{% if filters.player or filters.tournament_id or filters.date_from or filters.date_to %} com esses filtros{% else %} ainda{% endif %}.</p>
+  <p class="muted" data-live-empty {% if cards %}hidden{% endif %}>Nenhuma partida{% if filtered %} com esses filtros{% else %} ainda{% endif %}.</p>
 </section>
 <script src="{{ url_for('static', filename='js/live-cards.js', v='20261107a') }}"></script>
 {% endblock %}
