@@ -54,7 +54,7 @@
 {# Jogos deste campeonato ao vivo ou encerrados há pouco (app/live.py). #}
 <section class="live-home" data-live-section hidden>
   <div class="live-home-head"><h2>Ao vivo</h2><a href="{{ url_for('live.index') }}">Todas as partidas</a></div>
-  <div class="live-cards" data-live-src="{{ url_for('live.cards_fragment', campeonato=t.id) }}"></div>
+  <div class="live-cards" data-live-src="{{ url_for('live.cards_fragment', campeonato=t.id, recentes=1) }}"></div>
 </section>
 <script src="{{ url_for('static', filename='js/live-cards.js', v='20261107a') }}"></script>
 

@@ -239,7 +239,8 @@ def _entry_team(db, match, nick):
 
 def learn_slots(db, live_id):
     """Jogo de campeonato: o time inscrito de quem controla cada lado ensina o
-    nome do slot desta ISO (sem mexer no que o admin cadastrou)."""
+    nome do slot desta ISO, e o campeonato ensina o jogo base e o campeonato
+    da ISO (sem mexer no que o admin cadastrou)."""
     match = db.execute("SELECT * FROM live_matches WHERE id = ?", (live_id,)).fetchone()
     for slot, nicks in ((match["local_slot"], json.loads(match["local_players_json"])),
                         (match["visita_slot"], json.loads(match["visita_players_json"]))):
@@ -250,9 +251,22 @@ def learn_slots(db, live_id):
             db.execute("UPDATE iso_team_slots SET name = ?, team_id = ?, source = 'aprendido', updated_at = ? "
                        "WHERE content_id = ? AND slot = ? AND source != 'admin'",
                        (name, team["id"] if team else None, now(), match["content_id"], slot))
+    tournament = db.execute(
+        "SELECT t.id, t.game_title_id FROM tournament_matches m JOIN tournament_stages s ON s.id = m.stage_id "
+        "JOIN tournaments t ON t.id = s.tournament_id WHERE m.id = ?", (match["tournament_match_id"],)).fetchone()
+    if tournament:
+        db.execute("INSERT OR IGNORE INTO iso_profiles (content_id, updated_at) VALUES (?, ?)",
+                   (match["content_id"], now()))
+        db.execute("UPDATE iso_profiles SET game_title_id = ?, tournament_id = ?, source = 'aprendido', updated_at = ? "
+                   "WHERE content_id = ? AND source != 'admin'",
+                   (tournament["game_title_id"], tournament["id"], now(), match["content_id"]))
 
 
 # --- Cards ----------------------------------------------------------------------
+
+UNKNOWN_TEAM = "Não identificado"
+CARDS_LIMIT = 10
+
 
 def reap(db):
     """Partidas sem informe há muito tempo: encerradas (se paradas no fim do
@@ -264,26 +278,23 @@ def reap(db):
 
 
 def _team_view(db, match, side, team_state, nicks):
+    """Time de um lado: o da inscrição (jogo de campeonato) ou o cadastrado
+    para o slot desta ISO; sem nenhum dos dois, "Não identificado" - o nome da
+    tabela da ISO não vale sozinho (muitos patches não a renomeiam)."""
     from .tournaments import team_image
     slot = team_state.get("id")
     name, team = (None, None)
     if match["tournament_match_id"] and len(nicks) == 1:
         name, team = _entry_team(db, match, nicks[0])
-    row = None
     if not name:
         row = db.execute("SELECT s.*, t.name AS team_name FROM iso_team_slots s LEFT JOIN teams t ON t.id = s.team_id "
                          "WHERE s.content_id = ? AND s.slot = ?", (match["content_id"], slot)).fetchone()
         if row and (row["name"] or row["team_id"]):
             name = row["name"] or row["team_name"]
             team = db.execute("SELECT * FROM teams WHERE id = ?", (row["team_id"],)).fetchone() if row["team_id"] else None
-    if not name:
-        # A tabela de nomes nem sempre está na RAM (no 2º tempo some): vale o último nome visto deste slot.
-        ram = team_state.get("name", "")
-        ram = ram if NAME_RE.match(ram) else (row["ram_name"] if row else "")
-        name = ram.title() if ram else "Time %s" % slot
-    image = team_image(team) if team else generated_badge(name)
-    return {"name": name, "image": image, "goals": team_state.get("goals", 0), "players": nicks,
-            "scorers": team_state.get("scorers", [])}
+    image = team_image(team) if team else generated_badge(name or "?")
+    return {"name": name or UNKNOWN_TEAM, "known": bool(name), "image": image, "goals": team_state.get("goals", 0),
+            "players": list(nicks), "scorers": team_state.get("scorers", [])}
 
 
 def _clock_label(match):
@@ -316,49 +327,144 @@ def _context(db, match):
     return "Partida livre", None
 
 
+def _file_name(match):
+    return re.sub(r"^PCSX ReARMed:\s*", "", match["room"] or "")
+
+
+def _profile(db, match):
+    """Jogo base e campeonato da ISO da partida (os logos do card): o do jogo
+    de campeonato ligado, o do amistoso, o cadastrado/aprendido para a ISO ou
+    o da ISO de campeonato/amistoso com o mesmo nome de arquivo."""
+    game_id = tournament_id = None
+    if match["tournament_match_id"]:
+        row = db.execute("SELECT t.id, t.game_title_id FROM tournament_matches m JOIN tournament_stages s "
+                         "ON s.id = m.stage_id JOIN tournaments t ON t.id = s.tournament_id WHERE m.id = ?",
+                         (match["tournament_match_id"],)).fetchone()
+        if row:
+            game_id, tournament_id = row["game_title_id"], row["id"]
+    if game_id is None and match["friendly_id"]:
+        row = db.execute("SELECT game_title_id, iso_tournament_id FROM friendly_matches WHERE id = ?",
+                         (match["friendly_id"],)).fetchone()
+        if row:
+            game_id, tournament_id = row["game_title_id"], row["iso_tournament_id"]
+    if game_id is None:
+        row = db.execute("SELECT * FROM iso_profiles WHERE content_id = ?", (match["content_id"],)).fetchone()
+        if row:
+            game_id, tournament_id = row["game_title_id"], row["tournament_id"]
+    file_name = _file_name(match)
+    if game_id is None and file_name:
+        row = db.execute("SELECT t.id, t.game_title_id FROM tournament_isos i JOIN tournaments t ON t.id = i.tournament_id "
+                         "WHERE i.original_filename = ? COLLATE NOCASE AND t.status != 'cancelled' "
+                         "ORDER BY t.updated_at DESC LIMIT 1", (file_name,)).fetchone()
+        if row:
+            game_id, tournament_id = row["game_title_id"], row["id"]
+        else:
+            row = db.execute("SELECT game_title_id FROM catalog_isos WHERE original_filename = ? COLLATE NOCASE "
+                             "AND is_active = 1 LIMIT 1", (file_name,)).fetchone()
+            game_id = row["game_title_id"] if row else None
+    game = db.execute("SELECT name, code FROM game_titles WHERE id = ?", (game_id,)).fetchone() if game_id else None
+    tournament = db.execute("SELECT name, slug, image FROM tournaments WHERE id = ?",
+                            (tournament_id,)).fetchone() if tournament_id else None
+    return game, tournament
+
+
 def card(db, match):
+    from .images import url as image_url
+    from .timeutil import format_local
+    from .tournament.games import cover_url
     state = json.loads(match["state_json"] or "{}")
     teams = state.get("teams") or [{}, {}]
     sides = (json.loads(match["local_players_json"]), json.loads(match["visita_players_json"]))
     label, link = _context(db, match)
     stale = match["status"] == "live" and match["updated_at"] < _ago(STALE)
+    game, tournament = _profile(db, match)
+    views = [_team_view(db, match, i, teams[i] if i < len(teams) else {}, sides[i]) for i in (0, 1)]
+    # Lado sem controle: a CPU (o outro lado tem jogador) ou, sem a tabela de controles, "Player N".
+    nobody = not any(view["players"] for view in views)
+    for number, view in enumerate(views, 1):
+        if not view["players"]:
+            view["players"] = ["Player %d" % number] if nobody else ["CPU"]
     return {"id": match["id"], "status": match["status"], "stale": stale, "is_test": match["is_test"],
             "clock": "Sem sinal" if stale else _clock_label(match), "context": label, "link": link,
-            "agreed": match["agreed"], "reporters": match["reporters"],
-            "game": re.sub(r"^PCSX ReARMed:\s*", "", match["room"] or ""),
-            "teams": [_team_view(db, match, i, teams[i] if i < len(teams) else {}, sides[i]) for i in (0, 1)]}
+            "agreed": match["agreed"], "reporters": match["reporters"], "file": _file_name(match),
+            "when": format_local(match["started_at"], "%d/%m/%Y %H:%M"),
+            "game": {"name": game["name"], "cover": cover_url(game["code"])} if game else None,
+            "tournament": {"name": tournament["name"], "image": image_url("torneio", tournament["image"]),
+                           "url": url_for("tournaments.show", slug=tournament["slug"])} if tournament else None,
+            "teams": views}
 
 
-def list_cards(db, tournament_id=None, only_live=False, limit=20):
+def _local_day(value, end=False):
+    """AAAA-MM-DD (dia em São Paulo) -> início do dia (ou do dia seguinte) em UTC ISO."""
+    from .timeutil import LOCAL_TZ
+    try:
+        day = datetime.strptime(value, "%Y-%m-%d")
+    except (TypeError, ValueError):
+        return None
+    moment = day.replace(tzinfo=LOCAL_TZ) + (timedelta(days=1) if end else timedelta())
+    return moment.astimezone(timezone.utc).isoformat(timespec="seconds")
+
+
+def list_cards(db, tournament_id=None, only_live=False, recent_only=False, player="", date_from="", date_to="",
+               limit=CARDS_LIMIT):
+    """As últimas partidas (ao vivo primeiro), com os filtros da página."""
     reap(db)
-    where = ["(m.status = 'live' OR m.finished_at >= ?)"]
-    params = [_ago(RECENT)]
+    where, params = [], []
     if only_live:
-        where = ["m.status = 'live'"]
-        params = []
+        where.append("m.status = 'live'")
+    elif recent_only:
+        where.append("(m.status = 'live' OR m.finished_at >= ?)")
+        params.append(_ago(RECENT))
     if not _is_admin():
         where.append("m.is_test = 0")
-    join = ""
     if tournament_id:
-        join = "JOIN tournament_matches tm ON tm.id = m.tournament_match_id JOIN tournament_stages ts ON ts.id = tm.stage_id"
-        where.append("ts.tournament_id = ?")
-        params.append(tournament_id)
+        where.append("(m.tournament_match_id IN (SELECT tm.id FROM tournament_matches tm JOIN tournament_stages ts "
+                     "ON ts.id = tm.stage_id WHERE ts.tournament_id = ?) OR (m.tournament_match_id IS NULL AND "
+                     "m.content_id IN (SELECT content_id FROM iso_profiles WHERE tournament_id = ?)))")
+        params += [tournament_id, tournament_id]
+    if player:
+        where.append("m.players_json LIKE ?")
+        params.append("%" + player.replace("%", "").replace("_", "") + "%")
+    start, end = _local_day(date_from), _local_day(date_to, end=True)
+    if start:
+        where.append("m.started_at >= ?")
+        params.append(start)
+    if end:
+        where.append("m.started_at < ?")
+        params.append(end)
     rows = db.execute(
-        f"SELECT m.* FROM live_matches m {join} WHERE {' AND '.join(where)} "
-        "ORDER BY m.status = 'live' DESC, m.updated_at DESC LIMIT ?", (*params, limit)).fetchall()
+        "SELECT m.* FROM live_matches m %s ORDER BY m.status = 'live' DESC, m.started_at DESC LIMIT ?"
+        % ("WHERE " + " AND ".join(where) if where else ""), (*params, limit)).fetchall()
     return [card(db, row) for row in rows]
+
+
+def _filters():
+    args = request.args
+    return {"player": args.get("jogador", "").strip()[:32], "tournament_id": args.get("campeonato", type=int),
+            "date_from": args.get("de", ""), "date_to": args.get("ate", "")}
 
 
 @bp.get("/ao-vivo")
 def index():
-    return render_template("live/index.html", cards=list_cards(get_db()), is_admin=_is_admin())
+    db = get_db()
+    filters = _filters()
+    tournaments = db.execute(
+        "SELECT t.id, t.name FROM tournaments t WHERE t.id IN ("
+        "SELECT s.tournament_id FROM live_matches m JOIN tournament_matches tm ON tm.id = m.tournament_match_id "
+        "JOIN tournament_stages s ON s.id = tm.stage_id UNION SELECT tournament_id FROM iso_profiles "
+        "WHERE tournament_id IS NOT NULL) ORDER BY t.name COLLATE NOCASE").fetchall()
+    return render_template("live/index.html", cards=list_cards(db, **filters), filters=filters,
+                           tournaments=tournaments, is_admin=_is_admin(), limit=CARDS_LIMIT,
+                           cards_url=url_for("live.cards_fragment", **request.args.to_dict()))
 
 
 @bp.get("/ao-vivo/cards")
 def cards_fragment():
-    """Só os cards (a página atualiza com isto a cada poucos segundos)."""
-    cards = list_cards(get_db(), tournament_id=request.args.get("campeonato", type=int),
-                       only_live=request.args.get("so_ao_vivo") == "1")
+    """Só os cards (as páginas atualizam com isto a cada poucos segundos): a
+    inicial pede so_ao_vivo=1, a do campeonato as recentes dele (recentes=1)."""
+    recent = request.args.get("recentes") == "1"
+    cards = list_cards(get_db(), only_live=request.args.get("so_ao_vivo") == "1", recent_only=recent,
+                       limit=4 if recent else CARDS_LIMIT, **_filters())
     return render_template("live/_cards.html", cards=cards)
 
 
@@ -373,7 +479,16 @@ def clear_tests():
     return redirect(url_for("live.index"))
 
 
-# --- Admin: times de cada ISO ---------------------------------------------------
+# --- Admin: times, jogo base e campeonato de cada ISO ----------------------------
+
+def _save_slot(db, content_id, slot, name):
+    """Nome de um slot: um time da base (com escudo/bandeira) ou um nome livre; vazio apaga."""
+    team = db.execute("SELECT id, name FROM teams WHERE name = ? COLLATE NOCASE", (name,)).fetchone() if name else None
+    db.execute("UPDATE iso_team_slots SET name = ?, team_id = ?, source = ?, updated_at = ? "
+               "WHERE content_id = ? AND slot = ?",
+               (team["name"] if team else name, team["id"] if team else None, "admin" if name else "", now(),
+                content_id, slot))
+
 
 @bp.route("/admin/ao-vivo/times", methods=("GET", "POST"))
 @login_required
@@ -381,23 +496,38 @@ def admin_slots():
     db = get_db()
     if request.method == "POST":
         validate_csrf()
-        content_id, slot = request.form.get("content_id", ""), request.form.get("slot", type=int)
-        name = request.form.get("name", "").strip()[:40]
-        team = db.execute("SELECT id, name FROM teams WHERE name = ? COLLATE NOCASE", (name,)).fetchone() if name else None
-        db.execute("UPDATE iso_team_slots SET name = ?, team_id = ?, source = ?, updated_at = ? "
-                   "WHERE content_id = ? AND slot = ?",
-                   (team["name"] if team else name, team["id"] if team else None, "admin" if name else "", now(),
-                    content_id, slot))
+        content_id, action = request.form.get("content_id", ""), request.form.get("acao", "slot")
+        if action == "perfil":
+            game_id = request.form.get("game_title_id", type=int) or None
+            tournament_id = request.form.get("tournament_id", type=int) or None
+            db.execute("INSERT OR IGNORE INTO iso_profiles (content_id, updated_at) VALUES (?, ?)", (content_id, now()))
+            db.execute("UPDATE iso_profiles SET game_title_id = ?, tournament_id = ?, source = ?, updated_at = ? "
+                       "WHERE content_id = ?", (game_id, tournament_id, "admin" if game_id or tournament_id else "",
+                                                now(), content_id))
+            flash("Jogo base e campeonato da ISO salvos.", "success")
+        elif action == "nomes_do_jogo":
+            rows = db.execute("SELECT slot, ram_name FROM iso_team_slots WHERE content_id = ? AND ram_name != '' "
+                              "AND name = '' AND team_id IS NULL", (content_id,)).fetchall()
+            for row in rows:
+                _save_slot(db, content_id, row["slot"], row["ram_name"].title())
+            flash("%d slot(s) com o nome do jogo." % len(rows), "success")
+        else:
+            _save_slot(db, content_id, request.form.get("slot", type=int), request.form.get("name", "").strip()[:40])
+            flash("Time salvo.", "success")
         db.commit()
-        flash("Time salvo." if name else "Cadastro do slot apagado.", "success")
         return redirect(url_for("live.admin_slots"))
     rows = db.execute("SELECT s.*, t.name AS team_name FROM iso_team_slots s LEFT JOIN teams t ON t.id = s.team_id "
                       "ORDER BY s.room, s.content_id, s.slot").fetchall()
     groups = {}
     for row in rows:
         groups.setdefault((row["content_id"], re.sub(r"^PCSX ReARMed:\s*", "", row["room"] or "")), []).append(row)
+    profiles = {row["content_id"]: row for row in db.execute("SELECT * FROM iso_profiles")}
     teams = [r["name"] for r in db.execute("SELECT DISTINCT name FROM teams WHERE is_active = 1 ORDER BY name")]
-    return render_template("live/admin_slots.html", groups=groups, teams=teams)
+    games = db.execute("SELECT id, name FROM game_titles WHERE is_active = 1 ORDER BY year, name").fetchall()
+    tournaments = db.execute("SELECT id, name FROM tournaments WHERE status != 'cancelled' "
+                             "ORDER BY name COLLATE NOCASE").fetchall()
+    return render_template("live/admin_slots.html", groups=groups, teams=teams, profiles=profiles, games=games,
+                           tournaments=tournaments)
 
 
 @bp.app_template_filter("scorer")
