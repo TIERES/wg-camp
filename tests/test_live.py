@@ -630,12 +630,15 @@ class LiveMatchesTest(unittest.TestCase):
             db.execute("UPDATE live_matches SET finished_at = ?",
                        ((datetime.now(timezone.utc) - timedelta(minutes=2)).replace(microsecond=0).isoformat(),))
             db.commit()
+        self.cards()  # a sessão ainda pode continuar (outro jogo): nada lançado
+        self.assertEqual(self.rows("SELECT status FROM friendly_matches WHERE id = ?", fid)[0]["status"], "accepted")
+        self.end_session()
         self.cards()  # reap -> report_finished
         row = self.rows("SELECT * FROM friendly_matches WHERE id = ?", fid)[0]
         live = self.rows("SELECT finished_at, game_report FROM live_matches")[0]
         self.assertEqual((row["status"], row["home_goals"], row["away_goals"], row["reported_by"], row["game_report"],
                           row["reported_at"]), ("reported", 1, 3, None, 1, live["finished_at"]))
-        self.assertEqual(live["game_report"], "reportado")
+        self.assertEqual(live["game_report"], "reportado (soma de 1 jogo)")
         # Os dois confirmam: o primeiro só marca a dele.
         client = self.app.test_client()
         with client.session_transaction() as sess:
@@ -652,6 +655,72 @@ class LiveMatchesTest(unittest.TestCase):
             friendly.confirm(db, fid, self.anders)
             db.commit()
         self.assertEqual(self.rows("SELECT status FROM friendly_matches WHERE id = ?", fid)[0]["status"], "confirmed")
+
+    def end_session(self, nicks="TIERES, ANDERSHOW"):
+        """A transmissão do Stream ao vivo dos dois terminou: um deles saiu da sessão."""
+        with self.app.app_context():
+            db = get_db()
+            db.execute("INSERT INTO live_sessions (session_id, player_names, status, stored_name, started_at, updated_at, "
+                       "ended_at) VALUES (?, ?, 'finished', 'x.krec', ?, ?, ?)",
+                       ("s%d" % len(self.rows("SELECT id FROM live_sessions")), nicks, now(), now(), now()))
+            db.commit()
+
+    def play(self, kickoff, goals, pads=(0, 1), finish=True):
+        """Uma partida inteira dos dois PCs (terminada há 2 minutos)."""
+        self.post(state(kickoff=kickoff, goals=goals, pads=pads))
+        if finish:
+            self.post(state(kickoff=kickoff, goals=goals, pads=pads, period=1, clock=0, final=True, frame=90000))
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE live_matches SET finished_at = ? WHERE kickoff_frame = ? AND finished_at IS NOT NULL",
+                       ((datetime.now(timezone.utc) - timedelta(minutes=2)).replace(microsecond=0).isoformat(), kickoff))
+            db.commit()
+
+    def test_friendly_sums_the_games_of_the_session(self):
+        t, group, entries = self.make_league()  # há jogo de campeonato em aberto entre os dois
+        with self.app.app_context():
+            db = get_db()
+            fid = db.execute("INSERT INTO friendly_matches (home_id, away_id, status, created_at, updated_at) "
+                             "VALUES (?, ?, 'accepted', ?, ?)", (self.tieres, self.anders, now(), now())).lastrowid
+            db.commit()
+        # P1 = TIERES, P2 = ANDERSHOW (controles 1 e 2): 2 x 1, 0 x 3, 1 x 3.
+        self.play(1000, (2, 1))
+        self.play(40000, (0, 3))
+        self.play(80000, (1, 3))
+        rows = self.rows("SELECT friendly_id, tournament_match_id FROM live_matches")
+        self.assertEqual({(r["friendly_id"], r["tournament_match_id"]) for r in rows}, {(fid, None)})  # amistoso primeiro
+        self.assertEqual(self.cards().count('<article class="live-card'), 3)  # um card por jogo
+        self.cards()
+        self.assertEqual(self.rows("SELECT status FROM friendly_matches WHERE id = ?", fid)[0]["status"], "accepted")
+        self.end_session()
+        self.cards()
+        row = self.rows("SELECT * FROM friendly_matches WHERE id = ?", fid)[0]
+        self.assertEqual((row["status"], row["home_goals"], row["away_goals"]), ("reported", 3, 7))
+        self.assertEqual({r["game_report"] for r in self.rows("SELECT game_report FROM live_matches")},
+                         {"reportado (soma de 3 jogos)"})
+        # O jogo de campeonato entre os dois continua sem placar.
+        self.assertEqual(self.rows("SELECT status FROM tournament_matches WHERE status != 'confirmed'")[0]["status"],
+                         "scheduled")
+
+    def test_friendly_session_ends_after_a_gap_without_games(self):
+        with self.app.app_context():
+            db = get_db()
+            fid = db.execute("INSERT INTO friendly_matches (home_id, away_id, status, created_at, updated_at) "
+                             "VALUES (?, ?, 'accepted', ?, ?)", (self.anders, self.tieres, now(), now())).lastrowid
+            db.commit()
+        self.play(1000, (2, 2))
+        self.play(40000, (1, 0), finish=False)  # o segundo ficou pela metade: um saiu
+        with self.app.app_context():
+            db = get_db()
+            old = (datetime.now(timezone.utc) - timedelta(minutes=25)).replace(microsecond=0).isoformat()
+            db.execute("UPDATE live_matches SET status = CASE WHEN kickoff_frame = 40000 THEN 'abandoned' ELSE status END, "
+                       "finished_at = ?, updated_at = ?", (old, old))
+            db.commit()
+        self.cards()
+        row = self.rows("SELECT * FROM friendly_matches WHERE id = ?", fid)[0]
+        self.assertEqual((row["status"], row["home_goals"], row["away_goals"]), ("reported", 2, 2))
+        notes = {r["kickoff_frame"]: r["game_report"] for r in self.rows("SELECT kickoff_frame, game_report FROM live_matches")}
+        self.assertEqual(notes, {1000: "reportado (soma de 1 jogo)", 40000: "partida interrompida: não soma"})
 
     def test_friendly_game_score_confirms_by_itself_in_24h(self):
         from app.tournament import friendly

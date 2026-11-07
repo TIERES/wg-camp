@@ -227,13 +227,30 @@ def _player_id(db, nick):
 
 
 def detect_context(db, match, local_nick, visita_nick):
-    """Liga a partida ao próximo jogo de campeonato entre os dois (ainda sem
-    placar e sem outra partida ao vivo ligada) ou a um amistoso aceito. As
+    """Liga a partida a um amistoso aceito entre os dois (prioridade: com
+    amistoso marcado, as partidas vão para ele, mesmo com jogo de campeonato
+    em aberto - todas as da sessão, somadas no fim, _report_friendlies) ou ao
+    próximo jogo de campeonato entre eles (ainda sem placar e sem outra
+    partida ao vivo ligada). A ISO tem que ser a do amistoso/campeonato. As
     simulações (is_test) só disputam os jogos entre si e não ensinam slots."""
     a, b = _player_id(db, local_nick), _player_id(db, visita_nick)
     if not a or not b or a == b:
         return
     content = match["content_id"]
+    # Amistoso: a ISO escolhida no convite (a de um campeonato ou uma do
+    # cadastro) tem que bater; sem ISO escolhida ou sem identificação, vale.
+    row = db.execute(
+        "SELECT f.id FROM friendly_matches f LEFT JOIN tournament_isos ti ON ti.tournament_id = f.iso_tournament_id "
+        "LEFT JOIN catalog_isos ci ON ci.id = f.iso_catalog_id "
+        "WHERE f.status = 'accepted' "
+        "AND ((f.home_id = ? AND f.away_id = ?) OR (f.home_id = ? AND f.away_id = ?)) "
+        "AND (COALESCE(ti.content_id, ci.content_id) IS NULL OR COALESCE(ti.content_id, ci.content_id) = ? COLLATE NOCASE "
+        "OR EXISTS (SELECT 1 FROM iso_profiles p WHERE p.content_id = ? COLLATE NOCASE "
+        "AND (p.tournament_id = f.iso_tournament_id OR p.catalog_iso_id = f.iso_catalog_id))) "
+        "ORDER BY f.created_at LIMIT 1", (a, b, b, a, content, content)).fetchone()
+    if row:
+        db.execute("UPDATE live_matches SET friendly_id = ? WHERE id = ?", (row["id"], match["id"]))
+        return
     taken = ("SELECT tournament_match_id FROM live_matches WHERE tournament_match_id IS NOT NULL AND id != ? "
              "AND is_test = ?")
     # A ISO tem que ser a do campeonato (content_id dela ou uma ligada pelo
@@ -252,21 +269,6 @@ def detect_context(db, match, local_nick, visita_nick):
         db.execute("UPDATE live_matches SET tournament_match_id = ? WHERE id = ?", (row["id"], match["id"]))
         if not match["is_test"]:
             learn_slots(db, match["id"])
-        return
-    # Amistoso: a ISO escolhida no convite (a de um campeonato ou uma do
-    # cadastro) tem que bater; sem ISO escolhida ou sem identificação, vale.
-    row = db.execute(
-        "SELECT f.id FROM friendly_matches f LEFT JOIN tournament_isos ti ON ti.tournament_id = f.iso_tournament_id "
-        "LEFT JOIN catalog_isos ci ON ci.id = f.iso_catalog_id "
-        "WHERE f.status IN ('accepted', 'reported', 'suspended') "
-        "AND ((f.home_id = ? AND f.away_id = ?) OR (f.home_id = ? AND f.away_id = ?)) "
-        "AND (COALESCE(ti.content_id, ci.content_id) IS NULL OR COALESCE(ti.content_id, ci.content_id) = ? COLLATE NOCASE "
-        "OR EXISTS (SELECT 1 FROM iso_profiles p WHERE p.content_id = ? COLLATE NOCASE "
-        "AND (p.tournament_id = f.iso_tournament_id OR p.catalog_iso_id = f.iso_catalog_id))) "
-        "AND f.id NOT IN (SELECT friendly_id FROM live_matches WHERE friendly_id IS NOT NULL AND id != ? AND is_test = ?) "
-        "ORDER BY f.created_at LIMIT 1", (a, b, b, a, content, content, match["id"], match["is_test"])).fetchone()
-    if row:
-        db.execute("UPDATE live_matches SET friendly_id = ? WHERE id = ?", (row["id"], match["id"]))
 
 
 def _entry_team(db, match, nick):
@@ -643,30 +645,72 @@ def report_finished(db):
     _report_friendlies(db)
 
 
+# Sem a transmissão do Stream ao vivo para dizer que a sessão do Kaillera
+# acabou, ela acaba depois disso sem um jogo novo entre os dois.
+SESSION_GAP = timedelta(minutes=20)
+
+
+def _session_over(db, nicks, last_finished):
+    """A sessão do Kaillera em que os dois jogaram já acabou (um deles saiu)?
+    A transmissão do Stream ao vivo dos dois terminou depois do último jogo,
+    ou passou SESSION_GAP sem jogo novo."""
+    if last_finished <= _ago(SESSION_GAP):
+        return True
+    for row in db.execute("SELECT player_names FROM live_sessions WHERE status = 'finished' AND ended_at >= ?",
+                          (last_finished,)):
+        names = {n.strip().casefold() for n in (row["player_names"] or "").split(",")}
+        if all(nick.casefold() in names for nick in nicks):
+            return True
+    return False
+
+
 def _report_friendlies(db):
-    """O mesmo para os amistosos: o placar lido vira o placar do amistoso
-    (friendly.report_from_game), que os dois confirmam ou vale sozinho no prazo."""
+    """Amistoso: as partidas da sessão (cada uma com o seu card) somam no fim,
+    por jogador, e o total vira o placar do amistoso (friendly.report_from_game)
+    quando a sessão acaba - um dos jogadores saiu. Contam os jogos terminados,
+    com o placar final de acordo nos PCs; os dois confirmam ou ele vale sozinho
+    no prazo, contado do fim do último jogo."""
     from .tournament import friendly
     from .tournament.store import TournamentError
-    rows = db.execute(
-        "SELECT m.*, hp.username AS home_nick, ap.username AS away_nick FROM live_matches m "
-        "JOIN friendly_matches f ON f.id = m.friendly_id JOIN players hp ON hp.id = f.home_id "
-        "JOIN players ap ON ap.id = f.away_id WHERE m.status = 'finished' AND m.is_test = 0 AND m.verified = 1 "
-        "AND m.game_report IS NULL AND m.finished_at <= ?", (_ago(REPORT_SETTLE),)).fetchall()
-    for row in rows:
-        finals = {(s["teams"][0]["goals"], s["teams"][1]["goals"]) for s in (
-            json.loads(r["state_json"]) for r in db.execute(
-                "SELECT state_json FROM live_match_reports WHERE live_match_id = ? AND final = 1", (row["id"],)))}
-        score = _home_away(row, next(iter(finals))) if len(finals) == 1 else None
-        outcome = ("sem o fim mandado pelos PCs" if not finals else "os PCs discordam do placar" if len(finals) > 1
-                   else "não deu para saber quem é o mandante" if score is None else None)
-        if outcome is None:
+    for f in db.execute(
+            "SELECT f.id, hp.username AS home_nick, ap.username AS away_nick FROM friendly_matches f "
+            "JOIN players hp ON hp.id = f.home_id JOIN players ap ON ap.id = f.away_id WHERE f.status = 'accepted' "
+            "AND EXISTS (SELECT 1 FROM live_matches m WHERE m.friendly_id = f.id AND m.is_test = 0 AND m.verified = 1 "
+            "AND m.game_report IS NULL)").fetchall():
+        games = db.execute(
+            "SELECT * FROM live_matches WHERE friendly_id = ? AND is_test = 0 AND verified = 1 AND game_report IS NULL "
+            "ORDER BY started_at", (f["id"],)).fetchall()
+        if any(g["status"] == "live" for g in games):
+            continue  # ainda jogando
+        finished = [g for g in games if g["status"] == "finished"]
+        last = max((g["finished_at"] or g["updated_at"] for g in games), default=None)
+        if not last or last > _ago(REPORT_SETTLE) or not _session_over(db, (f["home_nick"], f["away_nick"]), last):
+            continue
+        total, counted, notes = [0, 0], 0, {}
+        for g in finished:
+            finals = {(s["teams"][0]["goals"], s["teams"][1]["goals"]) for s in (
+                json.loads(r["state_json"]) for r in db.execute(
+                    "SELECT state_json FROM live_match_reports WHERE live_match_id = ? AND final = 1", (g["id"],)))}
+            row = dict(g, home_nick=f["home_nick"], away_nick=f["away_nick"])
+            score = _home_away(row, next(iter(finals))) if len(finals) == 1 else None
+            if score is None:
+                notes[g["id"]] = ("sem o fim mandado pelos PCs" if not finals else "os PCs discordam do placar"
+                                  if len(finals) > 1 else "não deu para saber quem é o mandante")
+                continue
+            total[0] += score[0]
+            total[1] += score[1]
+            counted += 1
+        outcome = "nenhum jogo terminado para somar"
+        if counted:
             try:
-                friendly.report_from_game(db, row["friendly_id"], *score, row["finished_at"])
-                outcome = "reportado"
+                friendly.report_from_game(db, f["id"], total[0], total[1], last)
+                outcome = "reportado (soma de %d jogo%s)" % (counted, "s" if counted > 1 else "")
             except TournamentError as error:
                 outcome = str(error)[:200]
-        db.execute("UPDATE live_matches SET game_report = ? WHERE id = ?", (outcome, row["id"]))
+        for g in games:
+            db.execute("UPDATE live_matches SET game_report = ? WHERE id = ?",
+                       (notes.get(g["id"]) or ("partida interrompida: não soma" if g["status"] == "abandoned" else outcome),
+                        g["id"]))
         db.commit()
 
 
