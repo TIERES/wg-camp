@@ -120,6 +120,12 @@ def history_url(row):
 
 
 @bp.app_template_global()
+def friendly_deadline(row):
+    """Até quando o placar de amistoso lido do jogo espera os jogadores."""
+    return friendly.deadline(get_db(), row)
+
+
+@bp.app_template_global()
 def reported_score(match):
     """Último placar reportado de um jogo ainda não confirmado (para exibir
     antes da confirmação), com cache por requisição."""
@@ -694,7 +700,9 @@ def friendly_action(friendly_id, acao):
     }
     if acao in mails:
         notify.friendly_event(db, row, other, *mails[acao])
-    if acao == "confirmar":
+    if acao == "confirmar" and row["status"] != "confirmed":
+        flash("Confirmação registrada: falta o adversário confirmar (ou o prazo acabar).", "success")
+    elif acao == "confirmar":
         flash("Placar confirmado! " + ("O amistoso vale para o Ranking e o XP." if row["ranked"]
                                        else f"Não vale para o Ranking: {row['unranked_reason']}."),
               "success" if row["ranked"] else "info")
@@ -1310,6 +1318,7 @@ def match(slug, match_id):
         "SELECT e.id, p.id AS player_id, p.username FROM tournament_entries e JOIN players p ON p.id = e.player_id "
         "WHERE e.id IN (?, ?)", (m["home_entry_id"], m["away_entry_id"]))}
     home, away = sides.get(m["home_entry_id"]), sides.get(m["away_entry_id"])
+    quitter = next((s["username"] for s in sides.values() if m["quitter_id"] and s["player_id"] == m["quitter_id"]), None)
     h2h = {"home": home["username"], "away": away["username"],
            "record": stats.player_record(db, home["player_id"], opponent_id=away["player_id"])} if home and away else None
     live_now = None
@@ -1320,6 +1329,7 @@ def match(slug, match_id):
             live_now = {"score": rolling["matches"][match_id], "url": rolling["match_urls"][match_id]}
     return render_template(
         "tournaments/match.html", t=tournament, m=m, names=names, me=me, manager=manager, h2h=h2h, live_now=live_now,
+        quitter=quitter,
         confirm_hours=setting(db, "torneios_confirmacao_horas"),
         history=reports.history(db, match_id), labels=reports.ACTION_LABELS,
         disputer=reports.disputer(db, match_id) if m["status"] == "disputed" else None,
@@ -1565,6 +1575,7 @@ def _auto_confirm_reports():
         from . import live
         live.reap(db)  # jogos do Ao vivo encerrados viram reporte (live.report_finished)
         reports.auto_confirm(db, disputed=disputed)
+        friendly.auto_confirm(db)  # placares de amistoso lidos do jogo, sem resposta no prazo
         for tournament_id, match_id in disputed:
             notify.score_disputed(db, store.get_tournament(db, tournament_id), match_id)
         notify.sweep(db)  # avisa o fim dos jogos e encerra quem passou do prazo

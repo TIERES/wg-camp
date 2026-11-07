@@ -31,6 +31,8 @@
     <strong class="friendly-score-text">{% if f.home_goals is not none and f.status in ('reported', 'suspended', 'confirmed') %}{{ f.home_goals }} x {{ f.away_goals }}{% else %}x{% endif %}</strong>
     <span class="with-avatar away"><a href="{{ url_for('tournaments.player', nome=f.away_name) }}">{{ f.away_name }}</a>{{ avatar_button(f.away_id, f.away_name) }}</span>
   </div>
+  {% if f.quitter_id and f.status in ('reported', 'confirmed') %}<p class="friendly-warn">{{ f.home_name if f.quitter_id == f.home_id else f.away_name }} saiu da partida no meio de um jogo (o placar até ali conta){% if f.status == 'reported' %}: se o placar for confirmado, perde o triplo de XP - mesmo que tenha sido queda de conexão{% else %} e perdeu o triplo de XP{% endif %}.</p>
+  <p class="friendly-note muted">Joguem até o fim, mesmo faltando pouco tempo. Se a conexão cair, voltem em até 20 minutos e terminem outra partida antes de sair: o placar do jogo interrompido continua contando, mas sem a penalidade.</p>{% endif %}
   {% if f.message %}<p class="friendly-note"><small class="muted">Recado de {{ f.home_name }}:</small> {{ f.message }}</p>{% endif %}
   {% if f.iso_title %}
   <div class="friendly-iso">
@@ -55,13 +57,20 @@
     {% endif %}
   {% elif f.status == 'accepted' and mine %}
     <p class="muted">Depois do jogo, informe o placar. {{ other }} vai precisar confirmar.</p>
+    <p class="friendly-note muted">Com os dois logados no WE Camp, o RetroArch TIERES manda o placar sozinho. Joguem até o fim, mesmo faltando pouco tempo: quem sai no meio de um jogo (até por queda de conexão) perde o triplo de XP se o placar for confirmado. Se a conexão cair, voltem em até 20 minutos e terminem outra partida antes de sair.</p>
     {{ score_form(f, 'Enviar placar', back) }}
     <div class="card-actions">{{ friendly_form(f, 'cancelar', 'Cancelar amistoso', 'secondary', '', back) }}</div>
   {% elif f.status == 'reported' and mine %}
     {% if f.reported_by == me %}
     <p class="muted">Você informou o placar. Aguardando {{ other }} confirmar.</p>
+    {% elif f.game_report and f.first_confirmed_by == me %}
+    <p class="muted">Você confirmou o placar lido do jogo. Aguardando {{ other }} confirmar{% if friendly_deadline(f) %} (ou ele vale sozinho em {{ friendly_deadline(f)|localtime }}){% endif %}.</p>
+    {% else %}
+    {% if f.game_report %}
+    <p>O jogo terminou <strong>{{ f.home_name }} {{ f.home_goals }} x {{ f.away_goals }} {{ f.away_name }}</strong> (placar lido do jogo pelo RetroArch TIERES). Os dois confirmam{% if f.first_confirmed_by %} - {{ other }} já confirmou{% endif %}; sem resposta, ele vale sozinho{% if friendly_deadline(f) %} em {{ friendly_deadline(f)|localtime }}{% endif %}.</p>
     {% else %}
     <p>{{ f.reported_name }} informou o placar <strong>{{ f.home_name }} {{ f.home_goals }} x {{ f.away_goals }} {{ f.away_name }}</strong>. Está certo?</p>
+    {% endif %}
     <form method="post" class="friendly-reject" action="{{ url_for('tournaments.friendly_action', friendly_id=f.id, acao='rejeitar') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% if back %}<input type="hidden" name="voltar" value="{{ back }}">{% endif %}
       <details><summary>Não aceito este placar</summary>

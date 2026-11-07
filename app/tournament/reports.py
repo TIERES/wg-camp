@@ -96,21 +96,23 @@ def report(db, tournament, match_id, player_id, score, comment=""):
                               "corrigir o resultado ou liberar um novo reporte.")
     _check_score(db, tournament, match_id, score)
     db.execute("UPDATE tournament_matches SET status = 'reported', reported_by_entry_id = ?, reported_at = ?, "
-               "updated_at = ? WHERE id = ?", (entry["id"], now(), now(), match_id))
+               "quitter_id = NULL, updated_at = ? WHERE id = ?", (entry["id"], now(), now(), match_id))
     log(db, match_id, "report", entry, score=score, comment=comment)
 
 
-def report_from_game(db, tournament, match_id, score, at, comment):
+def report_from_game(db, tournament, match_id, score, at, comment, quitter_id=None):
     """O placar que o RetroArch TIERES leu do jogo (app/live.py), como um
     reporte sem jogador (reported_by_entry_id NULL): qualquer um dos dois
     confirma ou contesta, e sem resposta no prazo ele é confirmado sozinho - o
-    prazo conta de `at`, o fim do jogo. Só para jogo ainda sem placar."""
+    prazo conta de `at`, o fim do jogo. Só para jogo ainda sem placar.
+    quitter_id: quem saiu no meio do jogo - perde o triplo de XP se este
+    placar valer (os dois confirmam, o prazo ou o organizador o mantém)."""
     match = _match(db, tournament, match_id)
     if match["status"] != "scheduled":
         raise TournamentError("O jogo já tem placar informado pelos jogadores.")
     _check_score(db, tournament, match_id, score)
     db.execute("UPDATE tournament_matches SET status = 'reported', reported_by_entry_id = NULL, reported_at = ?, "
-               "updated_at = ? WHERE id = ?", (at, now(), match_id))
+               "quitter_id = ?, updated_at = ? WHERE id = ?", (at, quitter_id, now(), match_id))
     log(db, match_id, "report", None, score=score, comment=comment)
 
 
@@ -185,14 +187,19 @@ def accept_dispute(db, tournament, match_id, player_id):
         raise TournamentError("Não há placar de contestação para você aceitar neste jogo.")
     score = (disputed["home_goals"], disputed["away_goals"], disputed["home_pens"], disputed["away_pens"])
     store.record_result(db, tournament, match_id, *score)
+    # Os dois ficaram com outro placar que não o lido do jogo: sem a penalidade de quem saiu.
+    db.execute("UPDATE tournament_matches SET quitter_id = NULL WHERE id = ?", (match_id,))
     log(db, match_id, "confirm", entry, score=score, comment="Aceitou o placar da contestação.")
 
 
 def resolve(db, tournament, match_id, score, user_id=None, entry=None, comment=""):
-    """Organizador/admin define (ou corrige) o placar."""
+    """Organizador/admin define (ou corrige) o placar. A penalidade de quem
+    saiu no meio do jogo só fica se ele mantiver o placar lido do jogo."""
+    reported = last_report(db, match_id)
+    keep = reported is not None and (reported["home_goals"], reported["away_goals"]) == tuple(score[:2])
     store.record_result(db, tournament, match_id, *score)
-    db.execute("UPDATE tournament_matches SET reported_by_entry_id = NULL, reported_at = NULL WHERE id = ?",
-               (match_id,))
+    db.execute("UPDATE tournament_matches SET reported_by_entry_id = NULL, reported_at = NULL, "
+               "quitter_id = CASE WHEN ? THEN quitter_id END WHERE id = ?", (int(keep), match_id))
     log(db, match_id, "resolve", entry, user_id=user_id, score=score, comment=comment)
 
 
@@ -206,8 +213,8 @@ def clear(db, tournament, match_id, user_id=None, entry=None):
                    (now(), match_id))
     else:
         raise TournamentError("Este jogo não tem resultado.")
-    db.execute("UPDATE tournament_matches SET reported_by_entry_id = NULL, reported_at = NULL WHERE id = ?",
-               (match_id,))
+    db.execute("UPDATE tournament_matches SET reported_by_entry_id = NULL, reported_at = NULL, quitter_id = NULL "
+               "WHERE id = ?", (match_id,))
     log(db, match_id, "clear", entry, user_id=user_id)
 
 

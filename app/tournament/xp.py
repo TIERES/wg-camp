@@ -15,6 +15,9 @@ Regras (fixas no sistema):
   fraco ganha STEP * diferença e o mais forte perde o mesmo.
 - O XP nunca fica negativo; perder XP pode fazer o jogador cair de rank.
 - Pênaltis contam como empate (vale o placar do jogo, como no W$ e no V/E/D).
+- Jogo de campeonato ou amistoso em que um jogador saiu da sessão no meio
+  de um jogo (quitter_id, live.py): o que ele perder é multiplicado por
+  QUIT_FACTOR; quem ganhou ganha o normal.
 """
 from flask import g
 
@@ -27,12 +30,13 @@ COLORS = {"F": "#9ca3af", "E": "#22c55e", "D": "#3b82f6", "C": "#a855f7", "B": "
 BASE = 20
 STEP = 5
 MIN_POINTS = 5
+QUIT_FACTOR = 3
 
 # Jogos de torneio (id = id do jogo) e amistosos que valem (id = 'a<id>',
 # como o match_key de stats.py), na ordem em que foram confirmados.
 _MATCHES = """
-SELECT id, home, away, home_goals, away_goals FROM (
-    SELECT m.id, he.player_id AS home, ae.player_id AS away, m.home_goals, m.away_goals,
+SELECT id, home, away, home_goals, away_goals, quitter FROM (
+    SELECT m.id, he.player_id AS home, ae.player_id AS away, m.home_goals, m.away_goals, m.quitter_id AS quitter,
            COALESCE(m.confirmed_at, m.updated_at) AS at, 0 AS kind, m.id AS seq
     FROM tournament_matches m
     JOIN tournament_stages s ON s.id = m.stage_id
@@ -41,7 +45,7 @@ SELECT id, home, away, home_goals, away_goals FROM (
     JOIN tournament_entries ae ON ae.id = m.away_entry_id
     WHERE m.status = 'confirmed' AND t.status != 'cancelled'
     UNION ALL
-    SELECT 'a' || f.id, f.home_id, f.away_id, f.home_goals, f.away_goals, f.confirmed_at, 1, f.id
+    SELECT 'a' || f.id, f.home_id, f.away_id, f.home_goals, f.away_goals, f.quitter_id, f.confirmed_at, 1, f.id
     FROM friendly_matches f WHERE f.status = 'confirmed' AND f.ranked = 1
 )
 ORDER BY at, kind, seq
@@ -101,6 +105,12 @@ def replay(matches, xp=None, peaks=None):
                 d_home, d_away = gain, -min(gain, b)
             else:
                 d_home, d_away = -min(gain, a), gain
+        # Quem saiu no meio de um jogo perde o triplo (o XP nunca fica negativo).
+        quitter = m["quitter"] if "quitter" in m.keys() else None
+        if quitter == home and d_home < 0:
+            d_home = -min(-d_home * QUIT_FACTOR, a)
+        elif quitter == away and d_away < 0:
+            d_away = -min(-d_away * QUIT_FACTOR, b)
         xp[home], xp[away] = a + d_home, b + d_away
         deltas[m["id"]] = {home: d_home, away: d_away}
         if peaks is not None:
