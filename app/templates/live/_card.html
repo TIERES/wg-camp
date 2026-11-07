@@ -20,7 +20,8 @@
       <strong>{{ t.name }}</strong>
       <small>{{ t.players|join(', ') }}</small>
     </div>
-    {% if loop.first %}<div class="live-goals"><span>{{ a.goals }}</span><span class="live-x">×</span><span>{{ b.goals }}</span></div>{% endif %}
+    {% if loop.first %}<div class="live-mid"><div class="live-goals"><span>{{ a.goals }}</span><span class="live-x">×</span><span>{{ b.goals }}</span></div>
+      {% if c.pens %}<div class="live-pens" title="Disputa de pênaltis">Pênaltis {{ c.pens[0] }} × {{ c.pens[1] }}</div>{% endif %}</div>{% endif %}
     {% endfor %}
   </div>
   {% if a.scorers or b.scorers %}

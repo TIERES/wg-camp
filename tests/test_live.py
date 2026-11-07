@@ -13,12 +13,13 @@ CSRF = "test-csrf"
 
 
 def state(kickoff=1000, frame=20000, period=0, clock=9000, goals=(1, 0), final=False, pads=(0, 1),
-          names=("GRECIA", "CROACIA"), slots=(16, 18), scorers=None, v=1, engine=None):
+          names=("GRECIA", "CROACIA"), slots=(16, 18), scorers=None, v=1, engine=None, pens=None):
     scorers = scorers or ([["S.Vryzas", 17, "Karagounis"]] * goals[0], [["J.Leko", 20, ""]] * goals[1])
     return json.dumps({
         "v": v, "engine": engine, "content": "BA9BDE21:1C473F60", "kickoff": kickoff, "frame": frame, "period": period,
         "clock": clock, "half": 18000, "final": int(final), "pads": list(pads),
         "teams": [{"id": slots[i], "name": names[i], "goals": goals[i], "scorers": scorers[i]} for i in (0, 1)],
+        **({"pens": list(pens)} if pens else {}),
     })
 
 
@@ -443,6 +444,34 @@ class LiveMatchesTest(unittest.TestCase):
         self.finish_live(goals=(3, 0), test=True)
         self.assertEqual(self.rows("SELECT status FROM tournament_matches WHERE status != 'confirmed'")[0]["status"], "scheduled")
         self.assertIsNone(self.rows("SELECT game_report FROM live_matches")[0]["game_report"])
+
+    def test_extra_time_and_penalties_on_the_card(self):
+        self.post(state(period=2, clock=3000, goals=(5, 5)))
+        self.assertIn("Prorrogação · 1º tempo", self.cards())
+        self.post(state(period=4, clock=0, goals=(5, 5), pens=(2, 1), frame=30000))
+        html = self.cards()
+        self.assertIn("Pênaltis 2 × 1", html)
+        self.assertIn('live-clock on">Pênaltis<', html)
+
+    def test_penalties_go_into_the_report_of_the_deciding_leg(self):
+        from app.tournament import store
+        ida, volta = self.make_tournament()
+        with self.app.app_context():
+            db = get_db()
+            store.record_result(db, store.get_tournament(db, self.rows("SELECT id FROM tournaments")[0]["id"]), ida, 1, 1)
+            db.commit()
+        # Volta: mandante TIERES (o LOCAL do jogo), 2 x 2 e 4 x 3 nos pênaltis.
+        self.post(state(goals=(2, 2)))
+        self.post(state(period=4, clock=0, goals=(2, 2), pens=(4, 3), final=True, frame=90000))
+        self.assertEqual(self.rows("SELECT tournament_match_id FROM live_matches")[0]["tournament_match_id"], volta)
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE live_matches SET finished_at = ?",
+                       ((datetime.now(timezone.utc) - timedelta(minutes=2)).replace(microsecond=0).isoformat(),))
+            db.commit()
+        self.assertIn("Pênaltis 4 × 3", self.cards())
+        report = self.rows("SELECT * FROM match_reports WHERE match_id = ? AND action = 'report'", volta)[0]
+        self.assertEqual((report["home_goals"], report["away_goals"], report["home_pens"], report["away_pens"]), (2, 2, 4, 3))
 
     def test_profile_from_iso_file_name(self):
         with self.app.app_context():

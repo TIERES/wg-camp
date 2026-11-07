@@ -90,6 +90,8 @@ def parse_state(raw):
                       "code": _text(team.get("code"), 3), "goals": _int(team["goals"], 0, 99), "scorers": scorers})
     if len(teams) != 2:
         raise ValueError("teams")
+    pens = data.get("pens")
+    pens = [_int(pens[0], 0, 99), _int(pens[1], 0, 99)] if isinstance(pens, list) and len(pens) == 2 else None
     return {
         "v": version,
         "engine": _text(data.get("engine"), 16),
@@ -102,6 +104,8 @@ def parse_state(raw):
         "final": bool(data.get("final")),
         "teams": teams,
         "pads": [_int(p, 0, 255) for p in data.get("pads", [])[:MAX_PLAYERS]],
+        # Disputa de pênaltis (LOCAL, VISITA): o período vem 4; prorrogação = 2 e 3.
+        "pens": pens,
     }
 
 
@@ -346,8 +350,13 @@ def _clock_label(match):
     period, left, half = match["period"], match["clock_left"], match["half_frames"] or 18000
     if match["status"] != "live":
         return "Encerrado" if match["status"] == "finished" else "Interrompido"
-    if period > 1:
-        return "Prorrogação"
+    if period >= 4:
+        return "Pênaltis"
+    if period > 1:  # prorrogação: 2 tempos de 15 minutos
+        half_no = period - 1
+        if left == 0:
+            return "Prorrogação · %dº tempo · %d+'" % (half_no, 90 + 15 * half_no)
+        return "Prorrogação · %dº tempo · %d'" % (half_no, 90 + 15 * (half_no - 1) + int(15 * (1 - left / half)))
     if left == 0:
         return "%dº tempo · %d+'" % (period + 1, 45 * (period + 1))
     return "%dº tempo · %d'" % (period + 1, int(45 * (1 - left / half)) + 45 * period)
@@ -455,7 +464,7 @@ def card(db, match):
             "game": {"name": game["name"], "cover": cover_url(game["code"])} if game else None,
             "tournament": {"name": tournament["name"], "image": image_url("torneio", tournament["image"]),
                            "url": url_for("tournaments.show", slug=tournament["slug"], aba="tabela")} if tournament else None,
-            "teams": views}
+            "pens": state.get("pens"), "teams": views}
 
 
 def _local_day(value, end=False):
@@ -571,16 +580,18 @@ def report_finished(db):
     rows = db.execute(_TOURNAMENT_LIVE_SQL + "WHERE m.status = 'finished' AND m.is_test = 0 AND m.verified = 1 "
                       "AND m.game_report IS NULL AND m.finished_at <= ?", (_ago(REPORT_SETTLE),)).fetchall()
     for row in rows:
-        finals = {(s["teams"][0]["goals"], s["teams"][1]["goals"]) for s in (
+        finals = {(s["teams"][0]["goals"], s["teams"][1]["goals"], tuple(s.get("pens") or ())) for s in (
             json.loads(r["state_json"]) for r in db.execute(
                 "SELECT state_json FROM live_match_reports WHERE live_match_id = ? AND final = 1", (row["id"],)))}
-        score = _home_away(row, next(iter(finals))) if len(finals) == 1 else None
+        final_state = next(iter(finals)) if len(finals) == 1 else None
+        score = _home_away(row, final_state[:2]) if final_state else None
+        pens = (_home_away(row, final_state[2]) if final_state and len(final_state[2]) == 2 else None) or (None, None)
         outcome = ("sem o fim mandado pelos PCs" if not finals else "os PCs discordam do placar" if len(finals) > 1
                    else "não deu para saber quem é o mandante" if score is None else None)
         tournament = store.get_tournament(db, row["tournament_id"])
         if outcome is None:
             try:
-                reports.report_from_game(db, tournament, row["tournament_match_id"], (*score, None, None),
+                reports.report_from_game(db, tournament, row["tournament_match_id"], (*score, *pens),
                                          row["finished_at"], GAME_REPORT_NOTE % row["id"])
                 outcome = "reportado"
             except TournamentError as error:
