@@ -504,5 +504,7 @@ header nav { align-items:center }
 .live-admin { display:flex; flex-wrap:wrap; gap:.75rem; align-items:center }
 @media(max-width:420px){ .live-goals { font-size:2rem; gap:.75rem } .live-crest { width:44px; height:33px } }
 .live-team.unknown strong { color:#9ca3af; font-weight:600; font-style:italic }
-.live-filters { align-items:flex-end } .live-filters label { flex:1 1 9rem; font-size:.875rem; color:#9ca3af } .live-filters label input,.live-filters label select { width:100% } .live-filter-actions { display:flex; gap:.75rem; align-items:center; padding-bottom:.2rem }
+.live-filters { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.75rem; margin:1rem 0 } .live-filters label { font-size:.875rem; color:#9ca3af; min-width:0 } .live-filters label input,.live-filters label select { width:100%; min-width:0 }
+.live-filter-actions { grid-column:1 / -1; display:flex; gap:.75rem } .live-filter-actions > * { flex:1 1 0; text-align:center; width:auto }
+@media(min-width:860px){ .live-filters { grid-template-columns:repeat(4,minmax(0,1fr)) } .live-filter-actions > * { flex:0 0 auto } }
 .live-iso form.inline-form label { display:flex; gap:.4rem; align-items:center }

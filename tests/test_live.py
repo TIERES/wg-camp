@@ -186,8 +186,15 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertIn("Partida livre", html)
         self.assertIn("Euro 2004", html)
         self.assertIn("Euro WE Camp", html)
-        self.assertEqual(self.cards(campeonato=tournament_id).count('<article class="live-card'), 3)
-        self.assertEqual(self.cards(campeonato=tournament_id, recentes="1").count('<article class="live-card'), 3)
+        # Campeonato = só os jogos dele; Amistosos = o resto (cadastrados e partidas livres).
+        self.assertEqual(self.cards(campeonato=tournament_id).count('<article class="live-card'), 2)
+        self.assertEqual(self.cards(campeonato=tournament_id, recentes="1").count('<article class="live-card'), 2)
+        friendlies = self.cards(campeonato="amistosos")
+        self.assertEqual(friendlies.count('<article class="live-card'), 1)
+        self.assertIn("outro", friendlies)
+        page = self.app.test_client().get("/ao-vivo?campeonato=amistosos").get_data(as_text=True)
+        self.assertIn('<option value="amistosos" selected>Amistosos</option>', page)
+        self.assertIn("Limpar filtro", page)
 
     def test_profile_from_iso_file_name(self):
         with self.app.app_context():

@@ -405,9 +405,11 @@ def _local_day(value, end=False):
     return moment.astimezone(timezone.utc).isoformat(timespec="seconds")
 
 
-def list_cards(db, tournament_id=None, only_live=False, recent_only=False, player="", date_from="", date_to="",
-               limit=CARDS_LIMIT):
-    """As últimas partidas (ao vivo primeiro), com os filtros da página."""
+def list_cards(db, tournament_id=None, friendlies=False, only_live=False, recent_only=False, player="", date_from="",
+               date_to="", limit=CARDS_LIMIT):
+    """As últimas partidas (ao vivo primeiro), com os filtros da página:
+    tournament_id = os jogos daquele campeonato; friendlies = o que não é jogo
+    de campeonato (amistosos cadastrados e partidas livres)."""
     reap(db)
     where, params = [], []
     if only_live:
@@ -418,10 +420,11 @@ def list_cards(db, tournament_id=None, only_live=False, recent_only=False, playe
     if not _is_admin():
         where.append("m.is_test = 0")
     if tournament_id:
-        where.append("(m.tournament_match_id IN (SELECT tm.id FROM tournament_matches tm JOIN tournament_stages ts "
-                     "ON ts.id = tm.stage_id WHERE ts.tournament_id = ?) OR (m.tournament_match_id IS NULL AND "
-                     "m.content_id IN (SELECT content_id FROM iso_profiles WHERE tournament_id = ?)))")
-        params += [tournament_id, tournament_id]
+        where.append("m.tournament_match_id IN (SELECT tm.id FROM tournament_matches tm JOIN tournament_stages ts "
+                     "ON ts.id = tm.stage_id WHERE ts.tournament_id = ?)")
+        params.append(tournament_id)
+    elif friendlies:
+        where.append("m.tournament_match_id IS NULL")
     if player:
         where.append("m.players_json LIKE ?")
         params.append("%" + player.replace("%", "").replace("_", "") + "%")
@@ -438,9 +441,14 @@ def list_cards(db, tournament_id=None, only_live=False, recent_only=False, playe
     return [card(db, row) for row in rows]
 
 
+FRIENDLIES = "amistosos"  # o valor de "Amistosos" no filtro de campeonato
+
+
 def _filters():
     args = request.args
-    return {"player": args.get("jogador", "").strip()[:32], "tournament_id": args.get("campeonato", type=int),
+    championship = args.get("campeonato", "")
+    return {"player": args.get("jogador", "").strip()[:32], "friendlies": championship == FRIENDLIES,
+            "tournament_id": int(championship) if championship.isdigit() else None,
             "date_from": args.get("de", ""), "date_to": args.get("ate", "")}
 
 
@@ -451,8 +459,7 @@ def index():
     tournaments = db.execute(
         "SELECT t.id, t.name FROM tournaments t WHERE t.id IN ("
         "SELECT s.tournament_id FROM live_matches m JOIN tournament_matches tm ON tm.id = m.tournament_match_id "
-        "JOIN tournament_stages s ON s.id = tm.stage_id UNION SELECT tournament_id FROM iso_profiles "
-        "WHERE tournament_id IS NOT NULL) ORDER BY t.name COLLATE NOCASE").fetchall()
+        "JOIN tournament_stages s ON s.id = tm.stage_id) ORDER BY t.name COLLATE NOCASE").fetchall()
     return render_template("live/index.html", cards=list_cards(db, **filters), filters=filters,
                            tournaments=tournaments, is_admin=_is_admin(), limit=CARDS_LIMIT,
                            cards_url=url_for("live.cards_fragment", **request.args.to_dict()))
