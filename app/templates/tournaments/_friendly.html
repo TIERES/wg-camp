@@ -18,7 +18,32 @@
 </form>
 {%- endmacro %}
 
-{% macro friendly_card(f, labels, needs_me, back='') -%}
+{# As partidas do RetroArch TIERES que formam o placar (live.friendly_games):
+   os times de cada jogador, o placar e o link para o card no Ao vivo. #}
+{% macro games_table(f, games, total) -%}
+<div class="friendly-games">
+  <div class="championship-table-wrap">
+    <table class="standings friendly-games-table">
+      <thead><tr><th>Jogo</th><th class="name-col">{{ f.home_name }}</th><th>Placar</th><th class="name-col">{{ f.away_name }}</th><th>Situação</th></tr></thead>
+      <tbody>
+      {% for g in games %}
+        <tr{% if not g.summed %} class="not-summed"{% endif %}>
+          <td><a href="{{ g.url }}" title="Ver o card no Ao vivo (quem fez os gols)">{{ g.number }}</a><small class="muted"> {{ g.when }}</small></td>
+          <td class="name-col">{{ g.home_team }}</td>
+          <td><a class="friendly-game-score" href="{{ g.url }}" title="Ver o card no Ao vivo (quem fez os gols)"><strong>{{ g.home_goals }} x {{ g.away_goals }}</strong></a>{% if g.pens %}<br><small class="muted">pênaltis {{ g.pens[0] }} x {{ g.pens[1] }}</small>{% endif %}</td>
+          <td class="name-col">{{ g.away_team }}</td>
+          <td>{{ g.status }}{% if not g.summed %}<br><small class="muted">{{ 'não soma: ' ~ g.note if g.note else 'ainda não soma' }}</small>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+      <tfoot><tr><td>Soma</td><td class="name-col"></td><td><strong>{{ total[0] }} x {{ total[1] }}</strong></td><td class="name-col"></td><td></td></tr></tfoot>
+    </table>
+  </div>
+  <p class="muted friendly-games-note">Clique no jogo para ver o card no Ao vivo, com quem fez os gols. Pênaltis contam como empate.</p>
+</div>
+{%- endmacro %}
+
+{% macro friendly_card(f, labels, needs_me, back='', games=none) -%}
 {% set me = session.player_id %}
 {% set mine = me in (f.home_id, f.away_id) %}
 {% set other = (f.away_name if f.home_id == me else f.home_name) if mine else '' %}
@@ -34,6 +59,7 @@
   </div>
   {% if f.quitter_id and f.status in ('reported', 'confirmed') %}<p class="friendly-warn">{{ f.home_name if f.quitter_id == f.home_id else f.away_name }} saiu da partida no meio de um jogo (o placar até ali conta){% if f.status == 'reported' %}: se o placar for confirmado, perde o triplo de XP - mesmo que tenha sido queda de conexão{% else %} e perdeu o triplo de XP{% endif %}.</p>
   <p class="friendly-note muted">Joguem até o fim, mesmo faltando pouco tempo. Se a conexão cair, voltem em até 20 minutos e terminem outra partida antes de sair: o placar do jogo interrompido continua contando, mas sem a penalidade.</p>{% endif %}
+  {% if games and games[0] %}{{ games_table(f, games[0], games[1]) }}{% endif %}
   {% if f.message %}<p class="friendly-note"><small class="muted">Recado de {{ f.home_name }}:</small> {{ f.message }}</p>{% endif %}
   {% if f.iso_title %}
   <div class="friendly-iso">

@@ -1,6 +1,12 @@
 {% extends 'base.html' %}{% from 'tournaments/_friendly.html' import friendly_card %}{% block title %}Amistosos · WE Camp{% endblock %}{% block content %}
 <h1>Amistosos</h1>
 <p class="muted">Jogos com seus amigos, fora dos campeonatos. Quem é chamado aceita o convite. Depois do jogo, um informa o placar e o outro confirma.</p>
+{% if respond %}
+<section class="friendly-respond">
+  <h2>Esperando você ({{ respond|length }})</h2>
+  {% for f in respond %}{{ friendly_card(f, labels, needs_me, request.path, friendly_games.get(f.id)) }}{% endfor %}
+</section>
+{% endif %}
 
 <section>
   <h2>Chamar para um amistoso</h2>
@@ -145,13 +151,13 @@
 
 <section>
   <h2>Em aberto ({{ pending|length }})</h2>
-  {% for f in pending %}{{ friendly_card(f, labels, needs_me, request.path) }}{% else %}<p class="muted">Nenhum amistoso em aberto.</p>{% endfor %}
+  {% for f in pending %}{{ friendly_card(f, labels, needs_me, request.path, friendly_games.get(f.id)) }}{% else %}<p class="muted">Nenhum amistoso em aberto.</p>{% endfor %}
 </section>
 
 {% if done %}
 <section>
   <h2>Anteriores</h2>
-  {% for f in done %}{{ friendly_card(f, labels, needs_me, request.path) }}{% endfor %}
+  {% for f in done %}{{ friendly_card(f, labels, needs_me, request.path, friendly_games.get(f.id)) }}{% endfor %}
 </section>
 {% endif %}
 <script src="{{ url_for('static', filename='js/upload-progress.js') }}"></script>

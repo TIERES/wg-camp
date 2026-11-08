@@ -905,14 +905,19 @@ class LiveMatchesTest(unittest.TestCase):
         with client.session_transaction() as sess:
             sess["player_id"] = self.tieres
         page = client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True)
-        self.assertIn("<h2>Partidas</h2>", page)
+        self.assertIn('class="standings friendly-games-table"', page)
         self.assertIn('data-dialog="rejeitar-%d">Não aceitar o placar</button>' % fid, page)
         self.assertIn('name="motivo" rows="3" minlength="3" maxlength="300" required', page)
         self.assertNotIn("Não aceito este placar", page)
         for score in ("2 x 1", "0 x 3", "1 x 3"):
             self.assertIn("<strong>%s</strong>" % score, page)
         self.assertIn("<td>Soma</td><td class=\"name-col\"></td><td><strong>3 x 7</strong>", page)
-        self.assertEqual(page.count('title="Ver o card no Ao vivo"'), 3)
+        self.assertEqual(page.count('title="Ver o card no Ao vivo (quem fez os gols)"'), 6)  # o jogo e o placar
+        # Na lista de amistosos: as partidas no card e, no topo, "Esperando você".
+        listing = client.get("/torneios/amistosos").get_data(as_text=True)
+        self.assertIn("Esperando você (1)", listing)
+        self.assertLess(listing.index("Esperando você"), listing.index("Chamar para um amistoso"))
+        self.assertIn("<td>Soma</td><td class=\"name-col\"></td><td><strong>3 x 7</strong>", listing)
         # O jogo de campeonato entre os dois continua sem placar.
         self.assertEqual(self.rows("SELECT status FROM tournament_matches WHERE status != 'confirmed'")[0]["status"],
                          "scheduled")
