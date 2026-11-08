@@ -604,16 +604,23 @@ _TOURNAMENT_LIVE_SQL = (
     "JOIN tournament_entries ae ON ae.id = tm.away_entry_id JOIN players ap ON ap.id = ae.player_id ")
 
 
-def _home_away(row, goals):
-    """(gols do mandante, do visitante) do jogo de campeonato a partir dos gols
-    (LOCAL, VISITA) do jogo e de quem controla cada lado, ou None."""
+def _home_side(row):
+    """(lado do mandante, do visitante) - 0 LOCAL, 1 VISITA - pelo que cada
+    um controla no jogo, ou None."""
     sides = [{nick.casefold() for nick in json.loads(row[key] or "[]")}
              for key in ("local_players_json", "visita_players_json")]
     home = next((i for i in (0, 1) if row["home_nick"].casefold() in sides[i]), None)
     away = next((i for i in (0, 1) if row["away_nick"].casefold() in sides[i]), None)
     if home is None or away is None or home == away:
         return None
-    return goals[home], goals[away]
+    return home, away
+
+
+def _home_away(row, goals):
+    """(gols do mandante, do visitante) do jogo de campeonato a partir dos gols
+    (LOCAL, VISITA) do jogo e de quem controla cada lado, ou None."""
+    sides = _home_side(row)
+    return (goals[sides[0]], goals[sides[1]]) if sides else None
 
 
 def tournament_live(db, tournament_id):
@@ -872,6 +879,49 @@ def _report_friendlies(db):
         for g in games:
             db.execute("UPDATE live_matches SET game_report = ? WHERE id = ?", (notes.get(g["id"]) or outcome, g["id"]))
         db.commit()
+
+
+# Anotações de _report_friendlies de um jogo que ficou fora da soma.
+_NOT_SUMMED = ("sem o fim mandado pelos PCs", "os PCs discordam do placar", "não deu para saber quem é o mandante")
+
+
+def friendly_games(db, friendly_row):
+    """As partidas do amistoso (cada uma com o seu card no Ao vivo), em ordem,
+    do ponto de vista dele (mandante x visitante): times, placar (o final, ou
+    o de quando parou), pênaltis, situação e se entrou na soma - para os
+    jogadores conferirem o placar somado. Devolve (jogos, soma)."""
+    from .timeutil import format_local
+    nicks = {"home_nick": friendly_row["home_name"], "away_nick": friendly_row["away_name"]}
+    games, total = [], [0, 0]
+    rows = db.execute("SELECT * FROM live_matches WHERE friendly_id = ? AND is_test = 0 AND verified = 1 "
+                      "ORDER BY started_at", (friendly_row["id"],)).fetchall()
+    for number, match in enumerate(rows, 1):
+        sides = _home_side(dict(match, **nicks))
+        state = json.loads(match["state_json"] or "{}")
+        teams = state.get("teams") or []
+        players = [json.loads(match[key] or "[]") for key in ("local_players_json", "visita_players_json")]
+        views = [_team_view(db, match, i, teams[i] if i < len(teams) else {}, players[i]) for i in (0, 1)]
+        goals = (match["local_goals"] or 0, match["visita_goals"] or 0)
+        pens = state.get("pens") if (match["period"] or 0) >= 4 else None
+        note = match["game_report"] or ""
+        summed = sides is not None and match["status"] != "live" and not note.startswith(_NOT_SUMMED)
+        game = {"number": number, "id": match["id"], "url": url_for("live.index", partida=match["id"]),
+                "when": format_local(match["started_at"], "%d/%m %H:%M"),
+                "status": {"finished": "Encerrado", "abandoned": "Interrompido"}.get(match["status"], "Ao vivo"),
+                "summed": summed, "note": note if note.startswith(_NOT_SUMMED) else ""}
+        if sides:
+            home, away = sides
+            game.update(home_team=views[home]["name"], away_team=views[away]["name"],
+                        home_goals=goals[home], away_goals=goals[away],
+                        pens=(pens[home], pens[away]) if pens and len(pens) == 2 else None)
+            if summed:
+                total[0] += goals[home]
+                total[1] += goals[away]
+        else:
+            game.update(home_team=views[0]["name"], away_team=views[1]["name"], home_goals=goals[0],
+                        away_goals=goals[1], pens=None)
+        games.append(game)
+    return games, tuple(total)
 
 
 FRIENDLIES = "amistosos"  # o valor de "Amistosos" no filtro de campeonato

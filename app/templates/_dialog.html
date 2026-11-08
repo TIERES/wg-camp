@@ -1,0 +1,13 @@
+{# Janela (<dialog>) com um formulário, aberta por um botão
+   data-dialog="<id>" (static/js/dialogs.js) - o "Não aceitar o placar" das
+   confirmações de placar. O corpo (campos) vem do {% call %}. #}
+{% macro form_dialog(id, action, title, submit, back='') -%}
+<dialog class="form-dialog" id="{{ id }}" aria-label="{{ title }}">
+  <form method="post" action="{{ action }}" class="form-dialog-body">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% if back %}<input type="hidden" name="voltar" value="{{ back }}">{% endif %}
+    <h2>{{ title }}</h2>
+    {{ caller() }}
+    <div class="card-actions dialog-actions"><button type="button" class="secondary" data-dialog-close>Voltar</button><button class="danger">{{ submit }}</button></div>
+  </form>
+</dialog>
+{%- endmacro %}

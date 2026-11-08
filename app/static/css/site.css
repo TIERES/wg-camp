@@ -231,8 +231,8 @@ details.dispute { margin-top:1rem } details.dispute summary { cursor:pointer; co
 .mm-filters { display:flex; flex-wrap:wrap; gap:.5rem; margin:.5rem 0 1rem } .mm-filters > * { flex:1 1 12rem; max-width:22rem; margin:0 }
 .mm-legend li { display:flex; align-items:center; gap:.4rem } .mm-legend li::before { content:""; width:.9rem; height:.9rem; border-radius:3px; background:#4b5563 }
 .mm-legend .mm-ok::before { background:#34d399 } .mm-legend .mm-confirm::before { background:#f97316 } .mm-legend .mm-none::before { background:#f87171 } .mm-legend .mm-waiting::before { background:#9ca3af } .mm-legend .mm-disputed::before { background:#a78bfa }
-.my-match-actions { display:flex; justify-content:center; margin:.35rem 0 .2rem }
-.my-match-actions button { background:#f97316; color:#1c0d02; height:20px; padding:0 .6rem; line-height:20px; font-size:.75rem }
+.my-match-actions { display:flex; justify-content:center; align-items:center; gap:.4rem; margin:.35rem 0 .2rem } .my-match-actions form { margin:0; display:block }
+.my-match-actions button { background:#f97316; color:#1c0d02; height:20px; padding:0 .6rem; line-height:20px; font-size:.75rem } .my-match-actions button.secondary { background:#374151; color:var(--text) }
 .upload-progress { display:flex; align-items:center; gap:.75rem } .upload-progress progress { flex:1; min-width:0 }
 .stat-tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(8.5rem,1fr)); gap:.75rem; margin:1rem 0 }
 .stat-tile { display:grid; gap:.15rem; padding:.75rem; background:var(--card); border:1px solid #374151; border-radius:8px }
@@ -368,6 +368,12 @@ header nav { align-items:center }
 .avatar-edit { display:flex; flex-wrap:wrap; align-items:flex-start; gap:1rem } .avatar-edit-forms { flex:1 1 18rem; display:grid; gap:.6rem } .avatar-edit-forms p { margin:0 }
 .player-dialog { width:min(30rem, calc(100vw - 2rem)); max-height:calc(100vh - 2rem); padding:0; background:var(--card); color:var(--text); border:1px solid #374151; border-radius:10px }
 .player-dialog::backdrop { background:rgba(0,0,0,.6) }
+/* Janela com formulário (templates/_dialog.html): o "Não aceitar o placar". */
+.form-dialog { width:min(32rem, calc(100vw - 2rem)); max-height:calc(100vh - 2rem); padding:0; background:var(--card); color:var(--text); border:1px solid #374151; border-radius:10px }
+.form-dialog::backdrop { background:rgba(0,0,0,.6) }
+.form-dialog-body { padding:1.1rem 1.25rem; gap:.7rem } .form-dialog-body h2 { margin:0; font-size:1.15rem } .form-dialog-body p { margin:0 }
+.form-dialog-body textarea, .form-dialog-body input:not([type=hidden]) { max-width:100% } .form-dialog-body textarea { width:100% }
+.dialog-actions { justify-content:flex-end }
 .player-card { position:relative; display:grid; gap:.75rem; padding:1.25rem }
 .player-card h2, .player-card h3, .player-card p { margin:0 } .player-card h3 { font-size:1rem }
 .player-card-close { position:absolute; top:.6rem; right:.6rem; display:block } .player-card-close button { padding:.3rem .55rem }
@@ -426,6 +432,8 @@ header nav { align-items:center }
 .friendly-line .home { justify-self:end } .friendly-line .away { justify-self:start } .friendly-line a { font-weight:700 }
 .friendly-score-text { font-size:1.4rem; min-width:4.5rem; text-align:center }
 .friendly-note,.friendly-warn,.friendly-ranked { margin:.4rem 0 }
+.friendly-games { margin:1.2rem 0 } .friendly-games h2 { margin:0 0 .3rem } .friendly-games-table tfoot td { border-top:1px solid #374151; font-weight:700 }
+.friendly-games-table tr.not-summed td { opacity:.6 }
 .friendly-warn { color:#fca5a5 }
 .friendly-score { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; margin:.5rem 0 }
 .friendly-score .score-inputs { flex:1 1 18rem }

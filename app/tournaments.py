@@ -556,8 +556,10 @@ def friendly_show(friendly_id):
     if row is None or (row["status"] != "confirmed" and me not in (row["home_id"], row["away_id"])
                        and not is_admin()):
         abort(404)
+    from . import live
+    games, total = live.friendly_games(db, row)
     return render_template("tournaments/friendly.html", f=row, labels=friendly.STATUS_LABELS,
-                           needs_me=friendly.needs_me)
+                           needs_me=friendly.needs_me, games=games, games_total=total)
 
 
 def _send_iso_file(stored_name, original_filename, archive_url, local_removed_at, protected=False):

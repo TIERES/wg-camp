@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'tournaments/_macros.html' import score %}{% block title %}Meus jogos · WE Camp{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from 'tournaments/_macros.html' import score %}{% from '_dialog.html' import form_dialog %}{% block title %}Meus jogos · WE Camp{% endblock %}{% block content %}
 <h1>Meus jogos</h1>
 <p class="muted">Todos os seus jogos, dos campeonatos em andamento e encerrados. Clique no campeonato para ver os jogos.</p>
 {% set legend = {'ok': 'Resultado confirmado entre os jogadores', 'confirm': 'Resultado para você confirmar', 'none': 'Nenhum resultado informado', 'waiting': 'Você informou o resultado; aguardando o adversário', 'disputed': 'Resultado contestado'} %}
@@ -58,10 +58,24 @@
         <span class="match-line"><span class="home">{{ names[row.home_entry_id] }}</span><span class="score">{{ score(row) }}</span><span class="away">{{ names[row.away_entry_id] }}</span></span>
       </a>
       {% if kind == 'confirm' %}
-      <form method="post" class="my-match-actions" action="{{ url_for('tournaments.match_confirm', slug=row.slug, match_id=row.id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="voltar" value="meus-jogos">
-        <button>Confirmar partida</button>
-      </form>
+      <div class="my-match-actions">
+        <button type="button" class="secondary" data-dialog="contestar-{{ row.id }}">Não aceitar o placar</button>
+        <form method="post" action="{{ url_for('tournaments.match_confirm', slug=row.slug, match_id=row.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="voltar" value="meus-jogos">
+          <button>Confirmar partida</button>
+        </form>
+      </div>
+      {% call form_dialog('contestar-%d' % row.id, url_for('tournaments.match_dispute', slug=row.slug, match_id=row.id), 'Não aceitar o placar', 'Contestar', 'meus-jogos') %}
+        <p class="match-line"><span class="home">{{ names[row.home_entry_id] }}</span><span class="score">{{ score(row) }}</span><span class="away">{{ names[row.away_entry_id] }}</span></p>
+        <p class="muted">A contestação vai para o organizador decidir. Se você informar o placar certo, o adversário pode aceitá-lo e o resultado é confirmado na hora.</p>
+        <p class="muted">Qual foi o placar certo? (opcional)</p>
+        <div class="score-inputs">
+          <span class="home">{{ names[row.home_entry_id] }}</span>
+          <span class="goals"><input type="number" name="home_goals" min="0" max="99" aria-label="Gols do mandante"> x <input type="number" name="away_goals" min="0" max="99" aria-label="Gols do visitante"></span>
+          <span class="away">{{ names[row.away_entry_id] }}</span>
+        </div>
+        <label>Motivo<textarea name="comment" rows="3" minlength="3" maxlength="500" required placeholder="Explique o que aconteceu; se tiver o replay, diga o horário da partida."></textarea></label>
+      {% endcall %}
       {% endif %}
       {% if row.status == 'reported' and open %}<span class="my-match-status">Confirmação automática em {{ deadlines[row.id]|localtime }}</span>{% endif %}
       </div>

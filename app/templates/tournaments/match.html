@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'tournaments/_macros.html' import score, pending_legend %}
+{% extends 'base.html' %}{% from 'tournaments/_macros.html' import score, pending_legend %}{% from '_dialog.html' import form_dialog %}
 {% block title %}Jogo · {{ t.name }}{% endblock %}{% block content %}
 <p><a href="{{ url_for('tournaments.show', slug=t.slug, aba='jogos') }}">← {{ t.name }}</a></p>
 <section class="match-head">
@@ -71,17 +71,13 @@
       <h2>O adversário reportou {{ reported.home_goals }} x {{ reported.away_goals }}</h2>
       {% endif %}
       {% if reported.comment %}<p class="quote">“{{ reported.comment }}”</p>{% endif %}
-      <form method="post" action="{{ url_for('tournaments.match_confirm', slug=t.slug, match_id=m.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Confirmar este placar</button></form>
-      <details class="dispute">
-        <summary>Não concordo — contestar</summary>
-        <form method="post" action="{{ url_for('tournaments.match_dispute', slug=t.slug, match_id=m.id) }}" class="form match-form">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <p class="muted">Qual foi o placar certo? (opcional)</p>
-          {% set values = none %}{% set required = false %}{% include 'tournaments/_score_inputs.html' %}
-          <label>Motivo<textarea name="comment" rows="3" maxlength="500" required placeholder="Explique o que aconteceu; se tiver o replay, diga o horário da partida."></textarea></label>
-          <button class="danger">Contestar</button>
-        </form>
-      </details>
+      <div class="card-actions"><button type="button" class="secondary" data-dialog="contestar">Não aceitar o placar</button><form method="post" action="{{ url_for('tournaments.match_confirm', slug=t.slug, match_id=m.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Confirmar este placar</button></form></div>
+      {% call form_dialog('contestar', url_for('tournaments.match_dispute', slug=t.slug, match_id=m.id), 'Não aceitar o placar', 'Contestar') %}
+        <p class="muted">A contestação vai para o organizador decidir. Se você informar o placar certo, o adversário pode aceitá-lo e o resultado é confirmado na hora.</p>
+        <p class="muted">Qual foi o placar certo? (opcional)</p>
+        {% set values = none %}{% set required = false %}{% include 'tournaments/_score_inputs.html' %}
+        <label>Motivo<textarea name="comment" rows="3" minlength="3" maxlength="500" required placeholder="Explique o que aconteceu; se tiver o replay, diga o horário da partida."></textarea></label>
+      {% endcall %}
     </section>
     {% endif %}
   {% endif %}
