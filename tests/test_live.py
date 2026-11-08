@@ -714,6 +714,31 @@ class LiveMatchesTest(unittest.TestCase):
     def last_report(self):
         return self.rows("SELECT * FROM match_reports WHERE action = 'report' ORDER BY id DESC LIMIT 1")[0]
 
+    def test_half_time_shows_interval_until_the_clock_runs(self):
+        self.post(state(period=0, clock=9000))
+        self.assertIn("1º tempo · 22&#39;", self.cards())
+        self.post(state(period=0, clock=0, frame=30000))  # WE 2002: fim do 1º tempo
+        html = self.cards()
+        self.assertIn(">Intervalo<", html)
+        self.assertNotIn("live-clock on", html)  # sem o risco animado no intervalo
+        self.post(state(period=1, clock=18000, frame=31000))  # 2º tempo ainda não começou
+        self.assertIn(">Intervalo<", self.cards())
+        self.post(state(period=1, clock=17900, frame=32000))  # começou
+        html = self.cards()
+        self.assertIn("2º tempo · 45&#39;", html)
+        self.assertIn("live-clock on", html)
+
+    def test_own_goal_scorer_and_penalty_on_the_card(self):
+        scorers = ([["Gol contra", 17, "Z.Suzuki", "og"], ["Guesung", 28, "", "pen"]], [["D.Maeda", 8, "Y.Nagatomo"]])
+        self.post(state(goals=(2, 1), scorers=scorers))
+        html = self.cards()
+        self.assertIn("Gol contra 17' <small>(Z.Suzuki)</small>", html)
+        self.assertIn("Guesung 28' <small>(Pênalti)</small>", html)
+        self.assertIn("D.Maeda 8' <small>(assist. Y.Nagatomo)</small>", html)
+        # Fork antigo: gol contra sem o autor, como antes.
+        self.post(state(kickoff=50000, goals=(1, 0), scorers=([["Gol contra", 17, ""]], [])))
+        self.assertIn("Gol contra 17'</li>", self.cards())
+
     def test_championship_game_left_mid_game_counts_and_marks_who_left(self):
         from app.tournament import reports, store, xp
         self.make_league()  # mandante no campeonato = ANDERSHOW; no jogo o LOCAL é o TIERES

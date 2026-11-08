@@ -86,7 +86,11 @@ def parse_state(raw):
     for team in data["teams"][:2]:
         scorers = []
         for item in team.get("scorers", [])[:32]:
-            scorers.append([_text(item[0], 24), _int(item[1], 0, 200), _text(item[2] if len(item) > 2 else "", 24)])
+            scorer = [_text(item[0], 24), _int(item[1], 0, 200), _text(item[2] if len(item) > 2 else "", 24)]
+            # 4º item (fork): "og" = gol contra, com o autor no lugar da assistência; "pen" = de pênalti.
+            if len(item) > 3 and item[3] in ("og", "pen"):
+                scorer.append(item[3])
+            scorers.append(scorer)
         teams.append({"id": _int(team["id"], 0, 255), "name": _text(team.get("name"), 24) if version >= 2 else "",
                       "code": _text(team.get("code"), 3), "goals": _int(team["goals"], 0, 99), "scorers": scorers})
     if len(teams) != 2:
@@ -355,12 +359,36 @@ def _team_view(db, match, side, team_state, nicks):
             "players": list(nicks), "scorers": team_state.get("scorers", [])}
 
 
+# WE3: o relógio fica em 0 durante o acréscimo (não é o intervalo).
+_ADDED_TIME_AT_ZERO = {"SLPM_861.62"}
+
+
+def _interval(match):
+    """Entre dois tempos: o tempo acabou (relógio em 0 no 1º tempo ou no 1º da
+    prorrogação - o WE 2002 fica assim até virar o período) ou o seguinte
+    ainda não começou (relógio cheio). Até o fork mandar o relógio andando."""
+    if match["status"] != "live":
+        return False
+    period, left, half = match["period"], match["clock_left"], match["half_frames"] or 18000
+    if 1 <= period <= 3 and left >= half:
+        return True
+    if period in (0, 2) and left == 0:
+        try:
+            engine = json.loads(match["state_json"] or "{}").get("engine")
+        except ValueError:
+            engine = None
+        return engine not in _ADDED_TIME_AT_ZERO
+    return False
+
+
 def _clock_label(match):
     period, left, half = match["period"], match["clock_left"], match["half_frames"] or 18000
     if match["status"] != "live":
         return "Encerrado" if match["status"] == "finished" else "Interrompido"
     if period >= 4:
         return "Pênaltis"
+    if _interval(match):
+        return "Intervalo"
     if period > 1:  # prorrogação: 2 tempos de 15 minutos
         half_no = period - 1
         if left == 0:
@@ -506,7 +534,8 @@ def card(db, match):
         if not view["players"]:
             view["players"] = ["Player %d" % number] if nobody else ["CPU"]
     return {"id": match["id"], "status": match["status"], "stale": stale, "is_test": match["is_test"],
-            "clock": "Sem sinal" if stale else _clock_label(match), "context": label, "link": link,
+            "clock": "Sem sinal" if stale else _clock_label(match), "interval": _interval(match),
+            "context": label, "link": link,
             "agreed": match["agreed"], "reporters": match["reporters"], "file": _file_name(match),
             "when": format_local(match["started_at"], "%d/%m/%Y %H:%M"),
             "game": {"name": game["name"], "cover": cover_url(game["code"])} if game else None,
@@ -981,4 +1010,9 @@ def identify_isos():
 @bp.app_template_filter("scorer")
 def scorer_line(item):
     name, minute, assist = item[0], item[1], item[2] if len(item) > 2 else ""
+    kind = item[3] if len(item) > 3 else ""
+    if kind == "og":  # o autor do gol contra (no lugar da assistência), entre parênteses
+        return Markup("Gol contra {}' <small>({})</small>").format(minute, assist or name)
+    if kind == "pen":
+        return Markup("{} {}' <small>(Pênalti)</small>").format(name, minute)
     return Markup("{} {}'{}").format(name, minute, Markup(' <small>(assist. {})</small>').format(assist) if assist else "")
