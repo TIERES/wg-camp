@@ -508,8 +508,13 @@ def friendlies():
     db = get_db()
     me = session["player_id"]
     rows = friendly.for_player(db, me)
-    pending = [r for r in rows if r["status"] in friendly.OPEN]
-    return render_template("tournaments/friendlies.html", pending=pending,
+    # No topo, em destaque: placar para eu confirmar e convite para eu aceitar.
+    respond = [r for r in rows if (r["status"] == "reported" and friendly.needs_me(r, me))
+               or (r["status"] == "invited" and r["away_id"] == me)]
+    pending = [r for r in rows if r["status"] in friendly.OPEN and r not in respond]
+    from . import live
+    games = {r["id"]: live.friendly_games(db, r) for r in rows if r["status"] in ("reported", "suspended", "confirmed")}
+    return render_template("tournaments/friendlies.html", pending=pending, respond=respond, friendly_games=games,
                            done=[r for r in rows if r["status"] not in friendly.OPEN],
                            friends=friends.friends(db, me), chosen=request.args.get("com", ""),
                            iso_options=iso_catalog.options(db, me), my_isos=iso_catalog.requested_by(db, me),

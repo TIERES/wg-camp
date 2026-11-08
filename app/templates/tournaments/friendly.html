@@ -1,28 +1,5 @@
 {% extends 'base.html' %}{% from 'tournaments/_friendly.html' import friendly_card %}{% block title %}Amistoso {{ f.home_name }} x {{ f.away_name }} · WE Camp{% endblock %}{% block content %}
 <h1>Amistoso</h1>
-{{ friendly_card(f, labels, needs_me) }}
-{% if games %}
-<section class="friendly-games">
-  <h2>Partidas</h2>
-  <p class="muted">Cada partida jogada no RetroArch TIERES com o placar lido do jogo (o final, ou o de quando parou) - a soma é o placar do amistoso. Pênaltis contam como empate.</p>
-  <div class="championship-table-wrap">
-    <table class="standings friendly-games-table">
-      <thead><tr><th>Jogo</th><th class="name-col">{{ f.home_name }}</th><th>Placar</th><th class="name-col">{{ f.away_name }}</th><th>Situação</th></tr></thead>
-      <tbody>
-      {% for g in games %}
-        <tr{% if not g.summed %} class="not-summed"{% endif %}>
-          <td><a href="{{ g.url }}" title="Ver o card no Ao vivo">{{ g.number }}</a><small class="muted"> {{ g.when }}</small></td>
-          <td class="name-col">{{ g.home_team }}</td>
-          <td><strong>{{ g.home_goals }} x {{ g.away_goals }}</strong>{% if g.pens %}<br><small class="muted">pênaltis {{ g.pens[0] }} x {{ g.pens[1] }}</small>{% endif %}</td>
-          <td class="name-col">{{ g.away_team }}</td>
-          <td>{{ g.status }}{% if not g.summed %}<br><small class="muted">{{ 'não soma: ' ~ g.note if g.note else 'ainda não soma' }}</small>{% endif %}</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-      <tfoot><tr><td>Soma</td><td class="name-col"></td><td><strong>{{ games_total[0] }} x {{ games_total[1] }}</strong></td><td class="name-col"></td><td></td></tr></tfoot>
-    </table>
-  </div>
-</section>
-{% endif %}
+{{ friendly_card(f, labels, needs_me, '', (games, games_total)) }}
 {% if session.player_id in (f.home_id, f.away_id) %}<p><a href="{{ url_for('tournaments.friendlies') }}">Ver todos os meus amistosos</a></p>{% endif %}
 {% endblock %}
