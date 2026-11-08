@@ -159,7 +159,14 @@ class FriendlyTest(unittest.TestCase):
         c0, c1 = self.client(p0), self.client(p1)
         page = c0.get("/torneios/amistosos?com=p1").data.decode()
         self.assertIn("Chamar para um amistoso", page)
-        self.assertIn('value="%d" selected' % p1, page)
+        # Amigo pela busca do nick: com ?com= ele já vem escolhido (id no campo escondido).
+        self.assertIn('<input type="hidden" name="amigo" value="%d" data-user-id>' % p1, page)
+        self.assertIn('role="combobox"', page)
+        self.assertIn('data-id="%d" data-nick="p2"' % self.players[2], page)  # amigos na lista
+        self.assertNotIn('data-nick="p3"', page)  # quem não é amigo fica de fora
+        page = c0.get("/torneios/amistosos?com=P1").data.decode()  # sem diferenciar maiúscula
+        self.assertIn('name="amigo" value="%d"' % p1, page)
+        self.assertIn('name="amigo" value=""', c0.get("/torneios/amistosos?com=p3").data.decode())
         r = c0.post("/torneios/amistosos/novo", data={"csrf_token": CSRF, "amigo": p1,
                                                        "mensagem": "bora"})
         fid = self.db.execute("SELECT id FROM friendly_matches").fetchone()[0]
@@ -182,6 +189,84 @@ class FriendlyTest(unittest.TestCase):
         self.assertEqual(c0.get("/torneios/comparar?a=p0&b=p1").status_code, 200)
         self.assertEqual(c0.get("/torneios/ranking").status_code, 200)
         self.assertEqual(c0.get("/torneios/jogadores/p1/resumo").status_code, 200)
+
+    def test_opponent_decides_quitter_penalty_on_confirm(self):
+        """Quem saiu no meio de um jogo perde o triplo de XP só se o adversário
+        deixar a caixa marcada ao confirmar; quem saiu não decide."""
+        p0, p1, p2, _ = self.players
+        at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+        def game_friendly(home, away):
+            fid = friendly.invite(self.db, home, away)
+            friendly.respond(self.db, fid, away, True)
+            friendly.report_from_game(self.db, fid, 1, 3, at, quitter_id=home)
+            self.db.commit()
+            return fid
+
+        def confirm(player, fid, **form):
+            self.client(player).post(f"/torneios/amistosos/{fid}/confirmar", data={"csrf_token": CSRF, **form})
+            return friendly.get(self.db, fid)
+
+        # Desmarcada: o adversário tira a penalidade (mesmo confirmando primeiro).
+        waived = game_friendly(p0, p1)
+        row = confirm(p1, waived, quem_saiu=str(p0))
+        self.assertEqual((row["status"], row["quitter_id"]), ("reported", None))
+        self.assertEqual(confirm(p0, waived)["status"], "confirmed")
+        self.assertIsNone(friendly.get(self.db, waived)["quitter_id"])
+        # Marcada: continua valendo o triplo.
+        kept = game_friendly(p0, p2)
+        confirm(p0, kept)
+        row = confirm(p2, kept, quem_saiu=str(p0), penalizar="1")
+        self.assertEqual((row["status"], row["quitter_id"]), ("confirmed", p0))
+        # Quem saiu não tira a própria penalidade, nem com o formulário forjado.
+        self.db.execute("DELETE FROM friendly_matches")
+        self.db.commit()
+        own = game_friendly(p0, p1)
+        self.assertEqual(confirm(p0, own, quem_saiu=str(p0))["quitter_id"], p0)
+        # Página velha (outro quitter_id): não mexe na marca.
+        self.db.execute("DELETE FROM friendly_matches")
+        self.db.commit()
+        stale = game_friendly(p0, p1)
+        self.assertEqual(confirm(p1, stale, quem_saiu=str(p2))["quitter_id"], p0)
+
+    def test_list_layout_and_open_filter(self):
+        """Lista de amistosos: os em aberto no topo (carrossel, com filtro quando
+        tem mais de um), as regras no (i) do título e o placar na linha dos jogadores."""
+        p0, p1, p2, _ = self.players
+        accepted = friendly.invite(self.db, p0, p1)
+        friendly.respond(self.db, accepted, p1, True)
+        waiting = friendly.invite(self.db, p0, p2)
+        self.db.commit()
+        c0 = self.client(p0)
+        page = c0.get("/torneios/amistosos").data.decode()
+        self.assertLess(page.index("Em aberto (2)"), page.index("Chamar para um amistoso"))
+        self.assertIn('name="aberto_adversario"', page)
+        self.assertEqual(page.count('class="carousel-slide"'), 2)
+        # Regras no (i) do título, sem o bloco recolhido.
+        self.assertIn('data-dialog="amistoso-regras"', page)
+        self.assertIn("convites para amistosos por dia</strong> contra o mesmo adversário, mas vocês podem", page)
+        self.assertNotIn('class="xp-rules"', page)
+        # Aceito: gols na linha dos jogadores (form="placar-<id>"), explicação no (i) do card.
+        self.assertEqual(page.count(f'form="placar-{accepted}"'), 2)
+        self.assertIn(f'id="placar-{accepted}"', page)
+        self.assertIn(f'data-dialog="amistoso-info-{accepted}"', page)
+        self.assertIn("Depois do jogo, informe o placar. p1 vai precisar confirmar.", page)
+        # Filtro dos em aberto: só o do adversário; o filtro dos anteriores continua no formulário.
+        filtered = c0.get("/torneios/amistosos?aberto_adversario=P2&adversario=x").data.decode()
+        self.assertIn("Em aberto (1 de 2)", filtered)
+        self.assertIn(f'id="amistoso-{waiting}"', filtered)
+        self.assertNotIn(f'id="amistoso-{accepted}"', filtered)
+        self.assertIn('<input type="hidden" name="adversario" value="x">', filtered)
+        # Um só em aberto: sem filtro.
+        friendly.cancel(self.db, waiting, p0)
+        self.db.commit()
+        single = c0.get("/torneios/amistosos").data.decode()
+        self.assertIn("Em aberto (1)", single)
+        self.assertNotIn('name="aberto_adversario"', single)
+        # O placar enviado pelos campos da linha continua chegando.
+        c0.post(f"/torneios/amistosos/{accepted}/placar", data={"csrf_token": CSRF, "home_goals": "3", "away_goals": "2"})
+        row = friendly.get(self.db, accepted)
+        self.assertEqual((row["status"], row["home_goals"], row["away_goals"]), ("reported", 3, 2))
 
 
 if __name__ == "__main__":

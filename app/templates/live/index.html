@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% block title %}Ao vivo · WE Camp{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from '_carousel.html' import carousel %}{% from '_user_picker.html' import user_picker %}{% block title %}Ao vivo · WE Camp{% endblock %}{% block content %}
 <div class="page-title">
   <h1>Ao vivo</h1>
   {% if is_admin %}
@@ -12,8 +12,8 @@
 {% set filtered = filters.player or filters.tournament_id or filters.friendlies or filters.date_from or filters.date_to or filters.match_id %}
 {% if filters.match_id %}<p class="muted">Mostrando só a partida escolhida na tabela do campeonato. <a href="{{ url_for('live.index') }}">Ver todas</a></p>{% endif %}
 <form method="get" class="live-filters">
-  <label>Jogador<input name="jogador" value="{{ filters.player }}" maxlength="32" placeholder="Nick"></label>
-  <label>Campeonato
+  {{ user_picker('jogador', 'Jogador', players, filters.player, field_id='live-jogador') }}
+  <label class="filter-wide">Campeonato
     <select name="campeonato">
       <option value="">Todos</option>
       <option value="amistosos" {% if filters.friendlies %}selected{% endif %}>Amistosos</option>
@@ -25,8 +25,8 @@
   <div class="live-filter-actions"><a class="button secondary" href="{{ url_for('live.index') }}">Limpar filtro</a><button>Filtrar</button></div>
 </form>
 <section data-live-section>
-  <div class="live-cards" data-live-src="{{ cards_url }}">{% include 'live/_cards.html' %}</div>
+  {% call carousel('Partidas anteriores', 'Próximas partidas', 'live-cards per-2', live_src=cards_url) %}{% include 'live/_cards.html' %}{% endcall %}
   <p class="muted" data-live-empty {% if cards %}hidden{% endif %}>Nenhuma partida{% if filtered %} com esses filtros{% else %} ainda{% endif %}.</p>
 </section>
-<script src="{{ url_for('static', filename='js/live-cards.js', v='20261107c') }}"></script>
+<script src="{{ url_for('static', filename='js/live-cards.js', v='20261108a') }}"></script>
 {% endblock %}

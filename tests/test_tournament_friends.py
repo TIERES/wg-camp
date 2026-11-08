@@ -53,6 +53,32 @@ class FriendsAndInvitesTest(unittest.TestCase):
             "ko_legs": "1", "final_legs": "1", "invite_ids": [str(i) for i in invite_ids]})
         return self.query("SELECT * FROM tournaments WHERE name = ?", name)[0]
 
+    def test_user_picker_suggestions(self):
+        """Escolha de usuário pelo nick (_user_picker.html) nas telas que pedem nick."""
+        j0, j1, j2, j3 = self.players
+        with self.app.app_context():
+            db = get_db()
+            friends.request(db, j0, j1)
+            friends.respond(db, j1, j0, True)
+            db.execute("UPDATE players SET email_verified_at = NULL WHERE id = ?", (j3,))
+            db.commit()
+        # Adicionar amigo: sugere quem tem conta confirmada e ainda não é amigo (nem eu).
+        page = self.client(j0).get("/torneios/amigos").data.decode()
+        self.assertIn('data-user-picker="free"', page)
+        self.assertIn('name="nome"', page)
+        self.assertIn('data-nick="jog2"', page)
+        for name in ("jog0", "jog1", "jog3"):
+            self.assertNotIn(f'data-nick="{name}"', page)
+        # Campeonatos: "Criado por" pelo componente (com o id, para a foto e o rank).
+        self.create(self.client(j0), "Copa do Picker")
+        listing = self.client(j1).get("/torneios/").data.decode()
+        self.assertIn('id="f-organizador"', listing)
+        self.assertIn(f'data-id="{j0}" data-nick="jog0"', listing)
+        # Comparar: os dois campos, cada um sem o nick escolhido no outro (data-exclude).
+        compare = self.client(j1).get("/torneios/comparar").data.decode()
+        self.assertIn('data-exclude="cmp-b"', compare)
+        self.assertIn('data-exclude="cmp-a"', compare)
+
     def test_player_card_popup_has_add_friend(self):
         j0, j1, _, _ = self.players
         c0 = self.client(j0)

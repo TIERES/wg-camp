@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% block title %}Campeonatos · Administração{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from '_user_picker.html' import user_picker %}{% block title %}Campeonatos · Administração{% endblock %}{% block content %}
 <div class="page-title"><h1>Campeonatos: administração</h1></div>
 <p class="muted">Como administração do WE Camp você pode gerenciar qualquer campeonato (botão "Gerenciar" na página dele), inclusive cancelar campeonatos em andamento.</p>
 <p><a class="button secondary" href="{{ url_for('tournaments_admin.admin_teams') }}">Times e escudos</a> <a class="button secondary" href="{{ url_for('tournaments_admin.admin_isos') }}">ISOs para amistosos</a></p>
@@ -34,7 +34,7 @@
   <form method="post" action="{{ url_for('tournaments_admin.admin_wallet_adjust') }}" class="form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-row">
-      <label>Usuário<input name="username" required></label>
+      {{ user_picker('username', 'Usuário', players, required=true, field_id='carteira-usuario') }}
       <label>Valor (W$)<input name="amount" inputmode="numeric" data-wcash required placeholder="W$ 10,00"></label>
       <label>Tipo<select name="direction"><option value="credito">Crédito (adicionar)</option><option value="debito">Débito (retirar)</option></select></label>
       <label class="wide">Motivo<input name="note" maxlength="200" required></label>

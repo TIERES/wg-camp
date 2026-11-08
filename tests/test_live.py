@@ -1,4 +1,5 @@
 import json
+import re
 import struct
 import tempfile
 import unittest
@@ -8,6 +9,11 @@ from pathlib import Path
 from app.accounts import issue_token
 from app.db import get_db, init_db, now
 from tests.test_tournament_store import add_player, make_app
+
+
+def without_suggestions(html):
+    """A página sem as listas de sugestão de nick (_user_picker.html), para conferir só os cards."""
+    return re.sub(r'<ul class="user-options".*?</ul>', '', html, flags=re.S)
 
 KEY = "chave-do-dll"
 CSRF = "test-csrf"
@@ -179,7 +185,8 @@ class LiveMatchesTest(unittest.TestCase):
         page = self.app.test_client().get("/ao-vivo?jogador=Fulano").get_data(as_text=True)
         self.assertIn("Beltrano", page)
         self.assertIn("/ao-vivo/cards?jogador=Fulano", page)
-        self.assertNotIn("P11", page)
+        self.assertNotIn("P11", without_suggestions(page))
+        self.assertIn('data-nick="Fulano"', page)  # o filtro "Jogador" sugere quem já jogou logado
 
     def test_final_agreement(self):
         self.post(state(period=1, clock=0, goals=(4, 4), final=True))
@@ -942,7 +949,8 @@ class LiveMatchesTest(unittest.TestCase):
         page = client.get("/torneios/amistosos").get_data(as_text=True)
         self.assertIn("Mostrando os 20 mais recentes de 22", page)
         self.assertEqual(page.count('class="friendly-card'), 20)
-        self.assertNotIn(">RIVAL<", page)  # os dois mais antigos ficaram de fora
+        self.assertNotIn(">RIVAL<", without_suggestions(page))  # os dois mais antigos ficaram de fora
+        self.assertIn('data-nick="RIVAL"', page)  # mas o filtro "Adversário" sugere o RIVAL
         page = client.get("/torneios/amistosos?adversario=riv").get_data(as_text=True)
         self.assertEqual(page.count('class="friendly-card'), 2)
         self.assertNotIn("Mostrando os", page)
@@ -991,8 +999,16 @@ class LiveMatchesTest(unittest.TestCase):
         with client.session_transaction() as sess:
             sess["player_id"] = self.anders
         page = client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True)
-        self.assertIn("perde o triplo de XP - mesmo que tenha sido queda de conexão", page)
+        # O adversário decide, ao confirmar, se quem saiu perde o triplo de XP (caixa marcada).
+        self.assertIn('name="penalizar" value="1" form="confirmar-%d" checked' % fid, page)
+        self.assertIn('<input type="hidden" name="quem_saiu" value="%d">' % self.tieres, page)
+        self.assertIn("TIERES saiu da partida no meio de um jogo (o placar até ali conta) e perde o triplo de XP.", page)
         self.assertIn("voltem em até 20 minutos e terminem outra partida", page)
+        with client.session_transaction() as sess:
+            sess["player_id"] = self.tieres
+        page = client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True)
+        self.assertNotIn('name="penalizar"', page)  # quem saiu não decide
+        self.assertIn("ANDERSHOW decide se você perde o triplo de XP", page)
         # XP: quem saiu perde o triplo; quem ganhou ganha o normal.
         start = {self.tieres: 300, self.anders: 300}
         normal = xp.replay([{"id": "a1", "home": self.tieres, "away": self.anders, "home_goals": 1, "away_goals": 3,

@@ -1,0 +1,28 @@
+{# Escolha de usuário pelo nick - o padrão do sistema (static/js/user-picker.js,
+   carregado no base.html): campo de busca com a lista embaixo (foto, nick e rank),
+   sem diferenciar acento/maiúscula, quem começa pelo texto primeiro.
+   - users: quem pode ser escolhido (linhas com id e username).
+   - strict: o id vai no campo escondido `name` e só vale alguém da lista (convite
+     de amistoso: chosen_id/value = o já escolhido). Sem strict, o texto vai no
+     `name` e a lista só sugere (filtros, "Adicionar amigo", W$ do admin, comparar).
+   - exclude: id do campo de outro user_picker - o nick escolhido nele sai desta lista.
+   Escolher alguém dispara "change" no campo de texto. #}
+{% from '_avatar.html' import avatar %}
+{% macro user_picker(name, label='', users=(), value='', strict=false, chosen_id='', placeholder='Nick',
+                     required=false, field_id='', exclude='', cls='', input_type='text', aria_label='',
+                     empty='Nenhum jogador com esse nick.') -%}
+{% set fid = field_id or ('up-' ~ name) %}
+<div class="user-picker{% if cls %} {{ cls }}{% endif %}" data-user-picker="{{ 'strict' if strict else 'free' }}"{% if exclude %} data-exclude="{{ exclude }}"{% endif %}>
+  {% if label %}<label for="{{ fid }}">{{ label }}</label>{% endif %}
+  {% if strict %}<input type="hidden" name="{{ name }}" value="{{ chosen_id }}" data-user-id>{% endif %}
+  <input type="{{ input_type }}" id="{{ fid }}"{% if not strict %} name="{{ name }}"{% endif %} value="{{ value }}"
+         role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="{{ fid }}-lista"{% if not label %} aria-label="{{ aria_label or placeholder }}"{% endif %}
+         autocomplete="off" spellcheck="false" maxlength="32" placeholder="{{ placeholder }}"{% if required %} required{% endif %}>
+  <ul class="user-options" id="{{ fid }}-lista" role="listbox" aria-label="{{ label or aria_label or 'Jogadores' }}" hidden>
+    {% for p in users %}{% set r = player_rank(p.id) %}
+    <li role="option" id="{{ fid }}-op-{{ p.id }}" aria-selected="false" data-id="{{ p.id }}" data-nick="{{ p.username }}" data-order="{{ loop.index0 }}">{{ avatar(p.id, p.username) }}<span class="user-option-name">{{ p.username }}</span><small class="muted">Rank {{ r.rank }} · {{ r.xp }} XP</small></li>
+    {% endfor %}
+    <li class="user-options-empty muted" hidden>{{ empty }}</li>
+  </ul>
+</div>
+{%- endmacro %}

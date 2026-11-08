@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% block title %}Campeonatos · WE Camp{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from '_user_picker.html' import user_picker %}{% from '_carousel.html' import carousel %}{% block title %}Campeonatos · WE Camp{% endblock %}{% block content %}
 {% block heading %}<div class="page-title"><h1>Campeonatos</h1><div class="card-actions"><a class="button secondary" href="{{ url_for('tournaments.ranking') }}">Ranking</a>{% if session.player_id %}<a class="button" href="{{ url_for('tournaments.new') }}">Criar campeonato</a>{% else %}<a class="button" href="{{ url_for('players.login', next=url_for('tournaments.new')) }}">Entre para criar um campeonato</a>{% endif %}</div></div>{% endblock %}
 
 <form method="get" class="filters t-filters" id="t-filters">
@@ -9,7 +9,7 @@
     {% else %}<option value="">Todos os status</option>{% endif %}
     {% for key, label in status_labels.items() if key != 'draft' %}<option value="{{ key }}" {% if key == status %}selected{% endif %}>{{ label }}</option>{% endfor %}
   </select>
-  {% for field, label, value, options in (('nome', 'Nome do campeonato', name, name_options), ('organizador', 'Criado por', organizer, organizer_options)) %}
+  {% for field, label, value, options in (('nome', 'Nome do campeonato', name, name_options),) %}
   <div class="ac">
     <input type="search" name="{{ field }}" id="f-{{ field }}" placeholder="{{ label }}" value="{{ value }}" aria-label="{{ label }}"
            role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="f-{{ field }}-list" autocomplete="off"
@@ -17,6 +17,8 @@
     <ul class="ac-list" id="f-{{ field }}-list" role="listbox" hidden></ul>
   </div>
   {% endfor %}
+  {# Criado por: a escolha de usuário padrão (_user_picker.html); escolher filtra na hora. #}
+  {{ user_picker('organizador', '', organizer_options, organizer, placeholder='Criado por', field_id='f-organizador', input_type='search') }}
   {% if game %}<input type="hidden" name="jogo" value="{{ game }}">{% endif %}
   <noscript><button>Filtrar</button></noscript>
 </form>
@@ -29,7 +31,7 @@
 </nav>
 
 {% if tournaments %}
-<div class="t-cards">
+{% call carousel('Campeonatos anteriores', 'Próximos campeonatos', 't-cards per-3', fit=false) %}
   {% for t in tournaments %}
   {% set own = session.player_id and t.organizer_id == session.player_id %}
   {% set manageable = own or session.user_id %}{% set iso_ok = t.id in iso_ready %}
@@ -60,7 +62,7 @@
     <a class="t-link" href="{{ url_for('tournaments.show', slug=t.slug) }}" aria-label="{{ t.name }}"></a>
   </div>
   {% endfor %}
-</div>
+{% endcall %}
 {% elif name or organizer or status or game %}<p>Nenhum campeonato encontrado com esses filtros.</p>
 {% else %}{% block empty %}<p>Nenhum campeonato por aqui ainda.{% if session.player_id %} Que tal <a href="{{ url_for('tournaments.new') }}">criar o primeiro</a>?{% endif %}</p>{% endblock %}{% endif %}
 </div>
@@ -85,6 +87,7 @@
       var fresh = new DOMParser().parseFromString(html, 'text/html').getElementById('t-results');
       if (!fresh) { location.href = url; return; }
       results.innerHTML = fresh.innerHTML;
+      if (window.setupCarousels) window.setupCarousels(results);  // a lista nova em carrossel
       history.replaceState(null, '', url);
     }).catch(function () { location.href = url; });
   }
@@ -92,6 +95,10 @@
 
   form.addEventListener('submit', function (e) { e.preventDefault(); apply(); });
   form.elements.status.addEventListener('change', apply);
+  // Criado por (user-picker.js): digitando, filtra depois; escolhendo da lista, na hora.
+  var organizer = document.getElementById('f-organizador');
+  organizer.addEventListener('input', later);
+  organizer.addEventListener('change', apply);
 
   form.querySelectorAll('.ac input').forEach(function (input) {
     var options = JSON.parse(input.dataset.options);

@@ -156,11 +156,19 @@ def _confirm(db, row, at=None):
         microsecond=0).isoformat(), ranked=int(ranked), unranked_reason=reason)
 
 
-def confirm(db, friendly_id, me, at=None):
+def confirm(db, friendly_id, me, at=None, penalize=None, quitter_seen=None):
     """Confirma o placar do adversário - ou, no placar lido do jogo, a sua
-    parte: só fecha com os dois (first_confirmed_by guarda o primeiro)."""
+    parte: só fecha com os dois (first_confirmed_by guarda o primeiro).
+    Quem saiu no meio de um jogo (quitter_id) perde o triplo de XP, a não ser
+    que o adversário dele desmarque isso ao confirmar: penalize=False tira a
+    marca (só se quitter_seen for o quitter_id que ele viu na página); None
+    mantém, como na confirmação sozinha do prazo (auto_confirm)."""
     row = _mine(db, friendly_id, me)
     _waiting_for_me(row, me)
+    if (penalize is False and row["quitter_id"] and row["quitter_id"] != me
+            and quitter_seen == row["quitter_id"]):
+        _set(db, friendly_id, quitter_id=None)
+        row = get(db, friendly_id)
     if row["game_report"] and row["first_confirmed_by"] is None:
         _set(db, friendly_id, first_confirmed_by=me)
         return get(db, friendly_id)

@@ -1,11 +1,39 @@
-{% extends 'base.html' %}{% from 'tournaments/_friendly.html' import friendly_card %}{% block title %}Amistosos · WE Camp{% endblock %}{% block content %}
-<h1>Amistosos</h1>
+{% extends 'base.html' %}{% from 'tournaments/_friendly.html' import friendly_carousel %}{% from '_carousel.html' import carousel_arrow, carousel_count %}{% from '_dialog.html' import info_button, info_dialog %}{% from '_user_picker.html' import user_picker %}{% block title %}Amistosos · WE Camp{% endblock %}{% block content %}
+<h1 class="title-info">Amistosos {{ info_button('amistoso-regras', 'Quando o amistoso vale para o Ranking e o XP') }}</h1>
 <p class="muted">Jogos com seus amigos, fora dos campeonatos. Quem é chamado aceita o convite. Depois do jogo, um informa o placar e o outro confirma.</p>
+{% call info_dialog('amistoso-regras', 'Quando o amistoso vale para o Ranking e o XP') %}
+  <ul class="xp-rules-list">
+    <li>Os dois jogadores precisam já ter chegado a <strong>{{ rules.min_xp }} XP em campeonatos</strong> (Rank {{ rules.rank }}). O XP de amistosos não conta para isso. Quem chegou lá uma vez continua liberado, mesmo se perder XP depois. Assim, contas novas ou fake não conseguem dar XP para ninguém.{% if rules.my_peak < rules.min_xp %} <span class="muted">Você ainda não chegou: seu maior XP em campeonatos é {{ rules.my_peak }}.</span>{% else %} <span class="muted">Você já está liberado.</span>{% endif %}</li>
+    <li>Vale no máximo <strong>{{ rules.limit }} convites para amistosos por dia</strong> contra o mesmo adversário, mas vocês podem fazer quantos jogos quiserem dentro da mesma conexão, ao final é somado o agregado para confirmarem os resultados e quem tiver mais gols marcados ganha o XP e status V/E/D.</li>
+    <li>Qualquer amigo pode ser convidado. Quando um dos dois ainda não está liberado, o amistoso fica registrado, mas não vale.</li>
+    <li>O amistoso que vale entra no Ranking, no V/E/D e no XP como um jogo de campeonato, pelas mesmas regras. Ele não paga W$.</li>
+    <li>Se um não aceitar o placar, o amistoso fica <strong>suspenso</strong> até um dos dois propor um placar que o outro aceite.</li>
+  </ul>
+{% endcall %}
+
+{# Filtros escondidos de uma lista no formulário da outra: filtrar uma não limpa a outra. #}
+{% macro keep_filters(prefix, values) -%}
+{% for key, value in (('adversario', values.opponent), ('de', values.date_from), ('ate', values.date_to)) if value %}<input type="hidden" name="{{ prefix }}{{ key }}" value="{{ value }}">{% endfor %}
+{%- endmacro %}
+
+{# No topo, em destaque: o que espera uma resposta minha e os amistosos em aberto. #}
 {% if respond %}
-<section class="friendly-respond">
-  <h2>Esperando você ({{ respond|length }})</h2>
-  {% for f in respond %}{{ friendly_card(f, labels, needs_me, request.path, friendly_games.get(f.id)) }}{% endfor %}
-</section>
+{{ friendly_carousel('esperando', 'Esperando você (%d)' % respond|length, respond, labels, needs_me, request.path, friendly_games, cls='friendly-respond') }}
+{% endif %}
+
+{% set open_filtered = open_filters.opponent or open_filters.date_from or open_filters.date_to %}
+{% if open_total %}
+{% call friendly_carousel('em-aberto', 'Em aberto (%s)' % (('%d de %d' % (pending|length, open_total)) if open_filtered else open_total), pending, labels, needs_me, request.path, friendly_games, 'Nenhum amistoso em aberto com esses filtros.', 'friendly-open') %}
+  {% if open_total > 1 %}
+  <form method="get" action="{{ url_for('tournaments.friendlies') }}#em-aberto" class="live-filters friendly-filters">
+    {{ user_picker('aberto_adversario', 'Adversário', open_opponents, open_filters.opponent, field_id='aberto-adversario') }}
+    <label>De<input type="datetime-local" name="aberto_de" value="{{ open_filters.date_from }}"></label>
+    <label>Até<input type="datetime-local" name="aberto_ate" value="{{ open_filters.date_to }}"></label>
+    {{ keep_filters('', filters) }}
+    <div class="live-filter-actions"><a class="button secondary" href="{{ url_for('tournaments.friendlies', adversario=filters.opponent or None, de=filters.date_from or None, ate=filters.date_to or None) }}#em-aberto">Limpar filtro</a><button>Filtrar</button></div>
+  </form>
+  {% endif %}
+{% endcall %}
 {% endif %}
 
 <section>
@@ -14,10 +42,10 @@
   <form method="post" action="{{ url_for('tournaments.friendly_new') }}" class="form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="com" value="{{ chosen }}">
     <div class="form-row">
-      <label>Amigo<select name="amigo" required>
-        <option value="">Escolha...</option>
-        {% for p in friends %}{% set r = player_rank(p.id) %}<option value="{{ p.id }}" {% if chosen|lower == p.username|lower %}selected{% endif %}>{{ p.username }} · Rank {{ r.rank }} ({{ r.xp }} XP)</option>{% endfor %}
-      </select></label>
+      {# Amigo: busca pelo nick (_user_picker.html, strict): vai o id no "amigo". #}
+      {{ user_picker('amigo', 'Amigo', friends, chosen_friend.username if chosen_friend else '', strict=true,
+                     chosen_id=chosen_friend.id if chosen_friend else '', placeholder='Digite o nick do amigo...',
+                     required=true, field_id='amigo-busca', empty='Nenhum amigo com esse nick.') }}
       <label class="wide">Recado (opcional)<input name="mensagem" maxlength="300" placeholder="Ex.: hoje às 21h?"></label>
     </div>
     <div class="iso-choice">
@@ -25,8 +53,8 @@
       <input type="hidden" name="iso" id="iso-value" value="">
       <div class="iso-chosen" id="iso-chosen" hidden></div>
       <div class="iso-choice-actions">
-        <button type="button" class="secondary" id="iso-clear" hidden>Remover ISO</button>
         <button type="button" class="secondary" id="iso-open" aria-haspopup="dialog">Escolher ISO</button>
+        <button type="button" class="secondary" data-iso-upload aria-haspopup="dialog">Enviar ISO</button>
       </div>
     </div>
     <p class="muted iso-hint">Escolha a ISO que vocês vão jogar: o convite leva o botão de download, para quem ainda não tem.</p>
@@ -40,99 +68,145 @@
     </div>
     <input type="search" id="iso-filter" placeholder="Filtrar pelo nome do campeonato ou da ISO..." autocomplete="off" aria-label="Filtrar ISOs">
     {% if iso_options %}
-    <div class="t-cards iso-cards">
-      {% for o in iso_options %}
-      <button type="button" class="t-card iso-option" data-value="{{ o.value }}" data-search="{{ o.title }} {{ o.filename }} {{ o.game }}">
-        <span class="t-side"><span class="t-side-images">
-          {% if o.image %}<img class="t-cover t-image" src="{{ image_url('torneio', o.image) }}" alt="" loading="lazy">{% endif %}
-          <img class="t-cover" src="{{ game_cover(o.game_code) }}" alt="{{ o.game }}" width="200" height="250" loading="lazy">
-        </span></span>
-        <span class="t-body">
-          <span class="badge {{ 'iso-catalog' if o.kind == 'catalog' else '' }}">{{ 'ISO do WE Camp' if o.kind == 'catalog' else 'ISO de campeonato' }}</span>
-          <strong class="t-name">{{ o.title }}</strong>
-          <span class="muted">{{ o.game }}</span>
-          {% if o.filename %}<small class="muted iso-file">{{ o.filename }}</small>{% endif %}
-        </span>
-      </button>
-      {% endfor %}
+    <div class="carousel iso-carousel" data-carousel id="iso-carousel">
+      <div class="carousel-head carousel-top">
+        <p class="muted iso-shown" id="iso-shown" aria-live="polite"></p>
+        {{ carousel_count() }}
+      </div>
+      <div class="carousel-stage">
+      {{ carousel_arrow('prev', 'ISOs anteriores') }}
+      <div class="carousel-track iso-track" data-carousel-track>
+        {% for o in iso_options %}
+        <button type="button" class="t-card iso-option" data-value="{{ o.value }}" data-order="{{ loop.index0 }}" data-search="{{ o.title }} {{ o.filename }} {{ o.game }}">
+          <span class="t-side"><span class="t-side-images">
+            {% if o.image %}<img class="t-cover t-image" src="{{ image_url('torneio', o.image) }}" alt="" loading="lazy">{% endif %}
+            <img class="t-cover" src="{{ game_cover(o.game_code) }}" alt="{{ o.game }}" width="200" height="250" loading="lazy">
+          </span></span>
+          <span class="t-body">
+            <span class="badge {{ 'iso-catalog' if o.kind == 'catalog' else '' }}">{{ 'ISO do WE Camp' if o.kind == 'catalog' else 'ISO de campeonato' }}</span>
+            <strong class="t-name">{{ o.title }}</strong>
+            <span class="muted">{{ o.game }}</span>
+            {% if o.filename %}<small class="muted iso-file">{{ o.filename }}</small>{% endif %}
+            <small class="iso-selected-tag">Selecionada · clique para tirar</small>
+          </span>
+        </button>
+        {% endfor %}
+      </div>
+      {{ carousel_arrow('next', 'Próximas ISOs') }}
+      </div>
     </div>
     {% endif %}
     <p class="muted" id="iso-empty" {% if iso_options %}hidden{% endif %}>Nenhuma ISO encontrada.</p>
-    <details class="iso-request">
-      <summary><strong>Não encontrou a ISO?</strong> Envie a sua para a administração do WE Camp cadastrar.</summary>
-      <p class="muted">A ISO vai para o archive.org. A administração confere o nome e o jogo base, coloca a imagem e libera. Você recebe um e-mail quando ela estiver liberada. Até {{ iso_max_bytes|filesize }} ({{ iso_accept.replace(',', ', ') }}).</p>
-      <form method="post" action="{{ url_for('tournaments.friendly_iso_upload') }}" class="form" enctype="multipart/form-data" data-upload="{{ iso_max_bytes }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="form-row">
-          <label class="wide">Nome da ISO<input name="name" maxlength="120" required placeholder="Ex.: WE 2002 Brasileirão 2026"></label>
-          <label>Jogo base<select name="game_title_id" required>
-            <option value="">Escolha...</option>
-            {% for g in games %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}
-          </select></label>
-        </div>
-        <label>Arquivo da ISO<input type="file" name="iso" accept="{{ iso_accept }}" required></label>
-        {% include 'tournaments/_upload_progress.html' %}
-        <div class="card-actions"><button>Enviar ISO</button></div>
-      </form>
-    </details>
+    <p class="muted iso-request">Não encontrou a ISO? <button type="button" class="secondary" data-iso-upload aria-haspopup="dialog">Enviar ISO</button></p>
+  </dialog>
+
+  <dialog class="iso-picker iso-upload" id="iso-upload" aria-labelledby="iso-upload-title">
+    <div class="iso-picker-head">
+      <h2 id="iso-upload-title">Enviar ISO</h2>
+      <form method="dialog"><button class="secondary" aria-label="Fechar">&times;</button></form>
+    </div>
+    <p class="muted">A ISO vai para a administração conferir o nome e o jogo base, coloca a imagem e libera. Você recebe um e-mail quando ela estiver liberada. Até {{ iso_max_bytes|filesize }} ({{ iso_accept.replace(',', ', ') }}).</p>
+    <form method="post" action="{{ url_for('tournaments.friendly_iso_upload') }}" class="form" enctype="multipart/form-data" data-upload="{{ iso_max_bytes }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-row">
+        <label class="wide">Nome da ISO<input name="name" maxlength="120" required placeholder="Ex.: WE 2002 Brasileirão 2026"></label>
+        <label>Jogo base<select name="game_title_id" required>
+          <option value="">Escolha...</option>
+          {% for g in games %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}
+        </select></label>
+      </div>
+      <label>Arquivo da ISO<input type="file" name="iso" accept="{{ iso_accept }}" required></label>
+      {% include 'tournaments/_upload_progress.html' %}
+      <div class="card-actions"><button>Enviar ISO</button></div>
+    </form>
   </dialog>
   <script>
   (function () {
-    // Escolha da ISO do convite: popup com os cards, filtro pelo nome (sem acento/maiúscula).
-    var dialog = document.getElementById('iso-picker'), value = document.getElementById('iso-value');
-    var chosen = document.getElementById('iso-chosen'), clear = document.getElementById('iso-clear');
+    // Escolha da ISO do convite: popup com os cards num carrossel (as 20 cadastradas
+    // mais recentes; o filtro procura em todas, sem acento/maiúscula). A escolhida
+    // fica com a borda verde e em primeiro; clicar nela de novo tira a escolha.
+    var LIMIT = 20;
+    var dialog = document.getElementById('iso-picker'), upload = document.getElementById('iso-upload');
+    var value = document.getElementById('iso-value'), chosen = document.getElementById('iso-chosen');
     var open = document.getElementById('iso-open'), filter = document.getElementById('iso-filter');
-    var empty = document.getElementById('iso-empty'), options = dialog.querySelectorAll('.iso-option');
-    function plain(s) { return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
+    var empty = document.getElementById('iso-empty'), shownNote = document.getElementById('iso-shown');
+    var carousel = document.getElementById('iso-carousel');
+    var track = carousel ? carousel.querySelector('[data-carousel-track]') : null;
+    var options = Array.prototype.slice.call(dialog.querySelectorAll('.iso-option'));
+    var selected = null;
+    function plain(s) { return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+    function render() {
+      var words = plain(filter.value).split(/\s+/).filter(Boolean), shown = 0, found = 0;
+      var ordered = options.slice().sort(function (a, b) {
+        return (b === selected) - (a === selected) || a.dataset.order - b.dataset.order;
+      });
+      ordered.forEach(function (o) {
+        var text = plain(o.dataset.search);
+        var match = words.every(function (w) { return text.indexOf(w) >= 0; });
+        if (match) found++;
+        o.hidden = !match || (!words.length && shown >= LIMIT);
+        if (!o.hidden) shown++;
+        o.classList.toggle('is-selected', o === selected);
+        o.setAttribute('aria-pressed', o === selected ? 'true' : 'false');
+        o.title = o === selected ? 'Clique para tirar a escolha desta ISO' : 'Escolher esta ISO';
+        if (track) track.appendChild(o);
+      });
+      empty.hidden = shown > 0;
+      if (shownNote) {
+        shownNote.textContent = words.length ? (found ? found + (found === 1 ? ' ISO encontrada' : ' ISOs encontradas') : '')
+          : (found > LIMIT ? 'As ' + LIMIT + ' ISOs cadastradas mais recentes (de ' + found + '): use o filtro para achar as outras.'
+                           : 'ISOs cadastradas, das mais recentes para as mais antigas.');
+      }
+      if (carousel) carousel.dispatchEvent(new Event('carousel:refresh'));
+    }
     function show(option) {
+      selected = option;
       value.value = option ? option.dataset.value : '';
       chosen.innerHTML = '';
       if (option) {
         var copy = option.cloneNode(true);
         copy.removeAttribute('data-value');
+        copy.removeAttribute('title');
+        copy.removeAttribute('aria-pressed');
+        copy.classList.remove('is-selected');
         copy.classList.add('iso-chosen-card');
-        copy.setAttribute('type', 'button');
+        copy.hidden = false;
         copy.addEventListener('click', function () { open.click(); });
         chosen.appendChild(copy);
       }
-      chosen.hidden = clear.hidden = !option;
+      chosen.hidden = !option;
       open.textContent = option ? 'Trocar ISO' : 'Escolher ISO';
     }
     open.addEventListener('click', function () {
       filter.value = '';
-      filter.dispatchEvent(new Event('input'));
       dialog.showModal();
+      render();
       filter.focus();
     });
-    clear.addEventListener('click', function () { show(null); });
     filter.addEventListener('keydown', function (e) { if (e.key === 'Enter') e.preventDefault(); });
-    filter.addEventListener('input', function () {
-      var words = plain(filter.value).split(/\s+/).filter(Boolean), shown = 0;
-      options.forEach(function (o) {
-        var text = plain(o.dataset.search);
-        o.hidden = !words.every(function (w) { return text.indexOf(w) >= 0; });
-        if (!o.hidden) shown++;
-      });
-      empty.hidden = shown > 0;
-    });
+    filter.addEventListener('input', render);
     options.forEach(function (o) {
-      o.addEventListener('click', function () { show(o); dialog.close(); });
+      o.addEventListener('click', function () {
+        if (o === selected) { show(null); render(); return; }  // tira a escolha; a janela fica aberta
+        show(o);
+        dialog.close();
+      });
+    });
+    // "Enviar ISO" (no convite e na janela de escolha): a janela com o formulário.
+    document.querySelectorAll('[data-iso-upload]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        if (dialog.open) dialog.close();
+        upload.showModal();
+        upload.querySelector('input[name=name]').focus();
+      });
     });
     // Fecha clicando fora do conteúdo.
-    dialog.addEventListener('click', function (e) { if (e.target === dialog) dialog.close(); });
+    [dialog, upload].forEach(function (d) {
+      d.addEventListener('click', function (e) { if (e.target === d) d.close(); });
+    });
   })();
   </script>
   {% else %}<p class="muted">Você ainda não tem amigos. <a href="{{ url_for('tournaments.friends_page') }}">Adicione amigos</a> para marcar amistosos.</p>{% endif %}
-  <details class="xp-rules">
-    <summary>Quando o amistoso vale para o Ranking e o XP</summary>
-    <ul>
-      <li>Os dois jogadores precisam já ter chegado a <strong>{{ rules.min_xp }} XP em campeonatos</strong> (Rank {{ rules.rank }}). O XP de amistosos não conta para isso. Quem chegou lá uma vez continua liberado, mesmo se perder XP depois. Assim, contas novas ou fake não conseguem dar XP para ninguém.{% if rules.my_peak < rules.min_xp %} <span class="muted">Você ainda não chegou: seu maior XP em campeonatos é {{ rules.my_peak }}.</span>{% else %} <span class="muted">Você já está liberado.</span>{% endif %}</li>
-      <li>Vale no máximo <strong>{{ rules.limit }} amistosos por dia</strong> contra o mesmo adversário. Os seguintes ficam só como amistoso.</li>
-      <li>Qualquer amigo pode ser convidado. Quando um dos dois ainda não está liberado, o amistoso fica registrado, mas não vale.</li>
-      <li>O amistoso que vale entra no Ranking, no V/E/D e no XP como um jogo de campeonato, pelas mesmas regras. Ele não paga W$.</li>
-      <li>Se um não aceitar o placar, o amistoso fica <strong>suspenso</strong> até um dos dois propor um placar que o outro aceite.</li>
-    </ul>
-  </details>
 </section>
 
 {% if my_isos %}
@@ -149,23 +223,17 @@
 </section>
 {% endif %}
 
-<section>
-  <h2>Em aberto ({{ pending|length }})</h2>
-  {% for f in pending %}{{ friendly_card(f, labels, needs_me, request.path, friendly_games.get(f.id)) }}{% else %}<p class="muted">Nenhum amistoso em aberto.</p>{% endfor %}
-</section>
-
 {% if has_history %}
-<section id="anteriores">
-  <h2>Anteriores</h2>
-  <form method="get" action="{{ url_for('tournaments.friendlies') }}#anteriores" class="live-filters">
-    <label>Adversário<input name="adversario" value="{{ filters.opponent }}" maxlength="32" placeholder="Nick"></label>
+{% call friendly_carousel('anteriores', 'Anteriores', done, labels, needs_me, request.path, friendly_games, 'Nenhum amistoso com esses filtros.') %}
+  <form method="get" action="{{ url_for('tournaments.friendlies') }}#anteriores" class="live-filters friendly-filters">
+    {{ user_picker('adversario', 'Adversário', history_opponents, filters.opponent, field_id='anteriores-adversario') }}
     <label>De<input type="datetime-local" name="de" value="{{ filters.date_from }}"></label>
     <label>Até<input type="datetime-local" name="ate" value="{{ filters.date_to }}"></label>
-    <div class="live-filter-actions"><a class="button secondary" href="{{ url_for('tournaments.friendlies') }}#anteriores">Limpar filtro</a><button>Filtrar</button></div>
+    {{ keep_filters('aberto_', open_filters) }}
+    <div class="live-filter-actions"><a class="button secondary" href="{{ url_for('tournaments.friendlies', aberto_adversario=open_filters.opponent or None, aberto_de=open_filters.date_from or None, aberto_ate=open_filters.date_to or None) }}#anteriores">Limpar filtro</a><button>Filtrar</button></div>
   </form>
   {% if done_total > done|length %}<p class="muted">Mostrando os {{ done|length }} mais recentes de {{ done_total }}: use os filtros para achar os outros.</p>{% endif %}
-  {% for f in done %}{{ friendly_card(f, labels, needs_me, request.path, friendly_games.get(f.id)) }}{% else %}<p class="muted">Nenhum amistoso com esses filtros.</p>{% endfor %}
-</section>
+{% endcall %}
 {% endif %}
 <script src="{{ url_for('static', filename='js/upload-progress.js') }}"></script>
 <script src="{{ url_for('static', filename='js/archive-progress.js') }}"></script>

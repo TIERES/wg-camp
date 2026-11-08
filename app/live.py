@@ -975,7 +975,10 @@ def index():
         "SELECT t.id, t.name FROM tournaments t WHERE t.id IN ("
         "SELECT s.tournament_id FROM live_matches m JOIN tournament_matches tm ON tm.id = m.tournament_match_id "
         "JOIN tournament_stages s ON s.id = tm.stage_id) ORDER BY t.name COLLATE NOCASE").fetchall()
-    return render_template("live/index.html", cards=list_cards(db, **filters), filters=filters,
+    # Sugestões do filtro "Jogador": quem já mandou placar logado (aparece nos cards).
+    players = db.execute("SELECT DISTINCT p.id, p.username FROM live_match_reports r JOIN players p ON p.id = r.player_id "
+                         "ORDER BY p.username COLLATE NOCASE").fetchall()
+    return render_template("live/index.html", cards=list_cards(db, **filters), filters=filters, players=players,
                            tournaments=tournaments, is_admin=_is_admin(), limit=CARDS_LIMIT,
                            cards_url=url_for("live.cards_fragment", **request.args.to_dict()))
 

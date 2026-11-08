@@ -157,6 +157,37 @@ class FriendlyIsoTest(unittest.TestCase):
         self.assertEqual(download.data, ISO)
         download.close()
 
+    def test_options_newest_registered_first(self):
+        """A escolha da ISO mostra as cadastradas mais recentemente primeiro, do
+        cadastro (pela liberação) e dos torneios juntas."""
+        p0, _, _ = self.players
+        with self.app.app_context():
+            db = get_db()
+            def catalog(name, created, approved=None):
+                return db.execute(
+                    "INSERT INTO catalog_isos (name, game_title_id, stored_name, original_filename, is_active, "
+                    "approved_at, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?, ?)",
+                    (name, self.game, name + ".bin", name + ".bin", approved, created, created)).lastrowid
+            old = catalog("Antiga", "2026-01-01T00:00:00+00:00")
+            late = catalog("Liberada agora", "2026-01-02T00:00:00+00:00", "2026-03-01T00:00:00+00:00")
+            tid = db.execute(
+                "INSERT INTO tournaments (slug, name, game_title_id, organizer_id, format, status, max_players, "
+                "settings_json, created_at, updated_at) VALUES ('copa', 'Copa', ?, ?, 'league', 'registration', 4, "
+                "'{\"legs\": 1}', ?, ?)", (self.game, p0, now(), now())).lastrowid
+            db.execute("INSERT INTO tournament_isos (tournament_id, stored_name, original_filename, file_size, md5, "
+                       "archive_name, created_at, updated_at) VALUES (?, 'copa.bin', 'Copa.bin', 1, 'x', 'a', ?, ?)",
+                       (tid, "2026-02-01T00:00:00+00:00", "2026-02-01T00:00:00+00:00"))
+            db.commit()
+            self.assertEqual([o["value"] for o in iso_catalog.options(db, p0)], [f"c:{late}", f"t:{tid}", f"c:{old}"])
+        page = self.client(p0).get("/torneios/amistosos").get_data(as_text=True)
+        self.assertLess(page.index(f'data-value="c:{late}" data-order="0"'), page.index(f'data-value="c:{old}" data-order="2"'))
+        # Sem "Remover ISO": a escolhida sai clicando nela de novo. "Enviar ISO" abre a janela do envio.
+        self.assertNotIn("Remover ISO", page)
+        self.assertEqual(page.count("data-iso-upload"), 3)  # 2 botões + o seletor no script
+        self.assertIn('id="iso-upload"', page)
+        self.assertIn("A ISO vai para a administração conferir o nome e o jogo base", page)
+        self.assertNotIn('<details class="iso-request"', page)
+
     def test_friendly_without_iso(self):
         friendly = self.invite("")
         self.assertEqual((friendly["iso_catalog_id"], friendly["iso_tournament_id"], friendly["game_title_id"]),

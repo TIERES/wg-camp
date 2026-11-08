@@ -161,20 +161,24 @@ def _visible(db, me, tournament):
 
 
 def options(db, me):
-    """As ISOs que o jogador pode escolher no convite: as do cadastro primeiro,
-    depois as dos torneios (mais novos primeiro)."""
+    """As ISOs que o jogador pode escolher no convite (do cadastro e dos
+    torneios), as cadastradas mais recentemente primeiro: a do cadastro conta
+    da liberação (ou do envio, sem liberação), a do torneio, do envio."""
     result = [{
         "value": f"c:{row['id']}", "kind": "catalog", "title": row["name"], "game": row["game_name"],
         "game_code": row["game_code"], "image": row["image"], "filename": filename(row),
+        "registered_at": row["approved_at"] or row["created_at"] or "",
     } for row in all_rows(db) if row["is_active"] and (row["stored_name"] or row["file_id"])]
     rows = db.execute(
         "SELECT t.id, t.name, t.image, t.friends_only, t.organizer_id, g.name AS game_name, g.code AS game_code, "
-        "i.original_filename FROM tournament_isos i JOIN tournaments t ON t.id = i.tournament_id "
+        "i.original_filename, i.created_at FROM tournament_isos i JOIN tournaments t ON t.id = i.tournament_id "
         "JOIN game_titles g ON g.id = t.game_title_id WHERE t.status != 'cancelled' ORDER BY t.id DESC").fetchall()
     result += [{
         "value": f"t:{row['id']}", "kind": "tournament", "title": row["name"], "game": row["game_name"],
         "game_code": row["game_code"], "image": row["image"], "filename": row["original_filename"],
+        "registered_at": row["created_at"] or "",
     } for row in rows if _visible(db, me, row)]
+    result.sort(key=lambda o: o["registered_at"], reverse=True)  # sort estável: empate fica na ordem acima
     return result
 
 

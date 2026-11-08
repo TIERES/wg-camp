@@ -1,0 +1,29 @@
+{# Carrossel - o formato padrão das listas de cards (static/js/carousel.js, carregado
+   no base.html): contador no alto à direita, setas nas laterais dos cards.
+   Setas e contador somem quando todos os cards cabem na tela. #}
+
+{# Seta, na lateral dos cards (.carousel-stage). #}
+{% macro carousel_arrow(direction, label, hidden=false) -%}
+<button type="button" class="secondary carousel-arrow {{ direction }}" data-carousel-{{ direction }} aria-label="{{ label }}"{% if hidden %} hidden{% endif %}><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="{{ 'M15 5l-7 7 7 7' if direction == 'prev' else 'M9 5l7 7-7 7' }}" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+{%- endmacro %}
+
+{# Contador ("1 de 4", "1–3 de 12"), no alto à direita, acima dos cards. #}
+{% macro carousel_count(text='', hidden=false) -%}
+<span class="carousel-count" data-carousel-count aria-live="polite"{% if hidden %} hidden{% endif %}>{{ text }}</span>
+{%- endmacro %}
+
+{# A lista de cards: o {% call %} traz os cards (cada filho da faixa é um card).
+   - track_cls: classes da faixa (a da lista, ex. "t-cards", e quantos por tela:
+     "per-2" = 2 no desktop, "per-3" = 3 no desktop e 2 no tablet; sem = 1).
+   - fit: a faixa na altura dos cards da vez (cards de alturas diferentes).
+   - live_src: os cards que recarregam sozinhos (static/js/live-cards.js). #}
+{% macro carousel(prev_label='Anteriores', next_label='Próximos', track_cls='', fit=true, live_src='', cls='') -%}
+<div class="carousel{% if cls %} {{ cls }}{% endif %}" data-carousel{% if fit %}="fit"{% endif %}>
+  <div class="carousel-top">{{ carousel_count(hidden=true) }}</div>
+  <div class="carousel-stage">
+    {{ carousel_arrow('prev', prev_label, hidden=true) }}
+    <div class="carousel-track{% if track_cls %} {{ track_cls }}{% endif %}" data-carousel-track{% if live_src %} data-live-src="{{ live_src }}"{% endif %}>{{ caller() }}</div>
+    {{ carousel_arrow('next', next_label, hidden=true) }}
+  </div>
+</div>
+{%- endmacro %}

@@ -11,3 +11,19 @@
   </form>
 </dialog>
 {%- endmacro %}
+
+{# Selo (i) que abre uma janela só de texto (info_dialog) com as explicações
+   que antes ficavam soltas na página. #}
+{% macro info_button(id, label) -%}
+<button type="button" class="info-badge" data-dialog="{{ id }}" aria-haspopup="dialog" aria-label="{{ label }}" title="{{ label }}">i</button>
+{%- endmacro %}
+
+{% macro info_dialog(id, title) -%}
+<dialog class="form-dialog info-dialog" id="{{ id }}" aria-labelledby="{{ id }}-title">
+  <div class="form-dialog-body">
+    <h2 id="{{ id }}-title">{{ title }}</h2>
+    {{ caller() }}
+    <div class="card-actions dialog-actions"><button type="button" data-dialog-close>Entendi</button></div>
+  </div>
+</dialog>
+{%- endmacro %}

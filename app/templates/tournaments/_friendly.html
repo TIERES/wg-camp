@@ -1,19 +1,17 @@
 {# Card de um amistoso (tournament/friendly.py) com as ações de quem está logado.
    Espera: labels (friendly.STATUS_LABELS) e needs_me (friendly.needs_me). #}
 {% from '_avatar.html' import avatar_button %}
-{% from '_dialog.html' import form_dialog %}
+{% from '_dialog.html' import form_dialog, info_button, info_dialog %}
+{% from '_carousel.html' import carousel_arrow, carousel_count %}
 {% macro friendly_form(f, acao, label, cls='', form_cls='', back='') -%}
 <form method="post" action="{{ url_for('tournaments.friendly_action', friendly_id=f.id, acao=acao) }}"{% if form_cls %} class="{{ form_cls }}"{% endif %}><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% if back %}<input type="hidden" name="voltar" value="{{ back }}">{% endif %}<button class="{{ cls }}">{{ label }}</button></form>
 {%- endmacro %}
 
+{# Os gols ficam na linha dos jogadores (friendly_card: inputs com form="placar-<id>");
+   aqui só o envio, centralizado embaixo. #}
 {% macro score_form(f, label, back='') -%}
-<form method="post" class="friendly-score" action="{{ url_for('tournaments.friendly_action', friendly_id=f.id, acao='placar') }}">
+<form method="post" class="friendly-score" id="placar-{{ f.id }}" action="{{ url_for('tournaments.friendly_action', friendly_id=f.id, acao='placar') }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% if back %}<input type="hidden" name="voltar" value="{{ back }}">{% endif %}
-  <div class="score-inputs">
-    <span class="home">{{ f.home_name }}</span>
-    <span class="goals"><input type="number" name="home_goals" min="0" max="99" required aria-label="Gols de {{ f.home_name }}"> x <input type="number" name="away_goals" min="0" max="99" required aria-label="Gols de {{ f.away_name }}"></span>
-    <span class="away">{{ f.away_name }}</span>
-  </div>
   <button>{{ label }}</button>
 </form>
 {%- endmacro %}
@@ -34,7 +32,6 @@
     </a>
   {% endfor %}
   </div>
-  <p class="muted friendly-games-note">Clique numa partida para ver o card no Ao vivo, com quem fez os gols. Pênaltis contam como empate.</p>
 </div>
 {%- endmacro %}
 
@@ -42,19 +39,36 @@
 {% set me = session.player_id %}
 {% set mine = me in (f.home_id, f.away_id) %}
 {% set other = (f.away_name if f.home_id == me else f.home_name) if mine else '' %}
+{% set has_games = games and games[0] %}
+{# Placar digitado na própria linha dos jogadores: amistoso aceito ou suspenso. #}
+{% set score_entry = mine and f.status in ('accepted', 'suspended') %}
+{% set quit_note = f.quitter_id and f.status in ('reported', 'confirmed') %}
+{% set quitter_name = (f.home_name if f.quitter_id == f.home_id else f.away_name) if f.quitter_id else '' %}
+{% set accepted_info = mine and f.status == 'accepted' %}
+{% set has_info = accepted_info or quit_note or has_games %}
+{% set title = 'Amistoso' ~ (' · ' ~ f.game_name if f.game_name else '') %}
 <article class="friendly-card friendly-{{ f.status }}{% if mine and needs_me(f, me) %} friendly-todo{% endif %}" id="amistoso-{{ f.id }}">
   <div class="friendly-head">
-    <a href="{{ url_for('tournaments.friendly_show', friendly_id=f.id) }}" class="friendly-game">Amistoso{% if f.game_name %} · {{ f.game_name }}{% endif %}</a>
+    <span class="friendly-title"><a href="{{ url_for('tournaments.friendly_show', friendly_id=f.id) }}" class="friendly-game">{{ title }}</a>{% if has_info %}{{ info_button('amistoso-info-%d' % f.id, 'Sobre este amistoso') }}{% endif %}</span>
     <span class="friendly-status">{{ 'Convite para você' if f.status == 'invited' and f.away_id == me else labels[f.status] }}</span>
   </div>
+  {% if has_info %}{% call info_dialog('amistoso-info-%d' % f.id, title) %}
+    {% if accepted_info %}
+    <p>Depois do jogo, informe o placar. {{ other }} vai precisar confirmar.</p>
+    <p>Com os dois logados no WE Camp, o RetroArch TIERES manda o placar sozinho. Joguem até o fim, mesmo faltando pouco tempo: quem sai no meio de um jogo (até por queda de conexão) perde o triplo de XP se o placar for confirmado. Se a conexão cair, voltem em até 20 minutos e terminem outra partida antes de sair.</p>
+    {% endif %}
+    {% if quit_note %}<p>Joguem até o fim, mesmo faltando pouco tempo. Se a conexão cair, voltem em até 20 minutos e terminem outra partida antes de sair: o placar do jogo interrompido continua contando, mas sem a penalidade.</p>{% endif %}
+    {% if has_games %}<p>Clique numa partida para ver o card no Ao vivo, com quem fez os gols. Pênaltis contam como empate.</p>{% endif %}
+  {% endcall %}{% endif %}
   <div class="friendly-line">
     <span class="with-avatar home">{{ avatar_button(f.home_id, f.home_name) }}<a href="{{ url_for('tournaments.player', nome=f.home_name) }}">{{ f.home_name }}</a></span>
+    {% if score_entry %}
+    <span class="friendly-score-entry"><input form="placar-{{ f.id }}" type="number" name="home_goals" min="0" max="99" required inputmode="numeric" aria-label="Gols de {{ f.home_name }}"> x <input form="placar-{{ f.id }}" type="number" name="away_goals" min="0" max="99" required inputmode="numeric" aria-label="Gols de {{ f.away_name }}"></span>
+    {% else %}
     <strong class="friendly-score-text">{% if f.home_goals is not none and f.status in ('reported', 'suspended', 'confirmed') %}{{ f.home_goals }} x {{ f.away_goals }}{% else %}x{% endif %}</strong>
+    {% endif %}
     <span class="with-avatar away"><a href="{{ url_for('tournaments.player', nome=f.away_name) }}">{{ f.away_name }}</a>{{ avatar_button(f.away_id, f.away_name) }}</span>
   </div>
-  {% if f.quitter_id and f.status in ('reported', 'confirmed') %}<p class="friendly-warn">{{ f.home_name if f.quitter_id == f.home_id else f.away_name }} saiu da partida no meio de um jogo (o placar até ali conta){% if f.status == 'reported' %}: se o placar for confirmado, perde o triplo de XP - mesmo que tenha sido queda de conexão{% else %} e perdeu o triplo de XP{% endif %}.</p>
-  <p class="friendly-note muted">Joguem até o fim, mesmo faltando pouco tempo. Se a conexão cair, voltem em até 20 minutos e terminem outra partida antes de sair: o placar do jogo interrompido continua contando, mas sem a penalidade.</p>{% endif %}
-  {% set has_games = games and games[0] %}
   {% if has_games or f.iso_title %}
   <div class="friendly-split">
   {% if has_games %}{{ games_table(f, games[0]) }}{% endif %}
@@ -87,11 +101,9 @@
     <div class="card-actions">{{ friendly_form(f, 'cancelar', 'Cancelar convite', 'secondary', '', back) }}</div>
     {% endif %}
   {% elif f.status == 'accepted' and mine %}
-    <p class="muted">Depois do jogo, informe o placar. {{ other }} vai precisar confirmar.</p>
-    <p class="friendly-note muted">Com os dois logados no WE Camp, o RetroArch TIERES manda o placar sozinho. Joguem até o fim, mesmo faltando pouco tempo: quem sai no meio de um jogo (até por queda de conexão) perde o triplo de XP se o placar for confirmado. Se a conexão cair, voltem em até 20 minutos e terminem outra partida antes de sair.</p>
     {{ score_form(f, 'Enviar placar', back) }}
-    <div class="card-actions">{{ friendly_form(f, 'cancelar', 'Cancelar amistoso', 'secondary', '', back) }}</div>
   {% elif f.status == 'reported' and mine %}
+    {% if f.quitter_id == me %}<p class="muted">Você saiu da partida no meio de um jogo (o placar até ali conta): ao confirmar o placar, {{ other }} decide se você perde o triplo de XP.</p>{% endif %}
     {% if f.reported_by == me %}
     <p class="muted">Você informou o placar. Aguardando {{ other }} confirmar.</p>
     {% elif f.game_report and f.first_confirmed_by == me %}
@@ -102,7 +114,14 @@
     {% else %}
     <p>{{ f.reported_name }} informou o placar <strong>{{ f.home_name }} {{ f.home_goals }} x {{ f.away_goals }} {{ f.away_name }}</strong>. Está certo?</p>
     {% endif %}
-    <div class="card-actions"><button type="button" class="secondary" data-dialog="rejeitar-{{ f.id }}">Não aceitar o placar</button>{{ friendly_form(f, 'confirmar', 'Confirmar placar', '', '', back) }}</div>
+    {# Quem saiu no meio de um jogo: o adversário decide, ao confirmar, se ele perde o triplo de XP. #}
+    {% set decide_penalty = f.quitter_id and f.quitter_id != me %}
+    {% if decide_penalty %}
+    <label class="check friendly-penalty"><input type="checkbox" name="penalizar" value="1" form="confirmar-{{ f.id }}" checked>
+      <span>{{ quitter_name }} saiu da partida no meio de um jogo (o placar até ali conta) e perde o triplo de XP. <small class="muted">Desmarque para {{ quitter_name }} não perder o XP.</small></span></label>
+    {% endif %}
+    <div class="card-actions"><button type="button" class="secondary" data-dialog="rejeitar-{{ f.id }}">Não aceitar o placar</button>
+      <form method="post" id="confirmar-{{ f.id }}" action="{{ url_for('tournaments.friendly_action', friendly_id=f.id, acao='confirmar') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% if back %}<input type="hidden" name="voltar" value="{{ back }}">{% endif %}{% if decide_penalty %}<input type="hidden" name="quem_saiu" value="{{ f.quitter_id }}">{% endif %}<button>Confirmar placar</button></form></div>
     {% call form_dialog('rejeitar-%d' % f.id, url_for('tournaments.friendly_action', friendly_id=f.id, acao='rejeitar'), 'Não aceitar o placar', 'Não aceitar o placar', back) %}
       <p><strong>{{ f.home_name }} {{ f.home_goals }} x {{ f.away_goals }} {{ f.away_name }}</strong></p>
       <p class="muted">O amistoso fica suspenso até vocês chegarem a um placar que os dois aceitem.</p>
@@ -115,11 +134,37 @@
   {% elif f.status == 'confirmed' %}
     {% if f.ranked %}
       {% set d_home = match_xp('a' ~ f.id, f.home_id) %}{% set d_away = match_xp('a' ~ f.id, f.away_id) %}
-      <p class="friendly-ranked">Vale para o Ranking e o XP{% if d_home is not none %}: {{ f.home_name }} <span class="xp-delta {{ 'up' if d_home > 0 else 'down' if d_home < 0 }}">{{ '%+d'|format(d_home) }} XP</span>, {{ f.away_name }} <span class="xp-delta {{ 'up' if d_away > 0 else 'down' if d_away < 0 }}">{{ '%+d'|format(d_away) }} XP</span>{% endif %}.</p>
+      {% set tripled = ' <small class="muted">(saiu no meio de um jogo: perdeu o triplo)</small>'|safe %}
+      <p class="friendly-ranked">Vale para o Ranking e o XP{% if d_home is not none %}: {{ f.home_name }} <span class="xp-delta {{ 'up' if d_home > 0 else 'down' if d_home < 0 }}">{{ '%+d'|format(d_home) }} XP</span>{% if f.quitter_id == f.home_id and d_home < 0 %}{{ tripled }}{% endif %}, {{ f.away_name }} <span class="xp-delta {{ 'up' if d_away > 0 else 'down' if d_away < 0 }}">{{ '%+d'|format(d_away) }} XP</span>{% if f.quitter_id == f.away_id and d_away < 0 %}{{ tripled }}{% endif %}{% endif %}.</p>
     {% else %}
       <p class="muted">Não vale para o Ranking: {{ f.unranked_reason }}.</p>
     {% endif %}
   {% endif %}
-  <div class="friendly-foot"><small class="muted">{% if f.confirmed_at %}Confirmado em {{ f.confirmed_at|localtime }}{% else %}Atualizado em {{ f.updated_at|localtime }}{% endif %}</small></div>
+  <div class="friendly-foot"><small class="muted">{% if f.confirmed_at %}Confirmado em {{ f.confirmed_at|localtime }}{% else %}Atualizado em {{ f.updated_at|localtime }}{% endif %}</small>
+    {% if f.status == 'accepted' and mine %}{{ friendly_form(f, 'cancelar', 'Cancelar amistoso', 'secondary small', '', back) }}{% endif %}
+  </div>
 </article>
+{%- endmacro %}
+
+{# Uma lista de amistosos em carrossel (static/js/carousel.js): um card por vez,
+   com < e > no título. O {% call %} (opcional) entra entre o título e os cards
+   (o filtro da lista). #}
+{% macro friendly_carousel(id, title, items, labels, needs_me, back, friendly_games, empty='', cls='') -%}
+<section class="friendly-section {{ cls }}" id="{{ id }}">
+  <div class="carousel" data-carousel="fit">
+    <div class="carousel-head"><h2>{{ title }}</h2></div>
+    {% if caller %}{{ caller() }}{% endif %}
+    {% if items %}
+    {% set many = items|length > 1 %}
+    {% if many %}<div class="carousel-top">{{ carousel_count('1 de %d' % items|length) }}</div>{% endif %}
+    <div class="carousel-stage">
+      {% if many %}{{ carousel_arrow('prev', 'Amistoso anterior') }}{% endif %}
+      <div class="carousel-track" data-carousel-track>
+        {% for f in items %}<div class="carousel-slide">{{ friendly_card(f, labels, needs_me, back, friendly_games.get(f.id)) }}</div>{% endfor %}
+      </div>
+      {% if many %}{{ carousel_arrow('next', 'Próximo amistoso') }}{% endif %}
+    </div>
+    {% elif empty %}<p class="muted">{{ empty }}</p>{% endif %}
+  </div>
+</section>
 {%- endmacro %}

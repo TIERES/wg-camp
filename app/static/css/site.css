@@ -240,7 +240,7 @@ details.dispute { margin-top:1rem } details.dispute summary { cursor:pointer; co
 .stat-tile.win { border-left:4px solid #34d399 } .stat-tile.draw { border-left:4px solid #9ca3af } .stat-tile.loss { border-left:4px solid #f87171 }
 .match-history td { white-space:nowrap } .match-history td:last-child { white-space:normal }
 .compare-form input { flex:1 1 9rem; min-width:0 } .compare-form .vs { align-self:center; font-weight:700 }
-.compare-form .ac { position:relative; flex:1 1 9rem; min-width:0; display:flex } .compare-form .ac input { width:100% }
+.compare-form .ac { position:relative; flex:1 1 9rem; min-width:0; display:flex } .compare-form .ac input { width:100% } .compare-form .user-picker { flex:1 1 9rem }
 .ac-list { position:absolute; z-index:20; left:0; right:0; top:calc(100% + 2px); margin:0; padding:.25rem 0; list-style:none; max-height:16rem; overflow-y:auto; background:var(--card); border:1px solid #374151; border-radius:6px; box-shadow:0 6px 18px rgb(0 0 0 / .45) }
 .ac-list li { padding:.4rem .75rem; cursor:pointer }
 .ac-list li:hover, .ac-list li[aria-selected="true"] { background:#374151; color:var(--accent) }
@@ -294,7 +294,7 @@ dialog.match-dialog form { display:flex; justify-content:flex-end; margin:0; max
 .form-row > .wide { flex:3 1 18rem } .form-row > button { flex:0 0 auto } .form-row > .check { flex:0 0 auto; padding-bottom:.6rem }
 .form > h2 { margin:0 }
 .form-row.phase-row { align-items:stretch } .phase-row > fieldset { flex:1 1 24rem; align-content:start }
-.t-filters .ac { position:relative; flex:1 1 12rem; min-width:0; display:flex } .t-filters .ac input { width:100% }
+.t-filters .ac { position:relative; flex:1 1 12rem; min-width:0; display:flex } .t-filters .ac input { width:100% } .t-filters .user-picker { flex:1 1 12rem }
 .tie-flip:not(.flipped) > .back, .tie-flip.flipped > .front { pointer-events:none }
 /* Menu do usuário no cabeçalho (nome + ícone, abre Meus campeonatos/Status/Configurações/Sair). */
 header nav { align-items:center }
@@ -432,7 +432,6 @@ header nav { align-items:center }
 .friendly-line .home { justify-self:end } .friendly-line .away { justify-self:start } .friendly-line a { font-weight:700 }
 .friendly-score-text { font-size:1.4rem; min-width:4.5rem; text-align:center }
 .friendly-note,.friendly-warn,.friendly-ranked { margin:.4rem 0 }
-.friendly-respond > h2 { color:#fbbf24 }
 /* Card do amistoso: as partidas (metade) e a ISO (a outra metade); um abaixo do outro em tela pequena. */
 .friendly-split { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:.75rem; align-items:start; margin:.6rem 0 }
 .friendly-split > :only-child { grid-column:1 / -1 } .friendly-split .friendly-iso { margin:0 }
@@ -452,11 +451,22 @@ header nav { align-items:center }
 .friendly-games-note { margin:.3rem 0 0; font-size:.8rem }
 .friendly-games-table tr.not-summed td { opacity:.6 }
 .friendly-warn { color:#fca5a5 }
-.friendly-score { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; margin:.5rem 0 }
-.friendly-score .score-inputs { flex:1 1 18rem }
+/* Caixa do adversário de quem saiu no meio de um jogo: perde o triplo de XP (marcada). */
+.friendly-penalty { align-items:flex-start; margin:.5rem 0 .7rem; color:#fca5a5; cursor:pointer }
+.friendly-penalty input { margin-top:.2rem; width:1.05rem; height:1.05rem; accent-color:#f87171; flex:none }
+.friendly-penalty small { display:block }
+/* Placar digitado na linha dos jogadores; o botão de envio embaixo, centralizado. */
+.friendly-score { display:flex; justify-content:center; margin:.6rem 0 }
+.friendly-score-entry { display:flex; align-items:center; gap:.45rem; font-weight:700 }
+.friendly-score-entry input { width:3.4rem; padding:.4rem; text-align:center; font-size:1.1rem; font-weight:700 }
+/* Celular: nomes longos cortam com "..." em vez de empurrar a foto para fora do card. */
+.friendly-line > * { min-width:0; max-width:100% } .friendly-line .with-avatar a { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.friendly-line .with-avatar > :not(a) { flex:none }
+@media (max-width:600px) { .friendly-line { gap:.4rem } .friendly-score-entry { gap:.25rem } .friendly-line:has(.friendly-score-entry) .avatar-btn { display:none } .friendly-score-entry input { width:2.6rem; padding:.35rem .2rem; font-size:1rem } }
 .friendly-reject details { margin:.4rem 0 } .friendly-reject summary { cursor:pointer; color:#fca5a5; font-size:.9rem }
 .friendly-reject label { display:block; margin:.4rem 0 }
-.friendly-foot { margin-top:.4rem }
+.friendly-foot { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:.5rem; margin-top:.4rem } .friendly-foot form { margin:0 }
+button.small,.button.small { padding:.4rem .7rem; font-size:.78rem }
 @media (max-width: 600px) { .friendly-score-text { font-size:1.15rem; min-width:3rem } }
 
 /* ISO do amistoso: escolha no convite (popup com cards) e bloco no card */
@@ -478,7 +488,7 @@ header nav { align-items:center }
 .iso-picker-head h2 { margin:0 } .iso-picker-head form { margin:0 }
 .iso-picker > input[type=search] { width:100%; margin:.8rem 0 }
 .iso-cards { margin-bottom:1rem }
-.iso-request { border-top:1px solid #374151; padding-top:.8rem } .iso-request p { margin:.2rem 0 .6rem }
+.iso-request { display:flex; flex-wrap:wrap; align-items:center; gap:.6rem; margin:.8rem 0 0; padding-top:.8rem; border-top:1px solid #374151 }
 .friendly-iso { display:flex; flex-wrap:wrap; align-items:center; gap:.75rem; margin:.6rem 0; padding:.6rem; background:#111827; border-radius:8px }
 .friendly-iso-cover { width:48px; height:60px; object-fit:cover; border-radius:4px }
 .friendly-iso-text { display:grid; gap:.1rem; flex:1 1 12rem; min-width:0 } .friendly-iso-text span { overflow-wrap:anywhere }
@@ -493,7 +503,6 @@ header nav { align-items:center }
 .archive-progress[data-state="error"] .archive-progress-text { color:var(--error) }
 .archive-progress[data-state="done"] .archive-progress-text { color:var(--accent) }
 .archive-progress.compact { min-width:10rem }
-.iso-request summary { cursor:pointer } .iso-request[open] summary { margin-bottom:.4rem }
 .my-iso-text { display:grid; gap:.1rem; flex:1 1 12rem; min-width:0 } .my-iso-text small { overflow-wrap:anywhere }
 .badge.iso-pending { background:#78350f; color:#fde68a }
 
@@ -555,6 +564,73 @@ header nav { align-items:center }
 @media(max-width:420px){ .live-goals { font-size:2rem; gap:.75rem } .live-crest { width:44px; height:33px } }
 .live-team.unknown strong { color:#9ca3af; font-weight:600; font-style:italic }
 .live-filters { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.75rem; margin:1rem 0 } .live-filters label { font-size:.875rem; color:#9ca3af; min-width:0 } .live-filters label input,.live-filters label select { width:100%; min-width:0 }
+.live-filters .user-picker > label { font-size:.875rem; color:#9ca3af }
 .live-filter-actions { grid-column:1 / -1; display:flex; gap:.75rem } .live-filter-actions > * { flex:1 1 0; text-align:center; width:auto }
 @media(min-width:860px){ .live-filters { grid-template-columns:repeat(4,minmax(0,1fr)) } .live-filter-actions > * { flex:0 0 auto } }
+/* Celular: o filtro de nick (e o .filter-wide, ex. Campeonato no Ao vivo) sempre numa linha
+   inteira; as datas (De / Até) dividem a de baixo. */
+@media(max-width:859px){ .live-filters > .user-picker, .live-filters > .filter-wide { grid-column:1 / -1 }
+  .friendly-filters input[type=datetime-local] { font-size:.85rem; padding:.5rem .4rem } }
 .live-iso form.inline-form label { display:flex; gap:.4rem; align-items:center }
+
+/* Selo (i) e janela só de texto (templates/_dialog.html: info_button / info_dialog) */
+.info-badge { display:inline-grid; place-items:center; width:1.3rem; height:1.3rem; padding:0; margin-left:.4rem; border-radius:50%; background:transparent; border:1.5px solid #6b7280; color:#9ca3af; font:italic 700 .8rem/1 Georgia,"Times New Roman",serif; vertical-align:middle; cursor:pointer; flex:none }
+.info-badge:hover,.info-badge:focus-visible { border-color:var(--accent); color:var(--accent) }
+.title-info .info-badge { width:1.7rem; height:1.7rem; font-size:1.05rem; margin-left:.5rem; vertical-align:.12em }
+.info-dialog { width:min(40rem, calc(100vw - 2rem)) } .info-dialog .form-dialog-body { display:grid }
+.info-dialog .form-dialog-body p, .info-dialog ul { margin:0 } .info-dialog ul { padding-left:1.2rem; display:grid; gap:.55rem }
+.friendly-title { display:inline-flex; align-items:center; min-width:0 }
+
+/* Carrossel (static/js/carousel.js): setas nas laterais dos cards, contador no alto à direita */
+.carousel-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.25rem 1rem }
+.carousel-head h2 { margin:.8rem 0 .4rem }
+.carousel-top { display:flex; justify-content:flex-end; align-items:center; gap:1rem; margin:.2rem 0 -.2rem }
+.carousel-count { font-size:.85rem; color:#9ca3af; font-variant-numeric:tabular-nums; white-space:nowrap; padding-right:.25rem }
+.carousel-count[hidden] { display:none }
+.carousel-stage { position:relative }
+.carousel-arrow { position:absolute; top:50%; z-index:2; transform:translateY(-50%); display:grid; place-items:center; width:2.2rem; height:2.2rem; padding:0; border-radius:50%; box-shadow:0 2px 8px rgba(0,0,0,.45) }
+.carousel-arrow svg { display:block } .carousel-arrow[hidden] { display:none }
+.carousel-arrow.prev { left:-1.1rem } .carousel-arrow.next { right:-1.1rem }
+@media (max-width:600px) { .carousel-arrow { width:2rem; height:2rem } .carousel-arrow.prev { left:-.7rem } .carousel-arrow.next { right:-.7rem } }
+.carousel-track { position:relative; display:flex; gap:1rem; overflow-x:auto; overflow-y:hidden; scroll-snap-type:x mandatory; scrollbar-width:none; overscroll-behavior-x:contain }
+.carousel-track::-webkit-scrollbar { display:none }
+.carousel-track > * { flex:0 0 100%; min-width:0; scroll-snap-align:start } .carousel-track > [hidden] { display:none }
+[data-carousel="fit"] .carousel-track { align-items:flex-start; transition:height .2s ease }
+/* No topo, em destaque: "Esperando você" (amarelo) e "Em aberto" (verde). */
+.friendly-respond,.friendly-open { margin:1rem 0 1.5rem; padding:0 1rem .4rem; border-radius:12px; background:#0b1220 }
+.friendly-respond { border:1px solid #fbbf2466 } .friendly-respond .carousel-head h2 { color:#fbbf24 }
+.friendly-open { border:1px solid #34d39966 } .friendly-open .carousel-head h2 { color:var(--accent) }
+@media (max-width:600px) { .friendly-respond,.friendly-open { padding:0 .6rem .3rem } }
+
+/* Escolha da ISO: carrossel com as 20 mais recentes; a escolhida em primeiro, borda verde */
+.iso-carousel .carousel-top { justify-content:space-between; margin:0 0 .6rem } .iso-shown { margin:0; font-size:.85rem }
+.iso-track { padding:2px 0 }
+.iso-track > .iso-option { flex-basis:85%; width:auto }
+@media (min-width:600px) { .iso-track > .iso-option { flex-basis:calc((100% - 1rem) / 2) } }
+@media (min-width:860px) { .iso-track > .iso-option { flex-basis:calc((100% - 2rem) / 3) } }
+.iso-option.is-selected { border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); background:#064e3b44 }
+.iso-selected-tag { display:none; color:var(--accent); font-weight:700 } .iso-option.is-selected .iso-selected-tag { display:block }
+.iso-chosen-card .iso-selected-tag { display:none }
+.iso-upload { width:min(640px, calc(100vw - 2rem)) } .iso-upload > p { margin:.8rem 0 0 }
+
+/* Escolha de usuário pelo nick - o padrão do sistema (templates/_user_picker.html, static/js/user-picker.js) */
+.user-picker { position:relative; display:grid; gap:.35rem; align-content:start; min-width:0 }
+.user-picker > input:not([type=hidden]) { width:100%; min-width:0 }
+.user-options { position:absolute; top:100%; left:0; right:0; z-index:30; margin:.25rem 0 0; padding:.25rem; list-style:none; max-height:16rem; overflow-y:auto; background:#111827; border:1px solid #4b5563; border-radius:6px; box-shadow:0 10px 24px rgba(0,0,0,.5); text-align:left }
+.user-options[hidden], .user-options > [hidden] { display:none }
+.user-options [role=option] { display:flex; align-items:center; gap:.6rem; padding:.4rem .5rem; border-radius:4px; cursor:pointer; color:var(--text); font-size:1rem }
+.user-options [role=option].active, .user-options [role=option]:hover { background:#1f2937; box-shadow:inset 3px 0 0 var(--accent) }
+.user-option-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:700 }
+.user-options [role=option] small { flex:none; font-size:.8rem }
+.user-option-name mark { background:none; color:var(--accent) }
+.user-options-empty { padding:.5rem; font-size:.9rem }
+/* Celular: nick do usuário numa linha só também nos filtros em linha (campeonatos, comparar). */
+@media (max-width:600px) { .t-filters .user-picker, .compare-form .user-picker { flex-basis:100% } .compare-form .vs { flex-basis:100%; text-align:center } }
+/* Carrossel das listas de cards (_carousel.html): quantos cards por tela. A lista
+   (live-cards, t-cards, invite-cards) vira a faixa: lado a lado, sem a grade. */
+.carousel-track.live-cards, .carousel-track.t-cards, .carousel-track.invite-cards { display:flex; margin:0; padding:0 }
+.carousel-track.per-2 > *, .carousel-track.per-3 > * { flex-basis:100% }
+/* Card baixo (uma linha): espaço nas laterais para as setas não cobrirem os botões. */
+.carousel-track.invite-cards > .invite-card { padding:.75rem 1.6rem }
+@media (min-width:600px) { .carousel-track.per-3 > * { flex-basis:calc((100% - 1rem) / 2) } }
+@media (min-width:860px) { .carousel-track.per-2 > * { flex-basis:calc((100% - 1rem) / 2) } .carousel-track.per-3 > * { flex-basis:calc((100% - 2rem) / 3) } }

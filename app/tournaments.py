@@ -403,7 +403,7 @@ def _tournament_list(template, player_id=None, **extra):
     name = request.args.get("nome", "").strip()
     organizer = request.args.get("organizador", "").strip()
     suggestions = db.execute(
-        "SELECT DISTINCT t.name, p.username FROM tournaments t JOIN players p ON p.id = t.organizer_id "
+        "SELECT DISTINCT t.name, p.id AS player_id, p.username FROM tournaments t JOIN players p ON p.id = t.organizer_id "
         "WHERE t.status != 'draft'" + scope, scope_params).fetchall()
     if name or organizer:
         # Organizador escolhido na lista (nome exato) não traz quem só começa igual (TIERES x TIERES1).
@@ -418,7 +418,8 @@ def _tournament_list(template, player_id=None, **extra):
     return render_template(template, tournaments=tournaments, games=games, status=status,
                            game=game, name=name, organizer=organizer,
                            name_options=sorted({r["name"] for r in suggestions}, key=_plain),
-                           organizer_options=sorted({r["username"] for r in suggestions}, key=_plain),
+                           organizer_options=sorted({r["player_id"]: {"id": r["player_id"], "username": r["username"]}
+                                                     for r in suggestions}.values(), key=lambda p: _plain(p["username"])),
                            status_labels=STATUS_LABELS, format_labels=formats.FORMATS, iso_ready=iso_ready, **extra)
 
 
@@ -447,7 +448,12 @@ def _back(default):
 def friends_page():
     db = get_db()
     me = session["player_id"]
-    return render_template("tournaments/friends.html", friends=friends.friends(db, me),
+    my_friends = friends.friends(db, me)
+    # Sugestões do "Adicionar amigo": quem tem conta confirmada e ainda não é amigo.
+    taken = {me} | {p["id"] for p in my_friends}
+    others = [p for p in db.execute("SELECT id, username FROM players WHERE email_verified_at IS NOT NULL "
+                                    "ORDER BY username COLLATE NOCASE").fetchall() if p["id"] not in taken]
+    return render_template("tournaments/friends.html", friends=my_friends, others=others,
                            received=friends.pending_received(db, me), sent=friends.pending_sent(db, me))
 
 
@@ -534,19 +540,39 @@ def friendlies():  # noqa: C901 - a lista, os filtros e as partidas de cada amis
     # No topo, em destaque: placar para eu confirmar e convite para eu aceitar.
     respond = [r for r in rows if (r["status"] == "reported" and friendly.needs_me(r, me))
                or (r["status"] == "invited" and r["away_id"] == me)]
-    pending = [r for r in rows if r["status"] in friendly.OPEN and r not in respond]
-    # Anteriores: filtro por adversário e data/hora; no máximo os 20 mais recentes.
-    filters = {"opponent": request.args.get("adversario", "").strip()[:32],
-               "date_from": request.args.get("de", "")[:16], "date_to": request.args.get("ate", "")[:16]}
+    # Em aberto (também no topo) e Anteriores: filtro por adversário e data/hora,
+    # cada lista com o seu (aberto_* e adversario/de/ate).
+    def read_filters(prefix):
+        return {"opponent": request.args.get(prefix + "adversario", "").strip()[:32],
+                "date_from": request.args.get(prefix + "de", "")[:16],
+                "date_to": request.args.get(prefix + "ate", "")[:16]}
+    open_filters, filters = read_filters("aberto_"), read_filters("")
+    open_all = [r for r in rows if r["status"] in friendly.OPEN and r not in respond]
+    open_all.sort(key=lambda r: not friendly.needs_me(r, me))  # aguardando o meu placar primeiro
+    pending = [r for r in open_all if _friendly_in_filters(r, me, open_filters)]
+    # Anteriores: no máximo os 20 mais recentes; os outros, pelo filtro.
     history = [r for r in rows if r["status"] not in friendly.OPEN]
     done = [r for r in history if _friendly_in_filters(r, me, filters)]
     from . import live
     shown = respond + pending + done[:FRIENDLIES_HISTORY_LIMIT]
     games = {r["id"]: live.friendly_games(db, r) for r in shown if r["status"] in ("reported", "suspended", "confirmed")}
+    # Convite: o amigo vem já escolhido com ?com=<nick> (link "Chamar para amistoso").
+    my_friends = friends.friends(db, me)
+    chosen = request.args.get("com", "").strip()
+    chosen_friend = next((p for p in my_friends if chosen and p["username"].casefold() == chosen.casefold()), None)
+    # Sugestões do filtro "Adversário" de cada lista: quem aparece nela.
+    def opponents(items):
+        found = {}
+        for r in items:
+            other = (r["away_id"], r["away_name"]) if r["home_id"] == me else (r["home_id"], r["home_name"])
+            found.setdefault(other[0], {"id": other[0], "username": other[1]})
+        return sorted(found.values(), key=lambda p: (p["username"] or "").casefold())
     return render_template("tournaments/friendlies.html", pending=pending, respond=respond, friendly_games=games,
+                           open_total=len(open_all), open_filters=open_filters,
                            done=done[:FRIENDLIES_HISTORY_LIMIT], done_total=len(done), has_history=bool(history),
                            filters=filters,
-                           friends=friends.friends(db, me), chosen=request.args.get("com", ""),
+                           friends=my_friends, chosen=chosen, chosen_friend=chosen_friend,
+                           open_opponents=opponents(open_all), history_opponents=opponents(history),
                            iso_options=iso_catalog.options(db, me), my_isos=iso_catalog.requested_by(db, me),
                            games=db.execute("SELECT id, name FROM game_titles WHERE is_active = 1 "
                                             "ORDER BY year, name").fetchall(), **_iso_limits(),
@@ -711,7 +737,10 @@ def friendly_action(friendly_id, acao):
         elif acao == "placar":
             row = friendly.report(db, friendly_id, me, form.get("home_goals"), form.get("away_goals"))
         elif acao == "confirmar":
-            row = friendly.confirm(db, friendly_id, me)
+            # O adversário de quem saiu no meio de um jogo: a caixa "perde o triplo de XP".
+            seen = form.get("quem_saiu", "")
+            row = friendly.confirm(db, friendly_id, me, penalize=(form.get("penalizar") == "1") if seen else None,
+                                   quitter_seen=int(seen) if seen.isdigit() else None)
         elif acao == "rejeitar":
             row = friendly.reject(db, friendly_id, me, form.get("motivo"))
         else:
@@ -1586,7 +1615,7 @@ def compare():
             for other in (a, b) if result and me_id and other["id"] != me_id]
     games_by_id, names = _match_popups(db, [r for card in mine for r in card["matches"]])
     return render_template("tournaments/compare.html", a=a, b=b, result=result, games=games, game=game,
-                           players=[pl["username"] for pl in stats.players_with_matches(db)],
+                           players=stats.players_with_matches(db),
                            outcome=stats.outcome, mine=mine, games_by_id=games_by_id, names=names)
 
 
@@ -1657,7 +1686,9 @@ def admin_home():
     values = {key: setting(db, key) for key in SETTING_LABELS}
     recent = db.execute("SELECT w.*, p.username FROM wallet_entries w JOIN players p ON p.id = w.player_id "
                         "WHERE w.kind = 'ajuste_admin' ORDER BY w.id DESC LIMIT 20").fetchall()
+    players = db.execute("SELECT id, username FROM players ORDER BY username COLLATE NOCASE").fetchall()
     return render_template("tournaments/admin.html", values=values, labels=SETTING_LABELS, money=MONEY_SETTINGS,
+                           players=players,
                            recent=recent, admin_emails=", ".join(notify.admin_emails(db)))
 
 

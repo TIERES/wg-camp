@@ -14,7 +14,9 @@
     var section = box.closest('[data-live-section]');
     var empty = section && section.querySelector('[data-live-empty]');
     function show(html) {
+      var x = box.scrollLeft;  // no carrossel (_carousel.html), continua no mesmo card
       box.innerHTML = html;
+      box.scrollLeft = x;
       phase(box);
       var any = box.children.length > 0;
       if (empty) empty.hidden = any;
