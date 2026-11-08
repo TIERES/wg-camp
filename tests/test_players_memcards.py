@@ -1,6 +1,7 @@
 import hashlib
 import re
 import tempfile
+import time
 import unittest
 import zipfile
 from io import BytesIO
@@ -108,6 +109,34 @@ class RegistrationTest(PlayersTestBase):
         login = self.client.post("/conta/entrar", data={"csrf_token": "csrf", "username": "pele@example.com", "password": "segredo123"})
         self.assertEqual(login.status_code, 302)
         self.assertTrue(login.headers["Location"].endswith("/torneios/meus-campeonatos"))
+
+    def test_remember_me_keeps_login_for_up_to_a_month(self):
+        """"Permanecer logado": cookie de 30 dias e login até Sair ou até 30 dias da entrada;
+        sem marcar, o cookie some ao fechar o navegador (como antes)."""
+        self.register()
+        page = self.client.get("/conta/entrar").get_data(as_text=True)
+        self.assertIn('name="lembrar"', page)
+        self.assertIn("Permanecer logado", page)
+        form = {"csrf_token": "csrf", "username": "Pele", "password": "segredo123"}
+        plain = self.client.post("/conta/entrar", data=form)
+        self.assertNotIn("Expires=", plain.headers["Set-Cookie"])
+        with self.client.session_transaction() as session:
+            self.assertNotIn("login_until", session)
+            csrf = session["csrf_token"]
+        self.client.post("/conta/sair", data={"csrf_token": csrf})
+
+        with self.client.session_transaction() as session:
+            session["csrf_token"] = "csrf"
+        before = time.time()
+        kept = self.client.post("/conta/entrar", data=dict(form, lembrar="1"))
+        self.assertIn("Expires=", kept.headers["Set-Cookie"])
+        with self.client.session_transaction() as session:
+            self.assertAlmostEqual(session["login_until"], before + 30 * 86400, delta=60)
+            # (o prazo é da entrada: as visitas renovam o cookie, não o prazo)
+            session["login_until"] = int(time.time()) - 1  # passaram os 30 dias
+        self.assertEqual(self.client.get("/conta/").status_code, 302)  # saiu: volta para Entrar
+        with self.client.session_transaction() as session:
+            self.assertNotIn("player_id", session)
 
     def test_confirmation_link_is_single_use(self):
         self.register(confirm=False)

@@ -7,10 +7,12 @@ Kaillera) não pode ser alterado depois.
 """
 import io
 import sqlite3
+import time
 import zipfile
 from functools import wraps
 
-from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
+from flask import (Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file,
+                   session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from .accounts import (email_error, external_url, find_token, issue_token, password_error,
@@ -169,6 +171,17 @@ def resend():
     return render_template("players/resend.html")
 
 
+@bp.before_app_request
+def login_expiry():
+    """"Permanecer logado": passado o prazo contado da entrada (login_until),
+    o jogador sai - o cookie é renovado a cada visita, o prazo não."""
+    until = session.get("login_until")
+    if until and time.time() >= until:
+        session.pop("player_id", None)
+        session.pop("login_until", None)
+        session.permanent = False
+
+
 @bp.route("/entrar", methods=("GET", "POST"))
 def login():
     if request.method == "POST":
@@ -191,6 +204,11 @@ def login():
                 session["user_id"] = admin_id
             session["player_id"] = player["id"]
             session["csrf_token"] = __import__("secrets").token_urlsafe(32)
+            # "Permanecer logado": o cookie fica no navegador (sem ele, some ao
+            # fechar) e o login vale até "Sair" ou até 30 dias depois de entrar.
+            if request.form.get("lembrar"):
+                session.permanent = True
+                session["login_until"] = int(time.time() + current_app.permanent_session_lifetime.total_seconds())
             db.execute("UPDATE players SET last_login_at = ? WHERE id = ?", (now(), player["id"]))
             db.commit()
             target = request.args.get("next", "")

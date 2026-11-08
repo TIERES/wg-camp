@@ -5,6 +5,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>Usuário ou e-mail<input name="username" autocomplete="username" required></label>
     <label>Senha<input type="password" name="password" autocomplete="current-password" required></label>
+    <label class="check remember"><input type="checkbox" name="lembrar" value="1"> <span>Permanecer logado <small class="muted">- neste navegador, até você clicar em Sair ou por até 1 mês</small></span></label>
     <button>Entrar</button>
   </form>
   <p><a href="{{ url_for('players.forgot') }}">Esqueci minha senha ou usuário</a> · <a href="{{ url_for('players.resend') }}">Reenviar confirmação</a></p>

@@ -1,5 +1,6 @@
 import os
 import sqlite3
+from datetime import timedelta
 from pathlib import Path
 
 from flask import Flask
@@ -14,6 +15,9 @@ def create_app(test_config=None):
     app.config.from_mapping(
         SECRET_KEY=os.environ.get("ARENA17_SECRET_KEY", "development-only-change-me"),
         DATABASE=str(instance_path / "arena17.db"),
+        # "Permanecer logado" (players.login): o cookie da sessão dura isto e o
+        # login vale no máximo isto a partir da entrada (players.login_expiry).
+        PERMANENT_SESSION_LIFETIME=timedelta(days=30),
         DOWNLOADS_DIR=os.environ.get("ARENA17_DOWNLOADS_DIR", str(root / "storage" / "downloads")),
         UPLOAD_TMP_DIR=os.environ.get("ARENA17_UPLOAD_TMP_DIR", str(root / "storage" / "uploads-tmp")),
         MAX_CONTENT_LENGTH=int(os.environ.get("ARENA17_MAX_UPLOAD_BYTES", 8 * 1024**3)),
