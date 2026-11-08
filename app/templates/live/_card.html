@@ -10,7 +10,7 @@
       {% if c.game %}<small>{{ c.game.name }}{% if c.tournament and not c.link %} · <a href="{{ c.tournament.url }}">{{ c.tournament.name }}</a>{% endif %}</small>{% endif %}</span>
     <span class="live-status">
       {% if c.status == 'live' and not c.stale %}<span class="live-badge">Ao vivo</span>{% endif %}
-      <span class="live-clock{% if c.status == 'live' and not c.stale %} on{% endif %}">{{ c.clock }}</span>
+      <span class="live-clock{% if c.status == 'live' and not c.stale and not c.interval %} on{% endif %}">{{ c.clock }}</span>
     </span>
   </div>
   <div class="live-score">
