@@ -864,6 +864,16 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertEqual((row["status"], row["home_goals"], row["away_goals"]), ("reported", 3, 7))
         self.assertEqual({r["game_report"] for r in self.rows("SELECT game_report FROM live_matches")},
                          {"reportado (soma de 3 jogos)"})
+        # A página do amistoso lista as partidas e a soma, para conferir.
+        client = self.app.test_client()
+        with client.session_transaction() as sess:
+            sess["player_id"] = self.tieres
+        page = client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True)
+        self.assertIn("<h2>Partidas</h2>", page)
+        for score in ("2 x 1", "0 x 3", "1 x 3"):
+            self.assertIn("<strong>%s</strong>" % score, page)
+        self.assertIn("<td>Soma</td><td class=\"name-col\"></td><td><strong>3 x 7</strong>", page)
+        self.assertEqual(page.count('title="Ver o card no Ao vivo"'), 3)
         # O jogo de campeonato entre os dois continua sem placar.
         self.assertEqual(self.rows("SELECT status FROM tournament_matches WHERE status != 'confirmed'")[0]["status"],
                          "scheduled")
