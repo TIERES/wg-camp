@@ -914,7 +914,7 @@ class LiveMatchesTest(unittest.TestCase):
             self.assertIn("<strong>%s</strong>" % score, page)
         self.assertEqual(page.count('title="Ver o card no Ao vivo (quem fez os gols)"'), 3)
         self.assertEqual(page.count('class="fg-crest"'), 6)  # escudo dos dois times de cada partida
-        self.assertRegex(page, r'class="fg-when">\d{2}/\d{2}/\d{4} \d{2}:\d{2}<')
+        self.assertRegex(page, r'class="fg-when"><span>\d{2}/\d{2}/\d{4}</span><span>\d{2}:\d{2}</span>')
         # Na lista de amistosos: as partidas no card e, no topo, "Esperando você".
         listing = client.get("/torneios/amistosos").get_data(as_text=True)
         self.assertIn("Esperando você (1)", listing)
@@ -923,6 +923,33 @@ class LiveMatchesTest(unittest.TestCase):
         # O jogo de campeonato entre os dois continua sem placar.
         self.assertEqual(self.rows("SELECT status FROM tournament_matches WHERE status != 'confirmed'")[0]["status"],
                          "scheduled")
+
+    def test_friendly_history_filter_and_limit(self):
+        from tests.test_tournament_store import add_player as add
+        with self.app.app_context():
+            db = get_db()
+            third = add(db, "RIVAL")
+            for i in range(22):  # 22 amistosos encerrados, os 2 mais antigos contra o RIVAL
+                away = third if i < 2 else self.anders
+                at = "2026-10-%02dT12:00:00+00:00" % (i + 1)
+                db.execute("INSERT INTO friendly_matches (home_id, away_id, status, home_goals, away_goals, reported_at, "
+                           "confirmed_at, created_at, updated_at) VALUES (?, ?, 'confirmed', 1, 0, ?, ?, ?, ?)",
+                           (self.tieres, away, at, at, at, at))
+            db.commit()
+        client = self.app.test_client()
+        with client.session_transaction() as sess:
+            sess["player_id"] = self.tieres
+        page = client.get("/torneios/amistosos").get_data(as_text=True)
+        self.assertIn("Mostrando os 20 mais recentes de 22", page)
+        self.assertEqual(page.count('class="friendly-card'), 20)
+        self.assertNotIn(">RIVAL<", page)  # os dois mais antigos ficaram de fora
+        page = client.get("/torneios/amistosos?adversario=riv").get_data(as_text=True)
+        self.assertEqual(page.count('class="friendly-card'), 2)
+        self.assertNotIn("Mostrando os", page)
+        page = client.get("/torneios/amistosos?de=2026-10-21T00:00&ate=2026-10-22T23:59").get_data(as_text=True)
+        self.assertEqual(page.count('class="friendly-card'), 2)
+        page = client.get("/torneios/amistosos?adversario=ninguem").get_data(as_text=True)
+        self.assertIn("Nenhum amistoso com esses filtros", page)
 
     def test_friendly_session_ends_after_a_gap_without_games(self):
         with self.app.app_context():

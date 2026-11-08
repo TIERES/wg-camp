@@ -934,6 +934,8 @@ def friendly_games(db, friendly_row):
         summed = sides is not None and match["status"] != "live" and not note.startswith(_NOT_SUMMED)
         game = {"number": number, "id": match["id"], "url": url_for("live.index", partida=match["id"]),
                 "when": format_local(match["started_at"], "%d/%m/%Y %H:%M"),
+                "date": format_local(match["started_at"], "%d/%m/%Y"),
+                "time": format_local(match["started_at"], "%H:%M"),
                 "status": {"finished": "Encerrado", "abandoned": "Interrompido"}.get(match["status"], "Ao vivo"),
                 "summed": summed, "note": note if note.startswith(_NOT_SUMMED) else ""}
         if sides:

@@ -438,15 +438,16 @@ header nav { align-items:center }
 .friendly-split > :only-child { grid-column:1 / -1 } .friendly-split .friendly-iso { margin:0 }
 @media (max-width:900px) { .friendly-split { grid-template-columns:minmax(0, 1fr) } }
 .friendly-games { min-width:0 } .fg-list { background:#111827; border-radius:8px; overflow:hidden }
-.fg-row { display:grid; grid-template-columns:1.6rem auto minmax(0, 1fr) auto minmax(0, 1fr) auto; align-items:center; gap:.5rem; padding:.45rem .7rem; color:inherit; text-decoration:none; border-top:1px solid #1f2937 }
+.fg-row { display:grid; grid-template-columns:6.2rem minmax(0, 1fr) auto minmax(0, 1fr) 6.2rem; align-items:center; gap:.5rem; padding:.45rem .7rem; color:inherit; text-decoration:none; border-top:1px solid #1f2937 }
 .fg-row:first-child { border-top:0 } .fg-row:hover { background:#1f2937 } .fg-row.not-summed { opacity:.6 }
-.fg-num { text-align:center; font-weight:700; color:#9ca3af } .fg-when { color:#9ca3af; font-size:.8rem; white-space:nowrap }
+.fg-meta { display:flex; align-items:center; gap:.45rem; min-width:0 } .fg-num { flex:0 0 1.3rem; text-align:center; font-weight:700; color:#9ca3af }
+.fg-when { display:grid; color:#9ca3af; font-size:.72rem; line-height:1.2; white-space:nowrap }
 .fg-team { display:flex; align-items:center; gap:.4rem; min-width:0 } .fg-team.home { justify-content:flex-end; text-align:right }
 .fg-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600 } .fg-crest { width:24px; height:24px; object-fit:contain; flex:none }
 .fg-score { display:grid; justify-items:center; white-space:nowrap } .fg-score small { color:#9ca3af; font-size:.72rem }
-.fg-status { display:grid; justify-items:end; text-align:right; font-size:.8rem; color:#d1d5db } .fg-status small { color:#9ca3af; font-size:.7rem }
-@media (max-width:560px) { .fg-row { grid-template-columns:1.4rem minmax(0, 1fr) auto minmax(0, 1fr); grid-template-areas:"num when when status" "num home score away"; row-gap:.15rem }
-  .fg-num { grid-area:num } .fg-when { grid-area:when } .fg-status { grid-area:status } .fg-team.home { grid-area:home } .fg-score { grid-area:score } .fg-team.away { grid-area:away } }
+.fg-status { display:grid; justify-items:end; text-align:right; font-size:.78rem; color:#d1d5db } .fg-status small { color:#9ca3af; font-size:.68rem }
+/* Celular: sem data e situação (estão no card do Ao vivo, ao clicar). */
+@media (max-width:560px) { .fg-row { grid-template-columns:1.4rem minmax(0, 1fr) auto minmax(0, 1fr) 1.4rem } .fg-when,.fg-status { display:none } .fg-meta { justify-content:center } }
 .friendly-games-note { margin:.3rem 0 0; font-size:.8rem }
 .friendly-games-table tr.not-summed td { opacity:.6 }
 .friendly-warn { color:#fca5a5 }

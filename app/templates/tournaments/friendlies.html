@@ -154,10 +154,17 @@
   {% for f in pending %}{{ friendly_card(f, labels, needs_me, request.path, friendly_games.get(f.id)) }}{% else %}<p class="muted">Nenhum amistoso em aberto.</p>{% endfor %}
 </section>
 
-{% if done %}
-<section>
+{% if has_history %}
+<section id="anteriores">
   <h2>Anteriores</h2>
-  {% for f in done %}{{ friendly_card(f, labels, needs_me, request.path, friendly_games.get(f.id)) }}{% endfor %}
+  <form method="get" action="{{ url_for('tournaments.friendlies') }}#anteriores" class="live-filters">
+    <label>Adversário<input name="adversario" value="{{ filters.opponent }}" maxlength="32" placeholder="Nick"></label>
+    <label>De<input type="datetime-local" name="de" value="{{ filters.date_from }}"></label>
+    <label>Até<input type="datetime-local" name="ate" value="{{ filters.date_to }}"></label>
+    <div class="live-filter-actions"><a class="button secondary" href="{{ url_for('tournaments.friendlies') }}#anteriores">Limpar filtro</a><button>Filtrar</button></div>
+  </form>
+  {% if done_total > done|length %}<p class="muted">Mostrando os {{ done|length }} mais recentes de {{ done_total }}: use os filtros para achar os outros.</p>{% endif %}
+  {% for f in done %}{{ friendly_card(f, labels, needs_me, request.path, friendly_games.get(f.id)) }}{% else %}<p class="muted">Nenhum amistoso com esses filtros.</p>{% endfor %}
 </section>
 {% endif %}
 <script src="{{ url_for('static', filename='js/upload-progress.js') }}"></script>

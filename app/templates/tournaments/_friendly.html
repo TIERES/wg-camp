@@ -26,8 +26,7 @@
   <div class="fg-list">
   {% for g in games %}
     <a class="fg-row{% if not g.summed %} not-summed{% endif %}" href="{{ g.url }}" title="Ver o card no Ao vivo (quem fez os gols)">
-      <span class="fg-num">{{ g.number }}</span>
-      <span class="fg-when">{{ g.when }}</span>
+      <span class="fg-meta"><span class="fg-num">{{ g.number }}</span><span class="fg-when"><span>{{ g.date }}</span><span>{{ g.time }}</span></span></span>
       <span class="fg-team home"><span class="fg-name">{{ g.home_team }}</span><img class="fg-crest" src="{{ g.home_image }}" alt="" loading="lazy"></span>
       <span class="fg-score"><strong>{{ g.home_goals }} x {{ g.away_goals }}</strong>{% if g.pens %}<small>pên. {{ g.pens[0] }} x {{ g.pens[1] }}</small>{% endif %}</span>
       <span class="fg-team away"><img class="fg-crest" src="{{ g.away_image }}" alt="" loading="lazy"><span class="fg-name">{{ g.away_team }}</span></span>
