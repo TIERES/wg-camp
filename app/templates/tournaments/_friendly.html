@@ -60,14 +60,18 @@
   {% if has_games %}{{ games_table(f, games[0]) }}{% endif %}
   {% if f.iso_title %}
   <div class="friendly-iso">
-    {% if f.iso_image %}<img class="friendly-iso-cover t-image" src="{{ image_url('torneio', f.iso_image) }}" alt="" loading="lazy">{% endif %}
-    <img class="friendly-iso-cover" src="{{ game_cover(f.game_code) }}" alt="{{ f.game_name }}" loading="lazy">
+    <div class="friendly-iso-media">
+      <div class="friendly-iso-covers">
+        {% if f.iso_image %}<img class="friendly-iso-cover t-image" src="{{ image_url('torneio', f.iso_image) }}" alt="" loading="lazy">{% endif %}
+        <img class="friendly-iso-cover" src="{{ game_cover(f.game_code) }}" alt="{{ f.game_name }}" loading="lazy">
+      </div>
+      {% if mine or session.user_id %}<a class="button secondary" href="{{ url_for('tournaments.friendly_iso', friendly_id=f.id) }}" title="Baixar {{ f.iso_filename }}">Download ISO</a>{% endif %}
+    </div>
     <div class="friendly-iso-text">
       <small class="muted">{{ 'ISO do campeonato' if f.iso_tournament_id else 'ISO do WE Camp' }}</small>
       <strong>{{ f.iso_title }}</strong>
       <span class="muted">{{ f.game_name }}{% if f.iso_filename %} · {{ f.iso_filename }}{% endif %}</span>
     </div>
-    {% if mine or session.user_id %}<a class="button secondary" href="{{ url_for('tournaments.friendly_iso', friendly_id=f.id) }}" title="Baixar {{ f.iso_filename }}">Download ISO</a>{% endif %}
   </div>
   {% endif %}
   </div>

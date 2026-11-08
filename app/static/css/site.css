@@ -439,7 +439,7 @@ header nav { align-items:center }
 @media (max-width:900px) { .friendly-split { grid-template-columns:minmax(0, 1fr) } }
 .friendly-games { min-width:0 } .fg-list { background:#111827; border-radius:8px; overflow:hidden }
 .fg-row { display:grid; grid-template-columns:5rem minmax(0, 1fr) 5.8rem minmax(0, 1fr) 5rem; align-items:center; gap:.45rem; padding:.45rem .55rem; color:inherit; text-decoration:none; border-top:1px solid #1f2937 }
-.fg-row:first-child { border-top:0 } .fg-row:hover { background:#1f2937 } .fg-row.not-summed { opacity:.6 }
+.fg-row:first-child { border-top:0 } .fg-row:hover { background:#0b1120; box-shadow:inset 3px 0 0 var(--accent) } .fg-row.not-summed { opacity:.6 }
 .fg-meta { display:flex; align-items:center; gap:.35rem; min-width:0 } .fg-num { flex:0 0 1.1rem; text-align:center; font-weight:700; color:#9ca3af }
 .fg-when { display:grid; color:#9ca3af; font-size:.68rem; line-height:1.2; white-space:nowrap }
 .fg-team { display:flex; align-items:center; gap:.4rem; min-width:0 } .fg-team.home { justify-content:flex-end; text-align:right }
@@ -482,6 +482,9 @@ header nav { align-items:center }
 .friendly-iso { display:flex; flex-wrap:wrap; align-items:center; gap:.75rem; margin:.6rem 0; padding:.6rem; background:#111827; border-radius:8px }
 .friendly-iso-cover { width:48px; height:60px; object-fit:cover; border-radius:4px }
 .friendly-iso-text { display:grid; gap:.1rem; flex:1 1 12rem; min-width:0 } .friendly-iso-text span { overflow-wrap:anywhere }
+/* Capa e ícone do jogo com o "Download ISO" embaixo; o texto ao lado. */
+.friendly-iso { align-items:flex-start } .friendly-iso-media { display:grid; gap:.45rem; justify-items:stretch; flex:none }
+.friendly-iso-covers { display:flex; gap:.45rem; justify-content:center } .friendly-iso-media .button { width:auto; text-align:center; padding:.4rem .6rem; font-size:.8rem }
 .iso-thumb { width:48px; height:60px; object-fit:cover; border-radius:4px }
 
 /* Envio para o archive.org (static/js/archive-progress.js) e ISOs enviadas pelos jogadores */
