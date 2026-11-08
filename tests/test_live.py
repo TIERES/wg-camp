@@ -734,6 +734,36 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertIn("2º tempo · 45&#39;", html)
         self.assertIn("live-clock on", html)
 
+    def test_interval_only_after_the_whistle(self):
+        # Fork novo: com o relógio em 0 o jogo segue (um gol ainda pode sair); o
+        # "Intervalo" só depois do apito ("over").
+        self.post(state(period=0, clock=0, frame=26940, goals=(3, 2)).replace('"period"', '"over": 0, "period"'))
+        html = self.cards()
+        self.assertIn("1º tempo · 45+&#39;", html)
+        self.assertIn("live-clock on", html)
+        self.post(state(period=0, clock=0, frame=28170, goals=(3, 2)).replace('"period"', '"over": 1, "period"'))
+        self.assertIn(">Intervalo<", self.cards())
+        # Fim do 2º tempo empatado (prorrogação ou pênaltis a seguir).
+        self.post(state(period=1, clock=0, frame=40000, goals=(3, 3)).replace('"period"', '"over": 1, "period"'))
+        html = self.cards()
+        self.assertIn(">Fim do tempo normal<", html)
+        self.assertNotIn("live-clock on", html)
+
+    def test_player_who_left_interrupts_the_match_at_once(self):
+        self.post(state(goals=(1, 0)))
+        client = self.app.test_client()
+        reply = client.post("/api/live/match", headers={"Authorization": "Bearer " + self.token("TIERES")}, data={
+            "state": state(goals=(1, 0)), "players": "TIERES,ANDERSHOW", "reporter": "TIERES", "left": "1",
+            "room": "PCSX ReARMed: Euro vs Copa America 2004.bin"})
+        self.assertEqual(reply.status_code, 200)
+        row = self.rows("SELECT status, finished_at FROM live_matches")[0]
+        self.assertEqual(row["status"], "abandoned")
+        self.assertIsNotNone(row["finished_at"])
+        self.assertIn(">Interrompido<", self.cards())
+        # O PC de quem ficou (modo Server) ainda manda o fim: a partida é encerrada.
+        self.post(state(goals=(2, 0), period=1, clock=0, final=True, frame=90000), reporter="ANDERSHOW")
+        self.assertEqual(self.rows("SELECT status FROM live_matches")[0]["status"], "finished")
+
     def test_own_goal_scorer_and_penalty_on_the_card(self):
         scorers = ([["Gol contra", 17, "Z.Suzuki", "og"], ["Guesung", 28, "", "pen"]], [["D.Maeda", 8, "Y.Nagatomo"]])
         self.post(state(goals=(2, 1), scorers=scorers))

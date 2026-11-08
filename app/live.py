@@ -111,6 +111,9 @@ def parse_state(raw):
         "pads": [_int(p, 0, 255) for p in data.get("pads", [])[:MAX_PLAYERS]],
         # Disputa de pênaltis (LOCAL, VISITA): o período vem 4; prorrogação = 2 e 3.
         "pens": pens,
+        # O juiz encerrou o tempo (fim do 1º/2º tempo, da prorrogação...): None
+        # para o fork que não manda - aí o "Intervalo" vem do relógio em 0.
+        "over": bool(data["over"]) if "over" in data else None,
     }
 
 
@@ -143,6 +146,13 @@ def api_match():
     db = get_db()
     live_id = ingest(db, state, players, reporter, player["id"] if player else None,
                      _text(request.form.get("room"), 120), is_test)
+    if request.form.get("left") == "1":
+        # A DLL avisa que o jogador saiu (Leave, fechou o Kaillera) com o último
+        # estado que mandou: a partida que ainda corria fica interrompida na
+        # hora (sem esperar o tempo sem sinal) - um fim que chegue depois, do PC
+        # de quem ficou, ainda a encerra.
+        db.execute("UPDATE live_matches SET status = 'abandoned', finished_at = COALESCE(finished_at, ?), "
+                   "updated_at = ? WHERE id = ? AND status = 'live'", (now(), now(), live_id))
     db.commit()
     return _reply(ok=1, id=live_id)
 
@@ -363,22 +373,36 @@ def _team_view(db, match, side, team_state, nicks):
 _ADDED_TIME_AT_ZERO = {"SLPM_861.62"}
 
 
+def _match_state(match):
+    try:
+        return json.loads(match["state_json"] or "{}")
+    except ValueError:
+        return {}
+
+
 def _interval(match):
-    """Entre dois tempos: o tempo acabou (relógio em 0 no 1º tempo ou no 1º da
-    prorrogação - o WE 2002 fica assim até virar o período) ou o seguinte
-    ainda não começou (relógio cheio). Até o fork mandar o relógio andando."""
+    """Entre dois tempos: o juiz apitou o fim do 1º tempo (ou do 1º da
+    prorrogação) ou o seguinte ainda não começou (relógio cheio), até o fork
+    mandar o relógio andando. Fork sem o "over": o relógio em 0 (o WE 2002
+    ainda joga um pouco depois dele - um gol nesse tempo aparecia no
+    "Intervalo")."""
     if match["status"] != "live":
         return False
     period, left, half = match["period"], match["clock_left"], match["half_frames"] or 18000
     if 1 <= period <= 3 and left >= half:
         return True
     if period in (0, 2) and left == 0:
-        try:
-            engine = json.loads(match["state_json"] or "{}").get("engine")
-        except ValueError:
-            engine = None
-        return engine not in _ADDED_TIME_AT_ZERO
+        state = _match_state(match)
+        if state.get("over") is not None:
+            return bool(state["over"])
+        return state.get("engine") not in _ADDED_TIME_AT_ZERO
     return False
+
+
+def _period_over(match):
+    """O juiz apitou o fim do 2º tempo ou da prorrogação e a partida segue
+    (empate: prorrogação ou pênaltis a seguir) - o fim, de fato, vem no final."""
+    return match["status"] == "live" and match["period"] in (1, 3) and bool(_match_state(match).get("over"))
 
 
 def _clock_label(match):
@@ -389,6 +413,8 @@ def _clock_label(match):
         return "Pênaltis"
     if _interval(match):
         return "Intervalo"
+    if _period_over(match):
+        return "Fim do tempo normal" if period == 1 else "Fim da prorrogação"
     if period > 1:  # prorrogação: 2 tempos de 15 minutos
         half_no = period - 1
         if left == 0:
@@ -534,7 +560,8 @@ def card(db, match):
         if not view["players"]:
             view["players"] = ["Player %d" % number] if nobody else ["CPU"]
     return {"id": match["id"], "status": match["status"], "stale": stale, "is_test": match["is_test"],
-            "clock": "Sem sinal" if stale else _clock_label(match), "interval": _interval(match),
+            "clock": "Sem sinal" if stale else _clock_label(match),
+            "interval": _interval(match) or _period_over(match),  # sem o risco animado
             "context": label, "link": link,
             "agreed": match["agreed"], "reporters": match["reporters"], "file": _file_name(match),
             "when": format_local(match["started_at"], "%d/%m/%Y %H:%M"),
