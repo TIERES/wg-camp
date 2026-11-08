@@ -432,9 +432,24 @@ header nav { align-items:center }
 .friendly-line .home { justify-self:end } .friendly-line .away { justify-self:start } .friendly-line a { font-weight:700 }
 .friendly-score-text { font-size:1.4rem; min-width:4.5rem; text-align:center }
 .friendly-note,.friendly-warn,.friendly-ranked { margin:.4rem 0 }
-.friendly-games { margin:.7rem 0 } .friendly-games .championship-table-wrap { background:#111827 } .friendly-games-table { margin:0; background:transparent }
-.friendly-games-table tfoot td { border-top:1px solid #374151; font-weight:700 } .friendly-game-score { color:inherit; text-decoration:none } .friendly-game-score:hover strong { text-decoration:underline }
-.friendly-games-note { margin:.3rem 0 0; font-size:.85rem } .friendly-respond > h2 { color:#fbbf24 }
+.friendly-respond > h2 { color:#fbbf24 }
+/* Card do amistoso: as partidas (metade) e a ISO (a outra metade); um abaixo do outro em tela pequena. */
+.friendly-split { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:.75rem; align-items:start; margin:.6rem 0 }
+.friendly-split > :only-child { grid-column:1 / -1 } .friendly-split .friendly-iso { margin:0 }
+@media (max-width:900px) { .friendly-split { grid-template-columns:minmax(0, 1fr) } }
+.friendly-games { min-width:0 } .fg-list { background:#111827; border-radius:8px; overflow:hidden }
+.fg-row { display:grid; grid-template-columns:5rem minmax(0, 1fr) 5.8rem minmax(0, 1fr) 5rem; align-items:center; gap:.45rem; padding:.45rem .55rem; color:inherit; text-decoration:none; border-top:1px solid #1f2937 }
+.fg-row:first-child { border-top:0 } .fg-row:hover { background:#1f2937 } .fg-row.not-summed { opacity:.6 }
+.fg-meta { display:flex; align-items:center; gap:.35rem; min-width:0 } .fg-num { flex:0 0 1.1rem; text-align:center; font-weight:700; color:#9ca3af }
+.fg-when { display:grid; color:#9ca3af; font-size:.68rem; line-height:1.2; white-space:nowrap }
+.fg-team { display:flex; align-items:center; gap:.4rem; min-width:0 } .fg-team.home { justify-content:flex-end; text-align:right }
+.fg-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600 } .fg-crest { width:22px; height:22px; object-fit:contain; flex:none }
+/* Coluna do placar com largura fixa: os escudos ficam alinhados em todas as linhas. */
+.fg-score { display:grid; justify-items:center; line-height:1.15; white-space:nowrap } .fg-score small { color:#9ca3af; font-size:.72rem } /* pênaltis embaixo */
+.fg-status { display:grid; justify-items:end; text-align:right; font-size:.72rem; color:#d1d5db } .fg-status small { color:#9ca3af; font-size:.68rem }
+/* Celular: sem data e situação (estão no card do Ao vivo, ao clicar). */
+@media (max-width:560px) { .fg-row { grid-template-columns:1.4rem minmax(0, 1fr) 6rem minmax(0, 1fr) 1.4rem } .fg-when,.fg-status { display:none } .fg-meta { justify-content:center } }
+.friendly-games-note { margin:.3rem 0 0; font-size:.8rem }
 .friendly-games-table tr.not-summed td { opacity:.6 }
 .friendly-warn { color:#fca5a5 }
 .friendly-score { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; margin:.5rem 0 }

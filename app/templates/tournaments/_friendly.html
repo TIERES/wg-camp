@@ -19,27 +19,22 @@
 {%- endmacro %}
 
 {# As partidas do RetroArch TIERES que formam o placar (live.friendly_games):
-   os times de cada jogador, o placar e o link para o card no Ao vivo. #}
-{% macro games_table(f, games, total) -%}
+   uma linha por partida, inteira um link para o card no Ao vivo (quem fez os
+   gols) - o time de cada jogador do lado dele no card, com o escudo. #}
+{% macro games_table(f, games) -%}
 <div class="friendly-games">
-  <div class="championship-table-wrap">
-    <table class="standings friendly-games-table">
-      <thead><tr><th>Jogo</th><th class="name-col">{{ f.home_name }}</th><th>Placar</th><th class="name-col">{{ f.away_name }}</th><th>Situação</th></tr></thead>
-      <tbody>
-      {% for g in games %}
-        <tr{% if not g.summed %} class="not-summed"{% endif %}>
-          <td><a href="{{ g.url }}" title="Ver o card no Ao vivo (quem fez os gols)">{{ g.number }}</a><small class="muted"> {{ g.when }}</small></td>
-          <td class="name-col">{{ g.home_team }}</td>
-          <td><a class="friendly-game-score" href="{{ g.url }}" title="Ver o card no Ao vivo (quem fez os gols)"><strong>{{ g.home_goals }} x {{ g.away_goals }}</strong></a>{% if g.pens %}<br><small class="muted">pênaltis {{ g.pens[0] }} x {{ g.pens[1] }}</small>{% endif %}</td>
-          <td class="name-col">{{ g.away_team }}</td>
-          <td>{{ g.status }}{% if not g.summed %}<br><small class="muted">{{ 'não soma: ' ~ g.note if g.note else 'ainda não soma' }}</small>{% endif %}</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-      <tfoot><tr><td>Soma</td><td class="name-col"></td><td><strong>{{ total[0] }} x {{ total[1] }}</strong></td><td class="name-col"></td><td></td></tr></tfoot>
-    </table>
+  <div class="fg-list">
+  {% for g in games %}
+    <a class="fg-row{% if not g.summed %} not-summed{% endif %}" href="{{ g.url }}" title="Ver o card no Ao vivo (quem fez os gols)">
+      <span class="fg-meta"><span class="fg-num">{{ g.number }}</span><span class="fg-when"><span>{{ g.date }}</span><span>{{ g.time }}</span></span></span>
+      <span class="fg-team home"><span class="fg-name">{{ g.home_team }}</span><img class="fg-crest" src="{{ g.home_image }}" alt="" loading="lazy"></span>
+      <span class="fg-score"><strong>{{ g.home_goals }} x {{ g.away_goals }}</strong>{% if g.pens %}<small title="Pênaltis">({{ g.pens[0] }}x{{ g.pens[1] }})</small>{% endif %}</span>
+      <span class="fg-team away"><img class="fg-crest" src="{{ g.away_image }}" alt="" loading="lazy"><span class="fg-name">{{ g.away_team }}</span></span>
+      <span class="fg-status">{{ g.status }}{% if not g.summed %}<small>{{ 'não soma: ' ~ g.note if g.note else 'ainda não soma' }}</small>{% endif %}</span>
+    </a>
+  {% endfor %}
   </div>
-  <p class="muted friendly-games-note">Clique no jogo para ver o card no Ao vivo, com quem fez os gols. Pênaltis contam como empate.</p>
+  <p class="muted friendly-games-note">Clique numa partida para ver o card no Ao vivo, com quem fez os gols. Pênaltis contam como empate.</p>
 </div>
 {%- endmacro %}
 
@@ -59,8 +54,10 @@
   </div>
   {% if f.quitter_id and f.status in ('reported', 'confirmed') %}<p class="friendly-warn">{{ f.home_name if f.quitter_id == f.home_id else f.away_name }} saiu da partida no meio de um jogo (o placar até ali conta){% if f.status == 'reported' %}: se o placar for confirmado, perde o triplo de XP - mesmo que tenha sido queda de conexão{% else %} e perdeu o triplo de XP{% endif %}.</p>
   <p class="friendly-note muted">Joguem até o fim, mesmo faltando pouco tempo. Se a conexão cair, voltem em até 20 minutos e terminem outra partida antes de sair: o placar do jogo interrompido continua contando, mas sem a penalidade.</p>{% endif %}
-  {% if games and games[0] %}{{ games_table(f, games[0], games[1]) }}{% endif %}
-  {% if f.message %}<p class="friendly-note"><small class="muted">Recado de {{ f.home_name }}:</small> {{ f.message }}</p>{% endif %}
+  {% set has_games = games and games[0] %}
+  {% if has_games or f.iso_title %}
+  <div class="friendly-split">
+  {% if has_games %}{{ games_table(f, games[0]) }}{% endif %}
   {% if f.iso_title %}
   <div class="friendly-iso">
     {% if f.iso_image %}<img class="friendly-iso-cover t-image" src="{{ image_url('torneio', f.iso_image) }}" alt="" loading="lazy">{% endif %}
@@ -73,6 +70,9 @@
     {% if mine or session.user_id %}<a class="button secondary" href="{{ url_for('tournaments.friendly_iso', friendly_id=f.id) }}" title="Baixar {{ f.iso_filename }}">Download ISO</a>{% endif %}
   </div>
   {% endif %}
+  </div>
+  {% endif %}
+  {% if f.message %}<p class="friendly-note"><small class="muted">Recado de {{ f.home_name }}:</small> {{ f.message }}</p>{% endif %}
 
   {% if f.status == 'invited' %}
     {% if mine and f.away_id == me %}

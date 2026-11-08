@@ -933,19 +933,23 @@ def friendly_games(db, friendly_row):
         note = match["game_report"] or ""
         summed = sides is not None and match["status"] != "live" and not note.startswith(_NOT_SUMMED)
         game = {"number": number, "id": match["id"], "url": url_for("live.index", partida=match["id"]),
-                "when": format_local(match["started_at"], "%d/%m %H:%M"),
+                "when": format_local(match["started_at"], "%d/%m/%Y %H:%M"),
+                "date": format_local(match["started_at"], "%d/%m/%Y"),
+                "time": format_local(match["started_at"], "%H:%M"),
                 "status": {"finished": "Encerrado", "abandoned": "Interrompido"}.get(match["status"], "Ao vivo"),
                 "summed": summed, "note": note if note.startswith(_NOT_SUMMED) else ""}
         if sides:
             home, away = sides
             game.update(home_team=views[home]["name"], away_team=views[away]["name"],
+                        home_image=views[home]["image"], away_image=views[away]["image"],
                         home_goals=goals[home], away_goals=goals[away],
                         pens=(pens[home], pens[away]) if pens and len(pens) == 2 else None)
             if summed:
                 total[0] += goals[home]
                 total[1] += goals[away]
         else:
-            game.update(home_team=views[0]["name"], away_team=views[1]["name"], home_goals=goals[0],
+            game.update(home_team=views[0]["name"], away_team=views[1]["name"], home_image=views[0]["image"],
+                        away_image=views[1]["image"], home_goals=goals[0],
                         away_goals=goals[1], pens=None)
         games.append(game)
     return games, tuple(total)

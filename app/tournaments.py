@@ -13,7 +13,7 @@ import re
 import secrets
 import sqlite3
 import time
-from datetime import date
+from datetime import date, datetime
 from functools import wraps
 from pathlib import Path
 from unicodedata import normalize
@@ -502,9 +502,32 @@ def friend_action(player_id, acao):
 
 # --- Amistosos (app/tournament/friendly.py) -----------------------------------
 
+# Amistosos anteriores na lista: os mais recentes; os outros, pelo filtro.
+FRIENDLIES_HISTORY_LIMIT = 20
+
+
+def _friendly_in_filters(row, me, filters):
+    """O amistoso passa no filtro da lista (nome do adversário, data e hora
+    do jogo - o placar informado - entre "de" e "até", no horário local)?"""
+    from .timeutil import to_local
+    opponent = row["away_name"] if row["home_id"] == me else row["home_name"]
+    if filters["opponent"] and filters["opponent"].casefold() not in (opponent or "").casefold():
+        return False
+    when = to_local(row["reported_at"] or row["confirmed_at"] or row["updated_at"])
+    when = when.replace(tzinfo=None) if when else None
+    for key, after in (("date_from", True), ("date_to", False)):
+        try:
+            limit = datetime.fromisoformat(filters[key]) if filters[key] else None
+        except ValueError:
+            limit = None
+        if limit and (when is None or (when < limit if after else when > limit)):
+            return False
+    return True
+
+
 @bp.get("/amistosos")
 @player_required
-def friendlies():
+def friendlies():  # noqa: C901 - a lista, os filtros e as partidas de cada amistoso
     db = get_db()
     me = session["player_id"]
     rows = friendly.for_player(db, me)
@@ -512,10 +535,17 @@ def friendlies():
     respond = [r for r in rows if (r["status"] == "reported" and friendly.needs_me(r, me))
                or (r["status"] == "invited" and r["away_id"] == me)]
     pending = [r for r in rows if r["status"] in friendly.OPEN and r not in respond]
+    # Anteriores: filtro por adversário e data/hora; no máximo os 20 mais recentes.
+    filters = {"opponent": request.args.get("adversario", "").strip()[:32],
+               "date_from": request.args.get("de", "")[:16], "date_to": request.args.get("ate", "")[:16]}
+    history = [r for r in rows if r["status"] not in friendly.OPEN]
+    done = [r for r in history if _friendly_in_filters(r, me, filters)]
     from . import live
-    games = {r["id"]: live.friendly_games(db, r) for r in rows if r["status"] in ("reported", "suspended", "confirmed")}
+    shown = respond + pending + done[:FRIENDLIES_HISTORY_LIMIT]
+    games = {r["id"]: live.friendly_games(db, r) for r in shown if r["status"] in ("reported", "suspended", "confirmed")}
     return render_template("tournaments/friendlies.html", pending=pending, respond=respond, friendly_games=games,
-                           done=[r for r in rows if r["status"] not in friendly.OPEN],
+                           done=done[:FRIENDLIES_HISTORY_LIMIT], done_total=len(done), has_history=bool(history),
+                           filters=filters,
                            friends=friends.friends(db, me), chosen=request.args.get("com", ""),
                            iso_options=iso_catalog.options(db, me), my_isos=iso_catalog.requested_by(db, me),
                            games=db.execute("SELECT id, name FROM game_titles WHERE is_active = 1 "
