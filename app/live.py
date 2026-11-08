@@ -87,7 +87,7 @@ def parse_state(raw):
         scorers = []
         for item in team.get("scorers", [])[:32]:
             scorer = [_text(item[0], 24), _int(item[1], 0, 200), _text(item[2] if len(item) > 2 else "", 24)]
-            # 4º item (fork): "og" = gol contra, com o autor no nome; "pen" = de pênalti.
+            # 4º item (fork): "og" = gol contra, com o autor no lugar da assistência; "pen" = de pênalti.
             if len(item) > 3 and item[3] in ("og", "pen"):
                 scorer.append(item[3])
             scorers.append(scorer)
@@ -1011,8 +1011,8 @@ def identify_isos():
 def scorer_line(item):
     name, minute, assist = item[0], item[1], item[2] if len(item) > 2 else ""
     kind = item[3] if len(item) > 3 else ""
-    if kind == "og":  # o autor do gol contra, entre parênteses como a assistência
-        return Markup("Gol contra {}' <small>({})</small>").format(minute, name)
+    if kind == "og":  # o autor do gol contra (no lugar da assistência), entre parênteses
+        return Markup("Gol contra {}' <small>({})</small>").format(minute, assist or name)
     if kind == "pen":
         return Markup("{} {}' <small>(Pênalti)</small>").format(name, minute)
     return Markup("{} {}'{}").format(name, minute, Markup(' <small>(assist. {})</small>').format(assist) if assist else "")

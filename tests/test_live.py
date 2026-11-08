@@ -729,7 +729,7 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertIn("live-clock on", html)
 
     def test_own_goal_scorer_and_penalty_on_the_card(self):
-        scorers = ([["Z.Suzuki", 17, "", "og"], ["Guesung", 28, "", "pen"]], [["D.Maeda", 8, "Y.Nagatomo"]])
+        scorers = ([["Gol contra", 17, "Z.Suzuki", "og"], ["Guesung", 28, "", "pen"]], [["D.Maeda", 8, "Y.Nagatomo"]])
         self.post(state(goals=(2, 1), scorers=scorers))
         html = self.cards()
         self.assertIn("Gol contra 17' <small>(Z.Suzuki)</small>", html)
