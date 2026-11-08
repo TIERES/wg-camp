@@ -1,6 +1,7 @@
 {# Card de um amistoso (tournament/friendly.py) com as ações de quem está logado.
    Espera: labels (friendly.STATUS_LABELS) e needs_me (friendly.needs_me). #}
 {% from '_avatar.html' import avatar_button %}
+{% from '_dialog.html' import form_dialog %}
 {% macro friendly_form(f, acao, label, cls='', form_cls='', back='') -%}
 <form method="post" action="{{ url_for('tournaments.friendly_action', friendly_id=f.id, acao=acao) }}"{% if form_cls %} class="{{ form_cls }}"{% endif %}><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% if back %}<input type="hidden" name="voltar" value="{{ back }}">{% endif %}<button class="{{ cls }}">{{ label }}</button></form>
 {%- endmacro %}
@@ -71,14 +72,12 @@
     {% else %}
     <p>{{ f.reported_name }} informou o placar <strong>{{ f.home_name }} {{ f.home_goals }} x {{ f.away_goals }} {{ f.away_name }}</strong>. Está certo?</p>
     {% endif %}
-    <form method="post" class="friendly-reject" action="{{ url_for('tournaments.friendly_action', friendly_id=f.id, acao='rejeitar') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% if back %}<input type="hidden" name="voltar" value="{{ back }}">{% endif %}
-      <details><summary>Não aceito este placar</summary>
-        <label>Motivo (opcional)<input name="motivo" maxlength="300" placeholder="Ex.: o placar foi 2 x 1"></label>
-        <button class="secondary">Não aceitar o placar</button>
-      </details>
-    </form>
-    <div class="card-actions">{{ friendly_form(f, 'confirmar', 'Confirmar placar', '', '', back) }}</div>
+    <div class="card-actions"><button type="button" class="secondary" data-dialog="rejeitar-{{ f.id }}">Não aceitar o placar</button>{{ friendly_form(f, 'confirmar', 'Confirmar placar', '', '', back) }}</div>
+    {% call form_dialog('rejeitar-%d' % f.id, url_for('tournaments.friendly_action', friendly_id=f.id, acao='rejeitar'), 'Não aceitar o placar', 'Não aceitar o placar', back) %}
+      <p><strong>{{ f.home_name }} {{ f.home_goals }} x {{ f.away_goals }} {{ f.away_name }}</strong></p>
+      <p class="muted">O amistoso fica suspenso até vocês chegarem a um placar que os dois aceitem.</p>
+      <label>Motivo<textarea name="motivo" rows="3" minlength="3" maxlength="300" required placeholder="Ex.: o placar foi 2 x 1"></textarea></label>
+    {% endcall %}
     {% endif %}
   {% elif f.status == 'suspended' %}
     <p class="friendly-warn">Suspenso: {{ f.rejected_name }} não aceitou o placar {{ f.home_goals }} x {{ f.away_goals }}{% if f.rejected_note %} <small class="muted">("{{ f.rejected_note }}")</small>{% endif %}. Fica parado até um de vocês propor um placar que o outro aceite.</p>

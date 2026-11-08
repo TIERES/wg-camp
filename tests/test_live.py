@@ -383,6 +383,10 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertIn("Placar lido do jogo", html)
         self.assertIn("O jogo terminou 1 x 2", html)
         self.assertIn("Confirmar este placar", html)
+        # "Não aceitar o placar" à esquerda do confirmar, abrindo a janela com o motivo obrigatório.
+        self.assertIn('<button type="button" class="secondary" data-dialog="contestar">Não aceitar o placar</button><form', html)
+        self.assertIn('<dialog class="form-dialog" id="contestar"', html)
+        self.assertIn('name="comment" rows="3" minlength="3" maxlength="500" required', html)
         # Os dois confirmam: o primeiro só marca a confirmação dele.
         with self.app.app_context():
             db = get_db()
@@ -403,6 +407,8 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertIn("Confirmar este placar", page)
         mine = other.get("/torneios/meus-jogos").get_data(as_text=True)
         self.assertIn("1 para confirmar", mine)
+        self.assertIn('data-dialog="contestar-%d">Não aceitar o placar</button>' % match["id"], mine)
+        self.assertIn('<input type="hidden" name="voltar" value="meus-jogos">', mine)
         waiting = client.get("/torneios/meus-jogos").get_data(as_text=True)
         self.assertIn("1 aguardando adversário", waiting)
         # Sem a 2ª confirmação: confirmado sozinho 24 h depois do fim do jogo.
@@ -870,6 +876,9 @@ class LiveMatchesTest(unittest.TestCase):
             sess["player_id"] = self.tieres
         page = client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True)
         self.assertIn("<h2>Partidas</h2>", page)
+        self.assertIn('data-dialog="rejeitar-%d">Não aceitar o placar</button>' % fid, page)
+        self.assertIn('name="motivo" rows="3" minlength="3" maxlength="300" required', page)
+        self.assertNotIn("Não aceito este placar", page)
         for score in ("2 x 1", "0 x 3", "1 x 3"):
             self.assertIn("<strong>%s</strong>" % score, page)
         self.assertIn("<td>Soma</td><td class=\"name-col\"></td><td><strong>3 x 7</strong>", page)

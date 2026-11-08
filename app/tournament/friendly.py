@@ -194,9 +194,11 @@ def deadline(db, row):
 
 
 def reject(db, friendly_id, me, note=""):
-    """Não aceita o placar: o amistoso fica suspenso até um placar que os dois aceitem."""
+    """Não aceita o placar (com o motivo): o amistoso fica suspenso até um placar que os dois aceitem."""
     row = _mine(db, friendly_id, me)
     _waiting_for_me(row, me)
+    if len((note or "").strip()) < 3:
+        raise TournamentError("Explique por que você não aceita o placar.")
     _set(db, friendly_id, status="suspended", rejected_by=me, rejected_note=(note or "").strip()[:300],
          first_confirmed_by=None)
     return row

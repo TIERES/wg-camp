@@ -89,6 +89,8 @@ class FriendlyTest(unittest.TestCase):
         friendly.report(self.db, fid, p0, 3, 0)
         with self.assertRaises(TournamentError):
             friendly.confirm(self.db, fid, p0)  # quem informou não confirma
+        with self.assertRaisesRegex(TournamentError, "Explique"):
+            friendly.reject(self.db, fid, p1, "  ")  # o motivo é obrigatório
         friendly.reject(self.db, fid, p1, "foi 1 x 0")
         row = friendly.get(self.db, fid)
         self.assertEqual((row["status"], row["rejected_note"]), ("suspended", "foi 1 x 0"))
