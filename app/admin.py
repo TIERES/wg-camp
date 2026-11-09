@@ -228,12 +228,17 @@ def file_upload(championship_id):
         content_id = content_id_from(stored["crc32"], stored["file_size"]) if is_game_file(stored["stored_name"]) else None
         db.execute("INSERT INTO files (championship_id,display_name,description,stored_name,original_filename,file_type,file_size,sha256,md5,content_id,is_published,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", (championship_id, display_name, request.form.get("description", "").strip(), stored["stored_name"], stored["original_filename"], request.form.get("file_type", "other"), stored["file_size"], stored["sha256"], stored["md5"], content_id, int("is_published" in request.form), now(), now()))
         db.commit()
+        file_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
     except (ValueError, OSError, sqlite3.IntegrityError) as error:
         if stored:
             delete_stored_file(stored["stored_name"])
         flash(str(error), "error")
     else:
-        flash("Arquivo enviado e registrado.", "success")
+        # ISO (ou arquivo de jogo): sempre para o archive.org - só ele guarda arquivos grandes.
+        message = "Arquivo enviado e registrado."
+        if request.form.get("file_type") == "iso" or is_game_file(stored["stored_name"]):
+            message += " " + _auto_archive_iso(db, file_id)
+        flash(message, "success")
         return redirect(url_for("admin.dashboard"))
     return redirect(url_for("admin.files", championship_id=championship_id))
 
@@ -440,6 +445,54 @@ def file_archive_status(file_id):
     return jsonify(state)
 
 
+def _start_archive_thread(db, file_id, remote_name, replace, remove_local):
+    db.execute(
+        "UPDATE files SET archive_status='uploading', archive_error=NULL, archive_progress=0, archive_updated_at=? "
+        "WHERE id=?",
+        (now(), file_id),
+    )
+    db.commit()
+    app = current_app._get_current_object()
+    args = (app, file_id, remote_name, replace, remove_local)
+    if app.config.get("TESTING"):
+        _archive_iso(*args)
+    else:
+        threading.Thread(target=_archive_iso, args=args, daemon=True).start()
+
+
+def _auto_archive_iso(db, file_id):
+    """ISO enviada na administração: vai sempre para o archive.org (arquivos
+    grandes ficam só lá), como as ISOs do portal e dos amistosos
+    (tournament/iso.py: start_archive). Mesmo plano do botão "Enviar para o
+    archive.org", sempre removendo a cópia deste servidor depois de confirmada
+    (mesmo MD5). Já lá com o mesmo conteúdo: só liga. Mesmo nome com conteúdo
+    diferente no archive.org: não substitui sozinho - fica para o botão, que
+    pede confirmação. Retorna a mensagem para o administrador."""
+    entry = db.execute("SELECT * FROM files WHERE id=?", (file_id,)).fetchone()
+    if not (current_app.config.get("IA_ACCESS_KEY") and current_app.config.get("IA_SECRET_KEY")):
+        return "As chaves do archive.org não estão configuradas: a ISO ficou só neste servidor."
+    try:
+        md5 = _local_md5(db, entry)
+        existing = list_item_files(ISO_ARCHIVE_ITEM_IDENTIFIER)
+    except (ArchiveOrgError, OSError) as error:
+        return (f"Não foi possível falar com o archive.org ({error}): a ISO ficou neste servidor. "
+                "Use \"Enviar para o archive.org\" em Arquivos para tentar de novo.")
+    action, remote_name = _archive_plan(entry, md5, existing)
+    if action == "link":
+        url = download_url(ISO_ARCHIVE_ITEM_IDENTIFIER, remote_name)
+        db.execute("UPDATE files SET archive_status='done', archive_url=?, archive_error=NULL, archive_updated_at=? "
+                   "WHERE id=?", (url, now(), file_id))
+        _remove_local_copy(db, entry, None)
+        db.commit()
+        return f"Esta ISO já estava no archive.org, com o mesmo conteúdo ({url}); a cópia deste servidor foi removida."
+    if action == "replace":
+        return (f"O archive.org já tem uma ISO \"{remote_name}\" com conteúdo diferente: ela não foi substituída "
+                "sozinha. Abra Arquivos e use \"Enviar para o archive.org\" para confirmar a troca.")
+    _start_archive_thread(db, file_id, remote_name, False, True)
+    return ("Envio para o archive.org iniciado; depois de confirmada lá (mesmo MD5), a cópia deste servidor é "
+            "removida e o download passa a vir do archive.org.")
+
+
 @bp.post("/files/<int:file_id>/archive")
 @login_required
 def file_archive(file_id):
@@ -497,18 +550,7 @@ def file_archive(file_id):
             remove_local=remove_local,
         )
 
-    db.execute(
-        "UPDATE files SET archive_status='uploading', archive_error=NULL, archive_progress=0, archive_updated_at=? "
-        "WHERE id=?",
-        (now(), file_id),
-    )
-    db.commit()
-    app = current_app._get_current_object()
-    args = (app, file_id, remote_name, action == "replace", remove_local)
-    if app.config.get("TESTING"):
-        _archive_iso(*args)
-    else:
-        threading.Thread(target=_archive_iso, args=args, daemon=True).start()
+    _start_archive_thread(db, file_id, remote_name, action == "replace", remove_local)
     if action == "replace":
         flash("Substituição iniciada: a ISO antiga será excluída do archive.org e a nova enviada. Atualize esta página em alguns minutos para ver o link.", "success")
     else:

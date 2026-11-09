@@ -212,7 +212,75 @@ class AdminFilesArchiveTest(unittest.TestCase):
         self.assertIsNone(self._file()["local_removed_at"])
         self.assertTrue((self.downloads / "0123456789abcdef0123456789abcdef.bin").exists())
 
-    def test_iso_upload_is_identified_for_memory_cards(self):
+    # --- Envio de ISO na administração: vai sempre para o archive.org ---------
+
+    def _upload_iso(self, cid, data, name, file_type="iso"):
+        with self.app.app_context():
+            get_db().execute("INSERT INTO championships (id,slug,name,is_published,created_at,updated_at) VALUES (?,?,?,1,?,?)",
+                             (cid, f"copa-{cid}", f"Copa {cid}", now(), now()))
+            get_db().commit()
+        response = self.client.post(f"/admin/championships/{cid}/files", data={
+            "csrf_token": "test-csrf-token", "file_type": file_type, "is_published": "on", "file": (BytesIO(data), name),
+        })
+        with self.app.app_context():
+            entry = dict(get_db().execute("SELECT * FROM files WHERE championship_id=?", (cid,)).fetchone())
+        return response, entry
+
+    @mock.patch("app.admin.upload_file", return_value="https://archive.org/download/one-two-iso/Copa%203.bin")
+    @mock.patch("app.admin.list_item_files")
+    def test_iso_upload_goes_to_archive_and_leaves_the_server(self, list_files, upload):
+        data = b"iso nova" * 50
+        list_files.side_effect = [{}, {"Copa 3.bin": remote(hashlib.md5(data).hexdigest())}]
+        response, entry = self._upload_iso(3, data, "Copa 3.bin")
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.headers["Location"].endswith("/admin/"))
+        self.assertEqual(upload.call_args.kwargs["remote_name"], "Copa 3.bin")
+        self.assertEqual(entry["archive_status"], "done")
+        self.assertEqual(entry["archive_url"], "https://archive.org/download/one-two-iso/Copa%203.bin")
+        self.assertIsNotNone(entry["local_removed_at"])
+        self.assertFalse((self.downloads / entry["stored_name"]).exists())
+        download = self.client.get(f"/download/{entry['id']}")
+        self.assertEqual(download.headers["Location"], "https://archive.org/download/one-two-iso/Copa%203.bin")
+
+    @mock.patch("app.admin.upload_file")
+    @mock.patch("app.admin.list_item_files")
+    def test_iso_upload_already_on_archive_is_linked_and_leaves_the_server(self, list_files, upload):
+        data = b"iso repetida" * 50
+        list_files.return_value = {"Copa 4.bin": remote(hashlib.md5(data).hexdigest())}
+        _response, entry = self._upload_iso(4, data, "Copa 4.bin")
+        upload.assert_not_called()
+        self.assertEqual(entry["archive_url"], "https://archive.org/download/one-two-iso/Copa%204.bin")
+        self.assertIsNotNone(entry["local_removed_at"])
+        self.assertFalse((self.downloads / entry["stored_name"]).exists())
+
+    @mock.patch("app.admin.delete_file")
+    @mock.patch("app.admin.upload_file")
+    @mock.patch("app.admin.list_item_files", return_value={"Copa 5.bin": remote("outro-md5")})
+    def test_iso_upload_never_replaces_a_different_archive_copy_by_itself(self, _list, upload, delete):
+        _response, entry = self._upload_iso(5, b"iso diferente" * 50, "Copa 5.bin")
+        upload.assert_not_called()
+        delete.assert_not_called()
+        self.assertIsNone(entry["local_removed_at"])
+        self.assertTrue((self.downloads / entry["stored_name"]).exists())
+        page = self.client.get("/admin/championships/5/files")
+        self.assertIn("conteúdo diferente".encode(), page.data)
+
+    @mock.patch("app.admin.upload_file")
+    @mock.patch("app.admin.list_item_files")
+    def test_non_iso_upload_stays_on_the_server(self, list_files, upload):
+        _response, entry = self._upload_iso(6, b"patch" * 10, "patch.ppf", file_type="patch")
+        list_files.assert_not_called()
+        upload.assert_not_called()
+        self.assertIsNone(entry["local_removed_at"])
+
+    @mock.patch("app.admin.list_item_files", side_effect=ArchiveOrgError("fora do ar"))
+    def test_iso_upload_with_archive_offline_stays_on_the_server(self, _list):
+        _response, entry = self._upload_iso(7, b"iso" * 50, "Copa 7.bin")
+        self.assertIsNone(entry["local_removed_at"])
+        self.assertTrue((self.downloads / entry["stored_name"]).exists())
+
+    @mock.patch("app.admin.list_item_files", side_effect=ArchiveOrgError("sem rede nos testes"))
+    def test_iso_upload_is_identified_for_memory_cards(self, _list):
         with self.app.app_context():
             get_db().execute("INSERT INTO championships (id,slug,name,is_published,created_at,updated_at) VALUES (2,'copa-2','Copa 2',1,?,?)", (now(), now()))
             get_db().commit()
@@ -225,7 +293,8 @@ class AdminFilesArchiveTest(unittest.TestCase):
             entry = get_db().execute("SELECT * FROM files WHERE championship_id=2").fetchone()
         self.assertEqual(entry["content_id"], f"{zlib.crc32(data):08X}:{len(data):X}")
 
-    def test_iso_upload_keeps_spaces_and_accents_in_the_name(self):
+    @mock.patch("app.admin.list_item_files", side_effect=ArchiveOrgError("sem rede nos testes"))
+    def test_iso_upload_keeps_spaces_and_accents_in_the_name(self, _list):
         for cid, name, expected in ((10, "Winning Eleven 2002 Edição BR.bin", "Winning Eleven 2002 Edição BR.bin"),
                                     (11, "C:\\Jogos\\WE: 2002?  final .bin", "WE 2002 final .bin")):
             with self.app.app_context():
