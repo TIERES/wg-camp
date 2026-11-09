@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'tournaments/_friendly.html' import friendly_carousel %}{% from '_carousel.html' import carousel_arrow, carousel_count %}{% from '_dialog.html' import info_button, info_dialog %}{% from '_user_picker.html' import user_picker %}{% block title %}Amistosos · WE Camp{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from 'tournaments/_friendly.html' import friendly_carousel %}{% from '_carousel.html' import carousel, carousel_arrow, carousel_count %}{% from '_dialog.html' import info_button, info_dialog %}{% from '_user_picker.html' import user_picker %}{% block title %}Amistosos · WE Camp{% endblock %}{% block content %}
 <h1 class="title-info">Amistosos {{ info_button('amistoso-regras', 'Quando o amistoso vale para o Ranking e o XP') }}</h1>
 <p class="muted">Jogos com seus amigos, fora dos campeonatos. Quem é chamado aceita o convite. Depois do jogo, um informa o placar e o outro confirma.</p>
 {% call info_dialog('amistoso-regras', 'Quando o amistoso vale para o Ranking e o XP') %}
@@ -210,16 +210,27 @@
 </section>
 
 {% if my_isos %}
+{# As ISOs que o jogador enviou: cards como os da escolha da ISO, em carrossel,
+   com a liberação no selo e o envio para o archive.org no rodapé. #}
 <section id="minhas-isos">
   <h2>Minhas ISOs enviadas</h2>
-  <ul class="friend-list my-isos">{% for i in my_isos %}
-    <li>
-      <img class="iso-thumb" src="{{ image_url('torneio', i.image) if i.image else game_cover(i.game_code) }}" alt="">
-      <span class="my-iso-text"><strong>{{ i.name }}</strong><small class="muted">{{ i.game_name }} · {{ i.original_filename }}</small></span>
-      <span class="badge {{ 'iso-catalog' if i.approved_at else 'iso-pending' }}">{{ 'Liberada' if i.approved_at else 'Aguardando liberação' }}</span>
-      {% if i.stored_name %}<div class="archive-progress" data-archive-status="{{ url_for('tournaments.catalog_iso_status', catalog_id=i.id) }}"></div>{% endif %}
-    </li>
-  {% endfor %}</ul>
+  {% call carousel('ISOs anteriores', 'Próximas ISOs', 'per-3 my-isos', fit=false) %}
+    {% for i in my_isos %}
+    <div class="t-card my-iso-card">
+      <span class="t-side"><span class="t-side-images">
+        {% if i.image %}<img class="t-cover t-image" src="{{ image_url('torneio', i.image) }}" alt="" loading="lazy">{% endif %}
+        <img class="t-cover" src="{{ game_cover(i.game_code) }}" alt="{{ i.game_name }}" width="200" height="250" loading="lazy">
+      </span></span>
+      <span class="t-body">
+        <span class="badge {{ 'iso-catalog' if i.approved_at else 'iso-pending' }}">{{ 'Liberada' if i.approved_at else 'Aguardando liberação' }}</span>
+        <strong class="t-name">{{ i.name }}</strong>
+        <span class="muted">{{ i.game_name }}</span>
+        {% if i.original_filename %}<small class="muted iso-file">{{ i.original_filename }}</small>{% endif %}
+      </span>
+      {% if i.stored_name %}<div class="t-foot"><div class="archive-progress" data-archive-status="{{ url_for('tournaments.catalog_iso_status', catalog_id=i.id) }}"></div></div>{% endif %}
+    </div>
+    {% endfor %}
+  {% endcall %}
 </section>
 {% endif %}
 

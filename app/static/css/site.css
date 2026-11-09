@@ -503,7 +503,8 @@ button.small,.button.small { padding:.4rem .7rem; font-size:.78rem }
 .archive-progress[data-state="error"] .archive-progress-text { color:var(--error) }
 .archive-progress[data-state="done"] .archive-progress-text { color:var(--accent) }
 .archive-progress.compact { min-width:10rem }
-.my-iso-text { display:grid; gap:.1rem; flex:1 1 12rem; min-width:0 } .my-iso-text small { overflow-wrap:anywhere }
+/* Minhas ISOs enviadas: cards em carrossel, o envio para o archive.org no rodapé. */
+.my-iso-card .t-name { overflow-wrap:anywhere } .my-iso-card .t-foot .archive-progress { margin:0 }
 .badge.iso-pending { background:#78350f; color:#fde68a }
 
 /* Cadastro: campos obrigatórios e conferência enquanto digita (players/register.html) */
