@@ -1,6 +1,6 @@
-{% extends 'base.html' %}{% block title %}Cadastro · Campeonatos WE 2002{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from '_password.html' import password_toggle %}{% from '_icons.html' import icon %}{% block title %}Cadastro · Campeonatos WE 2002{% endblock %}{% block content %}
 <section class="login account-form">
-  <h1>Criar conta</h1>
+  <h1 class="icon-title">{{ icon('user-plus') }}Criar conta</h1>
   <p>A conta é necessária para se inscrever nos <strong>Campeonatos do WE Camp</strong> e para usar o <strong>Memory Card online</strong> nas partidas pelo Kaillera.</p>
   <p class="muted required-note">Todos os campos são obrigatórios (<span class="req" aria-hidden="true">*</span>).</p>
   <form method="post" id="register-form" novalidate data-username-pattern="{{ username_pattern }}" data-check-url="{{ url_for('players.register_check') }}">
@@ -8,34 +8,34 @@
     <div class="form-row">
       <label>
         <span>Usuário (o seu nick do Kaillera) <span class="req" aria-hidden="true">*</span></span>
-        <input name="username" value="{{ form.username }}" autocomplete="username" maxlength="31" required
-               autocapitalize="off" spellcheck="false" aria-describedby="username-hint username-error">
+        <span class="input-icon">{{ icon('user') }}<input name="username" value="{{ form.username }}" autocomplete="username" maxlength="31" required
+               autocapitalize="off" spellcheck="false" aria-describedby="username-hint username-error"></span>
         <small class="field-hint" id="username-hint">Sem espaços e sem acentos ou ç: o Kaillera não aceita. Use {{ username_allowed }}, de 2 a 31 caracteres.</small>
         <small class="field-error" id="username-error" aria-live="polite"></small>
       </label>
       <label>
         <span>E-mail <span class="req" aria-hidden="true">*</span></span>
-        <input type="email" name="email" value="{{ form.email }}" autocomplete="email" required aria-describedby="email-error">
+        <span class="input-icon">{{ icon('mail') }}<input type="email" name="email" value="{{ form.email }}" autocomplete="email" required aria-describedby="email-error"></span>
         <small class="field-error" id="email-error" aria-live="polite"></small>
       </label>
     </div>
     <div class="form-row">
       <label>
         <span>Senha (mínimo 8 caracteres) <span class="req" aria-hidden="true">*</span></span>
-        <input type="password" name="password" autocomplete="new-password" minlength="8" maxlength="128" required aria-describedby="password-error">
+        <span class="input-icon">{{ icon('lock') }}<input type="password" name="password" autocomplete="new-password" minlength="8" maxlength="128" required aria-describedby="password-error">{{ password_toggle() }}</span>
         <small class="field-error" id="password-error" aria-live="polite"></small>
       </label>
       <label>
         <span>Repita a senha <span class="req" aria-hidden="true">*</span></span>
-        <input type="password" name="password_confirm" autocomplete="new-password" minlength="8" maxlength="128" required aria-describedby="password_confirm-error">
+        <span class="input-icon">{{ icon('lock-check') }}<input type="password" name="password_confirm" autocomplete="new-password" minlength="8" maxlength="128" required aria-describedby="password_confirm-error">{{ password_toggle() }}</span>
         <small class="field-error" id="password_confirm-error" aria-live="polite"></small>
       </label>
     </div>
     <label class="check"><input type="checkbox" name="accept" required><span>Entendo que o usuário deve ser exatamente o meu nick no Kaillera e que <strong>ele não poderá ser alterado</strong> depois. <span class="req" aria-hidden="true">*</span></span></label>
     <p class="field-error" id="form-missing" aria-live="polite"></p>
-    <button id="register-submit">Cadastrar</button>
+    <button id="register-submit" class="icon-button">{{ icon('user-plus') }}Cadastrar</button>
   </form>
-  <p>Já tem conta? <a href="{{ url_for('players.login') }}">Entrar</a></p>
+  <p>Já tem conta? <a class="icon-link" href="{{ url_for('players.login') }}">{{ icon('login') }}Entrar</a></p>
 </section>
 <script>
 (function () {

@@ -44,6 +44,11 @@
       }
       if (prev) prev.disabled = track.scrollLeft <= 1;
       if (next) next.disabled = track.scrollLeft + track.clientWidth >= track.scrollWidth - 1;
+      // Setas: altura fixa do CSS (--carousel-arrow-top), no máximo a metade do card
+      // mais baixo da lista inteira - não só dos da vez, para não mexer ao navegar.
+      var shortest = 0;
+      s.list.forEach(function (el) { var h = el.offsetHeight; if (h && (!shortest || h < shortest)) shortest = h; });
+      box.style.setProperty('--carousel-arrow-max', shortest ? Math.round(shortest / 2) + 'px' : '');
       if (fit) {
         var tallest = 0;
         s.list.slice(s.first, s.first + s.per).forEach(function (el) { tallest = Math.max(tallest, el.offsetHeight); });

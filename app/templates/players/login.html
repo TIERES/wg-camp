@@ -1,14 +1,28 @@
-{% extends 'base.html' %}{% block title %}Entrar · Campeonatos WE 2002{% endblock %}{% block content %}
-<section class="login account-form">
-  <h1>Entrar</h1>
+{% extends 'base.html' %}{% from '_dialog.html' import info_button, info_dialog %}{% from '_password.html' import password_toggle %}{% from '_icons.html' import icon %}{% block title %}Entrar · Campeonatos WE 2002{% endblock %}{% block content %}
+<section class="login account-form login-card">
+  <div class="login-head">
+    <span class="login-badge" aria-hidden="true">{{ icon('user') }}</span>
+    <h1>Entrar</h1>
+    <p class="muted">Acesse sua conta do WE Camp</p>
+  </div>
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>Usuário ou e-mail<input name="username" autocomplete="username" required></label>
-    <label>Senha<input type="password" name="password" autocomplete="current-password" required></label>
-    <label class="check remember"><input type="checkbox" name="lembrar" value="1"> <span>Permanecer logado <small class="muted">- neste navegador, até você clicar em Sair ou por até 1 mês</small></span></label>
-    <button>Entrar</button>
+    <label>Usuário ou e-mail
+      <span class="input-icon">{{ icon('user') }}<input name="username" autocomplete="username" required autofocus></span>
+    </label>
+    <label>Senha
+      <span class="input-icon">{{ icon('lock') }}<input type="password" name="password" autocomplete="current-password" required>{{ password_toggle() }}</span>
+    </label>
+    <label class="check remember"><input type="checkbox" name="lembrar" value="1"> <span>Permanecer logado</span>{{ info_button('lembrar-info', 'Sobre o Permanecer logado') }}</label>
+    <button class="login-submit">{{ icon('login') }}Entrar</button>
   </form>
-  <p><a href="{{ url_for('players.forgot') }}">Esqueci minha senha ou usuário</a> · <a href="{{ url_for('players.resend') }}">Reenviar confirmação</a></p>
-  <p>Ainda não tem conta? <a href="{{ url_for('players.register') }}">Cadastre-se</a></p>
+  {% call info_dialog('lembrar-info', 'Permanecer logado') %}
+  <p>Você continua logado neste navegador até clicar em Sair, por até 1 mês.</p>
+  {% endcall %}
+  <ul class="login-links">
+    <li><a href="{{ url_for('players.forgot') }}">{{ icon('key') }}Esqueci minha senha ou usuário</a></li>
+    <li><a href="{{ url_for('players.resend') }}">{{ icon('mail') }}Reenviar confirmação</a></li>
+  </ul>
+  <p class="login-signup">Ainda não tem conta? <a href="{{ url_for('players.register') }}">{{ icon('user-plus') }}Cadastre-se</a></p>
 </section>
 {% endblock %}

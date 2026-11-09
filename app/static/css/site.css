@@ -589,10 +589,15 @@ button.small,.button.small { padding:.4rem .7rem; font-size:.78rem }
 .carousel-count { font-size:.85rem; color:#9ca3af; font-variant-numeric:tabular-nums; white-space:nowrap; padding-right:.25rem }
 .carousel-count[hidden] { display:none }
 .carousel-stage { position:relative }
-.carousel-arrow { position:absolute; top:50%; z-index:2; transform:translateY(-50%); display:grid; place-items:center; width:2.2rem; height:2.2rem; padding:0; border-radius:50%; box-shadow:0 2px 8px rgba(0,0,0,.45) }
+/* Setas numa altura fixa a partir do topo dos cards (o padrão: logo abaixo dos
+   escudos dos cards do Ao vivo), não no meio: o card da vez pode crescer ou
+   encolher sem mexer nelas. carousel.js limita à metade do card mais baixo da
+   lista inteira (--carousel-arrow-max), para listas de cards baixos. */
+.carousel { --carousel-arrow-top:6.75rem }
+.carousel-arrow { position:absolute; top:min(var(--carousel-arrow-top), var(--carousel-arrow-max, 100vh)); z-index:2; transform:translateY(-50%); display:grid; place-items:center; width:2.2rem; height:2.2rem; padding:0; border-radius:50%; box-shadow:0 2px 8px rgba(0,0,0,.45) }
 .carousel-arrow svg { display:block } .carousel-arrow[hidden] { display:none }
 .carousel-arrow.prev { left:-1.1rem } .carousel-arrow.next { right:-1.1rem }
-@media (max-width:600px) { .carousel-arrow { width:2rem; height:2rem } .carousel-arrow.prev { left:-.7rem } .carousel-arrow.next { right:-.7rem } }
+@media (max-width:600px) { .carousel { --carousel-arrow-top:6.4rem } .carousel-arrow { width:2rem; height:2rem } .carousel-arrow.prev { left:-.7rem } .carousel-arrow.next { right:-.7rem } }
 .carousel-track { position:relative; display:flex; gap:1rem; overflow-x:auto; overflow-y:hidden; scroll-snap-type:x mandatory; scrollbar-width:none; overscroll-behavior-x:contain }
 .carousel-track::-webkit-scrollbar { display:none }
 .carousel-track > * { flex:0 0 100%; min-width:0; scroll-snap-align:start } .carousel-track > [hidden] { display:none }
@@ -635,3 +640,41 @@ button.small,.button.small { padding:.4rem .7rem; font-size:.78rem }
 .carousel-track.invite-cards > .invite-card { padding:.75rem 1.6rem }
 @media (min-width:600px) { .carousel-track.per-3 > * { flex-basis:calc((100% - 1rem) / 2) } }
 @media (min-width:860px) { .carousel-track.per-2 > * { flex-basis:calc((100% - 1rem) / 2) } .carousel-track.per-3 > * { flex-basis:calc((100% - 2rem) / 3) } }
+
+/* Entrar (players/login.html): card centralizado; em tela pequena ocupa a tela inteira. */
+.login-card { width:min(100%, 26rem); margin:2.5rem auto; padding:2rem 1.75rem 1.5rem; border:1px solid #374151; border-radius:14px; box-shadow:0 12px 32px rgb(0 0 0 / .35) }
+.login-card form { display:grid; gap:1rem }
+.login-head { text-align:center; margin-bottom:1.5rem }
+.login-head h1 { margin:.6rem 0 .2rem; font-size:1.6rem }
+.login-head p { margin:0; font-size:.9rem }
+.login-badge { display:inline-grid; place-items:center; width:3.4rem; height:3.4rem; border-radius:50%; background:#34d3991f; color:var(--accent); border:1px solid #34d39966 }
+.login-badge .ico { width:1.7rem; height:1.7rem }
+.login-card label:not(.check) { font-size:.9rem; color:#d1d5db; padding:0 }
+/* Campo com ícone à esquerda (e o olho da senha à direita) */
+.input-icon { position:relative; display:block }
+.input-icon > .ico { position:absolute; left:.75rem; top:50%; transform:translateY(-50%); color:#9ca3af; pointer-events:none }
+.input-icon input { width:100%; padding:.7rem .75rem .7rem 2.5rem; border-radius:8px }
+.input-icon input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px #34d39933 }
+.input-icon input:focus ~ .ico, .input-icon:focus-within > .ico { color:var(--accent) }
+.input-icon:has(.password-toggle) input { padding-right:2.8rem }
+.password-toggle { position:absolute; right:.35rem; top:50%; transform:translateY(-50%); display:grid; place-items:center; width:2.2rem; height:2.2rem; padding:0; background:transparent; color:#9ca3af; border-radius:6px }
+.password-toggle:hover, .password-toggle:focus-visible { color:var(--accent); background:#34d3991a }
+.password-toggle .eye-closed, .password-toggle[aria-pressed="true"] .eye-open { display:none }
+.password-toggle[aria-pressed="true"] .eye-closed { display:block }
+.login-card .remember { font-size:.9rem; color:#d1d5db }
+.login-submit { display:flex; align-items:center; justify-content:center; gap:.5rem; width:100%; padding:.8rem; font-size:1rem; font-weight:700; border-radius:8px }
+.login-links { list-style:none; margin:1.5rem 0 0; padding:1rem 0 0; border-top:1px solid #374151; display:grid; gap:.55rem; font-size:.9rem }
+.login-links a, .login-signup a { display:inline-flex; align-items:center; gap:.45rem }
+.login-signup { margin:1rem 0 0; padding:.85rem; text-align:center; font-size:.9rem; background:#111827; border-radius:8px }
+.login-signup a { font-weight:700; vertical-align:middle }
+@media (max-width:600px) {
+  .login-card { width:auto; margin:-1rem -1rem 0; min-height:calc(100vh - 4rem); min-height:calc(100dvh - 4rem); border:0; border-radius:0; box-shadow:none; padding:2rem 1.25rem }
+}
+/* Ícones no Criar conta: título, botão Cadastrar, link Entrar. A validação (borda
+   vermelha/verde) vence o verde do foco; o ícone do campo acompanha a cor. */
+.icon-title { display:flex; align-items:center; gap:.55rem } .icon-title .ico { width:1.6rem; height:1.6rem; color:var(--accent) }
+.icon-button { display:inline-flex; align-items:center; gap:.45rem }
+.icon-link { display:inline-flex; align-items:center; gap:.35rem; vertical-align:bottom }
+.input-icon input.invalid, .input-icon input.invalid:focus { border-color:#f87171; box-shadow:0 0 0 3px #f8717133 }
+.input-icon input.valid:focus { border-color:#34d399 }
+.input-icon:has(input.invalid) > .ico { color:#f87171 }
