@@ -12,14 +12,50 @@
 <span class="carousel-count" data-carousel-count aria-live="polite"{% if hidden %} hidden{% endif %}>{{ text }}</span>
 {%- endmacro %}
 
+{# Nota embaixo de uma lista limitada (app/listing.py: cap): "Mostrando 20 de 57
+   jogadores. Use o filtro para achar os outros." - ou a lista vazia. #}
+{% macro list_note(shown, total, what, filtered=false) -%}
+{% if total == 0 %}<p class="muted list-note">Nenhum registro{% if filtered %} com esse filtro{% endif %}.</p>
+{% elif total > shown %}<p class="muted list-note">Mostrando {{ shown }} de {{ total }} {{ what }}. Use o filtro ou mostre mais no alto da lista.</p>{% endif %}
+{%- endmacro %}
+
+{# Quantos mostrar, no contador do carrossel: "1–3 de [20 ▾]" (app/listing.py:
+   page_size; 20 por padrão). Só com mais de 20 no total; as opções vão até
+   cobrir o total (37 itens: 20 e 37). Trocar recarrega a página com os
+   mesmos filtros. #}
+{% macro per_page_select(total) -%}
+{% set current = request.args.get('mostrar', 20)|int %}
+{% set ns = namespace(sizes=[], chosen=20) %}
+{% for n in [20, 50, 100] %}{% if not ns.sizes or ns.sizes[-1] < total %}{% set ns.sizes = ns.sizes + [n] %}{% endif %}{% endfor %}
+{% for n in ns.sizes %}{% if n <= current %}{% set ns.chosen = n %}{% endif %}{% endfor %}
+<form method="get" class="per-page-form">
+  {% for key, value in request.args.items(multi=true) if key != 'mostrar' %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+  <select name="mostrar" aria-label="Quantos mostrar" title="Quantos mostrar" onchange="this.form.submit()">
+    {% for n in ns.sizes %}<option value="{{ n }}" {% if n == ns.chosen %}selected{% endif %}>{{ n if n < total else total }}</option>{% endfor %}
+  </select>
+</form>
+{%- endmacro %}
+
+{# Campo antigo "Mostrar" do formulário de filtro (listas sem carrossel, ex. Times
+   e jogo de cada ISO). #}
+{% macro per_page_field() -%}
+{% set current = request.args.get('mostrar', '20') %}
+<label class="per-page">Mostrar<select name="mostrar" onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
+  {% for n in ('20', '50', '100') %}<option value="{{ n }}" {% if n == current %}selected{% endif %}>{{ n }}</option>{% endfor %}
+</select></label>
+{%- endmacro %}
+
 {# A lista de cards: o {% call %} traz os cards (cada filho da faixa é um card).
    - track_cls: classes da faixa (a da lista, ex. "t-cards", e quantos por tela:
      "per-2" = 2 no desktop, "per-3" = 3 no desktop e 2 no tablet; sem = 1).
    - fit: a faixa na altura dos cards da vez (cards de alturas diferentes).
-   - live_src: os cards que recarregam sozinhos (static/js/live-cards.js). #}
-{% macro carousel(prev_label='Anteriores', next_label='Próximos', track_cls='', fit=true, live_src='', cls='') -%}
-<div class="carousel{% if cls %} {{ cls }}{% endif %}" data-carousel{% if fit %}="fit"{% endif %}>
-  <div class="carousel-top">{{ carousel_count(hidden=true) }}</div>
+   - live_src: os cards que recarregam sozinhos (static/js/live-cards.js).
+   - total: o total de uma lista limitada (app/listing.py: cap); com mais de 20,
+     o contador vira "1–3 de [20 ▾]" para escolher quantos mostrar. #}
+{% macro carousel(prev_label='Anteriores', next_label='Próximos', track_cls='', fit=true, live_src='', cls='', total=0) -%}
+{% set paged = total and total > 20 %}
+<div class="carousel{% if cls %} {{ cls }}{% endif %}" data-carousel{% if fit %}="fit"{% endif %}{% if paged %} data-carousel-paged{% endif %}>
+  <div class="carousel-top">{{ carousel_count(hidden=not paged) }}{% if paged %}{{ per_page_select(total) }}{% endif %}</div>
   <div class="carousel-stage">
     {{ carousel_arrow('prev', prev_label, hidden=true) }}
     <div class="carousel-track{% if track_cls %} {{ track_cls }}{% endif %}" data-carousel-track{% if live_src %} data-live-src="{{ live_src }}"{% endif %}>{{ caller() }}</div>

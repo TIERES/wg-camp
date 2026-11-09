@@ -35,13 +35,13 @@ class SmokeTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Copa", response.data)
         self.assertIn(b"Liga Arena17", response.data)
-        self.assertIn(b'<table class="championship-table">', response.data)
-        self.assertIn(b'aria-controls="championship-details-1"', response.data)
-        self.assertIn(b'<td colspan="6">', response.data)
-        self.assertIn(b'class="championship-data-row tone-light"', response.data)
-        self.assertIn(b'class="expansion-indicator"', response.data)
-        self.assertIn(b'tone-light', response.data)
-        self.assertNotIn(b'Ver detalhes', response.data)
+        # Cards em carrossel; a descrição fica na janela do botão Detalhes.
+        self.assertIn(b'championship-cards" data-carousel-track', response.data)
+        self.assertIn(b'class="t-card championship-card"', response.data)
+        self.assertIn(b'data-dialog="campeonato-info-1"', response.data)
+        self.assertIn(b'id="campeonato-info-1"', response.data)
+        self.assertIn(b'/static/images/games/we2002.svg', response.data)
+        self.assertNotIn(b'<table class="championship-table">', response.data)
 
     def test_arena17_info_parser_extracts_settings_and_details(self):
         parser = Arena17InfoParser()

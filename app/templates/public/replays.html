@@ -1,22 +1,31 @@
-{% extends 'base.html' %}
+{% extends 'base.html' %}{% from '_carousel.html' import carousel, list_note %}{% from '_icons.html' import icon %}
 {% block title %}Replays · Campeonatos WE 2002{% endblock %}
 {% block content %}
-  <section class="intro"><h1>Replays das partidas</h1><p>Gravações completas das partidas jogadas com pelo menos 5 minutos de duração.</p></section>
+  <section class="intro"><h1>Replays das partidas</h1><p>Gravações completas das partidas jogadas com pelo menos 5 minutos de duração. Aparecem os mais recentes (20, 50 ou 100, à direita, no alto da lista); para achar outro, use os filtros.</p></section>
+  <form method="get" class="live-filters">
+    <label>Jogador<input name="jogador" value="{{ filters.player }}" placeholder="Nick"></label>
+    <label>ISO
+      <select name="iso"><option value="">Todas</option>{% for g in games %}<option value="{{ g }}" {% if g == filters.game %}selected{% endif %}>{{ g }}</option>{% endfor %}</select>
+    </label>
+    <label>De<input type="date" name="de" value="{{ filters.date_from }}"></label>
+    <label>Até<input type="date" name="ate" value="{{ filters.date_to }}"></label>
+    <div class="live-filter-actions"><a class="button secondary" href="{{ url_for('replays.index') }}">Limpar filtro</a><button>Filtrar</button></div>
+  </form>
   {% if replays %}
-    <table>
-      <caption class="visually-hidden">Replays disponíveis para download</caption>
-      <thead><tr><th scope="col">Jogadores</th><th scope="col">Horário</th><th scope="col">ISO</th><th scope="col">Duração</th><th scope="col">Download</th></tr></thead>
-      <tbody>
-        {% for replay in replays %}
-          <tr>
-            <td>{{ replay.player_names or '—' }}</td>
-            <td>{{ replay.started_at|localtime }}</td>
-            <td>{{ replay.game_name or '—' }}</td>
-            <td>{{ replay.duration_seconds|duration }}</td>
-            <td><a class="button download-button" href="{{ url_for('replays.download', session_id=replay.session_id) }}">Baixar</a></td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    {% call carousel('Replays anteriores', 'Próximos replays', 't-cards per-3 replay-cards', fit=false, total=total) %}
+      {% for replay in replays %}
+      <div class="t-card no-side replay-card">
+        <span class="t-body">
+          <span class="badge icon-badge">{{ icon('timer') }}{{ replay.duration_seconds|duration }}</span>
+          <strong class="t-name">{{ replay.player_names or 'Jogadores não informados' }}</strong>
+          <span class="t-meta"><span>{{ icon('clock') }}{{ replay.started_at|localtime }}</span></span>
+          <span class="t-meta"><span>{{ icon('disk') }}{{ replay.game_name or '—' }}</span></span>
+        </span>
+        <div class="t-foot"><a class="button icon-button" href="{{ url_for('replays.download', session_id=replay.session_id) }}">{{ icon('download') }}Baixar replay</a></div>
+      </div>
+      {% endfor %}
+    {% endcall %}
+    {{ list_note(replays|length, total, 'replays', filtered) }}
+  {% elif filtered %}{{ list_note(0, 0, 'replays', true) }}
   {% else %}<section><h2>Nenhum replay disponível</h2><p>Assim que uma partida com pelo menos 5 minutos terminar, ela aparecerá aqui.</p></section>{% endif %}
 {% endblock %}

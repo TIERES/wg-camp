@@ -1,10 +1,32 @@
-{% extends 'base.html' %}{% block content %}
+{% extends 'base.html' %}{% from '_carousel.html' import carousel, list_note %}{% from '_icons.html' import icon %}{% block content %}
 <section class="notice">
 <p>Página inicial: cards "Atualização light" e "kailleraclient.dll" <strong>{{ 'visíveis' if mostrar_atualizacao_manual else 'ocultos' }}</strong>. Dentro do RetroArch TIERES o próprio plugin baixa a versão nova e reinicia, então eles só são necessários se a atualização automática falhar.</p>
 <form method="post" action="{{ url_for('admin.manual_update_cards') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="mostrar" value="{{ '0' if mostrar_atualizacao_manual else '1' }}"><button>{{ 'Ocultar os cards' if mostrar_atualizacao_manual else 'Mostrar os cards' }}</button></form>
 </section>
-<h1>Campeonatos</h1>
-<p><a class="button" href="{{ url_for('admin.championship_new') }}">Novo campeonato</a></p>
-<table><thead><tr><th>Campeonato</th><th>Liga</th><th>Status</th><th>Ações</th></tr></thead><tbody>{% for championship in championships %}<tr><td>{{ championship.name }}</td><td>{{ championship.league_name or '—' }}</td><td>{{ 'Publicado' if championship.is_published else 'Oculto' }}</td><td><a href="{{ url_for('admin.championship_edit', championship_id=championship.id) }}">Editar</a> · <a href="{{ url_for('admin.files', championship_id=championship.id) }}">Arquivos</a></td></tr>{% else %}<tr><td colspan="4">Nenhum campeonato cadastrado.</td></tr>{% endfor %}</tbody></table>
+<div class="page-title"><h1>Campeonatos</h1><a class="button" href="{{ url_for('admin.championship_new') }}">Novo campeonato</a></div>
+<form method="get" class="live-filters">
+  <label class="filter-wide">Nome ou liga<input name="nome" value="{{ filters.name }}"></label>
+  <label>Status<select name="status"><option value="">Todos</option><option value="publicado" {% if filters.status == 'publicado' %}selected{% endif %}>Publicado</option><option value="oculto" {% if filters.status == 'oculto' %}selected{% endif %}>Oculto</option></select></label>
+  <div class="live-filter-actions"><a class="button secondary" href="{{ url_for('admin.dashboard') }}">Limpar filtro</a><button>Filtrar</button></div>
+</form>
+{% if championships %}
+{% call carousel('Campeonatos anteriores', 'Próximos campeonatos', 't-cards per-3', fit=false, total=total) %}
+  {% for championship in championships %}
+  <div class="t-card no-side">
+    <span class="t-body">
+      <span class="badge {{ 'iso-catalog' if championship.is_published else 'iso-pending' }}">{{ 'Publicado' if championship.is_published else 'Oculto' }}</span>
+      <strong class="t-name">{{ championship.name }}</strong>
+      <span class="muted">{{ championship.league_name or '—' }}</span>
+      {% if championship.start_date %}<span class="t-meta"><span>{{ icon('calendar') }}{{ championship.start_date[8:10] }}/{{ championship.start_date[5:7] }}/{{ championship.start_date[0:4] }}{% if championship.end_date %} – {{ championship.end_date[8:10] }}/{{ championship.end_date[5:7] }}/{{ championship.end_date[0:4] }}{% endif %}</span></span>{% endif %}
+    </span>
+    <div class="t-foot">
+      <a class="button icon-button" href="{{ url_for('admin.championship_edit', championship_id=championship.id) }}">{{ icon('edit') }}Editar</a>
+      <a class="button secondary icon-button" href="{{ url_for('admin.files', championship_id=championship.id) }}">{{ icon('file') }}Arquivos</a>
+    </div>
+  </div>
+  {% endfor %}
+{% endcall %}
+{% endif %}
+{{ list_note(championships|length, total, 'campeonatos', filtered) }}
 <form class="logout" method="post" action="{{ url_for('admin.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Encerrar sessão</button></form>
 {% endblock %}

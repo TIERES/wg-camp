@@ -270,6 +270,35 @@ def reset(token):
     return render_template("players/reset.html", username=row["username"])
 
 
+def _card_view(db, card):
+    """Um Memory Card para o card de "Meus Memory Cards": a ISO pelo conteúdo
+    (CRC32:TAMANHO) num campeonato ou no cadastro de amistosos - o nome dela, a
+    imagem e a capa do jogo -, senão pelo nome do arquivo; sem nada, só o nome
+    do arquivo e a capa padrão."""
+    from .tournament.games import cover_url
+    iso = None
+    for where, value in (("content_id = ? COLLATE NOCASE", card["content_id"]),
+                         ("original_filename = ? COLLATE NOCASE", card["game_name"])):
+        iso = db.execute(
+            "SELECT c.name, c.image, g.name AS game, g.code FROM catalog_isos c "
+            "LEFT JOIN game_titles g ON g.id = c.game_title_id "
+            f"WHERE c.{where} AND c.is_active = 1 ORDER BY c.id DESC LIMIT 1", (value,)).fetchone()
+        if iso is None:
+            iso = db.execute(
+                "SELECT t.name, t.image, g.name AS game, g.code FROM tournament_isos i "
+                "JOIN tournaments t ON t.id = i.tournament_id LEFT JOIN game_titles g ON g.id = t.game_title_id "
+                f"WHERE i.{where} AND t.status != 'cancelled' ORDER BY t.updated_at DESC LIMIT 1",
+                (value,)).fetchone()
+        if iso is not None:
+            break
+    view = dict(card)
+    view["title"] = iso["name"] if iso else card["game_name"]
+    view["image"] = images.url("torneio", iso["image"]) if iso and iso["image"] else None
+    view["game_title"] = iso["game"] if iso and iso["game"] else None
+    view["cover"] = cover_url(iso["code"] if iso else None)
+    return view
+
+
 @bp.get("/")
 @player_required
 def account():
@@ -285,6 +314,7 @@ def account():
         "WHERE m.player_id = ? ORDER BY g.name COLLATE NOCASE",
         (player["id"],),
     ).fetchall()
+    cards = [_card_view(db, card) for card in cards]
     # "Enviar um Memory Card": the championships' ISOs first, then any other
     # game already registered (e.g. created by a match).
     isos = championship_isos(db)
@@ -421,11 +451,24 @@ def upload_card():
 @bp.get("/memory-cards/<int:memcard_id>")
 @player_required
 def card_history(memcard_id):
+    from .listing import cap, like, local_day
     card = _own_card(memcard_id)
-    versions = get_db().execute(
-        "SELECT * FROM memcard_versions WHERE memcard_id = ? ORDER BY version DESC", (memcard_id,)
-    ).fetchall()
-    return render_template("players/memcard.html", card=card, versions=versions)
+    filters = {"note": request.args.get("origem", "").strip(), "date_from": request.args.get("de", ""),
+               "date_to": request.args.get("ate", "")}
+    sql, params = "SELECT * FROM memcard_versions WHERE memcard_id = ?", [memcard_id]
+    if filters["note"]:
+        sql += " AND note LIKE ? ESCAPE '\\'"
+        params.append(like(filters["note"]))
+    start, end = local_day(filters["date_from"]), local_day(filters["date_to"], end=True)
+    if start:
+        sql += " AND created_at >= ?"
+        params.append(start)
+    if end:
+        sql += " AND created_at < ?"
+        params.append(end)
+    versions, total = cap(get_db().execute(sql + " ORDER BY version DESC", params).fetchall())
+    return render_template("players/memcard.html", card=card, versions=versions, total=total, filters=filters,
+                           filtered=any(filters.values()))
 
 
 @bp.get("/memory-cards/<int:memcard_id>/baixar")

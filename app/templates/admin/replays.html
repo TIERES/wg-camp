@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% block content %}
+{% extends 'base.html' %}{% from '_carousel.html' import carousel, list_note %}{% from '_icons.html' import icon %}{% block content %}
 <div class="page-title"><h1>Replays</h1></div>
 <section class="notice">
 {% if stale_count %}
@@ -9,21 +9,40 @@
 {% endif %}
 {% for label in pending_backups %}<p><a href="{{ url_for('admin.replays_cleanup_status', label=label) }}">Backup pendente: {{ label }}.zip</a></p>{% endfor %}
 </section>
+<p class="muted">Aparecem os replays mais recentes (20, 50 ou 100, à direita, no alto da lista); para achar outro, use os filtros.</p>
+<form method="get" class="live-filters">
+  <label>Jogador<input name="jogador" value="{{ filters.player }}" placeholder="Nick"></label>
+  <label>Jogo<input name="jogo" value="{{ filters.game }}" placeholder="Nome da ISO"></label>
+  <label>De<input type="date" name="de" value="{{ filters.date_from }}"></label>
+  <label>Até<input type="date" name="ate" value="{{ filters.date_to }}"></label>
+  <div class="live-filter-actions"><a class="button secondary" href="{{ url_for('admin.replays_list') }}">Limpar filtro</a><button>Filtrar</button></div>
+</form>
 <form method="post" action="{{ url_for('admin.replays_bulk_delete') }}" id="replays-form">
 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-<table><thead><tr><th><input type="checkbox" id="select-all"></th><th>Data</th><th>Jogo</th><th>Jogadores</th><th>Duração</th><th>Tamanho</th><th>Ações</th></tr></thead><tbody>
-{% for replay in replays %}<tr>
-<td><input type="checkbox" name="session_ids" value="{{ replay.session_id }}" class="row-select"></td>
-<td>{{ replay.started_at | localtime('%Y-%m-%d %H:%M') }}</td>
-<td>{{ replay.game_name }}</td>
-<td>{{ replay.player_names or '—' }}</td>
-<td>{{ replay.duration_seconds | duration }}</td>
-<td>{{ replay.bytes_received | filesize }}</td>
-<td><a href="{{ url_for('admin.replay_edit', session_id=replay.session_id) }}">Editar</a> · <a href="{{ url_for('admin.replay_download', session_id=replay.session_id) }}">Baixar</a></td>
-</tr>{% else %}<tr><td colspan="7">Nenhum replay finalizado ainda.</td></tr>{% endfor %}
-</tbody></table>
-{% if replays %}<button type="submit" class="danger" id="bulk-delete-btn">Excluir selecionados</button>{% endif %}
+{% if replays %}
+<div class="list-actions"><label class="check"><input type="checkbox" id="select-all"> Selecionar os {{ replays|length }} da lista</label></div>
+{% call carousel('Replays anteriores', 'Próximos replays', 't-cards per-3', fit=false, total=total) %}
+  {% for replay in replays %}
+  <div class="t-card no-side">
+    <label class="t-select" title="Selecionar"><input type="checkbox" name="session_ids" value="{{ replay.session_id }}" class="row-select" aria-label="Selecionar o replay de {{ replay.started_at | localtime('%Y-%m-%d %H:%M') }}"></label>
+    <span class="t-body">
+      <span class="badge icon-badge">{{ icon('timer') }}{{ replay.duration_seconds | duration }}</span>
+      <strong class="t-name">{{ replay.player_names or '—' }}</strong>
+      <span class="t-meta"><span>{{ icon('clock') }}{{ replay.started_at | localtime('%Y-%m-%d %H:%M') }}</span></span>
+      <span class="t-meta"><span>{{ icon('disk') }}{{ replay.game_name }}</span></span>
+      <span class="t-meta"><span>{{ icon('file') }}{{ replay.bytes_received | filesize }}</span></span>
+    </span>
+    <div class="t-foot">
+      <a class="button icon-button" href="{{ url_for('admin.replay_edit', session_id=replay.session_id) }}">{{ icon('edit') }}Editar</a>
+      <a class="button secondary icon-button" href="{{ url_for('admin.replay_download', session_id=replay.session_id) }}">{{ icon('download') }}Baixar</a>
+    </div>
+  </div>
+  {% endfor %}
+{% endcall %}
+<button type="submit" class="danger" id="bulk-delete-btn">Excluir selecionados</button>
+{% endif %}
 </form>
+{% if replays or filtered %}{{ list_note(replays|length, total, 'replays', filtered) }}{% else %}<p>Nenhum replay finalizado ainda.</p>{% endif %}
 
 <dialog id="confirm-dialog">
   <p id="confirm-text"></p>

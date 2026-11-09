@@ -1,37 +1,48 @@
-{% extends 'base.html' %}{% block title %}Jogos · Administração{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from '_carousel.html' import carousel, list_note %}{% from '_icons.html' import icon %}{% block title %}Jogos · Administração{% endblock %}{% block content %}
 <div class="page-title"><h1>Jogos do Memory Card online</h1><a href="{{ url_for('admin.players_list') }}">Jogadores</a></div>
-<p>Cada jogo é identificado pelo conteúdo da ISO (<code>CRC32:TAMANHO</code>, o mesmo do anti-desync). Jogos novos são cadastrados sozinhos na primeira partida com Memory Card online; aqui você pode cadastrá-los antes (para os jogadores enviarem seus cartões) e dar nomes amigáveis. A coluna <strong>M. Card da ISO</strong> abre os cartões do jogo (slots 1 e 2), usados nas salas com essa opção.</p>
-<table>
-  <thead><tr><th>Nome</th><th>Identificador</th><th>Memory Cards</th><th>M. Card da ISO</th><th>Renomear</th></tr></thead>
-  <tbody>
-    {% for game in games %}
-    <tr>
-      <td>{{ game.name }}</td>
-      <td><code>{{ game.content_id }}</code></td>
-      <td>{{ game.cards }}</td>
-      <td><a href="{{ url_for('admin.iso_card', content_id=game.content_id) }}">{% if game.iso_version %}Slot 1: versão {{ game.iso_version }}{% if game.iso2_version %} · slot 2: versão {{ game.iso2_version }}{% endif %}{% else %}Criar{% endif %}</a></td>
-      <td><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="game_id" value="{{ game.id }}"><input name="name" value="{{ game.name }}" maxlength="128" required> <button>Salvar</button></form></td>
-    </tr>
-    {% else %}<tr><td colspan="5">Nenhum jogo cadastrado.</td></tr>{% endfor %}
-  </tbody>
-</table>
+<p>Cada jogo é identificado pelo conteúdo da ISO (<code>CRC32:TAMANHO</code>, o mesmo do anti-desync). Jogos novos são cadastrados sozinhos na primeira partida com Memory Card online; aqui você pode cadastrá-los antes (para os jogadores enviarem seus cartões) e dar nomes amigáveis. <strong>M. Card da ISO</strong> abre os cartões do jogo (slots 1 e 2), usados nas salas com essa opção.</p>
+<form method="get" class="live-filters">
+  <label class="filter-wide">Nome, arquivo, campeonato ou identificador<input name="busca" value="{{ search }}"></label>
+  <div class="live-filter-actions"><a class="button secondary" href="{{ url_for('admin.games_list') }}">Limpar filtro</a><button>Filtrar</button></div>
+</form>
+{% if games %}
+{% call carousel('Jogos anteriores', 'Próximos jogos', 't-cards per-3', fit=false, total=games_total) %}
+  {% for game in games %}
+  <div class="t-card no-side">
+    <span class="t-body">
+      <span class="badge">{{ game.cards }} Memory Card{{ 's' if game.cards != 1 }}</span>
+      <strong class="t-name">{{ game.name }}</strong>
+      <code class="muted">{{ game.content_id }}</code>
+      <span class="t-meta"><span>{{ icon('disk') }}{% if game.iso_version %}Slot 1: versão {{ game.iso_version }}{% if game.iso2_version %} · slot 2: versão {{ game.iso2_version }}{% endif %}{% else %}M. Card da ISO não criado{% endif %}</span></span>
+      <form method="post" class="inline-rename"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="game_id" value="{{ game.id }}"><input name="name" value="{{ game.name }}" maxlength="128" required aria-label="Nome do jogo"><button class="secondary">Renomear</button></form>
+    </span>
+    <div class="t-foot"><a class="button icon-button" href="{{ url_for('admin.iso_card', content_id=game.content_id) }}">{{ icon('disk') }}{{ 'M. Card da ISO' if game.iso_version else 'Criar M. Card da ISO' }}</a></div>
+  </div>
+  {% endfor %}
+{% endcall %}
+{% endif %}
+{{ list_note(games|length, games_total, 'jogos', search) }}
+
 <h2>ISOs dos campeonatos</h2>
 <p>As ISOs identificadas de campeonatos publicados aparecem para os jogadores em "Enviar um Memory Card", na página da conta. ISOs novas (.bin, .iso, .img, .chd) são identificadas no envio; as enviadas antes disso, por este botão - pela cópia deste servidor ou pelo CRC32 que o archive.org lista para as migradas.</p>
-<table>
-  <thead><tr><th>Campeonato</th><th>Arquivo</th><th>Identificador</th><th>Para os jogadores</th><th>M. Card da ISO</th></tr></thead>
-  <tbody>
-    {% for iso in isos %}
-    <tr>
-      <td>{{ iso.championship_name }}</td>
-      <td>{{ iso.display_name }}{% if iso.display_name != iso.original_filename %}<br><small>{{ iso.original_filename }}</small>{% endif %}</td>
-      <td>{% if iso.content_id %}<code>{{ iso.content_id }}</code>{% else %}<small class="error">não identificada</small>{% endif %}</td>
-      <td>{{ 'Sim' if iso.content_id and iso.is_published and iso.championship_published else 'Não' }}</td>
-      <td>{% if iso.content_id %}<a href="{{ url_for('admin.iso_card', content_id=iso.content_id) }}">Abrir</a>{% endif %}</td>
-    </tr>
-    {% else %}<tr><td colspan="5">Nenhuma ISO de campeonato.</td></tr>{% endfor %}
-  </tbody>
-</table>
-<form method="post" action="{{ url_for('admin.games_identify_isos') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{% if isos %}
+{% call carousel('ISOs anteriores', 'Próximas ISOs', 't-cards per-3', fit=false, total=isos_total) %}
+  {% for iso in isos %}{% set visible = iso.content_id and iso.is_published and iso.championship_published %}
+  <div class="t-card no-side">
+    <span class="t-body">
+      <span class="badge {{ 'iso-catalog' if visible else 'iso-pending' }}">{{ 'Para os jogadores' if visible else 'Oculta para os jogadores' }}</span>
+      <strong class="t-name">{{ iso.display_name }}</strong>
+      <span class="muted">{{ iso.championship_name }}</span>
+      {% if iso.display_name != iso.original_filename %}<small class="muted">{{ iso.original_filename }}</small>{% endif %}
+      {% if iso.content_id %}<code class="muted">{{ iso.content_id }}</code>{% else %}<small class="error">não identificada</small>{% endif %}
+    </span>
+    {% if iso.content_id %}<div class="t-foot"><a class="button icon-button" href="{{ url_for('admin.iso_card', content_id=iso.content_id) }}">{{ icon('disk') }}M. Card da ISO</a></div>{% endif %}
+  </div>
+  {% endfor %}
+{% endcall %}
+{% endif %}
+{{ list_note(isos|length, isos_total, 'ISOs', search) }}
+<form method="post" action="{{ url_for('admin.games_identify_isos') }}" class="list-actions"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 {% if identifying %}<button disabled>Identificando ISOs...</button>{% else %}<button>Identificar ISOs sem identificador</button>{% endif %}
 </form>
 

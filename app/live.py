@@ -584,7 +584,7 @@ def _local_day(value, end=False):
 
 
 def list_cards(db, tournament_id=None, friendlies=False, only_live=False, recent_only=False, player="", date_from="",
-               date_to="", match_id=None, limit=CARDS_LIMIT):
+               date_to="", match_id=None, limit=CARDS_LIMIT, count=False):
     """As últimas partidas (ao vivo primeiro), com os filtros da página:
     tournament_id = os jogos daquele campeonato; friendlies = o que não é jogo
     de campeonato (amistosos cadastrados e partidas livres); match_id = só
@@ -617,9 +617,12 @@ def list_cards(db, tournament_id=None, friendlies=False, only_live=False, recent
     if end:
         where.append("m.started_at < ?")
         params.append(end)
+    where_sql = "WHERE " + " AND ".join(where) if where else ""
+    if count:
+        return db.execute("SELECT COUNT(*) FROM live_matches m " + where_sql, params).fetchone()[0]
     rows = db.execute(
         "SELECT m.* FROM live_matches m %s ORDER BY m.status = 'live' DESC, m.started_at DESC LIMIT ?"
-        % ("WHERE " + " AND ".join(where) if where else ""), (*params, limit)).fetchall()
+        % where_sql, (*params, limit)).fetchall()
     return [card(db, row) for row in rows]
 
 
@@ -978,18 +981,25 @@ def index():
     # Sugestões do filtro "Jogador": quem já mandou placar logado (aparece nos cards).
     players = db.execute("SELECT DISTINCT p.id, p.username FROM live_match_reports r JOIN players p ON p.id = r.player_id "
                          "ORDER BY p.username COLLATE NOCASE").fetchall()
-    return render_template("live/index.html", cards=list_cards(db, **filters), filters=filters, players=players,
-                           tournaments=tournaments, is_admin=_is_admin(), limit=CARDS_LIMIT,
-                           cards_url=url_for("live.cards_fragment", **request.args.to_dict()))
+    # Quantas: 20, 50 ou 100 (o "1–3 de [20 ▾]" do carrossel - app/listing.py).
+    from .listing import page_size
+    limit = page_size()
+    return render_template("live/index.html", cards=list_cards(db, limit=limit, **filters),
+                           total=list_cards(db, count=True, **filters), filters=filters, players=players,
+                           tournaments=tournaments, is_admin=_is_admin(), limit=limit,
+                           cards_url=url_for("live.cards_fragment", **dict(request.args.to_dict(), mostrar=limit)))
 
 
 @bp.get("/ao-vivo/cards")
 def cards_fragment():
     """Só os cards (as páginas atualizam com isto a cada poucos segundos): a
     inicial pede so_ao_vivo=1, a do campeonato as recentes dele (recentes=1)."""
+    from .listing import page_size
     recent = request.args.get("recentes") == "1"
+    # A página Ao vivo manda o "mostrar" dela (cards_url): a recarga traz a mesma quantidade.
     cards = list_cards(get_db(), only_live=request.args.get("so_ao_vivo") == "1", recent_only=recent,
-                       limit=4 if recent else CARDS_LIMIT, **_filters())
+                       limit=4 if recent else (page_size() if request.args.get("mostrar") else CARDS_LIMIT),
+                       **_filters())
     return render_template("live/_cards.html", cards=cards)
 
 
@@ -1064,7 +1074,17 @@ def admin_slots():
     unidentified = db.execute("SELECT (SELECT COUNT(*) FROM tournament_isos WHERE content_id IS NULL) + "
                               "(SELECT COUNT(*) FROM catalog_isos WHERE content_id IS NULL "
                               "AND (file_id IS NOT NULL OR original_filename IS NOT NULL))").fetchone()[0]
-    return render_template("live/admin_slots.html", groups=groups, teams=teams, profiles=profiles, games=games,
+    # Filtro pelo nome do jogo/ISO ou identificador, e no máximo page_size() ISOs na tela.
+    from .listing import cap
+    search = request.args.get("iso", "").strip().lower()
+    if search:
+        groups = {key: rows for key, rows in groups.items()
+                  if search in key[0].lower() or search in key[1].lower()
+                  or any(search in name.lower() for name in known.get(key[0].upper(), []))}
+    shown, total = cap(groups.items())
+    groups = dict(shown)
+    return render_template("live/admin_slots.html", groups=groups, total=total, search=search,
+                           teams=teams, profiles=profiles, games=games,
                            tournaments=tournaments, catalog=catalog, known=known, unidentified=unidentified)
 
 

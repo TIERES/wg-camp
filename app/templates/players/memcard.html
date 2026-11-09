@@ -1,28 +1,36 @@
-{% extends 'base.html' %}{% block title %}Memory Card · Campeonatos WE 2002{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from '_carousel.html' import carousel, list_note %}{% from '_icons.html' import icon %}{% block title %}Memory Card · Campeonatos WE 2002{% endblock %}{% block content %}
 <section class="intro">
   <h1>Memory Card · {{ card.game_name }}</h1>
   <p>Versão atual: <strong>{{ card.current_version }}</strong>. <a href="{{ url_for('players.account') }}">Voltar para Minha conta</a></p>
+  <p class="muted">Aparecem as versões mais recentes (20, 50 ou 100, à direita, no alto da lista); para achar outra, use os filtros.</p>
 </section>
-<table>
-  <caption class="visually-hidden">Histórico de versões</caption>
-  <thead><tr><th scope="col">Versão</th><th scope="col">Data</th><th scope="col">Origem</th><th scope="col">Ações</th></tr></thead>
-  <tbody>
-    {% for version in versions %}
-    <tr>
-      <td>{{ version.version }}{% if version.version == card.current_version %} (atual){% endif %}</td>
-      <td>{{ version.created_at|localtime }}</td>
-      <td>{{ version.note }}</td>
-      <td><div class="card-actions">
-        <a class="button" href="{{ url_for('players.download_card', memcard_id=card.id, versao=version.version) }}">Baixar</a>
-        {% if version.version != card.current_version %}
-        <form method="post" action="{{ url_for('players.restore_card', memcard_id=card.id) }}">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="version" value="{{ version.version }}">
-          <button>Restaurar</button>
-        </form>
-        {% endif %}
-      </div></td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<form method="get" class="live-filters">
+  <label class="filter-wide">Origem<input name="origem" value="{{ filters.note }}" placeholder="Ex.: nick do adversário"></label>
+  <label>De<input type="date" name="de" value="{{ filters.date_from }}"></label>
+  <label>Até<input type="date" name="ate" value="{{ filters.date_to }}"></label>
+  <div class="live-filter-actions"><a class="button secondary" href="{{ url_for('players.card_history', memcard_id=card.id) }}">Limpar filtro</a><button>Filtrar</button></div>
+</form>
+{% if versions %}
+{% call carousel('Versões anteriores', 'Próximas versões', 't-cards per-3 memcard-versions', fit=false, total=total) %}
+  {% for version in versions %}{% set current = version.version == card.current_version %}
+  <div class="t-card no-side{% if current %} is-current{% endif %}">
+    <span class="t-body">
+      <span class="badge {{ 'memcard-version' if current else '' }}">Versão {{ version.version }}{% if current %} · atual{% endif %}</span>
+      <span class="t-meta"><span>{{ icon('clock') }}{{ version.created_at|localtime }}</span></span>
+      {% if version.note %}<span class="t-meta"><span>{{ icon('tag') }}{{ version.note }}</span></span>{% endif %}
+    </span>
+    <div class="t-foot">
+      <a class="button icon-button" href="{{ url_for('players.download_card', memcard_id=card.id, versao=version.version) }}">{{ icon('download') }}Baixar</a>
+      {% if not current %}
+      <form method="post" action="{{ url_for('players.restore_card', memcard_id=card.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="version" value="{{ version.version }}">
+        <button class="secondary icon-button">{{ icon('history') }}Restaurar</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+{% endcall %}
+{% endif %}
+{{ list_note(versions|length, total, 'versões', filtered) }}
 {% endblock %}

@@ -453,7 +453,12 @@ def friends_page():
     taken = {me} | {p["id"] for p in my_friends}
     others = [p for p in db.execute("SELECT id, username FROM players WHERE email_verified_at IS NOT NULL "
                                     "ORDER BY username COLLATE NOCASE").fetchall() if p["id"] not in taken]
-    return render_template("tournaments/friends.html", friends=my_friends, others=others,
+    from .listing import cap
+    search = request.args.get("busca", "").strip()
+    shown = [p for p in my_friends if search.lower() in p["username"].lower()] if search else my_friends
+    shown, shown_total = cap(shown)
+    return render_template("tournaments/friends.html", friends=my_friends, others=others, shown=shown,
+                           shown_total=shown_total, search=search,
                            received=friends.pending_received(db, me), sent=friends.pending_sent(db, me))
 
 
@@ -1145,7 +1150,12 @@ def manage(slug):
     my_entry = db.execute("SELECT id FROM tournament_entries WHERE tournament_id = ? AND player_id = ?",
                           (tournament["id"], session.get("player_id"))).fetchone()
     iso_row = iso.get(db, tournament["id"])
-    return render_template("tournaments/manage.html", t=tournament, entries=store.entries_of(db, tournament["id"]),
+    entries = store.entries_of(db, tournament["id"])
+    entry_search = request.args.get("inscrito", "").strip()
+    shown_entries = [e for e in entries if entry_search.lower() in " ".join(
+        str(e[key] or "") for key in ("username", "team_name")).lower()] if entry_search else entries
+    return render_template("tournaments/manage.html", t=tournament, entries=entries, shown_entries=shown_entries,
+                           entry_search=entry_search,
                            open_reports=open_reports, my_entry_id=None if is_admin() or not my_entry else my_entry[0],
                            current=current, stages=stages, names=_names(db, tournament), decisive=decisive,
                            auto_finish_at=notify.auto_finish_at(tournament),
@@ -1684,11 +1694,15 @@ def cancel(tournament):
 def admin_home():
     db = get_db()
     values = {key: setting(db, key) for key in SETTING_LABELS}
-    recent = db.execute("SELECT w.*, p.username FROM wallet_entries w JOIN players p ON p.id = w.player_id "
-                        "WHERE w.kind = 'ajuste_admin' ORDER BY w.id DESC LIMIT 20").fetchall()
+    from .listing import cap, like
+    recent_player = request.args.get("ajuste_jogador", "").strip()
+    recent, recent_total = cap(db.execute(
+        "SELECT w.*, p.username FROM wallet_entries w JOIN players p ON p.id = w.player_id "
+        "WHERE w.kind = 'ajuste_admin' AND p.username LIKE ? ESCAPE '\\' ORDER BY w.id DESC",
+        (like(recent_player),)).fetchall())
     players = db.execute("SELECT id, username FROM players ORDER BY username COLLATE NOCASE").fetchall()
     return render_template("tournaments/admin.html", values=values, labels=SETTING_LABELS, money=MONEY_SETTINGS,
-                           players=players,
+                           players=players, recent_player=recent_player, recent_total=recent_total,
                            recent=recent, admin_emails=", ".join(notify.admin_emails(db)))
 
 
@@ -1800,17 +1814,18 @@ def admin_teams():
     sql = ("SELECT t.*, (SELECT GROUP_CONCAT(g.name, ', ') FROM team_group_members m JOIN team_groups g "
            "ON g.id = m.group_id WHERE m.team_id = t.id) AS groups FROM teams t WHERE 1 = 1")
     params = []
+    from .listing import cap, like
     if query:
-        sql += " AND t.name LIKE ?"
-        params.append(f"%{query}%")
+        sql += " AND t.name LIKE ? ESCAPE '\\'"
+        params.append(like(query))
     if group_id:
         sql += " AND t.id IN (SELECT team_id FROM team_group_members WHERE group_id = ?)"
         params.append(group_id)
-    teams = [dict(row, image=team_image(row)) for row in
-             db.execute(sql + " ORDER BY t.name COLLATE NOCASE LIMIT 300", params)]
+    teams, total = cap(db.execute(sql + " ORDER BY t.name COLLATE NOCASE", params).fetchall())
+    teams = [dict(row, image=team_image(row)) for row in teams]
     groups = db.execute("SELECT g.*, (SELECT COUNT(*) FROM team_group_members m WHERE m.group_id = g.id) AS size "
                         "FROM team_groups g ORDER BY g.seq, g.name").fetchall()
-    return render_template("tournaments/admin_teams.html", teams=teams, groups=groups, query=query,
+    return render_template("tournaments/admin_teams.html", teams=teams, total=total, groups=groups, query=query,
                            group_id=group_id, kinds=TEAM_KINDS)
 
 
@@ -1889,8 +1904,22 @@ def admin_team_group_new():
 @admin_bp.get("/isos")
 @login_required
 def admin_isos():
+    from .listing import cap
     db = get_db()
-    return render_template("tournaments/admin_isos.html", rows=iso_catalog.all_rows(db),
+    rows = iso_catalog.all_rows(db)
+    filters = {"name": request.args.get("nome", "").strip(), "status": request.args.get("ativa", "")}
+    pending = [row for row in rows if not row["approved_at"]]
+    approved = [row for row in rows if row["approved_at"]]
+    if filters["name"]:
+        text = filters["name"].lower()
+        approved = [row for row in approved if text in " ".join(
+            str(row[key] or "") for key in ("name", "game_name", "requester_name")).lower()
+            or text in (iso_catalog.filename(row) or "").lower()]
+    if filters["status"] in ("sim", "nao"):
+        approved = [row for row in approved if bool(row["is_active"]) == (filters["status"] == "sim")]
+    approved, approved_total = cap(approved)
+    return render_template("tournaments/admin_isos.html", pending=pending, approved=approved,
+                           approved_total=approved_total, filters=filters, filtered=any(filters.values()),
                            uploading=iso.uploading, filename=iso_catalog.filename)
 
 

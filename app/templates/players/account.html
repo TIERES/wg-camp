@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% block title %}Minha conta · Campeonatos WE 2002{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from '_carousel.html' import carousel %}{% from '_icons.html' import icon %}{% block title %}Minha conta · Campeonatos WE 2002{% endblock %}{% block content %}
 <section class="intro">
   <h1>Minha conta</h1>
   <p>Usuário: <strong>{{ player.username }}</strong> · E-mail: {{ player.email }}</p>
@@ -41,21 +41,28 @@
   <h2>Meus Memory Cards</h2>
   <p>Um Memory Card por jogo (ISO). Nas partidas com Memory Card online, o cartão do 1P vai no slot 1 e o do 2P no slot 2 de todos os PCs. Ao fim da partida, o cartão é atualizado aqui automaticamente.</p>
   {% if cards %}
-  <table>
-    <caption class="visually-hidden">Seus Memory Cards</caption>
-    <thead><tr><th scope="col">Jogo (ISO)</th><th scope="col">Versão</th><th scope="col">Última alteração</th><th scope="col">Origem</th><th scope="col">Ações</th></tr></thead>
-    <tbody>
-      {% for card in cards %}
-      <tr>
-        <td>{{ card.game_name }}</td>
-        <td>{{ card.current_version }}</td>
-        <td>{{ card.updated_at|localtime }}</td>
-        <td>{{ card.note }}</td>
-        <td><div class="card-actions"><a class="button" href="{{ url_for('players.download_card', memcard_id=card.id) }}">Baixar</a><a class="button" href="{{ url_for('players.card_history', memcard_id=card.id) }}">Histórico</a></div></td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  {# Cards em carrossel, como os de "Minhas ISOs enviadas" (Amistosos). #}
+  {% call carousel('Memory Cards anteriores', 'Próximos Memory Cards', 'per-3 memcard-cards', fit=false) %}
+    {% for card in cards %}
+    <div class="t-card memcard-card">
+      <span class="t-side"><span class="t-side-images">
+        {% if card.image %}<img class="t-cover t-image" src="{{ card.image }}" alt="" loading="lazy">{% endif %}
+        <img class="t-cover" src="{{ card.cover }}" alt="{{ card.game_title or '' }}" width="200" height="250" loading="lazy">
+      </span></span>
+      <span class="t-body">
+        <span class="badge memcard-version">Versão {{ card.current_version }}</span>
+        <strong class="t-name">{{ card.title }}</strong>
+        {% if card.game_title %}<span class="muted">{{ card.game_title }}</span>{% endif %}
+        {% if card.title != card.game_name %}<small class="muted memcard-file">{{ card.game_name }}</small>{% endif %}
+        <span class="t-meta"><span>{{ icon('clock') }}{{ card.updated_at|localtime }}</span>{% if card.note %}<span>{{ icon('tag') }}{{ card.note }}</span>{% endif %}</span>
+      </span>
+      <div class="t-foot">
+        <a class="button icon-button" href="{{ url_for('players.download_card', memcard_id=card.id) }}">{{ icon('download') }}Baixar</a>
+        <a class="button secondary icon-button" href="{{ url_for('players.card_history', memcard_id=card.id) }}">{{ icon('history') }}Histórico</a>
+      </div>
+    </div>
+    {% endfor %}
+  {% endcall %}
   {% else %}<p>Você ainda não tem Memory Cards. Eles são criados na primeira partida com Memory Card online, ou enviando um arquivo abaixo.</p>{% endif %}
 
   <h3>Enviar um Memory Card</h3>
@@ -98,18 +105,18 @@
 <section>
   <h2>PCs conectados no Kaillera</h2>
   {% if tokens %}
-  <table>
-    <thead><tr><th scope="col">Conectado em</th><th scope="col">Último uso</th><th scope="col"></th></tr></thead>
-    <tbody>
-      {% for token in tokens %}
-      <tr>
-        <td>{{ token.created_at|localtime }}</td>
-        <td>{{ token.last_used_at|localtime if token.last_used_at else '—' }}</td>
-        <td><form method="post" action="{{ url_for('players.revoke_token', token_id=token.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Desconectar</button></form></td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  {% call carousel('PCs anteriores', 'Próximos PCs', 'per-3 token-cards', fit=false) %}
+    {% for token in tokens %}
+    <div class="t-card no-side">
+      <span class="t-body">
+        <strong class="t-name icon-title-sm">{{ icon('monitor') }}PC {{ loop.index }}</strong>
+        <span class="t-meta"><span>Conectado em {{ token.created_at|localtime }}</span></span>
+        <span class="t-meta"><span>Último uso: {{ token.last_used_at|localtime if token.last_used_at else '—' }}</span></span>
+      </span>
+      <div class="t-foot"><form method="post" action="{{ url_for('players.revoke_token', token_id=token.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Desconectar</button></form></div>
+    </div>
+    {% endfor %}
+  {% endcall %}
   {% else %}<p>Nenhum PC conectado.</p>{% endif %}
 </section>
 {% endblock %}

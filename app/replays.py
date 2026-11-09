@@ -30,15 +30,31 @@ def _download_name(entry):
 
 @bp.get("/")
 def index():
+    from .listing import cap, like, local_day
     db = get_db()
     reap_stale_live_sessions(db)
-    rows = db.execute(
-        """SELECT * FROM live_sessions
-           WHERE status = 'finished' AND duration_seconds >= ?
-           ORDER BY started_at DESC""",
-        (MIN_REPLAY_DURATION_SECONDS,),
-    ).fetchall()
-    return render_template("public/replays.html", replays=rows)
+    base = "FROM live_sessions WHERE status = 'finished' AND duration_seconds >= ?"
+    filters = {"player": request.args.get("jogador", "").strip(), "game": request.args.get("iso", "").strip(),
+               "date_from": request.args.get("de", ""), "date_to": request.args.get("ate", "")}
+    sql, params = base, [MIN_REPLAY_DURATION_SECONDS]
+    if filters["player"]:
+        sql += " AND player_names LIKE ? ESCAPE '\\'"
+        params.append(like(filters["player"]))
+    if filters["game"]:
+        sql += " AND game_name = ?"
+        params.append(filters["game"])
+    start, end = local_day(filters["date_from"]), local_day(filters["date_to"], end=True)
+    if start:
+        sql += " AND started_at >= ?"
+        params.append(start)
+    if end:
+        sql += " AND started_at < ?"
+        params.append(end)
+    rows, total = cap(db.execute(f"SELECT * {sql} ORDER BY started_at DESC", params).fetchall())
+    games = [r[0] for r in db.execute(f"SELECT DISTINCT game_name {base} AND game_name IS NOT NULL AND game_name != '' "
+                                      "ORDER BY game_name COLLATE NOCASE", (MIN_REPLAY_DURATION_SECONDS,))]
+    return render_template("public/replays.html", replays=rows, total=total, filters=filters, games=games,
+                           filtered=any(filters.values()))
 
 
 @bp.get("/list.txt")

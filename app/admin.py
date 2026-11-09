@@ -81,8 +81,19 @@ def logout():
 @bp.get("/")
 @login_required
 def dashboard():
-    championships = get_db().execute("SELECT * FROM championships ORDER BY is_published DESC, start_date DESC, created_at DESC").fetchall()
-    return render_template("admin/dashboard.html", championships=championships,
+    from .listing import cap, like
+    filters = {"name": request.args.get("nome", "").strip(), "status": request.args.get("status", "")}
+    sql, params = "SELECT * FROM championships WHERE 1 = 1", []
+    if filters["name"]:
+        sql += " AND (name LIKE ? ESCAPE '\\' OR league_name LIKE ? ESCAPE '\\')"
+        params += [like(filters["name"])] * 2
+    if filters["status"] in ("publicado", "oculto"):
+        sql += " AND is_published = ?"
+        params.append(1 if filters["status"] == "publicado" else 0)
+    championships, total = cap(get_db().execute(
+        sql + " ORDER BY is_published DESC, start_date DESC, created_at DESC", params).fetchall())
+    return render_template("admin/dashboard.html", championships=championships, total=total, filters=filters,
+                           filtered=any(filters.values()),
                            mostrar_atualizacao_manual=manual_update_cards_visible())
 
 
@@ -562,14 +573,34 @@ def _load_backup_manifest(label):
 @bp.get("/replays")
 @login_required
 def replays_list():
+    from .listing import cap, like, local_day
     db = get_db()
-    replays = db.execute("SELECT * FROM live_sessions WHERE status='finished' ORDER BY started_at DESC").fetchall()
+    filters = {"player": request.args.get("jogador", "").strip(), "game": request.args.get("jogo", "").strip(),
+               "date_from": request.args.get("de", ""), "date_to": request.args.get("ate", "")}
+    sql, params = "SELECT * FROM live_sessions WHERE status='finished'", []
+    if filters["player"]:
+        sql += " AND player_names LIKE ? ESCAPE '\\'"
+        params.append(like(filters["player"]))
+    if filters["game"]:
+        sql += " AND game_name LIKE ? ESCAPE '\\'"
+        params.append(like(filters["game"]))
+    start, end = local_day(filters["date_from"]), local_day(filters["date_to"], end=True)
+    if start:
+        sql += " AND started_at >= ?"
+        params.append(start)
+    if end:
+        sql += " AND started_at < ?"
+        params.append(end)
+    replays, total = cap(db.execute(sql + " ORDER BY started_at DESC", params).fetchall())
     stale = _stale_replays(db)
     stale_size = sum(r["bytes_received"] or 0 for r in stale)
     pending_backups = sorted(p.stem for p in _backups_dir().glob("*.json"))
     return render_template(
         "admin/replays.html",
         replays=replays,
+        total=total,
+        filters=filters,
+        filtered=any(filters.values()),
         stale_count=len(stale),
         stale_size=stale_size,
         retention_days=REPLAY_RETENTION_DAYS,
@@ -774,11 +805,20 @@ def replays_cleanup_discard(label):
 @bp.get("/jogadores")
 @login_required
 def players_list():
-    players = get_db().execute(
-        "SELECT p.*, (SELECT COUNT(*) FROM memcards m WHERE m.player_id = p.id) AS cards "
-        "FROM players p ORDER BY p.username COLLATE NOCASE"
-    ).fetchall()
-    return render_template("admin/players.html", players=players)
+    from .listing import cap, like
+    filters = {"name": request.args.get("nome", "").strip(), "status": request.args.get("confirmado", "")}
+    sql, params = ("SELECT p.*, (SELECT COUNT(*) FROM memcards m WHERE m.player_id = p.id) AS cards "
+                   "FROM players p WHERE 1 = 1"), []
+    if filters["name"]:
+        sql += " AND (p.username LIKE ? ESCAPE '\\' OR p.email LIKE ? ESCAPE '\\')"
+        params += [like(filters["name"])] * 2
+    if filters["status"] == "sim":
+        sql += " AND p.email_verified_at IS NOT NULL"
+    elif filters["status"] == "nao":
+        sql += " AND p.email_verified_at IS NULL"
+    players, total = cap(get_db().execute(sql + " ORDER BY p.username COLLATE NOCASE", params).fetchall())
+    return render_template("admin/players.html", players=players, total=total, filters=filters,
+                           filtered=any(filters.values()))
 
 
 @bp.route("/jogos", methods=("GET", "POST"))
@@ -811,19 +851,28 @@ def games_list():
                 except sqlite3.IntegrityError:
                     flash("Este identificador já está cadastrado.", "error")
         return redirect(url_for("admin.games_list"))
+    from .listing import cap, like
+    search = request.args.get("busca", "").strip()
+    pattern = like(search)
     games = db.execute(
         "SELECT g.*, (SELECT COUNT(*) FROM memcards m WHERE m.game_id = g.id AND m.player_id IS NOT NULL) AS cards, "
         "(SELECT m.current_version FROM memcards m WHERE m.game_id = g.id AND m.player_id IS NULL AND m.iso_slot = 1) AS iso_version, "
         "(SELECT m.current_version FROM memcards m WHERE m.game_id = g.id AND m.player_id IS NULL AND m.iso_slot = 2) AS iso2_version "
-        "FROM games g ORDER BY g.name COLLATE NOCASE"
+        "FROM games g WHERE g.name LIKE ? ESCAPE '\\' OR g.content_id LIKE ? ESCAPE '\\' ORDER BY g.name COLLATE NOCASE",
+        (pattern, pattern)
     ).fetchall()
     isos = db.execute(
         "SELECT f.display_name, f.original_filename, f.content_id, f.is_published, "
         "c.name AS championship_name, c.is_published AS championship_published "
         "FROM files f JOIN championships c ON c.id = f.championship_id "
-        "WHERE f.file_type = 'iso' ORDER BY c.start_date DESC, c.created_at DESC, f.id DESC"
+        "WHERE f.file_type = 'iso' AND (c.name LIKE ? ESCAPE '\\' OR f.display_name LIKE ? ESCAPE '\\' "
+        "OR f.original_filename LIKE ? ESCAPE '\\' OR IFNULL(f.content_id, '') LIKE ? ESCAPE '\\') "
+        "ORDER BY c.start_date DESC, c.created_at DESC, f.id DESC", (pattern,) * 4
     ).fetchall()
-    return render_template("admin/games.html", games=games, isos=isos, identifying=_identify_isos_lock.locked())
+    games, games_total = cap(games)
+    isos, isos_total = cap(isos)
+    return render_template("admin/games.html", games=games, isos=isos, games_total=games_total, isos_total=isos_total,
+                           search=search, identifying=_identify_isos_lock.locked())
 
 
 # "M. Card da ISO": os cartões do jogo, sem dono, que todos usam numa sala com
@@ -880,16 +929,20 @@ def _iso_card(game, slot=1):
 def iso_card(content_id):
     from .memcards import ISO_CARD_SLOTS, iso_lock
 
+    from .listing import cap, like
     game = _iso_card_game(content_id)
+    note = request.args.get("origem", "").strip()
     slots = []
     for slot in ISO_CARD_SLOTS:
         card = _iso_card(game, slot)
         versions = get_db().execute(
-            "SELECT * FROM memcard_versions WHERE memcard_id = ? ORDER BY version DESC", (card["id"],)
+            "SELECT * FROM memcard_versions WHERE memcard_id = ? AND IFNULL(note, '') LIKE ? ESCAPE '\\' "
+            "ORDER BY version DESC", (card["id"], like(note))
         ).fetchall() if card else []
-        slots.append({"slot": slot, "card": card, "versions": versions})
+        versions, total = cap(versions)
+        slots.append({"slot": slot, "card": card, "versions": versions, "total": total})
     lock = iso_lock(get_db(), game["id"]) if game["id"] else None
-    return render_template("admin/iso_memcard.html", game=game, slots=slots, lock=lock)
+    return render_template("admin/iso_memcard.html", game=game, slots=slots, lock=lock, note=note)
 
 
 @bp.post("/jogos/<content_id>/memory-card/liberar")

@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% block title %}ISOs · Administração{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from '_carousel.html' import carousel, list_note %}{% from '_icons.html' import icon %}{% block title %}ISOs · Administração{% endblock %}{% block content %}
 <div class="page-title"><h1>ISOs para amistosos</h1><a class="button" href="{{ url_for('tournaments_admin.admin_iso_edit') }}">Nova ISO</a></div>
 <p><a href="{{ url_for('tournaments_admin.admin_home') }}">← Campeonatos: administração</a></p>
 <p class="muted">Os jogadores escolhem a ISO do amistoso entre estas e as ISOs enviadas nos campeonatos. O convite leva o botão de download. Quem não encontra a ISO pode enviá-la pela página de Amistosos. Ela fica aguardando a liberação aqui, e o aviso chega no e-mail da administração.</p>
@@ -14,43 +14,46 @@
   {% endif %}
 {%- endmacro %}
 
-{% set pending = rows|selectattr('approved_at', 'none')|list %}
+{# Uma ISO como card: imagem (ou capa do jogo), nome, jogo base, arquivo, archive.org. #}
+{% macro iso_card(row, pending=false) %}
+<div class="t-card">
+  <span class="t-side"><span class="t-side-images">
+    {% if row.image %}<img class="t-cover t-image" src="{{ image_url('torneio', row.image) }}" alt="" loading="lazy">{% endif %}
+    <img class="t-cover" src="{{ game_cover(row.game_code) }}" alt="{{ row.game_name }}" width="200" height="250" loading="lazy">
+  </span></span>
+  <span class="t-body">
+    {% if pending %}<span class="badge iso-pending">Aguardando liberação</span>
+    {% else %}<span class="badge {{ 'iso-catalog' if row.is_active else 'iso-pending' }}">{{ 'Ativa' if row.is_active else 'Inativa' }}</span>{% endif %}
+    <strong class="t-name">{{ row.name }}</strong>
+    <span class="muted">{{ row.game_name }}</span>
+    {% if filename(row) %}<small class="muted iso-file">{{ filename(row) }}</small>{% endif %}
+    {% if row.file_id %}<small class="muted">ISO de Campeonato{% if row.file_display_name %}: {{ row.file_display_name }}{% endif %}</small>{% endif %}
+    {% if row.requester_name %}<span class="t-meta"><span>{{ icon('user') }}enviada por {{ row.requester_name }}{% if pending %} · {{ row.created_at|localtime }}{% endif %}</span></span>{% endif %}
+    <small>archive.org: {{ archive_cell(row) }}</small>
+  </span>
+  <div class="t-foot"><a class="button icon-button" href="{{ url_for('tournaments_admin.admin_iso_edit', catalog_id=row.id) }}">{{ icon('edit') }}{{ 'Abrir e liberar' if pending else 'Editar' }}</a></div>
+</div>
+{% endmacro %}
+
 {% if pending %}
 <section>
   <h2>Aguardando liberação ({{ pending|length }})</h2>
   <p class="muted">ISOs enviadas pelos jogadores. Abra a ISO para confirmar o nome e o jogo base, cadastrar a imagem e liberar.</p>
-  <div class="table-scroll"><table>
-    <thead><tr><th>ISO</th><th>Jogo base</th><th>Arquivo</th><th>Enviada por</th><th>archive.org</th></tr></thead>
-    <tbody>{% for row in pending %}
-      <tr>
-        <td><a href="{{ url_for('tournaments_admin.admin_iso_edit', catalog_id=row.id) }}"><strong>{{ row.name }}</strong></a></td>
-        <td>{{ row.game_name }}</td>
-        <td><small>{{ filename(row) }}</small></td>
-        <td>{{ row.requester_name or '—' }}<br><small class="muted">{{ row.created_at|localtime }}</small></td>
-        <td><small>{{ archive_cell(row) }}</small></td>
-      </tr>
-    {% endfor %}</tbody>
-  </table></div>
+  {% call carousel('ISOs anteriores', 'Próximas ISOs', 't-cards per-3', fit=false) %}{% for row in pending %}{{ iso_card(row, true) }}{% endfor %}{% endcall %}
 </section>
 {% endif %}
 
 <section>
   <h2>Cadastradas</h2>
-  <div class="table-scroll"><table>
-    <thead><tr><th></th><th>ISO</th><th>Jogo base</th><th>Arquivo</th><th>archive.org</th><th>Ativa</th></tr></thead>
-    <tbody>
-    {% for row in rows if row.approved_at %}
-      <tr>
-        <td>{% if row.image %}<img class="iso-thumb" src="{{ image_url('torneio', row.image) }}" alt="">{% else %}<img class="iso-thumb" src="{{ game_cover(row.game_code) }}" alt="">{% endif %}</td>
-        <td><a href="{{ url_for('tournaments_admin.admin_iso_edit', catalog_id=row.id) }}">{{ row.name }}</a>{% if row.requester_name %}<br><small class="muted">enviada por {{ row.requester_name }}</small>{% endif %}</td>
-        <td>{{ row.game_name }}</td>
-        <td><small>{{ filename(row) or '—' }}{% if row.file_id %}<br><span class="muted">ISO de Campeonato{% if row.file_display_name %}: {{ row.file_display_name }}{% endif %}</span>{% endif %}</small></td>
-        <td><small>{{ archive_cell(row) }}</small></td>
-        <td>{{ 'Sim' if row.is_active else 'Não' }}</td>
-      </tr>
-    {% else %}<tr><td colspan="6">Nenhuma ISO cadastrada ainda.</td></tr>{% endfor %}
-    </tbody>
-  </table></div>
+  <form method="get" class="live-filters">
+    <label class="filter-wide">Nome, jogo, arquivo ou quem enviou<input name="nome" value="{{ filters.name }}"></label>
+    <label>Ativa<select name="ativa"><option value="">Todas</option><option value="sim" {% if filters.status == 'sim' %}selected{% endif %}>Sim</option><option value="nao" {% if filters.status == 'nao' %}selected{% endif %}>Não</option></select></label>
+    <div class="live-filter-actions"><a class="button secondary" href="{{ url_for('tournaments_admin.admin_isos') }}">Limpar filtro</a><button>Filtrar</button></div>
+  </form>
+  {% if approved %}
+  {% call carousel('ISOs anteriores', 'Próximas ISOs', 't-cards per-3', fit=false, total=approved_total) %}{% for row in approved %}{{ iso_card(row) }}{% endfor %}{% endcall %}
+  {% endif %}
+  {{ list_note(approved|length, approved_total, 'ISOs', filtered) }}
 </section>
 <script src="{{ url_for('static', filename='js/archive-progress.js') }}"></script>
 {% endblock %}

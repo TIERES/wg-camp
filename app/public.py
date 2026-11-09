@@ -17,6 +17,32 @@ def manual_update_cards_visible():
     return get_setting(SETTING_MANUAL_UPDATE_CARDS, "0") == "1"
 
 
+def _championship_game(db, files, championship_name=""):
+    """O jogo (name, code) da ISO do campeonato, para a capa do card: pelo
+    conteúdo (CRC32:TAMANHO) no perfil da ISO, no cadastro de amistosos ou num
+    campeonato do portal, ou pelo nome; sem nada, o Winning Eleven 2002."""
+    for entry in files:
+        if not entry["content_id"]:
+            continue
+        for sql in ("SELECT game_title_id FROM iso_profiles WHERE content_id = ? COLLATE NOCASE AND game_title_id IS NOT NULL",
+                    "SELECT game_title_id FROM catalog_isos WHERE content_id = ? COLLATE NOCASE AND is_active = 1",
+                    "SELECT t.game_title_id FROM tournament_isos i JOIN tournaments t ON t.id = i.tournament_id "
+                    "WHERE i.content_id = ? COLLATE NOCASE"):
+            row = db.execute(sql + " LIMIT 1", (entry["content_id"],)).fetchone()
+            if row and row[0]:
+                game = db.execute("SELECT name, code FROM game_titles WHERE id = ?", (row[0],)).fetchone()
+                if game:
+                    return game
+    # ISO sem cadastro: o nome do jogo no nome do campeonato ou do arquivo
+    # ("Winning Eleven 3 Final" -> Winning Eleven 3), o título mais longo primeiro.
+    names = " ".join([name or "" for name in [championship_name] + [entry["original_filename"] for entry in files]]).lower()
+    titles = db.execute("SELECT name, code FROM game_titles").fetchall()
+    for game in sorted(titles, key=lambda g: len(g["name"]), reverse=True):
+        if game["name"].lower() in names:
+            return game
+    return db.execute("SELECT name, code FROM game_titles WHERE code = 'we2002'").fetchone()
+
+
 @bp.get("/")
 def index():
     db = get_db()
@@ -27,6 +53,7 @@ def index():
         entries = db.execute(f"SELECT * FROM files WHERE is_published = 1 AND championship_id IN ({placeholders}) ORDER BY id DESC", tuple(item["id"] for item in championships)).fetchall()
         for entry in entries:
             files_by_championship.setdefault(entry["championship_id"], []).append(entry)
+    games = {item["id"]: _championship_game(db, files_by_championship.get(item["id"], []), item["name"]) for item in championships}
     version_file = Path(current_app.config["UPDATES_DIR"]) / "version.txt"
     kailleraclient_version = version_file.read_text(encoding="utf-8").strip() if version_file.exists() else None
     kailleraclient_available = kailleraclient_version is not None and (Path(current_app.config["UPDATES_DIR"]) / "kailleraclient-x64.dll").exists()
@@ -34,6 +61,7 @@ def index():
         "public/index.html",
         championships=championships,
         files_by_championship=files_by_championship,
+        championship_games=games,
         kailleraclient_version=kailleraclient_version,
         kailleraclient_available=kailleraclient_available,
         mostrar_atualizacao_manual=manual_update_cards_visible(),

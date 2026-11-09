@@ -585,7 +585,7 @@ button.small,.button.small { padding:.4rem .7rem; font-size:.78rem }
 /* Carrossel (static/js/carousel.js): setas nas laterais dos cards, contador no alto à direita */
 .carousel-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.25rem 1rem }
 .carousel-head h2 { margin:.8rem 0 .4rem }
-.carousel-top { display:flex; justify-content:flex-end; align-items:center; gap:1rem; margin:.2rem 0 -.2rem }
+.carousel-top { display:flex; justify-content:flex-end; align-items:center; gap:.35rem; margin:0 0 .45rem }  /* contador acima dos cards, com folga (o "1–3 de [20 ▾]" aparece inteiro) */
 .carousel-count { font-size:.85rem; color:#9ca3af; font-variant-numeric:tabular-nums; white-space:nowrap; padding-right:.25rem }
 .carousel-count[hidden] { display:none }
 .carousel-stage { position:relative }
@@ -678,3 +678,39 @@ button.small,.button.small { padding:.4rem .7rem; font-size:.78rem }
 .input-icon input.invalid, .input-icon input.invalid:focus { border-color:#f87171; box-shadow:0 0 0 3px #f8717133 }
 .input-icon input.valid:focus { border-color:#34d399 }
 .input-icon:has(input.invalid) > .ico { color:#f87171 }
+/* Meus Memory Cards (players/account.html): cards em carrossel, como Minhas ISOs enviadas. */
+.badge.memcard-version { background:#1e3a8a; color:#bfdbfe }
+.memcard-card .t-name, .memcard-file { overflow-wrap:anywhere }
+.memcard-card .t-meta { color:#9ca3af; font-size:.85rem }
+.memcard-card .t-meta > span { display:inline-flex; align-items:center; gap:.3rem }
+.memcard-card .t-meta .ico { width:.95rem; height:.95rem }
+.t-foot .icon-button .ico { width:1rem; height:1rem }
+/* Página inicial: campeonatos em cards (carrossel), detalhes numa janela. */
+.badge.championship-league { background:#064e3b; color:#a7f3d0; max-width:100%; white-space:normal }
+.championship-card .t-name { overflow-wrap:anywhere }
+.championship-card .t-meta { color:#9ca3af; font-size:.85rem }
+.championship-card .t-meta > span { display:inline-flex; align-items:center; gap:.3rem }
+.championship-card .t-meta .ico { width:.95rem; height:.95rem }
+.championship-links { display:grid; gap:.35rem }
+/* Listas em cards (o padrão): card sem a coluna da capa, selo de seleção (lotes da
+   administração), nota do limite de 20 (_carousel.html: list_note). */
+.t-card.no-side { grid-template-columns:minmax(0,1fr) } .t-card.no-side > * { grid-column:1 }
+.t-card .t-meta { color:#9ca3af; font-size:.85rem } .t-card .t-meta > span { display:inline-flex; align-items:center; gap:.3rem; min-width:0 }
+.t-card .t-meta .ico { width:.95rem; height:.95rem }
+.t-card .t-name { overflow-wrap:anywhere }
+.t-foot form { margin:0 } .t-foot button { padding:.4rem .75rem; font-size:.85rem }
+.t-select { position:absolute; top:.6rem; right:.6rem; z-index:2; display:inline-flex; padding:0 } .t-select input { width:1.1rem; height:1.1rem }
+.list-note { margin:.5rem 0 0; font-size:.875rem }
+.list-actions { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; margin:.5rem 0 }
+.badge.icon-badge { display:inline-flex; align-items:center; gap:.3rem } .badge.icon-badge .ico { width:.85rem; height:.85rem }
+.icon-title-sm { display:inline-flex; align-items:center; gap:.4rem } .icon-title-sm .ico { color:var(--accent) }
+.per-page select { width:100% }
+.friend-card .friend-name, .t-card .friend-name { display:flex; align-items:center; gap:.5rem; min-width:0 }
+.team-card .t-side .crest { width:56px; height:56px; object-fit:contain }
+.inline-rename { display:flex; gap:.4rem; margin-top:.3rem } .inline-rename input { flex:1 1 auto; min-width:0 } .inline-rename button { padding:.4rem .7rem; font-size:.85rem }
+/* "1–3 de [20 ▾]": quantos mostrar ao lado do contador do carrossel (_carousel.html). */
+.carousel-top .per-page-form { margin:0; display:inline-flex }
+.carousel-top .per-page-form select { padding:.1rem 1.4rem .1rem .4rem; font-size:.85rem; border-radius:4px; background-position:right .3rem center; color:var(--text) }
+[data-carousel-paged] .carousel-count { padding-right:0 }
+.carousel-top .per-page-form select { width:auto; min-width:0; max-width:5.5rem }
+.carousel-top .per-page-form select { padding:.1rem .2rem .1rem .4rem }

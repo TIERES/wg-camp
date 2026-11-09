@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from '_user_picker.html' import user_picker %}{% block title %}Campeonatos · Administração{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from '_user_picker.html' import user_picker %}{% from '_carousel.html' import carousel %}{% from '_icons.html' import icon %}{% block title %}Campeonatos · Administração{% endblock %}{% block content %}
 <div class="page-title"><h1>Campeonatos: administração</h1></div>
 <p class="muted">Como administração do WE Camp você pode gerenciar qualquer campeonato (botão "Gerenciar" na página dele), inclusive cancelar campeonatos em andamento.</p>
 <p><a class="button secondary" href="{{ url_for('tournaments_admin.admin_teams') }}">Times e escudos</a> <a class="button secondary" href="{{ url_for('tournaments_admin.admin_isos') }}">ISOs para amistosos</a></p>
@@ -41,13 +41,26 @@
     </div>
     <button>Lançar</button>
   </form>
+  <h3 id="ultimos-ajustes">Últimos ajustes</h3>
+  <form method="get" action="{{ url_for('tournaments_admin.admin_home') }}#ultimos-ajustes" class="live-filters">
+    <label class="filter-wide">Jogador<input name="ajuste_jogador" value="{{ recent_player }}" placeholder="Nick"></label>
+    <div class="live-filter-actions"><a class="button secondary" href="{{ url_for('tournaments_admin.admin_home') }}#ultimos-ajustes">Limpar filtro</a><button>Filtrar</button></div>
+  </form>
   {% if recent %}
-  <h3>Últimos ajustes</h3>
-  <div class="table-scroll"><table>
-    <thead><tr><th>Data</th><th>Jogador</th><th>Valor</th><th>Motivo</th></tr></thead>
-    <tbody>{% for r in recent %}<tr><td>{{ r.created_at|localtime }}</td><td>{{ r.username }}</td><td>{{ r.amount_cents|wcash }}</td><td>{{ r.note }}</td></tr>{% endfor %}</tbody>
-  </table></div>
-  {% endif %}
+  {% call carousel('Ajustes anteriores', 'Próximos ajustes', 't-cards per-3', fit=false, total=recent_total) %}
+    {% for r in recent %}
+    <div class="t-card no-side">
+      <span class="t-body">
+        <span class="badge {{ 'iso-catalog' if r.amount_cents > 0 else 'iso-pending' }}">{{ r.amount_cents|wcash }}</span>
+        <strong class="t-name">{{ r.username }}</strong>
+        <span class="t-meta"><span>{{ icon('clock') }}{{ r.created_at|localtime }}</span></span>
+        {% if r.note %}<span class="t-meta"><span>{{ icon('tag') }}{{ r.note }}</span></span>{% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  {% endcall %}
+  <p class="muted list-note">Os ajustes mais recentes{% if recent_player %} desse jogador{% endif %}.</p>
+  {% else %}<p class="muted list-note">Nenhum ajuste{% if recent_player %} com esse filtro{% endif %}.</p>{% endif %}
 </section>
 <script src="{{ url_for('static', filename='js/wcash-mask.js') }}"></script>
 {% endblock %}

@@ -1,10 +1,16 @@
-{% extends 'base.html' %}{% block title %}Times e jogo de cada ISO · Ao vivo{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from '_carousel.html' import list_note, per_page_field %}{% block title %}Times e jogo de cada ISO · Ao vivo{% endblock %}{% block content %}
 <div class="page-title"><h1>Times e jogo de cada ISO</h1><a href="{{ url_for('live.index') }}">Ver partidas ao vivo</a></div>
 <p class="muted">O card mostra o nome que o jogo exibe na tela de seleção de times (ex.: PAL99), que o RetroArch TIERES guarda antes do pontapé inicial. Quando esse nome não serve, cadastre o time certo de cada slot aqui: nos jogos de campeonato ele é aprendido sozinho, pelo time inscrito de quem controla cada lado. Escolha um time da base para ter o escudo/bandeira, ou digite um nome livre; deixe vazio para apagar. "Usar os nomes do jogo" copia o nome da seleção para os slots sem time.</p>
 <p class="muted">Cada partida traz a identificação da ISO que o jogador abriu (CRC32:TAMANHO do arquivo). Ela só vai para o jogo de um campeonato ou para um amistoso quando bate com a ISO dele - a enviada no campeonato, a do cadastro de amistosos ou uma ligada aqui (outra versão da mesma ISO, como um .chd). Campeonato ou amistoso cuja ISO ainda não foi identificada continua valendo só pelos jogadores.</p>
 {% if unidentified %}
 <form method="post" action="{{ url_for('live.identify_isos') }}" class="inline-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Identificar {{ unidentified }} ISO(s) de campeonato/amistoso</button><small class="muted">Pelo crc32 que o archive.org lista (sem baixar) ou pela cópia deste servidor.</small></form>
 {% endif %}
+<form method="get" class="live-filters">
+  <label class="filter-wide">Jogo, ISO ou identificador<input name="iso" value="{{ search }}" placeholder="Ex.: Copa 26, DD3E7D9C"></label>
+  {{ per_page_field() }}
+  <div class="live-filter-actions"><a class="button secondary" href="{{ url_for('live.admin_slots') }}">Limpar filtro</a><button>Filtrar</button></div>
+</form>
+{{ list_note(groups|length, total, 'ISOs', search) }}
 <datalist id="team-names">{% for name in teams %}<option value="{{ name }}">{% endfor %}</datalist>
 {% for (content_id, room), rows in groups.items() %}{% set profile = profiles.get(content_id) %}
 <section class="live-iso">
@@ -35,5 +41,5 @@
   <form method="post" class="inline-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="content_id" value="{{ content_id }}"><input type="hidden" name="acao" value="nomes_do_jogo"><button class="secondary">Usar os nomes do jogo nos slots sem time</button></form>
   {% endif %}
 </section>
-{% else %}<p>Nenhuma partida ao vivo registrada ainda.</p>{% endfor %}
+{% else %}{% if not search %}<p>Nenhuma partida ao vivo registrada ainda.</p>{% endif %}{% endfor %}
 {% endblock %}

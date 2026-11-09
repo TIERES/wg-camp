@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'tournaments/_macros.html' import match_line, status_chip, leg_flip, stage_rounds %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% from '_avatar.html' import avatar_button %}{% block title %}Gerenciar {{ t.name }} · Campeonatos WE Camp{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from 'tournaments/_macros.html' import match_line, status_chip, leg_flip, stage_rounds %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% from '_avatar.html' import avatar_button %}{% from '_carousel.html' import carousel %}{% from '_icons.html' import icon %}{% block title %}Gerenciar {{ t.name }} · Campeonatos WE Camp{% endblock %}{% block content %}
 {# Formulários de resultado de uma lista de jogos (com ou sem Ida/Volta). #}
 {% macro result_forms(ms) %}{% for m in ms %}{% set shown = m if m.status == 'confirmed' else reported_score(m) %}
     <form method="post" action="{{ url_for('tournaments.result', slug=t.slug, match_id=m.id) }}" class="result-form{% if m.status == 'confirmed' %} done{% endif %}" id="jogo-{{ m.id }}">
@@ -66,14 +66,27 @@
 </section>
 {% endfor %}
 
-<section>
+<section id="inscritos">
   <h2>Inscritos ({{ entries|length }}/{{ t.max_players }})</h2>
   {% if entries %}
-  <div class="table-scroll"><table>
-    <thead><tr><th>Jogador</th><th>Time</th><th>Inscrito em</th>{% if t.status == 'registration' %}<th></th>{% endif %}</tr></thead>
-    <tbody>{% for e in entries %}<tr><td><span class="with-avatar">{{ avatar_button(e.player_id, e.username) }}<span>{{ e.username }}</span></span></td><td>{{ e.team_name }}</td><td>{{ e.created_at|localtime }}</td>
-      {% if t.status == 'registration' %}<td><form method="post" action="{{ url_for('tournaments.remove_entry', slug=t.slug, entry_id=e.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Remover</button></form></td>{% endif %}</tr>{% endfor %}</tbody>
-  </table></div>
+  <form method="get" action="{{ url_for('tournaments.manage', slug=t.slug) }}#inscritos" class="live-filters">
+    <label class="filter-wide">Jogador ou time<input name="inscrito" value="{{ entry_search }}"></label>
+    <div class="live-filter-actions"><a class="button secondary" href="{{ url_for('tournaments.manage', slug=t.slug) }}#inscritos">Limpar filtro</a><button>Filtrar</button></div>
+  </form>
+  {% if shown_entries %}
+  {% call carousel('Inscritos anteriores', 'Próximos inscritos', 't-cards per-3', fit=false) %}
+    {% for e in shown_entries %}
+    <div class="t-card no-side">
+      <span class="t-body">
+        <span class="with-avatar friend-name">{{ avatar_button(e.player_id, e.username) }}<strong class="t-name">{{ e.username }}</strong></span>
+        <span class="t-meta"><span>{{ icon('shield') }}{{ e.team_name }}</span></span>
+        <span class="t-meta"><span>{{ icon('clock') }}Inscrito em {{ e.created_at|localtime }}</span></span>
+      </span>
+      {% if t.status == 'registration' %}<div class="t-foot"><form method="post" action="{{ url_for('tournaments.remove_entry', slug=t.slug, entry_id=e.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Remover</button></form></div>{% endif %}
+    </div>
+    {% endfor %}
+  {% endcall %}
+  {% else %}<p class="muted list-note">Nenhum inscrito com esse filtro.</p>{% endif %}
   {% else %}<p class="muted">Ninguém inscrito ainda.</p>{% endif %}
 </section>
 

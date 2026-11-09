@@ -1,5 +1,15 @@
-{% extends 'base.html' %}{% from '_avatar.html' import avatar_button %}{% from '_user_picker.html' import user_picker %}{% block title %}Amigos · WE Camp{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from '_avatar.html' import avatar_button %}{% from '_user_picker.html' import user_picker %}{% from '_carousel.html' import carousel, list_note %}{% block title %}Amigos · WE Camp{% endblock %}{% block content %}
 {% macro action(p, acao, label, cls='', form_cls='') %}<form method="post" action="{{ url_for('tournaments.friend_action', player_id=p.id, acao=acao) }}"{% if form_cls %} class="{{ form_cls }}"{% endif %}><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="{{ cls }}">{{ label }}</button></form>{% endmacro %}
+{# Um amigo (ou pedido) como card: foto + nick no alto, as ações no rodapé. #}
+{% macro friend_card(p, note='') %}
+<div class="t-card no-side friend-card">
+  <span class="t-body">
+    <span class="with-avatar friend-name">{{ avatar_button(p.id, p.username) }}<a class="t-name" href="{{ url_for('tournaments.player', nome=p.username) }}">{{ p.username }}</a></span>
+    {% if note %}<small class="muted">{{ note }}</small>{% endif %}
+  </span>
+  <div class="t-foot">{{ caller() }}</div>
+</div>
+{% endmacro %}
 <h1>Amigos</h1>
 <p class="muted">Seus amigos aparecem para convite quando você cria ou edita um campeonato, e você pode chamá-los para um <a href="{{ url_for('tournaments.friendlies') }}">amistoso</a>.</p>
 
@@ -14,29 +24,34 @@
 {% if received %}
 <section>
   <h2>Pedidos de amizade ({{ received|length }})</h2>
-  <ul class="friend-list">{% for p in received %}
-    <li><span class="with-avatar">{{ avatar_button(p.id, p.username) }}<a href="{{ url_for('tournaments.player', nome=p.username) }}">{{ p.username }}</a></span><small class="muted">{{ p.created_at|localtime }}</small>
-      <span class="friend-actions">{{ action(p, 'aceitar', 'Aceitar') }}{{ action(p, 'recusar', 'Recusar', 'secondary') }}</span></li>
-  {% endfor %}</ul>
+  {% call carousel('Pedidos anteriores', 'Próximos pedidos', 'per-3', fit=false) %}{% for p in received %}
+    {% call friend_card(p, p.created_at|localtime) %}{{ action(p, 'aceitar', 'Aceitar') }}{{ action(p, 'recusar', 'Recusar', 'secondary') }}{% endcall %}
+  {% endfor %}{% endcall %}
 </section>
 {% endif %}
 
-<section>
+<section id="meus-amigos">
   <h2>Meus amigos ({{ friends|length }})</h2>
-  {% if friends %}<ul class="friend-list">{% for p in friends %}
-    <li><span class="with-avatar">{{ avatar_button(p.id, p.username) }}<a href="{{ url_for('tournaments.player', nome=p.username) }}">{{ p.username }}</a></span>
-      <span class="friend-actions"><a class="button" href="{{ url_for('tournaments.friendlies', com=p.username) }}">Amistoso</a><a class="button secondary" href="{{ url_for('tournaments.compare', b=p.username) }}">Comparar</a>{{ action(p, 'remover', 'Desfazer amizade', 'secondary', 'btn-left') }}</span></li>
-  {% endfor %}</ul>
+  {% if friends %}
+  <form method="get" action="{{ url_for('tournaments.friends_page') }}#meus-amigos" class="live-filters">
+    <label class="filter-wide">Nick<input name="busca" value="{{ search }}" placeholder="Procurar entre seus amigos"></label>
+    <div class="live-filter-actions"><a class="button secondary" href="{{ url_for('tournaments.friends_page') }}#meus-amigos">Limpar filtro</a><button>Filtrar</button></div>
+  </form>
+  {% if shown %}
+  {% call carousel('Amigos anteriores', 'Próximos amigos', 'per-3', fit=false, total=shown_total) %}{% for p in shown %}
+    {% call friend_card(p) %}<a class="button" href="{{ url_for('tournaments.friendlies', com=p.username) }}">Amistoso</a><a class="button secondary" href="{{ url_for('tournaments.compare', b=p.username) }}">Comparar</a>{{ action(p, 'remover', 'Desfazer amizade', 'secondary', 'btn-left') }}{% endcall %}
+  {% endfor %}{% endcall %}
+  {% endif %}
+  {{ list_note(shown|length, shown_total, 'amigos', search) }}
   {% else %}<p class="muted">Você ainda não tem amigos. Adicione pelo nome acima ou pelo botão "Adicionar amigo" na página de um jogador.</p>{% endif %}
 </section>
 
 {% if sent %}
 <section>
   <h2>Pedidos enviados ({{ sent|length }})</h2>
-  <ul class="friend-list">{% for p in sent %}
-    <li><span class="with-avatar">{{ avatar_button(p.id, p.username) }}<a href="{{ url_for('tournaments.player', nome=p.username) }}">{{ p.username }}</a></span><small class="muted">aguardando · {{ p.created_at|localtime }}</small>
-      <span class="friend-actions">{{ action(p, 'remover', 'Cancelar pedido', 'secondary') }}</span></li>
-  {% endfor %}</ul>
+  {% call carousel('Pedidos anteriores', 'Próximos pedidos', 'per-3', fit=false) %}{% for p in sent %}
+    {% call friend_card(p, 'aguardando · ' ~ (p.created_at|localtime)) %}{{ action(p, 'remover', 'Cancelar pedido', 'secondary') }}{% endcall %}
+  {% endfor %}{% endcall %}
 </section>
 {% endif %}
 {% endblock %}

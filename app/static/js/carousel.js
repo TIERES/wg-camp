@@ -19,6 +19,7 @@
     var prev = box.querySelector('[data-carousel-prev]'), next = box.querySelector('[data-carousel-next]');
     var count = box.querySelector('[data-carousel-count]');
     var fit = box.getAttribute('data-carousel') === 'fit', frame = 0;
+    var paged = box.hasAttribute('data-carousel-paged');
 
     function slides() {
       return Array.prototype.filter.call(track.children, function (s) { return !s.hidden; });
@@ -40,7 +41,11 @@
       [prev, next, count].forEach(function (el) { if (el) el.hidden = n <= s.per; });
       if (count) {
         var last = Math.min(n, s.first + s.per);
-        count.textContent = n ? (s.per > 1 ? (s.first + 1) + '–' + last : String(s.first + 1)) + ' de ' + n : '';
+        var shown = n ? (s.per > 1 ? (s.first + 1) + '–' + last : String(s.first + 1)) : '';
+        // Lista limitada (_carousel.html: per_page_select): "1–3 de [20 ▾]" - o
+        // total é o seletor ao lado, e o contador fica mesmo com tudo na tela.
+        if (paged) { count.textContent = n ? (n <= s.per ? '1–' + n : shown) + ' de' : ''; count.hidden = false; }
+        else count.textContent = n ? shown + ' de ' + n : '';
       }
       if (prev) prev.disabled = track.scrollLeft <= 1;
       if (next) next.disabled = track.scrollLeft + track.clientWidth >= track.scrollWidth - 1;
