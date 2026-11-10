@@ -2,7 +2,7 @@
 <section class="intro">
   <h1>Minha conta</h1>
   <p>Usuário: <strong>{{ player.username }}</strong> · E-mail: {{ player.email }}</p>
-  <p>Use este mesmo usuário como nick no Kaillera e entre com sua senha no botão "M. Card Online" da tela inicial do Kaillera para usar o <strong>Memory Card online</strong>.</p>
+  <p>Use este mesmo usuário como nick no Kaillera e entre com sua senha no botão "Conta WE Camp" da tela inicial do Kaillera (nas versões antigas, "M. Card Online") para usar o <strong>Memory Card online</strong> e o placar ao vivo.</p>
   <form method="post" action="{{ url_for('players.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Sair</button></form>
 </section>
 

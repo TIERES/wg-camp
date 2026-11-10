@@ -11,22 +11,22 @@
      RetroArch TIERES o próprio DLL baixa o pacote novo e reinicia). #}
   <section class="emulator-download" aria-labelledby="emulator-title">
     <div>
-      <h2 id="emulator-title">Emulador RetroArch FFW TIERES 0.8</h2>
-      <p>Baixe o RetroArch FFW TIERES 0.8 completo, já configurado com o plugin Kaillera netplay v.TIERES.0.30 (Memory Card Online, MultiTap e chamada de voz no Discord) para jogos online e acompanhamento de partidas ao vivo! Já vem com o gráfico PC Antigo (VGA onboard); se você tem placa de vídeo dedicada, instale o PC Moderno do Pack de Gráficos abaixo. Ideal para quem ainda não tem o RetroArch. Depois de instalado, ele se atualiza sozinho: quando sai uma versão nova, o Kaillera avisa ao abrir, baixa só o que mudou e reinicia o RetroArch.</p>
+      <h2 id="emulator-title">Emulador RetroArch FFW TIERES 0.9</h2>
+      <p>Baixe o RetroArch FFW TIERES 0.9 completo, já configurado com o plugin Kaillera netplay v.TIERES.0.32 (Memory Card Online, MultiTap, chamada de voz no Discord e placar ao vivo no WE Camp) para jogos online e acompanhamento de partidas ao vivo! Já vem com o gráfico PC Antigo (VGA onboard); se você tem placa de vídeo dedicada, instale o PC Moderno do Pack de Gráficos abaixo. Ideal para quem ainda não tem o RetroArch. Depois de instalado, ele se atualiza sozinho: quando sai uma versão nova, o Kaillera avisa ao abrir, baixa só o que mudou e reinicia o RetroArch.</p>
     </div>
-    <a class="button" href="https://archive.org/download/one-two-iso/RetroArch-1.16.0.FFW.TIERES.0.8.zip" rel="noopener noreferrer" target="_blank">Baixar RetroArch (x64)</a>
+    <a class="button" href="https://archive.org/download/one-two-iso/RetroArch-1.16.0.FFW.TIERES.0.9.zip" rel="noopener noreferrer" target="_blank">Baixar RetroArch (x64)</a>
   </section>
   {% if mostrar_atualizacao_manual %}
   <section class="emulator-download" aria-labelledby="emulator-light-title">
     <div>
-      <h2 id="emulator-light-title">Atualização light: TIERES 0.8</h2>
-      <p>Já tem o RetroArch FFW TIERES (0.1 a 0.7)? Baixe só a atualização e extraia na pasta do TIERES, substituindo os arquivos. Ela não mexe nos seus controles, gráficos e configurações; para trocar o visual, use o Pack de Gráficos abaixo. Novidades: cada jogador escolhe o memory card do próprio slot (o 1P decide o slot 1, o 2P o slot 2): Sem M. Card, M. Card Online ou M. Card da ISO; a escolha fica salva e aparece no chat da sala; quem não está logado no WE Camp joga com o slot vazio, sem cartão; e o "Stream ao vivo!" funciona também com o host sozinho na sala.</p>
-      <p><strong>Plugin v.TIERES.0.30.</strong> O M. Card da ISO vale para uma partida por vez em cada jogo: se outra partida do mesmo jogo estiver com os cartões da ISO, a sala avisa antes de começar e quem escolheu M. Card da ISO pode trocar de M. Card para jogar na hora. Quando sai uma versão nova só do plugin, o Kaillera fecha e abre de novo sozinho, sem reiniciar o RetroArch. E o "Stream ao vivo!" não perde mais pedaços da partida, então quem acompanha ao vivo não dessincroniza.</p>
-      <p>Para usar o Memory Card Online, <a href="{{ url_for('players.register') }}">crie sua conta no WE Camp</a> e entre com ela pelo botão "M. Card Online" da tela inicial do Kaillera.</p>
-      <p><strong>Chamada de voz no Discord.</strong> <a href="{{ url_for('players.account') }}">Vincule seu Discord na sua conta do WE Camp</a> (você também entra no servidor Discord da WE Camp). No início de cada partida no Kaillera (Server ou P2P) com 2 ou mais jogadores vinculados, o WE Camp cria um canal de voz só para a sala: quem estiver no canal "Aguardando partida" entra sozinho; para os outros, o canal abre no Discord, é só clicar em "Entrar". Para ficar fora da chamada, desmarque "Participar da chamada de voz no Discord nas partidas" no botão "M. Card Online".</p>
+      <h2 id="emulator-light-title">Atualização light: TIERES 0.9</h2>
+      <p>Já tem o RetroArch FFW TIERES (0.1 a 0.8)? Baixe só a atualização e extraia na pasta do TIERES, substituindo os arquivos. Ela não mexe nos seus controles, gráficos e configurações; para trocar o visual, use o Pack de Gráficos abaixo. Novidade: <strong>placar ao vivo</strong>. Com os dois jogadores logados na conta WE Camp, o RetroArch TIERES lê o placar do próprio jogo (Winning Eleven 2002, 3 Final Version e 4) e mostra a partida no <a href="{{ url_for('live.index') }}">Ao vivo</a> do WE Camp, com os times, o tempo, os gols, a prorrogação e os pênaltis. No fim, o placar vai sozinho para o jogo do campeonato ou para o amistoso, e os dois confirmam. Joguem até o fim: quem sai no meio de um jogo perde o triplo de XP.</p>
+      <p><strong>Plugin v.TIERES.0.32.</strong> O botão "M. Card Online" da tela inicial do Kaillera agora se chama "Conta WE Camp". Com 2 ou mais jogadores logados na sala, o "Stream ao vivo!" fica sempre ligado. E fechar o Kaillera no X não derruba mais o RetroArch.</p>
+      <p>Para usar o Memory Card Online, <a href="{{ url_for('players.register') }}">crie sua conta no WE Camp</a> e entre com ela pelo botão "Conta WE Camp" da tela inicial do Kaillera.</p>
+      <p><strong>Chamada de voz no Discord.</strong> <a href="{{ url_for('players.account') }}">Vincule seu Discord na sua conta do WE Camp</a> (você também entra no servidor Discord da WE Camp). No início de cada partida no Kaillera (Server ou P2P) com 2 ou mais jogadores vinculados, o WE Camp cria um canal de voz só para a sala: quem estiver no canal "Aguardando partida" entra sozinho; para os outros, o canal abre no Discord, é só clicar em "Entrar". Para ficar fora da chamada, desmarque "Participar da chamada de voz no Discord nas partidas" no botão "Conta WE Camp".</p>
       <p><strong>Jogue com quem está na mesma versão:</strong> com versões diferentes, o Kaillera avisa que a partida pode dessincronizar.</p>
     </div>
-    <a class="button" href="https://archive.org/download/one-two-iso/RetroArch-1.16.0.FFW.TIERES.0.8.light.zip" rel="noopener noreferrer" target="_blank">Baixar atualização light (x64)</a>
+    <a class="button" href="https://archive.org/download/one-two-iso/RetroArch-1.16.0.FFW.TIERES.0.9.light.zip" rel="noopener noreferrer" target="_blank">Baixar atualização light (x64)</a>
   </section>
   {% endif %}
   <section class="emulator-download" aria-labelledby="graphics-title">
