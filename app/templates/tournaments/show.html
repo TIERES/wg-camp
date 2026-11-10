@@ -121,7 +121,7 @@
 
 {% elif tab == 'artilharia' %}
   {% from 'tournaments/_scorers.html' import scorer_boards %}
-  {{ scorer_boards(scorers, 'confirmado do campeonato', 'confirmados do campeonato') }}
+  {{ scorer_boards(scorers, 'do campeonato') }}
 
 {% else %}
   {% for view in stages %}

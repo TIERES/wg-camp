@@ -1238,7 +1238,12 @@ class LiveMatchesTest(unittest.TestCase):
         client = self.app.test_client()
         html = client.get("/torneios/liga-1?aba=artilharia").get_data(as_text=True)
         self.assertIn('class="active">Artilharia</a>', html)
-        self.assertIn("Ainda nenhum jogo confirmado do campeonato", html)  # reportado, ainda não confirmado
+        # Reportado, ainda não confirmado: os gols já somam, em laranja, "a confirmar".
+        self.assertIn("Soma de 1 a confirmar do campeonato", html)
+        self.assertIn('<tr class="scorer-pending">', html)
+        self.assertIn('title="S.Vryzas possui 2 gols a serem confirmados">2 a confirmar</small>', html)
+        self.assertIn('title="J.Leko possui 1 gol a ser confirmado">1 a confirmar</small>', html)
+        self.assertIn("provisional-legend", html)
         # Página do jogo reportado: os gols em laranja, com o (i) de que faltam confirmar, e o card no Ao vivo.
         match_id = self.rows("SELECT id FROM tournament_matches")[0]["id"]
         page = client.get("/torneios/liga-1/jogos/%d" % match_id).get_data(as_text=True)
@@ -1249,7 +1254,9 @@ class LiveMatchesTest(unittest.TestCase):
         with self.app.app_context():
             reports.auto_confirm(get_db(), at=datetime.now(timezone.utc) + timedelta(hours=25))
         html = client.get("/torneios/liga-1?aba=artilharia").get_data(as_text=True)
-        self.assertIn("Soma do 1 jogo confirmado do campeonato", html)
+        self.assertIn("Soma de 1 jogo confirmado do campeonato", html)
+        self.assertNotIn("scorer-pending", html)
+        self.assertNotIn("provisional-legend", html)
         scorers, assists = html.split("<h2>Assistências</h2>")
         self.assertIn("<strong>S.Vryzas</strong><small>TIERES</small>", scorers)
         self.assertRegex(scorers, r"(?s)S\.Vryzas.*?Grécia.*?<strong>2</strong>")
@@ -1303,7 +1310,7 @@ class LiveMatchesTest(unittest.TestCase):
         self.end_session()
         self.cards()
         page = client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True)
-        self.assertIn("Soma dos 2 jogos deste amistoso", page)
+        self.assertIn("Soma de 2 a confirmar deste amistoso", page)  # amistoso reportado, ainda sem confirmação
         scorers, assists = page.split("<h2>Assistências</h2>")
         self.assertRegex(scorers, r"(?s)S\.Vryzas</strong><small>TIERES</small>.*?<strong>3</strong>")
         self.assertRegex(scorers, r"(?s)J\.Leko</strong><small>ANDERSHOW</small>.*?<strong>2</strong>")

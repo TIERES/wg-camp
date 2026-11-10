@@ -1080,16 +1080,20 @@ def goal_events(db, match):
 def leaderboard(events):
     """Artilharia e assistências dos gols (goal_events, em ordem dos jogos):
     por jogador do jogo e quem o controlou, com o time do último gol; empate
-    no número fica na mesma posição. Devolve {"scorers": [...], "assists": [...]}."""
+    no número fica na mesma posição. Os gols de jogo ainda não confirmado
+    (pending) somam e ficam contados à parte (pending_goals/pending_assists).
+    Devolve {"scorers": [...], "assists": [...]}."""
     tables = ({}, {})
     for e in events:
         for table, name, field in ((tables[0], e["name"], "goals"), (tables[1], e["assist"], "assists")):
             if not name:
                 continue
             row = table.setdefault((name.casefold(), e["nick"].casefold()),
-                                   {"name": name, "nick": e["nick"], "goals": 0, "assists": 0, "pens": 0, "games": set()})
+                                   {"name": name, "nick": e["nick"], "goals": 0, "assists": 0, "pens": 0,
+                                    "pending_goals": 0, "pending_assists": 0, "games": set()})
             row.update(team=e["team"], image=e["image"])
             row[field] += 1
+            row["pending_" + field] += int(bool(e.get("pending")))
             row["games"].add(e["match_id"])
             if field == "goals" and e["pen"]:
                 row["pens"] += 1
@@ -1110,26 +1114,36 @@ def tournament_scorers(db, tournament_id):
     """Artilharia do campeonato: os jogos confirmados cuja partida lida do jogo
     (a mais recente desse jogo, se jogaram de novo) tem o mesmo placar do
     resultado oficial - um placar corrigido à mão não traz gols de outro jogo.
-    Simulações nunca. Devolve o leaderboard com "games" (jogos que contaram)."""
+    Os reportados/contestados ainda sem confirmação entram pelo placar
+    reportado, com os gols marcados como a confirmar (pending). Simulações
+    nunca. Devolve o leaderboard com "games" (confirmados que contaram) e
+    "pending_games"."""
     rows = db.execute(
-        "SELECT m.*, tm.home_goals AS official_home, tm.away_goals AS official_away, hp.username AS home_nick, "
+        "SELECT m.*, tm.status AS tm_status, tm.home_goals AS official_home, tm.away_goals AS official_away, "
+        "(SELECT r.home_goals FROM match_reports r WHERE r.match_id = tm.id AND r.action = 'report' "
+        "ORDER BY r.id DESC LIMIT 1) AS reported_home, "
+        "(SELECT r.away_goals FROM match_reports r WHERE r.match_id = tm.id AND r.action = 'report' "
+        "ORDER BY r.id DESC LIMIT 1) AS reported_away, hp.username AS home_nick, "
         "ap.username AS away_nick FROM live_matches m JOIN tournament_matches tm ON tm.id = m.tournament_match_id "
         "JOIN tournament_stages s ON s.id = tm.stage_id "
         "JOIN tournament_entries he ON he.id = tm.home_entry_id JOIN players hp ON hp.id = he.player_id "
         "JOIN tournament_entries ae ON ae.id = tm.away_entry_id JOIN players ap ON ap.id = ae.player_id "
-        "WHERE s.tournament_id = ? AND tm.status = 'confirmed' AND m.is_test = 0 AND m.verified = 1 "
-        "AND m.status != 'live' ORDER BY m.started_at DESC, m.id DESC", (tournament_id,)).fetchall()
+        "WHERE s.tournament_id = ? AND tm.status IN ('confirmed', 'reported', 'disputed') AND m.is_test = 0 "
+        "AND m.verified = 1 AND m.status != 'live' ORDER BY m.started_at DESC, m.id DESC", (tournament_id,)).fetchall()
     seen, counted = set(), []
     for row in rows:
         if row["tournament_match_id"] in seen:
             continue
-        if _home_away(row, (row["local_goals"] or 0, row["visita_goals"] or 0)) == (row["official_home"],
-                                                                                   row["official_away"]):
+        confirmed = row["tm_status"] == "confirmed"
+        score = ((row["official_home"], row["official_away"]) if confirmed
+                 else (row["reported_home"], row["reported_away"]))
+        if _home_away(row, (row["local_goals"] or 0, row["visita_goals"] or 0)) == score:
             seen.add(row["tournament_match_id"])
-            counted.append(row)
+            counted.append((row, not confirmed))
     counted.reverse()
-    board = leaderboard([e for row in counted for e in goal_events(db, row)])
-    board["games"] = len(counted)
+    board = leaderboard([dict(e, pending=pending) for row, pending in counted for e in goal_events(db, row)])
+    board["pending_games"] = sum(1 for _, pending in counted if pending)
+    board["games"] = len(counted) - board["pending_games"]
     return board
 
 
@@ -1170,8 +1184,10 @@ def friendly_scorers(db, friendly_row, games):
         return None
     rows = db.execute("SELECT * FROM live_matches WHERE id IN (%s) ORDER BY started_at, id" % ",".join("?" * len(ids)),
                       ids).fetchall()
-    board = leaderboard([e for row in rows for e in goal_events(db, row)])
-    board["games"] = len(rows)
+    # Amistoso ainda não confirmado: todos os gols dele estão a confirmar.
+    pending = friendly_row["status"] != "confirmed"
+    board = leaderboard([dict(e, pending=pending) for row in rows for e in goal_events(db, row)])
+    board["games"], board["pending_games"] = (0, len(rows)) if pending else (len(rows), 0)
     return board
 
 

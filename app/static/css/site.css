@@ -177,6 +177,8 @@ details.round summary { cursor:pointer; padding:.5rem 0; font-weight:700 }
 .match-status-row .match-status { margin:0 }
 .scorer-boards { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr)); gap:0 1.5rem; margin-top:1rem }
 .scorer-board h2 { margin-bottom:0 } .scorers td { vertical-align:middle } .scorers td.num:first-child { color:#9ca3af; width:2.5rem }
+.scorers tr.scorer-pending td { color:#fdba74 } .scorers tr.scorer-pending td:first-child { box-shadow:inset 3px 0 0 #ea580c }
+.scorer-pending-note { display:block; color:#fb923c; font-size:.75em; white-space:nowrap }
 .scorer-toggle { margin-top:-.25rem } .scorer-note { font-size:.85rem }
 .ledger td.num,.ledger th.num { text-align:right; white-space:nowrap } .ledger .pos { color:#6ee7b7 } .ledger .neg { color:#fca5a5 }
 .wallet-balance { font-size:2.2rem; font-weight:800; margin:.25rem 0; color:var(--accent) }
