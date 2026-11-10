@@ -1,8 +1,8 @@
 {# Artilharia e assistências (live.tournament_scorers / live.friendly_scorers):
    os gols lidos do jogo pelo RetroArch TIERES nos jogos que contam. Os de
    jogo ainda não confirmado somam e deixam a linha em laranja. #}
-{# show_pens: o "(N pên.)" ao lado dos gols (o card do amistoso mostra só a quantidade). #}
-{% macro scorer_table(rows, field, title, empty, show_pens=true) -%}
+{# Só a quantidade de gols/assistências (sem o "de pênalti"). #}
+{% macro scorer_table(rows, field, title, empty) -%}
 {% set noun = ('gol a ser confirmado', 'gols a serem confirmados') if field == 'goals' else ('assistência a ser confirmada', 'assistências a serem confirmadas') %}
 <section class="scorer-board">
   <h2>{{ title }}</h2>
@@ -16,7 +16,7 @@
         <td><span class="entry-name"><strong>{{ r.name }}</strong>{% if r.nick %}<small>{{ r.nick }}</small>{% endif %}</span></td>
         <td><span class="entry"><img class="crest" src="{{ r.image }}" alt="" loading="lazy"><span>{{ r.team }}</span></span></td>
         <td class="num">{% if pend %}{% set tip = '%s possui %d %s' % (r.name, pend, noun[0] if pend == 1 else noun[1]) %}<span class="tip-badge" tabindex="0" role="note" aria-label="{{ tip }}" data-tip="{{ tip }}">i</span> {% endif -%}
-          <strong>{{ r[field] }}</strong>{% if show_pens and field == 'goals' and r.pens %} <small class="muted" title="De pênalti">({{ r.pens }} pên.)</small>{% endif %}</td>
+          <strong>{{ r[field] }}</strong></td>
       </tr>
     {% endfor %}</tbody>
   </table>
@@ -27,9 +27,9 @@
 {%- endmacro %}
 
 {# where: "do campeonato" / "deste amistoso". #}
-{% macro scorer_boards(board, where, show_pens=true) -%}
+{% macro scorer_boards(board, where) -%}
 <div class="scorer-boards">
-  {{ scorer_table(board.scorers, 'goals', 'Artilharia', 'Nenhum gol ainda.', show_pens) }}
+  {{ scorer_table(board.scorers, 'goals', 'Artilharia', 'Nenhum gol ainda.') }}
   {{ scorer_table(board.assists, 'assists', 'Assistências', 'Nenhuma assistência ainda.') }}
 </div>
 {% if board.scorers|selectattr('pending_goals')|list or board.assists|selectattr('pending_assists')|list %}
