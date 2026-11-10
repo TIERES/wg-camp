@@ -633,8 +633,13 @@ def list_cards(db, tournament_id=None, friendlies=False, only_live=False, recent
         where.append("m.id = ?")
         params.append(match_id)
     if player:
-        where.append("m.players_json LIKE ?")
-        params.append("%" + player.replace("%", "").replace("_", "") + "%")
+        # O nick de uma conta (o que a sugestão do campo preenche): só as
+        # partidas dele ("TIERES" não traz as do TIERES_ART); um pedaço do
+        # nick procura em todos. "_" e "%" valem como letras (listing.like).
+        from .listing import like
+        exact = db.execute("SELECT 1 FROM players WHERE username = ? COLLATE NOCASE", (player,)).fetchone()
+        where.append("m.players_json LIKE ? ESCAPE '\\'")
+        params.append(like('"%s"' % player if exact else player))
     start, end = _local_day(date_from), _local_day(date_to, end=True)
     if start:
         where.append("m.started_at >= ?")

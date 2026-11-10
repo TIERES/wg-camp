@@ -171,6 +171,20 @@ class LiveMatchesTest(unittest.TestCase):
         self.post(state(kickoff=7000, pads=(255, 255)))
         self.assertIn("Player 2", self.cards())
 
+    def test_player_filter_exact_nick_and_underscore(self):
+        """Filtro "Jogador": o nick de uma conta traz só as partidas dele (com "_"
+        no nick, inclusive); um pedaço do nick procura em todos, com "_" como letra."""
+        self.post(state(kickoff=1000), players="TIERES_ART,TUTORIAL")
+        self.post(state(kickoff=2000), players="TIERES,ANDERSHOW")
+
+        def count(text):
+            return self.cards(jogador=text).count('<article class="live-card')
+        self.assertEqual(count("TIERES_ART"), 1)
+        self.assertEqual(count("tieres_art"), 1)
+        self.assertEqual(count("TIERES"), 1)  # não traz as do TIERES_ART
+        self.assertEqual(count("TIER"), 2)  # pedaço do nick: os dois
+        self.assertEqual(count("S_"), 1)  # "_" não é curinga (senão "TIERES" + aspas também casaria)
+
     def test_filters_and_limit(self):
         for n in range(12):
             self.post(state(kickoff=1000 + n, goals=(n % 3, 0), final=True), players="TIERES,P%d" % n)
