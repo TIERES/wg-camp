@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'tournaments/_macros.html' import score, pending_legend %}{% from '_dialog.html' import form_dialog %}
+{% extends 'base.html' %}{% from 'tournaments/_macros.html' import score, pending_legend %}{% from '_dialog.html' import form_dialog, info_button, info_dialog %}
 {% block title %}Jogo · {{ t.name }}{% endblock %}{% block content %}
 <p><a href="{{ url_for('tournaments.show', slug=t.slug, aba='jogos') }}">← {{ t.name }}</a></p>
 <section class="match-head">
@@ -8,17 +8,35 @@
     <div class="big-score">{{ score(m, live_now.score if live_now else none) }}</div>
     <div>{{ names[m.away_entry_id] }}</div>
   </div>
-  <p class="match-status status-{{ m.status }}">
+  {# Gols e assistências do card no Ao vivo; em laranja enquanto o placar não foi confirmado. #}
+  {% set goals_pending = goals and m.status != 'confirmed' %}
+  {% if goals and (goals.home or goals.away) %}
+  <div class="live-scorers match-scorers{% if goals_pending %} pending{% endif %}" aria-label="Gols e assistências">
+    <ul>{% for g in goals.home %}<li>{{ g|scorer }}</li>{% endfor %}</ul>
+    <span class="match-ball">
+      <svg class="live-ball" viewBox="0 0 24 24" aria-label="Gols"><circle cx="12" cy="12" r="9"/><path d="m12 7 4 3-1.5 4.5h-5L8 10z"/><path d="M12 3v4M21 10h-5M3 10h5M7 20l2.5-5.5M17 20l-2.5-5.5"/></svg>
+      {% if goals_pending %}{{ info_button('gols-a-confirmar', 'Gols e assistências a confirmar') }}{% endif %}
+    </span>
+    <ul class="right">{% for g in goals.away %}<li>{{ g|scorer }}</li>{% endfor %}</ul>
+  </div>
+  {% if goals_pending %}{% call info_dialog('gols-a-confirmar', 'Gols e assistências a confirmar') %}
+    <p>{% if goals.live %}A partida está rolando agora: os gols e as assistências ainda podem mudar.{% else %}O placar deste jogo ainda precisa ser confirmado entre os jogadores (ou sozinho, {{ confirm_hours }} h depois do jogo).{% endif %}</p>
+    <p class="muted">Lidos do jogo pelo RetroArch TIERES. Só entram na Artilharia do campeonato depois que o resultado for confirmado.</p>
+  {% endcall %}{% endif %}
+  {% endif %}
+  <div class="match-status-row">
+  {# Reportado: o placar em laranja e a legenda já dizem que falta confirmar. #}
+  {% if m.status != 'reported' %}<p class="match-status status-{{ m.status }}">
     {% if m.status == 'confirmed' %}Resultado confirmado
-    {% elif m.status == 'reported' %}Placar {{ 'lido do jogo' if reported.entry_id is none else 'reportado' }}: <strong>{{ reported.home_goals }} x {{ reported.away_goals }}</strong>{% if reported.home_pens is not none %} ({{ reported.home_pens }} x {{ reported.away_pens }} nos pênaltis){% endif %} — esperando {{ ('a confirmação dos dois jogadores' if not confirmed_by else 'a confirmação de ' ~ (names[m.away_entry_id if confirmed_by[0] == m.home_entry_id else m.home_entry_id]|striptags)) if reported.entry_id is none else 'o adversário' }} até {{ deadline|localtime }}
     {% elif m.status == 'disputed' %}Resultado contestado{% if dispute %} (o adversário diz {{ dispute.home_goals }} x {{ dispute.away_goals }}){% endif %} — aguardando quem reportou aceitar ou o organizador decidir
     {% elif live_now %}Ao vivo agora: placar lido do jogo pelo RetroArch TIERES
     {% else %}Ainda sem resultado{% endif %}
-  </p>
+  </p>{% endif %}
+  {% if goals %}<a class="button secondary" href="{{ goals.url }}">{{ 'Placar Ao Vivo' if goals.live else 'Ver card Ao Vivo' }}</a>{% endif %}
+  </div>
   {% if quitter and m.status in ('reported', 'disputed', 'confirmed') %}<p class="friendly-warn">{{ quitter }} saiu da partida no meio do jogo (vale o placar de quando parou){% if m.status == 'confirmed' %} e perdeu o triplo de XP{% else %}: se o placar for confirmado, perde o triplo de XP - mesmo que tenha sido queda de conexão{% endif %}.</p>
   <p class="friendly-note muted">Joguem até o fim, mesmo faltando pouco tempo. Se a conexão cair, voltem em até 20 minutos e joguem de novo antes de sair: vale a partida nova, sem a penalidade.</p>{% endif %}
   {% if me and m.status == 'scheduled' and open %}<p class="friendly-note muted">Com os dois logados no WE Camp, o RetroArch TIERES manda o placar sozinho. Joguem até o fim, mesmo faltando pouco tempo: quem sai no meio do jogo (até por queda de conexão) perde o triplo de XP se o placar for confirmado. Se a conexão cair, voltem em até 20 minutos e joguem de novo antes de sair.</p>{% endif %}
-  {% if live_now %}<p><a class="match-live-big standings-live" href="{{ live_now.url }}" title="Ver a partida no Ao vivo">Ao vivo</a></p>{% endif %}
   {% if live_now or m.status in ('reported', 'disputed') %}{{ pending_legend(confirm_hours) }}{% endif %}
 </section>
 

@@ -1,0 +1,42 @@
+{# Artilharia e assistências (live.tournament_scorers / live.friendly_scorers):
+   os gols lidos do jogo pelo RetroArch TIERES nos jogos que contam. Os de
+   jogo ainda não confirmado somam e deixam a linha em laranja. #}
+{# Só a quantidade de gols/assistências (sem o "de pênalti"). #}
+{% macro scorer_table(rows, field, title, empty) -%}
+{% set noun = ('gol a ser confirmado', 'gols a serem confirmados') if field == 'goals' else ('assistência a ser confirmada', 'assistências a serem confirmadas') %}
+<section class="scorer-board">
+  <h2>{{ title }}</h2>
+  {% if rows %}
+  <div class="table-scroll">
+  <table class="ledger scorers">
+    <thead><tr><th class="num">#</th><th>Jogador</th><th>Time</th><th class="num">{{ 'Gols' if field == 'goals' else 'Assist.' }}</th></tr></thead>
+    <tbody>{% for r in rows %}{% set pend = r['pending_' ~ field] %}
+      <tr class="{{ ['scorer-more' if loop.index > 10 else '', 'scorer-pending' if pend else '']|select|join(' ') }}"{% if loop.index > 10 %} hidden{% endif %}>
+        <td class="num">{% if loop.first or r.position != loop.previtem.position %}{{ r.position }}º{% endif %}</td>
+        <td><span class="entry-name"><strong>{{ r.name }}</strong>{% if r.nick %}<small>{{ r.nick }}</small>{% endif %}</span></td>
+        <td><span class="entry"><img class="crest" src="{{ r.image }}" alt="" loading="lazy"><span>{{ r.team }}</span></span></td>
+        <td class="num">{% if pend %}{% set tip = '%s possui %d %s' % (r.name, pend, noun[0] if pend == 1 else noun[1]) %}<span class="tip-badge" tabindex="0" role="note" aria-label="{{ tip }}" data-tip="{{ tip }}">i</span> {% endif -%}
+          <strong>{{ r[field] }}</strong></td>
+      </tr>
+    {% endfor %}</tbody>
+  </table>
+  </div>
+  {% if rows|length > 10 %}<button type="button" class="secondary scorer-toggle" onclick="this.closest('.scorer-board').querySelectorAll('.scorer-more').forEach(function (r) { r.hidden = false }); this.remove()">Ver todos ({{ rows|length }})</button>{% endif %}
+  {% else %}<p class="muted">{{ empty }}</p>{% endif %}
+</section>
+{%- endmacro %}
+
+{# where: "do campeonato" / "deste amistoso". #}
+{% macro scorer_boards(board, where) -%}
+<div class="scorer-boards">
+  {{ scorer_table(board.scorers, 'goals', 'Artilharia', 'Nenhum gol ainda.') }}
+  {{ scorer_table(board.assists, 'assists', 'Assistências', 'Nenhuma assistência ainda.') }}
+</div>
+{% if board.scorers|selectattr('pending_goals')|list or board.assists|selectattr('pending_assists')|list %}
+<p class="legend provisional-legend"><span class="provisional-dot"></span> em laranja: jogador com gols ou assistências de jogos que ainda precisam ser confirmados entre os jogadores (o (i) mostra quantos). Eles já entram na soma; se o placar mudar, saem.</p>
+{% endif %}
+{% set parts = [] %}
+{% if board.games %}{% set _ = parts.append('%d jogo%s confirmado%s' % (board.games, 's' if board.games > 1 else '', 's' if board.games > 1 else '')) %}{% endif %}
+{% if board.pending_games %}{% set _ = parts.append('%d a confirmar' % board.pending_games) %}{% endif %}
+<p class="muted scorer-note">{% if parts %}Soma de {{ parts|join(' e ') }} {{ where }}, com o placar lido do jogo pelo RetroArch TIERES{% else %}Ainda nenhum jogo {{ where }} com o placar lido do jogo pelo RetroArch TIERES{% endif %} (os dois logados no WE Camp). Gol contra não conta; os pênaltis da disputa também não.</p>
+{%- endmacro %}

@@ -572,7 +572,8 @@ def friendlies():  # noqa: C901 - a lista, os filtros e as partidas de cada amis
     done = [r for r in history if _friendly_in_filters(r, me, filters)]
     from . import live
     shown = respond + pending + done[:FRIENDLIES_HISTORY_LIMIT]
-    games = {r["id"]: live.friendly_games(db, r) for r in shown if r["status"] in ("reported", "suspended", "confirmed")}
+    games = {r["id"]: _friendly_card_games(db, r) for r in shown
+             if r["status"] in ("reported", "suspended", "confirmed")}
     # Convite: o amigo vem já escolhido com ?com=<nick> (link "Chamar para amistoso").
     my_friends = friends.friends(db, me)
     chosen = request.args.get("com", "").strip()
@@ -636,10 +637,17 @@ def friendly_show(friendly_id):
     if row is None or (row["status"] != "confirmed" and me not in (row["home_id"], row["away_id"])
                        and not is_admin()):
         abort(404)
+    # Os artilheiros ficam no verso do card (a bola do título).
+    return render_template("tournaments/friendly.html", f=row, labels=friendly.STATUS_LABELS,
+                           needs_me=friendly.needs_me, card_games=_friendly_card_games(db, row))
+
+
+def _friendly_card_games(db, row):
+    """O que o card do amistoso mostra das partidas: (jogos, soma, artilharia
+    do verso do card - com um jogo na soma já vale)."""
     from . import live
     games, total = live.friendly_games(db, row)
-    return render_template("tournaments/friendly.html", f=row, labels=friendly.STATUS_LABELS,
-                           needs_me=friendly.needs_me, games=games, games_total=total)
+    return games, total, live.friendly_scorers(db, row, games)
 
 
 def _send_iso_file(stored_name, original_filename, archive_url, local_removed_at, protected=False):
@@ -853,7 +861,7 @@ def show(slug):
     config = store.settings_of(tournament)
     # Encerrado abre na Visão geral, com os vencedores; em andamento, na tabela.
     tab = request.args.get("aba", "tabela" if stages and tournament["status"] != "finished" else "geral")
-    if tab not in ("geral", "tabela", "jogos"):
+    if tab not in ("geral", "tabela", "jogos", "artilharia") or (tab == "artilharia" and not stages):
         tab = "geral"
     pool = store.prize_pool(db, tournament["id"])
     split = engine.parse_split(tournament["prize_split"])
@@ -887,9 +895,13 @@ def show(slug):
     elif tab == "jogos" and tournament["status"] == "running":
         from . import live
         live_table = live.tournament_live(db, tournament["id"])
+    scorers = None
+    if tab == "artilharia":
+        from . import live
+        scorers = live.tournament_scorers(db, tournament["id"])
     return render_template(
         "tournaments/show.html", t=tournament, entries=entries, my_entry=my_entry, stages=stages, tab=tab,
-        live_table=live_table, confirm_hours=setting(db, "torneios_confirmacao_horas"),
+        live_table=live_table, confirm_hours=setting(db, "torneios_confirmacao_horas"), scorers=scorers,
         team_list=team_list, free_teams=free_teams, team_modes=TEAM_MODES, crests=_crests(names), my_pending=my_pending,
         names=names, can_manage=can_manage(tournament), iso=iso_row, iso_ready=iso.downloadable(iso_row, current_app),
         format_label=formats.FORMATS[tournament["format"]], summary=formats.describe(tournament["format"], config),
@@ -1416,14 +1428,23 @@ def match(slug, match_id):
         from . import live
         rolling = live.tournament_live(db, tournament["id"])
         if match_id in rolling["matches"]:
-            live_now = {"score": rolling["matches"][match_id], "url": rolling["match_urls"][match_id]}
+            live_now = {"score": rolling["matches"][match_id], "url": rolling["match_urls"][match_id],
+                        "id": rolling["live_ids"][match_id]}
+    # Quem fez os gols e deu as assistências e o card no Ao vivo: da partida
+    # rolando agora ou da lida do jogo com o placar confirmado (ou o reportado,
+    # ainda esperando a confirmação).
+    reported = reports.last_report(db, match_id) if m["status"] in ("reported", "disputed") else None
+    from . import live
+    goals = live.match_goals(db, m, (m["home_goals"], m["away_goals"]) if m["status"] == "confirmed"
+                             else (reported["home_goals"], reported["away_goals"]) if reported else None,
+                             live_now["id"] if live_now else None)
     return render_template(
         "tournaments/match.html", t=tournament, m=m, names=names, me=me, manager=manager, h2h=h2h, live_now=live_now,
-        quitter=quitter,
+        quitter=quitter, goals=goals,
         confirm_hours=setting(db, "torneios_confirmacao_horas"),
         history=reports.history(db, match_id), labels=reports.ACTION_LABELS,
         disputer=reports.disputer(db, match_id) if m["status"] == "disputed" else None,
-        reported=reports.last_report(db, match_id) if m["status"] in ("reported", "disputed") else None,
+        reported=reported,
         confirmed_by=reports.confirmed_by(db, match_id) if m["status"] == "reported" else [],
         dispute=reports.last_dispute(db, match_id) if m["status"] == "disputed" else None,
         deadline=reports.deadline(db, m) if m["status"] == "reported" else None,

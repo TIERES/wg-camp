@@ -1,5 +1,4 @@
 {% extends 'base.html' %}{% from 'tournaments/_friendly.html' import friendly_card %}{% block title %}Amistoso {{ f.home_name }} x {{ f.away_name }} · WE Camp{% endblock %}{% block content %}
 <h1>Amistoso</h1>
-{{ friendly_card(f, labels, needs_me, '', (games, games_total)) }}
-{% if session.player_id in (f.home_id, f.away_id) %}<p><a href="{{ url_for('tournaments.friendlies') }}">Ver todos os meus amistosos</a></p>{% endif %}
+{{ friendly_card(f, labels, needs_me, '', card_games) }}{% if session.player_id in (f.home_id, f.away_id) %}<p><a href="{{ url_for('tournaments.friendlies') }}">Ver todos os meus amistosos</a></p>{% endif %}
 {% endblock %}

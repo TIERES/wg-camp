@@ -568,7 +568,9 @@ class LiveMatchesTest(unittest.TestCase):
         self.post(state())
         html = self.cards()
         self.assertRegex(html, r'<img class="live-tournament" src="[^"]*euro\.webp" alt="EUROCOPA 2004"')
-        self.assertIn("Winning Eleven 2002 · EUROCOPA 2004", html)
+        # Embaixo do "Amistoso", só a ISO: o jogo base já está na capa ao lado.
+        self.assertIn("<small>EUROCOPA 2004</small>", html)
+        self.assertNotIn("Winning Eleven 2002 ·", html)
 
     def test_card_shows_the_championship_image_or_else_the_catalog_iso(self):
         """Jogo de campeonato: a imagem do campeonato; sem ela, a da mesma ISO no cadastro."""
@@ -1014,7 +1016,16 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertNotIn("3 x 7", page)
         self.assertIn("Os 3 jogos terminaram: confira os placares na lista", page)
         self.assertIn("<li>Jogo 2: 0 x 3</li>", page)  # na janela "Não aceitar o placar"
-        self.assertNotIn('data-dialog="jogo-xp-', page)  # o XP de cada jogo só depois de confirmado
+        # Cada jogo só com o (i): a situação na janela dele; o XP só depois de confirmado.
+        self.assertEqual(page.count('data-dialog="jogo-%d-' % fid), 3)
+        self.assertNotIn('class="fg-status-text"', page)
+        self.assertIn('class="fg-dialog-status">Encerrado em', page)
+        self.assertNotIn('class="fg-xp-list"', page)
+        # A bola no título (no lugar do (i)) troca os jogos pelos artilheiros; sem o (i) do amistoso nem "Voltar".
+        self.assertIn('class="flip-ball" data-card-flip', page)
+        self.assertIn('<div class="slide-pane back friendly-back" inert>', page)
+        self.assertNotIn('amistoso-info-%d' % fid, page)
+        self.assertNotIn("Voltar aos jogos", page)
         with mock.patch.object(friendly, "MIN_XP", 0):
             client.post("/torneios/amistosos/%d/confirmar" % fid, data={"csrf_token": CSRF})
             with self.app.app_context():
@@ -1036,9 +1047,9 @@ class LiveMatchesTest(unittest.TestCase):
             self.assertEqual((record["played"], record["wins"], record["losses"]), (3, 1, 2))
         page = client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True)
         for n in (1, 2, 3):
-            self.assertIn('data-dialog="jogo-xp-%d-%d"' % (fid, n), page)
+            self.assertIn('data-dialog="jogo-%d-%d"' % (fid, n), page)
         self.assertIn("Vale para o Ranking e o XP (soma dos 3 jogos)", page)
-        dialog = page[page.index('id="jogo-xp-%d-2"' % fid):]
+        dialog = page[page.index('id="jogo-%d-2"' % fid):]
         dialog = dialog[:dialog.index("</dialog>")]
         self.assertIn("TIERES 0 x 3 ANDERSHOW", dialog)
         self.assertIn(">-20 XP</span>", dialog)
@@ -1208,6 +1219,121 @@ class LiveMatchesTest(unittest.TestCase):
         row = self.rows("SELECT * FROM iso_team_slots WHERE slot = 16")[0]
         self.assertEqual(row["source"], "admin")
         self.assertIn("Camarões", self.cards())
+
+    def test_leaderboard_skips_own_goals_and_ranks_ties(self):
+        from app import live
+        match = {"id": 7, "state_json": json.dumps({"teams": [
+            {"id": 1, "goals": 4, "scorers": [["Gol contra", 5, "J.Leko", "og"], ["Gol contra", 9, ""],
+                                              ["S.Vryzas", 17, "Karagounis"], ["S.Vryzas", 60, "", "pen"]]},
+            {"id": 2, "goals": 2, "scorers": [["J.Leko", 20, "Modric"], ["", 30, ""]]}]}),
+                 "local_players_json": '["TIERES"]', "visita_players_json": '["ANDERSHOW"]',
+                 "tournament_match_id": None, "content_id": "x"}
+        with self.app.app_context():
+            events = live.goal_events(get_db(), match)
+        self.assertEqual([(e["name"], e["assist"], e["pen"], e["nick"]) for e in events],
+                         [("S.Vryzas", "Karagounis", False, "TIERES"), ("S.Vryzas", "", True, "TIERES"),
+                          ("J.Leko", "Modric", False, "ANDERSHOW")])
+        # O mesmo jogador do jogo com outro dono (os dois de Grécia) é outra linha.
+        events.append(dict(events[0], nick="ANDERSHOW", assist="Modric", match_id=8))
+        board = live.leaderboard(events)
+        self.assertEqual([(r["position"], r["name"], r["nick"], r["goals"], r["pens"]) for r in board["scorers"]],
+                         [(1, "S.Vryzas", "TIERES", 2, 1), (2, "J.Leko", "ANDERSHOW", 1, 0),
+                          (2, "S.Vryzas", "ANDERSHOW", 1, 0)])
+        self.assertEqual([(r["position"], r["name"], r["assists"], r["games"]) for r in board["assists"]],
+                         [(1, "Modric", 2, 2), (2, "Karagounis", 1, 1)])
+
+    def test_championship_scorers_only_from_confirmed_games_with_the_same_score(self):
+        from app.tournament import reports
+        self.make_league()
+        self.finish_live(goals=(2, 1))  # TIERES (Grécia, LOCAL) 2 x 1 ANDERSHOW
+        client = self.app.test_client()
+        html = client.get("/torneios/liga-1?aba=artilharia").get_data(as_text=True)
+        self.assertIn('class="active">Artilharia</a>', html)
+        # Reportado, ainda não confirmado: os gols já somam, em laranja, "a confirmar".
+        self.assertIn("Soma de 1 a confirmar do campeonato", html)
+        self.assertIn('<tr class="scorer-pending">', html)
+        self.assertIn('data-tip="S.Vryzas possui 2 gols a serem confirmados">i</span>', html)
+        self.assertIn('data-tip="J.Leko possui 1 gol a ser confirmado">i</span>', html)
+        self.assertNotIn("a confirmar</small>", html)
+        self.assertIn("provisional-legend", html)
+        # Página do jogo reportado: os gols em laranja, com o (i) de que faltam confirmar, e o card no Ao vivo.
+        match_id = self.rows("SELECT id FROM tournament_matches")[0]["id"]
+        page = client.get("/torneios/liga-1/jogos/%d" % match_id).get_data(as_text=True)
+        self.assertIn('class="live-scorers match-scorers pending"', page)
+        self.assertIn('data-dialog="gols-a-confirmar"', page)
+        self.assertIn(">Ver card Ao Vivo</a>", page)
+        self.assertNotIn(">Gols</a>", page)
+        with self.app.app_context():
+            reports.auto_confirm(get_db(), at=datetime.now(timezone.utc) + timedelta(hours=25))
+        html = client.get("/torneios/liga-1?aba=artilharia").get_data(as_text=True)
+        self.assertIn("Soma de 1 jogo confirmado do campeonato", html)
+        self.assertNotIn("scorer-pending", html)
+        self.assertNotIn("provisional-legend", html)
+        scorers, assists = html.split("<h2>Assistências</h2>")
+        self.assertIn("<strong>S.Vryzas</strong><small>TIERES</small>", scorers)
+        self.assertRegex(scorers, r"(?s)S\.Vryzas.*?Grécia.*?<strong>2</strong>")
+        self.assertRegex(scorers, r"(?s)J\.Leko.*?Croácia.*?<strong>1</strong>")
+        self.assertRegex(assists, r"(?s)Karagounis.*?<strong>2</strong>")
+        self.assertNotIn("J.Leko", assists)  # gol sem assistência
+        # Página do jogo: os gols de cada lado do ponto de vista do campeonato (mandante = ANDERSHOW).
+        page = client.get("/torneios/liga-1/jogos/%d" % match_id).get_data(as_text=True)
+        self.assertNotIn("gols-a-confirmar", page)
+        self.assertIn(">Ver card Ao Vivo</a>", page)
+        home, away = page.split('class="match-ball"')
+        self.assertIn("<li>J.Leko 20'</li>", home)
+        self.assertEqual(away.count("<li>S.Vryzas 17' <small>(assist. Karagounis)</small></li>"), 2)
+        # Placar corrigido à mão (outro que o lido do jogo): os gols lidos não valem.
+        with self.app.app_context():
+            get_db().execute("UPDATE tournament_matches SET home_goals = 3 WHERE status = 'confirmed'")
+            get_db().commit()
+        self.assertNotIn("S.Vryzas", client.get("/torneios/liga-1?aba=artilharia").get_data(as_text=True))
+
+    def test_championship_game_page_while_live(self):
+        self.make_league()
+        self.post(state(goals=(1, 0)))  # rolando agora
+        match_id = self.rows("SELECT id FROM tournament_matches")[0]["id"]
+        page = self.app.test_client().get("/torneios/liga-1/jogos/%d" % match_id).get_data(as_text=True)
+        self.assertIn(">Placar Ao Vivo</a>", page)
+        self.assertIn('class="live-scorers match-scorers pending"', page)
+        self.assertIn("A partida está rolando agora", page)
+
+    def test_friendly_scorers_on_the_back_of_the_card(self):
+        with self.app.app_context():
+            db = get_db()
+            fid = db.execute("INSERT INTO friendly_matches (home_id, away_id, status, created_at, updated_at) "
+                             "VALUES (?, ?, 'accepted', ?, ?)", (self.tieres, self.anders, now(), now())).lastrowid
+            db.commit()
+        client = self.app.test_client()
+        # Sem jogos ainda: o (i) do amistoso no título, sem a bola.
+        with client.session_transaction() as sess:
+            sess["player_id"] = self.tieres
+        page = client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True)
+        self.assertNotIn("flip-ball", page)
+        self.assertIn('data-dialog="amistoso-info-%d"' % fid, page)
+        # Um jogo já basta para a bola e o verso (uma vez só na página).
+        self.play(1000, (2, 1))
+        self.end_session()
+        self.cards()
+        page = client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True)
+        self.assertIn('class="flip-ball" data-card-flip', page)
+        self.assertEqual(page.count("<h2>Artilharia</h2>"), 1)
+        with self.app.app_context():
+            db = get_db()
+            fid = db.execute("INSERT INTO friendly_matches (home_id, away_id, status, created_at, updated_at) "
+                             "VALUES (?, ?, 'accepted', ?, ?)", (self.tieres, self.anders, now(), now())).lastrowid
+            db.execute("UPDATE live_sessions SET ended_at = ?",
+                       ((datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(timespec="seconds"),))
+            db.commit()
+        self.play(40000, (1, 0))
+        self.play(80000, (2, 2))
+        self.end_session()
+        self.cards()
+        page = client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True)
+        self.assertIn("Soma de 2 a confirmar deste amistoso", page)  # amistoso reportado, ainda sem confirmação
+        scorers, assists = page.split("<h2>Assistências</h2>")
+        self.assertRegex(scorers, r"(?s)S\.Vryzas</strong><small>TIERES</small>.*?<strong>3</strong>")
+        self.assertRegex(scorers, r"(?s)J\.Leko</strong><small>ANDERSHOW</small>.*?<strong>2</strong>")
+        self.assertRegex(assists, r"(?s)Karagounis.*?<strong>3</strong>")
 
 
 if __name__ == "__main__":
