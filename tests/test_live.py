@@ -568,7 +568,9 @@ class LiveMatchesTest(unittest.TestCase):
         self.post(state())
         html = self.cards()
         self.assertRegex(html, r'<img class="live-tournament" src="[^"]*euro\.webp" alt="EUROCOPA 2004"')
-        self.assertIn("Winning Eleven 2002 · EUROCOPA 2004", html)
+        # Embaixo do "Amistoso", só a ISO: o jogo base já está na capa ao lado.
+        self.assertIn("<small>EUROCOPA 2004</small>", html)
+        self.assertNotIn("Winning Eleven 2002 ·", html)
 
     def test_card_shows_the_championship_image_or_else_the_catalog_iso(self):
         """Jogo de campeonato: a imagem do campeonato; sem ela, a da mesma ISO no cadastro."""

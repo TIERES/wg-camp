@@ -11,7 +11,8 @@
       {% elif iso_image %}<img class="live-tournament" src="{{ c.iso.image }}" alt="{{ c.iso.name }}" title="{{ c.iso.name }}" loading="lazy">{% endif %}
     </span>{% endif %}
     <span class="live-context">{% if c.link %}<a href="{{ c.link }}">{{ c.context }}</a>{% else %}{{ c.context }}{% endif %}{% if c.is_test %} <span class="badge live-test">Teste</span>{% endif %}
-      {% if c.game %}<small>{{ c.game.name }}{% if c.tournament and not c.link %} · <a href="{{ c.tournament.url }}">{{ c.tournament.name }}</a>{% elif c.iso and not c.tournament %} · {{ c.iso.name }}{% endif %}</small>{% endif %}</span>
+      {# Sem o nome do jogo base: a capa dele já está nos logos. #}
+      {% if c.tournament and not c.link %}<small><a href="{{ c.tournament.url }}">{{ c.tournament.name }}</a></small>{% elif c.iso and not c.tournament %}<small>{{ c.iso.name }}</small>{% endif %}</span>
     <span class="live-status">
       {% if c.status == 'live' and not c.stale %}<span class="live-badge">Ao vivo</span>{% endif %}
       <span class="live-clock{% if c.status == 'live' and not c.stale and not c.interval %} on{% endif %}">{{ c.clock }}</span>
