@@ -19,7 +19,7 @@
           <span class="badge icon-badge">{{ icon('timer') }}{{ replay.duration_seconds|duration }}</span>
           <strong class="t-name">{{ replay.player_names or 'Jogadores não informados' }}</strong>
           <span class="t-meta"><span>{{ icon('clock') }}{{ replay.started_at|localtime }}</span></span>
-          <span class="t-meta"><span>{{ icon('disk') }}{{ replay.game_name or '—' }}</span></span>
+          <span class="t-meta"><span>{{ icon('disk') }}{{ replay.game_name|fit if replay.game_name else '—' }}</span></span>
         </span>
         <div class="t-foot"><a class="button icon-button" href="{{ url_for('replays.download', session_id=replay.session_id) }}">{{ icon('download') }}Baixar replay</a></div>
       </div>

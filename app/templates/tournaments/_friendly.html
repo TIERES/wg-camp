@@ -126,7 +126,7 @@
     <div class="friendly-iso-text">
       <small class="muted">{{ 'ISO do campeonato' if f.iso_tournament_id else 'ISO do WE Camp' }}</small>
       <strong>{{ f.iso_title }}</strong>
-      <span class="muted">{{ f.game_name }}{% if f.iso_filename %} · {{ f.iso_filename }}{% endif %}</span>
+      <span class="muted">{{ f.game_name }}{% if f.iso_filename %} · {{ f.iso_filename|fit }}{% endif %}</span>
     </div>
   </div>
   {% endif %}

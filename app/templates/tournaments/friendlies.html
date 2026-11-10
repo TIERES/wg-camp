@@ -90,7 +90,7 @@
             <span class="badge {{ 'iso-catalog' if o.kind == 'catalog' else '' }}">{{ 'ISO do WE Camp' if o.kind == 'catalog' else 'ISO de campeonato' }}</span>
             <strong class="t-name">{{ o.title }}</strong>
             <span class="muted">{{ o.game }}</span>
-            {% if o.filename %}<small class="muted iso-file">{{ o.filename }}</small>{% endif %}
+            {% if o.filename %}<small class="muted iso-file">{{ o.filename|fit }}</small>{% endif %}
             <small class="iso-selected-tag">Selecionada · clique para tirar</small>
           </span>
         </button>
@@ -229,7 +229,7 @@
         <span class="badge {{ 'iso-catalog' if i.approved_at else 'iso-pending' }}">{{ 'Liberada' if i.approved_at else 'Aguardando liberação' }}</span>
         <strong class="t-name">{{ i.name }}</strong>
         <span class="muted">{{ i.game_name }}</span>
-        {% if i.original_filename %}<small class="muted iso-file">{{ i.original_filename }}</small>{% endif %}
+        {% if i.original_filename %}<small class="muted iso-file">{{ i.original_filename|fit }}</small>{% endif %}
       </span>
       {% if i.stored_name %}<div class="t-foot"><div class="archive-progress" data-archive-status="{{ url_for('tournaments.catalog_iso_status', catalog_id=i.id) }}"></div></div>{% endif %}
     </div>

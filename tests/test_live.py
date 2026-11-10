@@ -130,7 +130,9 @@ class LiveMatchesTest(unittest.TestCase):
                      "assist. Karagounis", "Partida livre", "Ao vivo", "Euro vs Copa America 2004.bin"):
             self.assertIn(text, html)
         self.assertNotIn("Grecia", html)
-        self.assertRegex(html, r"\d\d/\d\d/\d{4} \d\d:\d\d · Euro vs Copa America")
+        # Nome do arquivo longo: |fit (o começo corta com "…" se não couber, o fim fica; o inteiro no title).
+        self.assertRegex(html, r'\d\d/\d\d/\d{4} \d\d:\d\d ·</span><span class="fit" title="Euro vs Copa America 2004\.bin">'
+                               '<span class="fit-head">Euro vs Copa America </span><span class="fit-tail">2004\\.bin</span>')
         self.assertIn("TIERES", self.app.test_client().get("/ao-vivo").get_data(as_text=True))
 
     def test_v1_names_are_ignored(self):
