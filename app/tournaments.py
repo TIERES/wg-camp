@@ -572,7 +572,8 @@ def friendlies():  # noqa: C901 - a lista, os filtros e as partidas de cada amis
     done = [r for r in history if _friendly_in_filters(r, me, filters)]
     from . import live
     shown = respond + pending + done[:FRIENDLIES_HISTORY_LIMIT]
-    games = {r["id"]: live.friendly_games(db, r) for r in shown if r["status"] in ("reported", "suspended", "confirmed")}
+    games = {r["id"]: _friendly_card_games(db, r) for r in shown
+             if r["status"] in ("reported", "suspended", "confirmed")}
     # Convite: o amigo vem já escolhido com ?com=<nick> (link "Chamar para amistoso").
     my_friends = friends.friends(db, me)
     chosen = request.args.get("com", "").strip()
@@ -636,11 +637,17 @@ def friendly_show(friendly_id):
     if row is None or (row["status"] != "confirmed" and me not in (row["home_id"], row["away_id"])
                        and not is_admin()):
         abort(404)
+    # Os artilheiros ficam no verso do card (a bola do título).
+    return render_template("tournaments/friendly.html", f=row, labels=friendly.STATUS_LABELS,
+                           needs_me=friendly.needs_me, card_games=_friendly_card_games(db, row))
+
+
+def _friendly_card_games(db, row):
+    """O que o card do amistoso mostra das partidas: (jogos, soma, artilharia
+    do verso do card - com um jogo na soma já vale)."""
     from . import live
     games, total = live.friendly_games(db, row)
-    return render_template("tournaments/friendly.html", f=row, labels=friendly.STATUS_LABELS,
-                           needs_me=friendly.needs_me, games=games, games_total=total,
-                           scorers=live.friendly_scorers(db, row, games))
+    return games, total, live.friendly_scorers(db, row, games)
 
 
 def _send_iso_file(stored_name, original_filename, archive_url, local_removed_at, protected=False):

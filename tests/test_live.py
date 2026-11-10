@@ -1014,7 +1014,15 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertNotIn("3 x 7", page)
         self.assertIn("Os 3 jogos terminaram: confira os placares na lista", page)
         self.assertIn("<li>Jogo 2: 0 x 3</li>", page)  # na janela "Não aceitar o placar"
-        self.assertNotIn('data-dialog="jogo-xp-', page)  # o XP de cada jogo só depois de confirmado
+        # Cada jogo só com o (i): a situação na janela dele; o XP só depois de confirmado.
+        self.assertEqual(page.count('data-dialog="jogo-%d-' % fid), 3)
+        self.assertNotIn('class="fg-status-text"', page)
+        self.assertIn('class="fg-dialog-status">Encerrado em', page)
+        self.assertNotIn('class="fg-xp-list"', page)
+        # A bola no título (no lugar do (i)) gira o card para os artilheiros; o (i) do amistoso vai para o verso.
+        self.assertIn('class="flip-ball" data-card-flip', page)
+        self.assertIn('<div class="tie-face back friendly-back" inert>', page)
+        self.assertLess(page.index('<div class="tie-face back friendly-back"'), page.index('data-dialog="amistoso-info-%d"' % fid))
         with mock.patch.object(friendly, "MIN_XP", 0):
             client.post("/torneios/amistosos/%d/confirmar" % fid, data={"csrf_token": CSRF})
             with self.app.app_context():
@@ -1036,9 +1044,9 @@ class LiveMatchesTest(unittest.TestCase):
             self.assertEqual((record["played"], record["wins"], record["losses"]), (3, 1, 2))
         page = client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True)
         for n in (1, 2, 3):
-            self.assertIn('data-dialog="jogo-xp-%d-%d"' % (fid, n), page)
+            self.assertIn('data-dialog="jogo-%d-%d"' % (fid, n), page)
         self.assertIn("Vale para o Ranking e o XP (soma dos 3 jogos)", page)
-        dialog = page[page.index('id="jogo-xp-%d-2"' % fid):]
+        dialog = page[page.index('id="jogo-%d-2"' % fid):]
         dialog = dialog[:dialog.index("</dialog>")]
         self.assertIn("TIERES 0 x 3 ANDERSHOW", dialog)
         self.assertIn(">-20 XP</span>", dialog)
@@ -1286,19 +1294,26 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertIn('class="live-scorers match-scorers pending"', page)
         self.assertIn("A partida está rolando agora", page)
 
-    def test_friendly_scorers_with_more_than_one_game(self):
+    def test_friendly_scorers_on_the_back_of_the_card(self):
         with self.app.app_context():
             db = get_db()
             fid = db.execute("INSERT INTO friendly_matches (home_id, away_id, status, created_at, updated_at) "
                              "VALUES (?, ?, 'accepted', ?, ?)", (self.tieres, self.anders, now(), now())).lastrowid
             db.commit()
         client = self.app.test_client()
+        # Sem jogos ainda: o (i) do amistoso no título, sem a bola.
         with client.session_transaction() as sess:
             sess["player_id"] = self.tieres
+        page = client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True)
+        self.assertNotIn("flip-ball", page)
+        self.assertIn('data-dialog="amistoso-info-%d"' % fid, page)
+        # Um jogo já basta para a bola e o verso (uma vez só na página).
         self.play(1000, (2, 1))
         self.end_session()
         self.cards()
-        self.assertNotIn("<h2>Artilharia</h2>", client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True))
+        page = client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True)
+        self.assertIn('class="flip-ball" data-card-flip', page)
+        self.assertEqual(page.count("<h2>Artilharia</h2>"), 1)
         with self.app.app_context():
             db = get_db()
             fid = db.execute("INSERT INTO friendly_matches (home_id, away_id, status, created_at, updated_at) "

@@ -1176,11 +1176,10 @@ def match_goals(db, match, score, live_id=None):
 
 
 def friendly_scorers(db, friendly_row, games):
-    """Artilharia do amistoso: os jogos que entram na soma (friendly_games:
-    summed), só com mais de um - com um, o card da partida já diz tudo. None
-    sem isso."""
+    """Artilharia do amistoso (verso do card): os jogos que entram na soma
+    (friendly_games: summed). None sem nenhum."""
     ids = [g["id"] for g in games if g["summed"]]
-    if len(ids) < 2:
+    if not ids:
         return None
     rows = db.execute("SELECT * FROM live_matches WHERE id IN (%s) ORDER BY started_at, id" % ",".join("?" * len(ids)),
                       ids).fetchall()

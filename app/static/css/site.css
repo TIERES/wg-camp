@@ -450,7 +450,7 @@ header nav { align-items:center }
 .friendly-split > :only-child { grid-column:1 / -1 } .friendly-split .friendly-iso { margin:0 }
 @media (max-width:900px) { .friendly-split { grid-template-columns:minmax(0, 1fr) } }
 .friendly-games { min-width:0 } .fg-list { background:#111827; border-radius:8px; overflow:hidden }
-.fg-row { position:relative; display:grid; grid-template-columns:5rem minmax(0, 1fr) 5.8rem minmax(0, 1fr) 5rem; align-items:center; gap:.45rem; padding:.45rem .55rem; color:inherit; text-decoration:none; border-top:1px solid #1f2937 }
+.fg-row { position:relative; display:grid; grid-template-columns:5rem minmax(0, 1fr) 5.8rem minmax(0, 1fr) 1.4rem; align-items:center; gap:.45rem; padding:.45rem .55rem; color:inherit; text-decoration:none; border-top:1px solid #1f2937 }
 .fg-row:first-child { border-top:0 } .fg-row:hover { background:#0b1120; box-shadow:inset 3px 0 0 var(--accent) } .fg-row.not-summed { opacity:.6 }
 /* A linha inteira é o link do nº (::after cobre a linha); o (i) do XP fica por cima dele. */
 .fg-link { color:#9ca3af; text-decoration:none } .fg-link::after { content:""; position:absolute; inset:0 }
@@ -462,10 +462,22 @@ header nav { align-items:center }
 .fg-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600 } .fg-crest { width:22px; height:22px; object-fit:contain; flex:none }
 /* Coluna do placar com largura fixa: os escudos ficam alinhados em todas as linhas. */
 .fg-score { display:grid; justify-items:center; line-height:1.15; white-space:nowrap } .fg-score small { color:#9ca3af; font-size:.72rem } /* pênaltis embaixo */
-.fg-status { display:grid; justify-items:end; gap:.2rem; text-align:right; font-size:.72rem; color:#d1d5db }
-.fg-status-text { display:grid; justify-items:end } .fg-status small { color:#9ca3af; font-size:.68rem }
-/* Celular: sem data e situação (estão no card do Ao vivo, ao clicar); o (i) do XP fica. */
-@media (max-width:560px) { .fg-row { grid-template-columns:1.4rem minmax(0, 1fr) 6rem minmax(0, 1fr) 1.4rem } .fg-when,.fg-status-text { display:none } .fg-meta,.fg-status { justify-content:center; justify-items:center } }
+/* Só o (i) do jogo: a situação (Encerrado...) e o XP ficam na janela dele. */
+.fg-status { display:grid; justify-items:end }
+.fg-dialog-status { color:#d1d5db } .friendly-warn-text { color:#fca5a5 }
+/* Celular: sem a data (está no (i) e no card do Ao vivo). */
+@media (max-width:560px) { .fg-row { grid-template-columns:1.4rem minmax(0, 1fr) 6rem minmax(0, 1fr) 1.4rem } .fg-when { display:none } .fg-meta,.fg-status { justify-content:center; justify-items:center } }
+/* A bola do título gira o card do amistoso para os artilheiros (card-flip.js; o giro é o .tie-flip). */
+.flip-ball { display:inline-grid; place-items:center; width:1.6rem; height:1.6rem; margin-left:.4rem; padding:0; border-radius:50%; background:transparent; border:1.5px solid #6b7280; color:#d1d5db; cursor:pointer; flex:none }
+.flip-ball .live-ball { width:18px; height:18px; margin:0; color:inherit }
+.flip-ball:hover,.flip-ball:focus-visible,.flip-ball[aria-pressed="true"] { border-color:var(--accent); color:var(--accent) }
+/* O verso não estica a frente: fica por cima, e ao girar o card ganha a altura dele (card-flip.js). */
+.friendly-flip > .friendly-back { position:absolute; top:0; left:0; right:0 }
+.friendly-flip { transition:transform .55s cubic-bezier(.4,.2,.2,1), min-height .3s ease }
+.friendly-back .scorer-boards { margin-top:.25rem } .friendly-back h2 { font-size:1rem; margin:.4rem 0 0 }
+.friendly-back .table-scroll { margin:.5rem 0 } .friendly-back .scorers { font-size:.85rem }
+.friendly-back-foot { display:flex; justify-content:space-between; align-items:center; gap:.5rem; flex-wrap:wrap }
+.friendly-back-foot > :only-child { margin-left:auto }
 .fg-xp-list { list-style:none; padding:0 !important } .fg-xp-list .xp-delta { font-weight:700 }
 .fg-reject-list { margin:0; padding-left:1.2rem }
 /* "Placar agregado" no título do card e no convite. */
