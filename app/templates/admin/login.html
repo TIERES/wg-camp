@@ -1,3 +1,20 @@
-{% extends 'base.html' %}{% block title %}Entrar · Arena17{% endblock %}{% block content %}
-<section class="login"><h1>Administração</h1><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Usuário<input name="username" autocomplete="username" required></label><label>Senha<input type="password" name="password" autocomplete="current-password" required></label><button>Entrar</button></form></section>
+{% extends 'base.html' %}{% from '_password.html' import password_toggle %}{% from '_icons.html' import icon %}{% block title %}Entrar · Administração WE Camp{% endblock %}{% block content %}
+{# Mesmo visual do login do jogador (players/login.html), sem os links de conta. #}
+<section class="login account-form login-card">
+  <div class="login-head">
+    <span class="login-badge" aria-hidden="true">{{ icon('shield') }}</span>
+    <h1>Administração</h1>
+    <p class="muted">Acesse a administração do WE Camp</p>
+  </div>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Usuário
+      <span class="input-icon">{{ icon('user') }}<input name="username" autocomplete="username" required autofocus></span>
+    </label>
+    <label>Senha
+      <span class="input-icon">{{ icon('lock') }}<input type="password" name="password" autocomplete="current-password" required>{{ password_toggle() }}</span>
+    </label>
+    <button class="login-submit">{{ icon('login') }}Entrar</button>
+  </form>
+</section>
 {% endblock %}
