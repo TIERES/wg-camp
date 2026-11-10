@@ -82,8 +82,8 @@
 {% set has_info = accepted_info or quit_note or has_games %}
 {% set title = 'Amistoso' ~ (' · ' ~ f.game_name if f.game_name else '') %}
 {# Artilheiros e assistências (live.friendly_scorers, 3º item de games): com
-   eles, a bola no título gira o card (static/js/card-flip.js) para o verso
-   com as tabelas, e o (i) do amistoso passa para o verso. #}
+   eles, a bola no lugar do (i) do título troca o conteúdo do card - os jogos
+   sobem e as tabelas descem, e vice-versa (static/js/card-flip.js). #}
 {% set scorers = games[2] if games and games|length > 2 else none %}
 <article class="friendly-card friendly-{{ f.status }}{% if mine and needs_me(f, me) %} friendly-todo{% endif %}" id="amistoso-{{ f.id }}">
   <div class="friendly-head">
@@ -92,7 +92,7 @@
       {%- elif has_info %}{{ info_button('amistoso-info-%d' % f.id, 'Sobre este amistoso') }}{% endif %}</span>
     <span class="friendly-status">{{ 'Convite para você' if f.status == 'invited' and f.away_id == me else labels[f.status] }}</span>
   </div>
-  {% if has_info %}{% call info_dialog('amistoso-info-%d' % f.id, title) %}
+  {% if has_info and not scorers %}{% call info_dialog('amistoso-info-%d' % f.id, title) %}
     {% if accepted_info %}
     <p>Depois do jogo, informe o placar. {{ other }} vai precisar confirmar.</p>
     <p>Com os dois logados no WE Camp, o RetroArch TIERES manda o placar sozinho. Joguem até o fim, mesmo faltando pouco tempo: quem sai no meio de um jogo (até por queda de conexão) perde o triplo de XP se o placar for confirmado. Se a conexão cair, voltem em até 20 minutos e terminem outra partida antes de sair.</p>
@@ -100,9 +100,8 @@
     {% endif %}
     {% if quit_note %}<p>Joguem até o fim, mesmo faltando pouco tempo. Se a conexão cair, voltem em até 20 minutos e terminem outra partida antes de sair: o placar do jogo interrompido continua contando, mas sem a penalidade.</p>{% endif %}
     {% if has_games %}<p>Clique numa partida para ver o card no Ao vivo, com quem fez os gols. Cada jogo vale sozinho no XP{% if f.status == 'confirmed' %} (o (i) do jogo mostra quanto ele deu){% endif %}. Pênaltis contam como empate.</p>{% endif %}
-    {% if scorers %}<p>A bola no título gira o card para os artilheiros e as assistências dos jogos.</p>{% endif %}
   {% endcall %}{% endif %}
-  {% if scorers %}<div class="tie-flip friendly-flip"><div class="tie-face front">{% endif %}
+  {% if scorers %}<div class="friendly-slide"><div class="slide-pane front"><div class="slide-inner">{% endif %}
   <div class="friendly-line">
     <span class="with-avatar home">{{ avatar_button(f.home_id, f.home_name) }}<a href="{{ url_for('tournaments.player', nome=f.home_name) }}">{{ f.home_name }}</a></span>
     {% if score_entry %}
@@ -134,6 +133,8 @@
   </div>
   {% endif %}
   {% if f.message %}<p class="friendly-note"><small class="muted">Recado de {{ f.home_name }}:</small> {{ f.message }}</p>{% endif %}
+  {# Com a bola no título não há o (i) do amistoso: o aviso de quem saiu no meio fica no card. #}
+  {% if scorers and quit_note %}<p class="friendly-note muted">Joguem até o fim, mesmo faltando pouco tempo. Se a conexão cair, voltem em até 20 minutos e terminem outra partida antes de sair: o placar do jogo interrompido continua contando, mas sem a penalidade.</p>{% endif %}
 
   {% if f.status == 'invited' %}
     {% if mine and f.away_id == me %}
@@ -198,12 +199,10 @@
   <div class="friendly-foot"><small class="muted">{% if f.confirmed_at %}Confirmado em {{ f.confirmed_at|localtime }}{% else %}Atualizado em {{ f.updated_at|localtime }}{% endif %}</small>
     {% if f.status == 'accepted' and mine %}{{ friendly_form(f, 'cancelar', 'Cancelar amistoso', 'secondary small', '', back) }}{% endif %}
   </div>
-  {% if scorers %}</div>
-  <div class="tie-face back friendly-back" inert>
+  {% if scorers %}</div></div>
+  <div class="slide-pane back friendly-back" inert><div class="slide-inner">
     {{ scorer_boards(scorers, 'deste amistoso') }}
-    <div class="friendly-back-foot">{% if has_info %}<span class="muted">Sobre este amistoso {{ info_button('amistoso-info-%d' % f.id, 'Sobre este amistoso') }}</span>{% endif %}
-      <button type="button" class="secondary small" data-card-flip>Voltar aos jogos</button></div>
-  </div></div>{% endif %}
+  </div></div></div>{% endif %}
 </article>
 {%- endmacro %}
 

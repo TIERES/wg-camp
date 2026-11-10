@@ -1019,10 +1019,11 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertNotIn('class="fg-status-text"', page)
         self.assertIn('class="fg-dialog-status">Encerrado em', page)
         self.assertNotIn('class="fg-xp-list"', page)
-        # A bola no título (no lugar do (i)) gira o card para os artilheiros; o (i) do amistoso vai para o verso.
+        # A bola no título (no lugar do (i)) troca os jogos pelos artilheiros; sem o (i) do amistoso nem "Voltar".
         self.assertIn('class="flip-ball" data-card-flip', page)
-        self.assertIn('<div class="tie-face back friendly-back" inert>', page)
-        self.assertLess(page.index('<div class="tie-face back friendly-back"'), page.index('data-dialog="amistoso-info-%d"' % fid))
+        self.assertIn('<div class="slide-pane back friendly-back" inert>', page)
+        self.assertNotIn('amistoso-info-%d' % fid, page)
+        self.assertNotIn("Voltar aos jogos", page)
         with mock.patch.object(friendly, "MIN_XP", 0):
             client.post("/torneios/amistosos/%d/confirmar" % fid, data={"csrf_token": CSRF})
             with self.app.app_context():

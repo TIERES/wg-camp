@@ -467,17 +467,18 @@ header nav { align-items:center }
 .fg-dialog-status { color:#d1d5db } .friendly-warn-text { color:#fca5a5 }
 /* Celular: sem a data (está no (i) e no card do Ao vivo). */
 @media (max-width:560px) { .fg-row { grid-template-columns:1.4rem minmax(0, 1fr) 6rem minmax(0, 1fr) 1.4rem } .fg-when { display:none } .fg-meta,.fg-status { justify-content:center; justify-items:center } }
-/* A bola do título gira o card do amistoso para os artilheiros (card-flip.js; o giro é o .tie-flip). */
+/* A bola do título troca o conteúdo do card do amistoso (card-flip.js): os jogos sobem
+   (a altura recolhe de 1fr a 0fr) e os artilheiros descem, e vice-versa. */
+.slide-pane { display:grid; grid-template-rows:1fr; opacity:1; transition:grid-template-rows .45s cubic-bezier(.4,.2,.2,1), opacity .35s ease }
+.slide-pane > .slide-inner { min-height:0; overflow:hidden }
+.slide-pane.back,.friendly-slide.flipped > .slide-pane.front { grid-template-rows:0fr; opacity:0 }
+.friendly-slide.flipped > .slide-pane.back { grid-template-rows:1fr; opacity:1 }
+@media (prefers-reduced-motion: reduce) { .slide-pane { transition:none } }
 .flip-ball { display:inline-grid; place-items:center; width:1.6rem; height:1.6rem; margin-left:.4rem; padding:0; border-radius:50%; background:transparent; border:1.5px solid #6b7280; color:#d1d5db; cursor:pointer; flex:none }
 .flip-ball .live-ball { width:18px; height:18px; margin:0; color:inherit }
 .flip-ball:hover,.flip-ball:focus-visible,.flip-ball[aria-pressed="true"] { border-color:var(--accent); color:var(--accent) }
-/* O verso não estica a frente: fica por cima, e ao girar o card ganha a altura dele (card-flip.js). */
-.friendly-flip > .friendly-back { position:absolute; top:0; left:0; right:0 }
-.friendly-flip { transition:transform .55s cubic-bezier(.4,.2,.2,1), min-height .3s ease }
 .friendly-back .scorer-boards { margin-top:.25rem } .friendly-back h2 { font-size:1rem; margin:.4rem 0 0 }
 .friendly-back .table-scroll { margin:.5rem 0 } .friendly-back .scorers { font-size:.85rem }
-.friendly-back-foot { display:flex; justify-content:space-between; align-items:center; gap:.5rem; flex-wrap:wrap }
-.friendly-back-foot > :only-child { margin-left:auto }
 .fg-xp-list { list-style:none; padding:0 !important } .fg-xp-list .xp-delta { font-weight:700 }
 .fg-reject-list { margin:0; padding-left:1.2rem }
 /* "Placar agregado" no título do card e no convite. */
