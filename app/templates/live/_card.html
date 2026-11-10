@@ -2,12 +2,16 @@
 {% set a, b = c.teams %}
 <article class="live-card{% if c.status != 'live' %} ended{% endif %}">
   <div class="live-card-head">
-    {% if c.game or (c.tournament and c.tournament.image) %}<span class="live-logos">
+    {# Logos: o jogo base e a imagem do campeonato ou, sem ela, a da ISO do cadastro (live._profile). #}
+    {% set t_image = c.tournament and c.tournament.image %}
+    {% set iso_image = not t_image and c.iso and c.iso.image %}
+    {% if c.game or t_image or iso_image %}<span class="live-logos">
       {% if c.game %}<img class="live-game" src="{{ c.game.cover }}" alt="{{ c.game.name }}" title="{{ c.game.name }}" loading="lazy">{% endif %}
-      {% if c.tournament and c.tournament.image %}<a href="{{ c.tournament.url }}"><img class="live-tournament" src="{{ c.tournament.image }}" alt="{{ c.tournament.name }}" title="{{ c.tournament.name }}" loading="lazy"></a>{% endif %}
+      {% if t_image %}<a href="{{ c.tournament.url }}"><img class="live-tournament" src="{{ c.tournament.image }}" alt="{{ c.tournament.name }}" title="{{ c.tournament.name }}" loading="lazy"></a>
+      {% elif iso_image %}<img class="live-tournament" src="{{ c.iso.image }}" alt="{{ c.iso.name }}" title="{{ c.iso.name }}" loading="lazy">{% endif %}
     </span>{% endif %}
     <span class="live-context">{% if c.link %}<a href="{{ c.link }}">{{ c.context }}</a>{% else %}{{ c.context }}{% endif %}{% if c.is_test %} <span class="badge live-test">Teste</span>{% endif %}
-      {% if c.game %}<small>{{ c.game.name }}{% if c.tournament and not c.link %} · <a href="{{ c.tournament.url }}">{{ c.tournament.name }}</a>{% endif %}</small>{% endif %}</span>
+      {% if c.game %}<small>{{ c.game.name }}{% if c.tournament and not c.link %} · <a href="{{ c.tournament.url }}">{{ c.tournament.name }}</a>{% elif c.iso and not c.tournament %} · {{ c.iso.name }}{% endif %}</small>{% endif %}</span>
     <span class="live-status">
       {% if c.status == 'live' and not c.stale %}<span class="live-badge">Ao vivo</span>{% endif %}
       <span class="live-clock{% if c.status == 'live' and not c.stale and not c.interval %} on{% endif %}">{{ c.clock }}</span>

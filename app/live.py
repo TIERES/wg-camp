@@ -487,11 +487,29 @@ def _file_name(match):
     return re.sub(r"^PCSX ReARMed:\s*", "", match["room"] or "")
 
 
+def _catalog_iso(db, match):
+    """A ISO do cadastro de amistosos da partida (a imagem do card quando não
+    há campeonato com imagem): a do perfil da ISO (admin), a mesma ISO
+    (CRC32:TAMANHO) ou, sem identificação, o mesmo nome de arquivo."""
+    row = db.execute("SELECT catalog_iso_id FROM iso_profiles WHERE content_id = ? COLLATE NOCASE "
+                     "AND catalog_iso_id IS NOT NULL", (match["content_id"],)).fetchone()
+    if row:
+        return row["catalog_iso_id"]
+    for column, value in (("content_id", match["content_id"]), ("original_filename", _file_name(match))):
+        row = db.execute(f"SELECT id FROM catalog_isos WHERE {column} = ? COLLATE NOCASE AND is_active = 1 "
+                         "ORDER BY approved_at IS NULL, id DESC LIMIT 1", (value,)).fetchone() if value else None
+        if row:
+            return row["id"]
+    return None
+
+
 def _profile(db, match):
-    """Jogo base e campeonato da ISO da partida (os logos do card): o do jogo
-    de campeonato ligado, o do amistoso, o cadastrado/aprendido para a ISO ou
-    o da ISO de campeonato/amistoso com o mesmo nome de arquivo."""
-    game_id = tournament_id = None
+    """Jogo base, campeonato e ISO do cadastro da partida (os logos do card):
+    o do jogo de campeonato ligado, o do amistoso (com a ISO escolhida no
+    convite), o cadastrado/aprendido para a ISO ou o da ISO de
+    campeonato/amistoso com o mesmo nome de arquivo. O card mostra a imagem do
+    campeonato ou, sem ela, a da ISO do cadastro."""
+    game_id = tournament_id = catalog_id = None
     if match["tournament_match_id"]:
         row = db.execute("SELECT t.id, t.game_title_id FROM tournament_matches m JOIN tournament_stages s "
                          "ON s.id = m.stage_id JOIN tournaments t ON t.id = s.tournament_id WHERE m.id = ?",
@@ -499,10 +517,10 @@ def _profile(db, match):
         if row:
             game_id, tournament_id = row["game_title_id"], row["id"]
     if game_id is None and match["friendly_id"]:
-        row = db.execute("SELECT game_title_id, iso_tournament_id FROM friendly_matches WHERE id = ?",
+        row = db.execute("SELECT game_title_id, iso_tournament_id, iso_catalog_id FROM friendly_matches WHERE id = ?",
                          (match["friendly_id"],)).fetchone()
         if row:
-            game_id, tournament_id = row["game_title_id"], row["iso_tournament_id"]
+            game_id, tournament_id, catalog_id = row["game_title_id"], row["iso_tournament_id"], row["iso_catalog_id"]
     if game_id is None:
         row = db.execute("SELECT * FROM iso_profiles WHERE content_id = ?", (match["content_id"],)).fetchone()
         if row:
@@ -540,7 +558,12 @@ def _profile(db, match):
     game = db.execute("SELECT name, code FROM game_titles WHERE id = ?", (game_id,)).fetchone() if game_id else None
     tournament = db.execute("SELECT name, slug, image FROM tournaments WHERE id = ?",
                             (tournament_id,)).fetchone() if tournament_id else None
-    return game, tournament
+    catalog = None
+    if not (tournament and tournament["image"]):
+        catalog_id = catalog_id or _catalog_iso(db, match)
+        catalog = db.execute("SELECT name, image FROM catalog_isos WHERE id = ?",
+                             (catalog_id,)).fetchone() if catalog_id else None
+    return game, tournament, catalog
 
 
 def card(db, match):
@@ -552,7 +575,7 @@ def card(db, match):
     sides = (json.loads(match["local_players_json"]), json.loads(match["visita_players_json"]))
     label, link = _context(db, match)
     stale = match["status"] == "live" and match["updated_at"] < _ago(STALE)
-    game, tournament = _profile(db, match)
+    game, tournament, catalog = _profile(db, match)
     views = [_team_view(db, match, i, teams[i] if i < len(teams) else {}, sides[i]) for i in (0, 1)]
     # Lado sem controle: a CPU (o outro lado tem jogador) ou, sem a tabela de controles, "Player N".
     nobody = not any(view["players"] for view in views)
@@ -568,6 +591,8 @@ def card(db, match):
             "game": {"name": game["name"], "cover": cover_url(game["code"])} if game else None,
             "tournament": {"name": tournament["name"], "image": image_url("torneio", tournament["image"]),
                            "url": url_for("tournaments.show", slug=tournament["slug"], aba="tabela")} if tournament else None,
+            # Sem campeonato com imagem: a ISO do cadastro (a do amistoso ou a mesma ISO).
+            "iso": {"name": catalog["name"], "image": image_url("torneio", catalog["image"])} if catalog else None,
             "pens": state.get("pens"), "teams": views,
             "tie": _tie_view(db, match, sides, (views[0]["goals"], views[1]["goals"]))}
 

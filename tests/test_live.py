@@ -532,6 +532,45 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertIn("Winning Eleven 2002", html)
         self.assertIn("images/games/", html)
 
+    def add_catalog_iso(self, filename="Euro vs Copa America 2004.bin", image="euro.webp"):
+        with self.app.app_context():
+            db = get_db()
+            game = db.execute("SELECT id FROM game_titles WHERE code = 'we2002'").fetchone()["id"]
+            catalog = db.execute("INSERT INTO catalog_isos (name, game_title_id, image, original_filename, is_active, "
+                                 "approved_at, created_at, updated_at) VALUES ('EUROCOPA 2004', ?, ?, ?, 1, ?, ?, ?)",
+                                 (game, image, filename, now(), now(), now())).lastrowid
+            db.commit()
+        return catalog, game
+
+    def test_card_shows_the_friendly_catalog_iso_image(self):
+        """Amistoso com a ISO do cadastro escolhida no convite: o card mostra a imagem dela."""
+        catalog, game = self.add_catalog_iso(filename="Outro nome.bin")
+        with self.app.app_context():
+            db = get_db()
+            db.execute("INSERT INTO friendly_matches (home_id, away_id, status, iso_catalog_id, game_title_id, "
+                       "created_at, updated_at) VALUES (?, ?, 'accepted', ?, ?, ?, ?)",
+                       (self.tieres, self.anders, catalog, game, now(), now()))
+            db.commit()
+        self.post(state())
+        html = self.cards()
+        self.assertRegex(html, r'<img class="live-tournament" src="[^"]*euro\.webp" alt="EUROCOPA 2004"')
+        self.assertIn("Winning Eleven 2002 · EUROCOPA 2004", html)
+
+    def test_card_shows_the_championship_image_or_else_the_catalog_iso(self):
+        """Jogo de campeonato: a imagem do campeonato; sem ela, a da mesma ISO no cadastro."""
+        self.make_tournament()
+        self.add_catalog_iso()  # a mesma ISO (pelo nome do arquivo) no cadastro de amistosos
+        self.post(state())
+        self.assertIsNotNone(self.rows("SELECT tournament_match_id FROM live_matches")[0]["tournament_match_id"])
+        self.assertRegex(self.cards(), r'<img class="live-tournament" src="[^"]*euro\.webp"')
+        with self.app.app_context():
+            get_db().execute("UPDATE tournaments SET image = 'camp.webp'")
+            get_db().commit()
+        html = self.cards()
+        self.assertRegex(html, r'<a href="[^"]*/euro-1[^"]*"><img class="live-tournament" src="[^"]*camp\.webp" '
+                               r'alt="Euro WE Camp"')
+        self.assertNotIn("euro.webp", html)
+
     def test_championship_iso_must_match(self):
         ida, volta = self.make_tournament()
         with self.app.app_context():
