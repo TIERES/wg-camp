@@ -40,7 +40,7 @@
   </div>
   {% endif %}
   <div class="live-card-foot">
-    <small>{{ c.when }} · {{ c.file }}</small>
+    <small class="live-card-file"><span>{{ c.when }} ·</span>{{ c.file|fit }}</small>
     {% if c.status == 'finished' and c.agreed %}<small class="live-agreed">Placar conferido nos {{ c.reporters }} PCs</small>{% endif %}
   </div>
 </article>

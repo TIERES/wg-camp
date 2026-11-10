@@ -112,6 +112,27 @@ def create_app(test_config=None):
         return f"{minutes}m{seconds:02d}s"
     app.jinja_env.filters["duration"] = format_duration
 
+    def fit_text(value, tail=10):
+        """Texto longo que não pode quebrar o card (nome de ISO, arquivo...):
+        numa linha, o começo com "…" quando não cabe e o fim (tail últimos
+        caracteres, ex. "Edition.bin") sempre à vista; o nome inteiro no title.
+        O corte é do CSS (.fit): se couber, aparece inteiro."""
+        from markupsafe import Markup
+        text = str(value or "")
+        if len(text) <= tail * 2:
+            return text
+        # O fim começa logo depois da separação (_ - espaço) mais perto do corte (até 8
+        # antes ou 4 depois), se houver: "Edition.bin" em vez de "dition.bin".
+        cut = len(text) - tail
+        near = [i + 1 for i in range(max(0, cut - 9), min(len(text) - 4, cut + 4)) if text[i] in "_- "]
+        if near:
+            cut = min(near, key=lambda i: abs(i - cut))
+        # Espaço na ponta de um item flex some: o do fim do começo vira não-separável.
+        head = text[:cut][:-1] + " " if text[:cut].endswith(" ") else text[:cut]
+        return Markup('<span class="fit" title="{0}"><span class="fit-head">{1}</span>'
+                      '<span class="fit-tail">{2}</span></span>').format(text, head, text[cut:])
+    app.jinja_env.filters["fit"] = fit_text
+
     from .public import bp as public_bp
     from .admin import bp as admin_bp
     from .spectate import bp as spectate_bp
