@@ -28,5 +28,5 @@
   {% call carousel('Partidas anteriores', 'Próximas partidas', 'live-cards per-2', live_src=cards_url, total=total) %}{% include 'live/_cards.html' %}{% endcall %}
   <p class="muted" data-live-empty {% if cards %}hidden{% endif %}>Nenhuma partida{% if filtered %} com esses filtros{% else %} ainda{% endif %}.</p>
 </section>
-<script src="{{ url_for('static', filename='js/live-cards.js', v='20261108a') }}"></script>
+<script src="{{ url_for('static', filename='js/live-cards.js', v='20261110a') }}"></script>
 {% endblock %}
