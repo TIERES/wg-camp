@@ -8,6 +8,13 @@
     <div class="big-score">{{ score(m, live_now.score if live_now else none) }}</div>
     <div>{{ names[m.away_entry_id] }}</div>
   </div>
+  {% if goals %}
+  <div class="live-scorers match-scorers" aria-label="Gols e assistências">
+    <ul>{% for g in goals.home %}<li>{{ g|scorer }}</li>{% endfor %}</ul>
+    <a class="match-scorers-live" href="{{ goals.url }}" title="Ver a partida no Ao vivo">Gols</a>
+    <ul class="right">{% for g in goals.away %}<li>{{ g|scorer }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
   <p class="match-status status-{{ m.status }}">
     {% if m.status == 'confirmed' %}Resultado confirmado
     {% elif m.status == 'reported' %}Placar {{ 'lido do jogo' if reported.entry_id is none else 'reportado' }}: <strong>{{ reported.home_goals }} x {{ reported.away_goals }}</strong>{% if reported.home_pens is not none %} ({{ reported.home_pens }} x {{ reported.away_pens }} nos pênaltis){% endif %} — esperando {{ ('a confirmação dos dois jogadores' if not confirmed_by else 'a confirmação de ' ~ (names[m.away_entry_id if confirmed_by[0] == m.home_entry_id else m.home_entry_id]|striptags)) if reported.entry_id is none else 'o adversário' }} até {{ deadline|localtime }}

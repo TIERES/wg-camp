@@ -1249,6 +1249,12 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertRegex(scorers, r"(?s)J\.Leko.*?Croácia.*?<strong>1</strong>")
         self.assertRegex(assists, r"(?s)Karagounis.*?<strong>2</strong>")
         self.assertNotIn("J.Leko", assists)  # gol sem assistência
+        # Página do jogo: os gols de cada lado do ponto de vista do campeonato (mandante = ANDERSHOW).
+        match_id = self.rows("SELECT id FROM tournament_matches WHERE status = 'confirmed'")[0]["id"]
+        page = client.get("/torneios/liga-1/jogos/%d" % match_id).get_data(as_text=True)
+        home, away = page.split('class="match-scorers-live"')
+        self.assertIn("<li>J.Leko 20'</li>", home)
+        self.assertEqual(away.count("<li>S.Vryzas 17' <small>(assist. Karagounis)</small></li>"), 2)
         # Placar corrigido à mão (outro que o lido do jogo): os gols lidos não valem.
         with self.app.app_context():
             get_db().execute("UPDATE tournament_matches SET home_goals = 3 WHERE status = 'confirmed'")

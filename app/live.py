@@ -1132,6 +1132,31 @@ def tournament_scorers(db, tournament_id):
     return board
 
 
+def match_goals(db, match, score):
+    """Os gols do jogo de campeonato (página do jogo), do ponto de vista dele:
+    {"home": [...], "away": [...], "url": card no Ao vivo} - da partida lida do
+    jogo mais recente com o placar `score` (mandante, visitante: o confirmado
+    ou o reportado), como na artilharia. None sem ela ou sem gols."""
+    if not score or score[0] is None:
+        return None
+    rows = db.execute(
+        "SELECT m.*, hp.username AS home_nick, ap.username AS away_nick FROM live_matches m "
+        "JOIN tournament_entries he ON he.id = ? JOIN players hp ON hp.id = he.player_id "
+        "JOIN tournament_entries ae ON ae.id = ? JOIN players ap ON ap.id = ae.player_id "
+        "WHERE m.tournament_match_id = ? AND m.is_test = 0 AND m.verified = 1 AND m.status != 'live' "
+        "ORDER BY m.started_at DESC, m.id DESC",
+        (match["home_entry_id"], match["away_entry_id"], match["id"])).fetchall()
+    for row in rows:
+        sides = _home_side(row)
+        if sides and _home_away(row, (row["local_goals"] or 0, row["visita_goals"] or 0)) == tuple(score):
+            teams = _match_state(row).get("teams") or [{}, {}]
+            goals = [teams[side].get("scorers") or [] if side < len(teams) else [] for side in sides]
+            if not any(goals):
+                return None
+            return {"home": goals[0], "away": goals[1], "url": url_for("live.index", partida=row["id"])}
+    return None
+
+
 def friendly_scorers(db, friendly_row, games):
     """Artilharia do amistoso: os jogos que entram na soma (friendly_games:
     summed), só com mais de um - com um, o card da partida já diz tudo. None

@@ -170,6 +170,8 @@ details.round summary { cursor:pointer; padding:.5rem 0; font-weight:700 }
 .result-form .home { text-align:right } .result-form.done { opacity:.85 }
 .result-form input[type=number] { width:3.4rem; text-align:center; padding:.4rem }
 .result-form .pens,.result-form .result-buttons { grid-column:1 / -1; justify-self:center; display:flex; gap:.4rem; align-items:center }
+.match-scorers { max-width:40rem; margin:0 auto 1rem; font-size:.95rem; text-align:left }
+.match-scorers-live { color:#9ca3af; font-size:.8rem; text-transform:uppercase; letter-spacing:.05em }
 .scorer-boards { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr)); gap:0 1.5rem; margin-top:1rem }
 .scorer-board h2 { margin-bottom:0 } .scorers td { vertical-align:middle } .scorers td.num:first-child { color:#9ca3af; width:2.5rem }
 .scorer-toggle { margin-top:-.25rem } .scorer-note { font-size:.85rem }
