@@ -19,7 +19,11 @@
           <span class="badge icon-badge">{{ icon('timer') }}{{ replay.duration_seconds|duration }}</span>
           <strong class="t-name">{{ replay.player_names or 'Jogadores não informados' }}</strong>
           <span class="t-meta"><span>{{ icon('clock') }}{{ replay.started_at|localtime }}</span></span>
-          <span class="t-meta"><span>{{ icon('disk') }}{{ replay.game_name|fit if replay.game_name else '—' }}</span></span>
+          {# Sala do Kaillera "PCSX ReARMed: arquivo.bin": o emulador numa linha e a ISO na outra, com o CD. #}
+          {% set core, sep, iso_name = (replay.game_name or '').partition(': ') %}
+          {% if not sep %}{% set core, iso_name = '', core %}{% endif %}
+          {% if core %}<span class="t-meta"><span>{{ icon('disk') }}{{ core }}</span></span>{% endif %}
+          <span class="t-meta"><span title="ISO">{{ icon('cd') }}{{ iso_name|fit if iso_name else '—' }}</span></span>
         </span>
         <div class="t-foot"><a class="button icon-button" href="{{ url_for('replays.download', session_id=replay.session_id) }}">{{ icon('download') }}Baixar replay</a></div>
       </div>
