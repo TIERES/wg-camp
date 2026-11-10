@@ -1239,6 +1239,13 @@ class LiveMatchesTest(unittest.TestCase):
         html = client.get("/torneios/liga-1?aba=artilharia").get_data(as_text=True)
         self.assertIn('class="active">Artilharia</a>', html)
         self.assertIn("Ainda nenhum jogo confirmado do campeonato", html)  # reportado, ainda não confirmado
+        # Página do jogo reportado: os gols em laranja, com o (i) de que faltam confirmar, e o card no Ao vivo.
+        match_id = self.rows("SELECT id FROM tournament_matches")[0]["id"]
+        page = client.get("/torneios/liga-1/jogos/%d" % match_id).get_data(as_text=True)
+        self.assertIn('class="live-scorers match-scorers pending"', page)
+        self.assertIn('data-dialog="gols-a-confirmar"', page)
+        self.assertIn(">Ver card Ao Vivo</a>", page)
+        self.assertNotIn(">Gols</a>", page)
         with self.app.app_context():
             reports.auto_confirm(get_db(), at=datetime.now(timezone.utc) + timedelta(hours=25))
         html = client.get("/torneios/liga-1?aba=artilharia").get_data(as_text=True)
@@ -1250,9 +1257,10 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertRegex(assists, r"(?s)Karagounis.*?<strong>2</strong>")
         self.assertNotIn("J.Leko", assists)  # gol sem assistência
         # Página do jogo: os gols de cada lado do ponto de vista do campeonato (mandante = ANDERSHOW).
-        match_id = self.rows("SELECT id FROM tournament_matches WHERE status = 'confirmed'")[0]["id"]
         page = client.get("/torneios/liga-1/jogos/%d" % match_id).get_data(as_text=True)
-        home, away = page.split('class="match-scorers-live"')
+        self.assertNotIn("gols-a-confirmar", page)
+        self.assertIn(">Ver card Ao Vivo</a>", page)
+        home, away = page.split('class="match-ball"')
         self.assertIn("<li>J.Leko 20'</li>", home)
         self.assertEqual(away.count("<li>S.Vryzas 17' <small>(assist. Karagounis)</small></li>"), 2)
         # Placar corrigido à mão (outro que o lido do jogo): os gols lidos não valem.
@@ -1260,6 +1268,15 @@ class LiveMatchesTest(unittest.TestCase):
             get_db().execute("UPDATE tournament_matches SET home_goals = 3 WHERE status = 'confirmed'")
             get_db().commit()
         self.assertNotIn("S.Vryzas", client.get("/torneios/liga-1?aba=artilharia").get_data(as_text=True))
+
+    def test_championship_game_page_while_live(self):
+        self.make_league()
+        self.post(state(goals=(1, 0)))  # rolando agora
+        match_id = self.rows("SELECT id FROM tournament_matches")[0]["id"]
+        page = self.app.test_client().get("/torneios/liga-1/jogos/%d" % match_id).get_data(as_text=True)
+        self.assertIn(">Placar Ao Vivo</a>", page)
+        self.assertIn('class="live-scorers match-scorers pending"', page)
+        self.assertIn("A partida está rolando agora", page)
 
     def test_friendly_scorers_with_more_than_one_game(self):
         with self.app.app_context():

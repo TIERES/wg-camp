@@ -693,7 +693,7 @@ def tournament_live(db, tournament_id):
     rows = db.execute(
         _TOURNAMENT_LIVE_SQL + "WHERE s.tournament_id = ? AND m.status = 'live' AND m.verified = 1 AND m.updated_at >= ?"
         + ("" if _is_admin() else " AND m.is_test = 0"), (tournament_id, _ago(STALE))).fetchall()
-    groups, entries, matches, match_urls = set(), {}, {}, {}
+    groups, entries, matches, match_urls, live_ids = set(), {}, {}, {}, {}
     for row in rows:
         score = _home_away(row, (row["local_goals"] or 0, row["visita_goals"] or 0))
         if score is None:
@@ -701,12 +701,13 @@ def tournament_live(db, tournament_id):
         matches[row["tournament_match_id"]] = score
         link = url_for("live.index", partida=row["id"])
         match_urls[row["tournament_match_id"]] = link
+        live_ids[row["tournament_match_id"]] = row["id"]
         for entry, mine, theirs in ((row["home_entry_id"], score[0], score[1]), (row["away_entry_id"], score[1], score[0])):
             entries[entry] = {"score": "%d-%d" % (mine, theirs), "url": link,
                               "result": "win" if mine > theirs else "loss" if mine < theirs else "draw"}
         if row["group_id"]:
             groups.add(row["group_id"])
-    return {"groups": groups, "entries": entries, "matches": matches, "match_urls": match_urls}
+    return {"groups": groups, "entries": entries, "matches": matches, "match_urls": match_urls, "live_ids": live_ids}
 
 
 # O 2º PC manda o fim logo depois do 1º: espera isso antes de reportar.
@@ -1132,28 +1133,31 @@ def tournament_scorers(db, tournament_id):
     return board
 
 
-def match_goals(db, match, score):
-    """Os gols do jogo de campeonato (página do jogo), do ponto de vista dele:
-    {"home": [...], "away": [...], "url": card no Ao vivo} - da partida lida do
-    jogo mais recente com o placar `score` (mandante, visitante: o confirmado
-    ou o reportado), como na artilharia. None sem ela ou sem gols."""
-    if not score or score[0] is None:
+def match_goals(db, match, score, live_id=None):
+    """A partida do Ao vivo do jogo de campeonato (página do jogo), do ponto de
+    vista dele: {"home": [gols], "away": [gols], "url": card no Ao vivo,
+    "live": rolando agora}. A que está rolando (live_id, de tournament_live)
+    ou a lida do jogo mais recente com o placar `score` (mandante, visitante:
+    o confirmado ou o reportado), como na artilharia. None sem ela."""
+    if live_id is None and (not score or score[0] is None):
         return None
     rows = db.execute(
         "SELECT m.*, hp.username AS home_nick, ap.username AS away_nick FROM live_matches m "
         "JOIN tournament_entries he ON he.id = ? JOIN players hp ON hp.id = he.player_id "
         "JOIN tournament_entries ae ON ae.id = ? JOIN players ap ON ap.id = ae.player_id "
-        "WHERE m.tournament_match_id = ? AND m.is_test = 0 AND m.verified = 1 AND m.status != 'live' "
-        "ORDER BY m.started_at DESC, m.id DESC",
-        (match["home_entry_id"], match["away_entry_id"], match["id"])).fetchall()
+        "WHERE m.tournament_match_id = ? AND m.is_test = 0 AND m.verified = 1 "
+        + ("AND m.id = ? " if live_id is not None else "AND m.status != 'live' ")
+        + "ORDER BY m.started_at DESC, m.id DESC",
+        (match["home_entry_id"], match["away_entry_id"], match["id"], *([live_id] if live_id is not None else []))
+    ).fetchall()
     for row in rows:
         sides = _home_side(row)
-        if sides and _home_away(row, (row["local_goals"] or 0, row["visita_goals"] or 0)) == tuple(score):
+        if sides and (live_id is not None
+                      or _home_away(row, (row["local_goals"] or 0, row["visita_goals"] or 0)) == tuple(score)):
             teams = _match_state(row).get("teams") or [{}, {}]
-            goals = [teams[side].get("scorers") or [] if side < len(teams) else [] for side in sides]
-            if not any(goals):
-                return None
-            return {"home": goals[0], "away": goals[1], "url": url_for("live.index", partida=row["id"])}
+            goals = [(teams[side].get("scorers") or []) if side < len(teams) else [] for side in sides]
+            return {"home": goals[0], "away": goals[1], "url": url_for("live.index", partida=row["id"]),
+                    "live": row["status"] == "live"}
     return None
 
 

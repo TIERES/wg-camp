@@ -1421,13 +1421,16 @@ def match(slug, match_id):
         from . import live
         rolling = live.tournament_live(db, tournament["id"])
         if match_id in rolling["matches"]:
-            live_now = {"score": rolling["matches"][match_id], "url": rolling["match_urls"][match_id]}
-    # Quem fez os gols e deu as assistências: da partida lida do jogo com o
-    # placar confirmado (ou o reportado, ainda esperando a confirmação).
+            live_now = {"score": rolling["matches"][match_id], "url": rolling["match_urls"][match_id],
+                        "id": rolling["live_ids"][match_id]}
+    # Quem fez os gols e deu as assistências e o card no Ao vivo: da partida
+    # rolando agora ou da lida do jogo com o placar confirmado (ou o reportado,
+    # ainda esperando a confirmação).
     reported = reports.last_report(db, match_id) if m["status"] in ("reported", "disputed") else None
     from . import live
     goals = live.match_goals(db, m, (m["home_goals"], m["away_goals"]) if m["status"] == "confirmed"
-                             else (reported["home_goals"], reported["away_goals"]) if reported else None)
+                             else (reported["home_goals"], reported["away_goals"]) if reported else None,
+                             live_now["id"] if live_now else None)
     return render_template(
         "tournaments/match.html", t=tournament, m=m, names=names, me=me, manager=manager, h2h=h2h, live_now=live_now,
         quitter=quitter, goals=goals,
