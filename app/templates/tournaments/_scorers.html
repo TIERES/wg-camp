@@ -14,8 +14,8 @@
         <td class="num">{% if loop.first or r.position != loop.previtem.position %}{{ r.position }}º{% endif %}</td>
         <td><span class="entry-name"><strong>{{ r.name }}</strong>{% if r.nick %}<small>{{ r.nick }}</small>{% endif %}</span></td>
         <td><span class="entry"><img class="crest" src="{{ r.image }}" alt="" loading="lazy"><span>{{ r.team }}</span></span></td>
-        <td class="num"><strong>{{ r[field] }}</strong>{% if field == 'goals' and r.pens %} <small class="muted" title="De pênalti">({{ r.pens }} pên.)</small>{% endif %}
-          {%- if pend %}<small class="scorer-pending-note" title="{{ r.name }} possui {{ pend }} {{ noun[0] if pend == 1 else noun[1] }}">{{ pend }} a confirmar</small>{% endif %}</td>
+        <td class="num">{% if pend %}{% set tip = '%s possui %d %s' % (r.name, pend, noun[0] if pend == 1 else noun[1]) %}<span class="tip-badge" tabindex="0" role="note" aria-label="{{ tip }}" data-tip="{{ tip }}">i</span> {% endif -%}
+          <strong>{{ r[field] }}</strong>{% if field == 'goals' and r.pens %} <small class="muted" title="De pênalti">({{ r.pens }} pên.)</small>{% endif %}</td>
       </tr>
     {% endfor %}</tbody>
   </table>
@@ -32,7 +32,7 @@
   {{ scorer_table(board.assists, 'assists', 'Assistências', 'Nenhuma assistência ainda.') }}
 </div>
 {% if board.scorers|selectattr('pending_goals')|list or board.assists|selectattr('pending_assists')|list %}
-<p class="legend provisional-legend"><span class="provisional-dot"></span> em laranja: jogador com gols ou assistências de jogos que ainda precisam ser confirmados entre os jogadores ("a confirmar"). Eles já entram na soma; se o placar mudar, saem.</p>
+<p class="legend provisional-legend"><span class="provisional-dot"></span> em laranja: jogador com gols ou assistências de jogos que ainda precisam ser confirmados entre os jogadores (o (i) mostra quantos). Eles já entram na soma; se o placar mudar, saem.</p>
 {% endif %}
 {% set parts = [] %}
 {% if board.games %}{% set _ = parts.append('%d jogo%s confirmado%s' % (board.games, 's' if board.games > 1 else '', 's' if board.games > 1 else '')) %}{% endif %}

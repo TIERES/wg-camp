@@ -1241,8 +1241,9 @@ class LiveMatchesTest(unittest.TestCase):
         # Reportado, ainda não confirmado: os gols já somam, em laranja, "a confirmar".
         self.assertIn("Soma de 1 a confirmar do campeonato", html)
         self.assertIn('<tr class="scorer-pending">', html)
-        self.assertIn('title="S.Vryzas possui 2 gols a serem confirmados">2 a confirmar</small>', html)
-        self.assertIn('title="J.Leko possui 1 gol a ser confirmado">1 a confirmar</small>', html)
+        self.assertIn('data-tip="S.Vryzas possui 2 gols a serem confirmados">i</span>', html)
+        self.assertIn('data-tip="J.Leko possui 1 gol a ser confirmado">i</span>', html)
+        self.assertNotIn("a confirmar</small>", html)
         self.assertIn("provisional-legend", html)
         # Página do jogo reportado: os gols em laranja, com o (i) de que faltam confirmar, e o card no Ao vivo.
         match_id = self.rows("SELECT id FROM tournament_matches")[0]["id"]
