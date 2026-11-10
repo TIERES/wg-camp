@@ -10,6 +10,13 @@ sem jogador: cada um dos dois confirma, e sem resposta ele vale sozinho no
 prazo (auto_confirm, torneios_confirmacao_horas - 24 h) - o placar
 informado por um jogador continua esperando o outro.
 
+Jogos: cada jogo lido do jogo (set_games, tabela friendly_games) vale
+sozinho no Ranking, no V/E/D e no XP, pelo placar dele - o placar
+informado pelos jogadores (sem jogos lidos, ou depois de não aceitarem os
+lidos) vale como um jogo só. "Placar agregado" (aggregate, escolhido no
+convite) só muda o que aparece: com ele, a soma dos gols dos jogos; sem ele,
+só os jogadores (os placares ficam na lista de jogos).
+
 Proteção contra contas fake ("farm" de XP): na confirmação o amistoso é
 marcado como `ranked` (vale para Ranking, V/E/D e XP - stats.py e xp.py)
 só se os dois jogadores já tiverem chegado alguma vez a MIN_XP contando só
@@ -69,9 +76,10 @@ def _set(db, friendly_id, **values):
                (*values.values(), friendly_id))
 
 
-def invite(db, me, other_id, iso_choice=None, message=""):
+def invite(db, me, other_id, iso_choice=None, message="", aggregate=False):
     """Convida um amigo, com a ISO escolhida (opcional - "t:<torneio>" ou
-    "c:<cadastro>", iso_catalog.py); devolve o id do amistoso."""
+    "c:<cadastro>", iso_catalog.py) e se no fim mostra o placar agregado
+    (a soma dos jogos); devolve o id do amistoso."""
     if other_id == me:
         raise TournamentError("Escolha um amigo para o amistoso.")
     if not other_id or not are_friends(db, me, other_id):
@@ -84,9 +92,9 @@ def invite(db, me, other_id, iso_choice=None, message=""):
     stamp = now()
     return db.execute(
         "INSERT INTO friendly_matches (iso_tournament_id, iso_catalog_id, game_title_id, home_id, away_id, message, "
-        "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (iso_tournament_id, iso_catalog_id, game_id, me, other_id, (message or "").strip()[:300], stamp,
-         stamp)).lastrowid
+        "aggregate, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (iso_tournament_id, iso_catalog_id, game_id, me, other_id, (message or "").strip()[:300], int(bool(aggregate)),
+         stamp, stamp)).lastrowid
 
 
 def respond(db, friendly_id, me, accept):
@@ -141,6 +149,34 @@ def report_from_game(db, friendly_id, home_goals, away_goals, at, quitter_id=Non
     _set(db, friendly_id, status="reported", home_goals=_goals(home_goals), away_goals=_goals(away_goals),
          reported_by=None, reported_at=at, game_report=1, first_confirmed_by=None, quitter_id=quitter_id)
     return get(db, friendly_id)
+
+
+def set_games(db, friendly_id, games):
+    """Grava os jogos lidos do jogo que formam o placar (cada um vale sozinho
+    no XP e no V/E/D): dicts com number, live_match_id, home_goals,
+    away_goals, home_pens, away_pens e quit (o jogo de que quem saiu no meio
+    saiu)."""
+    db.execute("DELETE FROM friendly_games WHERE friendly_id = ?", (friendly_id,))
+    db.executemany(
+        "INSERT INTO friendly_games (friendly_id, number, live_match_id, home_goals, away_goals, home_pens, away_pens, "
+        "quit) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [(friendly_id, game["number"], game["live_match_id"], game["home_goals"], game["away_goals"],
+          game.get("home_pens"), game.get("away_pens"), int(bool(game.get("quit")))) for game in games])
+
+
+def shows_total(row):
+    """O card mostra o placar do amistoso (a soma)? Com "Placar agregado", ou
+    quando o placar foi informado pelos jogadores (vale como um jogo só);
+    sem ele, os placares dos jogos lidos do jogo ficam só na lista de jogos."""
+    return bool(row["aggregate"] or not row["game_report"])
+
+
+def score_text(row):
+    """O placar do amistoso para os e-mails: "A 2 x 1 B", ou só os jogadores
+    quando o placar agregado não aparece."""
+    if shows_total(row):
+        return f"{row['home_name']} {row['home_goals']} x {row['away_goals']} {row['away_name']}"
+    return f"{row['home_name']} x {row['away_name']} (os placares dos jogos lidos pelo RetroArch TIERES)"
 
 
 def _waiting_for_me(row, me):

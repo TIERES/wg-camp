@@ -931,6 +931,84 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertEqual(self.rows("SELECT status FROM tournament_matches WHERE status != 'confirmed'")[0]["status"],
                          "scheduled")
 
+    def test_friendly_each_game_counts_for_xp_and_the_total_only_with_aggregate(self):
+        """Cada jogo do amistoso vale sozinho no XP e no V/E/D, com o (i) do XP
+        de cada um; a soma (placar agregado) só aparece com a opção do convite."""
+        from unittest import mock
+        from app.db import migrate_db
+        from app.tournament import friendly, stats, xp
+        with self.app.app_context():
+            db = get_db()
+            fid = db.execute("INSERT INTO friendly_matches (home_id, away_id, status, created_at, updated_at) "
+                             "VALUES (?, ?, 'accepted', ?, ?)", (self.tieres, self.anders, now(), now())).lastrowid
+            db.commit()
+        # TIERES (mandante, P1) x ANDERSHOW: 2 x 1, 0 x 3, 1 x 3 - somados, 3 x 7.
+        self.play(1000, (2, 1))
+        self.play(40000, (0, 3))
+        self.play(80000, (1, 3))
+        self.end_session()
+        self.cards()
+        sql = "SELECT number, home_goals, away_goals, quit FROM friendly_games WHERE friendly_id = ? ORDER BY number"
+        games = [tuple(r) for r in self.rows(sql, fid)]
+        self.assertEqual(games, [(1, 2, 1, 0), (2, 0, 3, 0), (3, 1, 3, 0)])
+        client = self.app.test_client()
+        with client.session_transaction() as sess:
+            sess["player_id"] = self.tieres
+            sess["csrf_token"] = CSRF
+        page = client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True)
+        # Sem "Placar agregado": na linha, só os jogadores; os placares, na lista de jogos.
+        self.assertIn('<strong class="friendly-score-text">x</strong>', page)
+        self.assertNotIn("3 x 7", page)
+        self.assertIn("Os 3 jogos terminaram: confira os placares na lista", page)
+        self.assertIn("<li>Jogo 2: 0 x 3</li>", page)  # na janela "Não aceitar o placar"
+        self.assertNotIn('data-dialog="jogo-xp-', page)  # o XP de cada jogo só depois de confirmado
+        with mock.patch.object(friendly, "MIN_XP", 0):
+            client.post("/torneios/amistosos/%d/confirmar" % fid, data={"csrf_token": CSRF})
+            with self.app.app_context():
+                db = get_db()
+                friendly.confirm(db, fid, self.anders)
+                db.commit()
+        row = self.rows("SELECT status, ranked FROM friendly_matches WHERE id = ?", fid)[0]
+        self.assertEqual((row["status"], row["ranked"]), ("confirmed", 1))
+        with self.app.app_context():
+            db = get_db()
+            totals, deltas = xp.compute(db)
+            # 1º: TIERES +20 (ANDERSHOW sem XP a perder); 2º: ANDERSHOW +20, TIERES -20; 3º: ANDERSHOW +20.
+            self.assertEqual([deltas["a%d-%d" % (fid, n)] for n in (1, 2, 3)],
+                             [{self.tieres: 20, self.anders: 0}, {self.tieres: -20, self.anders: 20},
+                              {self.tieres: 0, self.anders: 20}])
+            self.assertNotIn("a%d" % fid, deltas)  # nada do agregado
+            self.assertEqual((totals[self.tieres], totals[self.anders]), (0, 40))
+            record = stats.player_record(db, self.tieres)
+            self.assertEqual((record["played"], record["wins"], record["losses"]), (3, 1, 2))
+        page = client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True)
+        for n in (1, 2, 3):
+            self.assertIn('data-dialog="jogo-xp-%d-%d"' % (fid, n), page)
+        self.assertIn("Vale para o Ranking e o XP (soma dos 3 jogos)", page)
+        dialog = page[page.index('id="jogo-xp-%d-2"' % fid):]
+        dialog = dialog[:dialog.index("</dialog>")]
+        self.assertIn("TIERES 0 x 3 ANDERSHOW", dialog)
+        self.assertIn(">-20 XP</span>", dialog)
+        self.assertIn(">+20 XP</span>", dialog)
+        status = client.get("/torneios/status").get_data(as_text=True)
+        self.assertIn('id="partida-a%d-3"' % fid, status)
+        self.assertIn("· jogo 3", status)
+        # Com "Placar agregado": a soma aparece; o XP continua jogo a jogo.
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE friendly_matches SET aggregate = 1 WHERE id = ?", (fid,))
+            db.commit()
+            self.assertEqual(xp.compute(db)[0][self.anders], 40)
+        page = client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True)
+        self.assertIn(">3 x 7</strong>", page)
+        self.assertIn("Placar agregado</span>", page)
+        # Amistosos de antes da tabela: os jogos são refeitos das partidas no início (migrate_db).
+        with self.app.app_context():
+            get_db().execute("DELETE FROM friendly_games")
+            get_db().commit()
+            migrate_db()
+        self.assertEqual([tuple(r) for r in self.rows(sql, fid)], games)
+
     def test_friendly_history_filter_and_limit(self):
         from tests.test_tournament_store import add_player as add
         with self.app.app_context():
@@ -1017,6 +1095,19 @@ class LiveMatchesTest(unittest.TestCase):
                             "quitter": self.tieres}], dict(start))[1]["a1"]
         self.assertEqual(quit_[self.anders], normal[self.anders])
         self.assertEqual(quit_[self.tieres], normal[self.tieres] * 3)
+        # Jogo a jogo: o triplo só no jogo de que ele saiu (o 2º).
+        sql = "SELECT number, home_goals, away_goals, quit FROM friendly_games WHERE friendly_id = ? ORDER BY number"
+        self.assertEqual([tuple(r) for r in self.rows(sql, fid)], [(1, 1, 1, 0), (2, 0, 2, 1)])
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE friendly_matches SET status = 'confirmed', ranked = 1, confirmed_at = ? WHERE id = ?",
+                       (now(), fid))
+            rows = [dict(r) for r in db.execute(xp._MATCHES)]
+        self.assertEqual({r["id"]: r["quitter"] for r in rows}, {"a%d-1" % fid: None, "a%d-2" % fid: self.tieres})
+        tripled = set()
+        deltas = xp.replay(rows, {self.tieres: 300, self.anders: 300}, tripled=tripled)[1]
+        self.assertEqual(deltas["a%d-2" % fid], {self.tieres: -60, self.anders: 20})
+        self.assertEqual(tripled, {"a%d-2" % fid})
 
     def test_friendly_game_score_confirms_by_itself_in_24h(self):
         from app.tournament import friendly

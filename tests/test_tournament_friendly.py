@@ -183,6 +183,8 @@ class FriendlyTest(unittest.TestCase):
         shown = self.client(p3).get(f"/torneios/amistosos/{fid}").data.decode()
         self.assertIn("Vale para o Ranking e o XP", shown)
         self.assertIn("+20 XP", shown)
+        # Placar informado pelos jogadores: vale como um jogo só e aparece na linha, mesmo sem "Placar agregado".
+        self.assertIn('<strong class="friendly-score-text">2 x 1</strong>', shown)
         status = c0.get("/torneios/status").data.decode()
         self.assertIn(f'id="partida-a{fid}"', status)
         self.assertIn(f"/torneios/amistosos/{fid}", c1.get("/torneios/jogadores/p0").data.decode())
@@ -228,6 +230,23 @@ class FriendlyTest(unittest.TestCase):
         self.db.commit()
         stale = game_friendly(p0, p1)
         self.assertEqual(confirm(p1, stale, quem_saiu=str(p2))["quitter_id"], p0)
+
+    def test_invite_aggregate_option(self):
+        """"Placar agregado" no convite: desmarcado por padrão, guardado no
+        amistoso e mostrado a quem é convidado."""
+        p0, p1, p2, _ = self.players
+        c0 = self.client(p0)
+        self.assertIn('<input type="checkbox" name="agregado" value="1">', c0.get("/torneios/amistosos").data.decode())
+        c0.post("/torneios/amistosos/novo", data={"csrf_token": CSRF, "amigo": p1})
+        c0.post("/torneios/amistosos/novo", data={"csrf_token": CSRF, "amigo": p2, "agregado": "1"})
+        rows = {r["away_id"]: r["aggregate"] for r in self.db.execute("SELECT away_id, aggregate FROM friendly_matches")}
+        self.assertEqual(rows, {p1: 0, p2: 1})
+        invited = self.client(p2).get("/torneios/amistosos").data.decode()
+        self.assertIn("chamou você para um amistoso com <strong>placar agregado</strong>", invited)
+        self.assertIn("Placar agregado</span>", invited)
+        plain = self.client(p1).get("/torneios/amistosos").data.decode()
+        self.assertIn("p0 chamou você para um amistoso.", plain)
+        self.assertNotIn("Placar agregado</span>", plain)
 
     def test_list_layout_and_open_filter(self):
         """Lista de amistosos: os em aberto no topo (carrossel, com filtro quando

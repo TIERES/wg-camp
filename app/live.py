@@ -852,14 +852,59 @@ def _game_quitter(db, nicks, game):
     return None
 
 
+def _friendly_numbers(db, friendly_id):
+    """{id da partida: nº do jogo no amistoso} - a ordem da lista de partidas
+    (friendly_games) e da chave do XP de cada jogo (friendly_games da tabela)."""
+    rows = db.execute("SELECT id FROM live_matches WHERE friendly_id = ? AND is_test = 0 AND verified = 1 "
+                      "ORDER BY started_at, id", (friendly_id,)).fetchall()
+    return {row["id"]: number for number, row in enumerate(rows, 1)}
+
+
+def _friendly_game_scores(db, nicks, games):
+    """O placar de cada partida do amistoso do ponto de vista dele: os
+    terminados com o placar final de acordo nos PCs e os interrompidos com o
+    de quando pararam. Devolve ({id: (gols do mandante, do visitante, pênaltis
+    ou None)}, {id: motivo de não contar})."""
+    scores, notes = {}, {}
+    for g in games:
+        row = dict(g, home_nick=nicks[0], away_nick=nicks[1])
+        if g["status"] == "abandoned":
+            # Interrompido: vale o placar de quando parou.
+            finals = {(g["local_goals"], g["visita_goals"])}
+        else:
+            finals = {(s["teams"][0]["goals"], s["teams"][1]["goals"]) for s in (
+                json.loads(r["state_json"]) for r in db.execute(
+                    "SELECT state_json FROM live_match_reports WHERE live_match_id = ? AND final = 1", (g["id"],)))}
+        score = _home_away(row, next(iter(finals))) if len(finals) == 1 else None
+        if score is None:
+            notes[g["id"]] = ("sem o fim mandado pelos PCs" if not finals else "os PCs discordam do placar"
+                              if len(finals) > 1 else "não deu para saber quem é o mandante")
+            continue
+        pens = json.loads(g["state_json"] or "{}").get("pens") if (g["period"] or 0) >= 4 else None
+        scores[g["id"]] = (*score, _home_away(row, pens) if pens and len(pens) == 2 else None)
+    return scores, notes
+
+
+def _store_friendly_games(db, friendly_id, games, scores, quit_game_id=None):
+    """Grava os jogos que contam (friendly.set_games): cada um vale sozinho no XP."""
+    from .tournament import friendly
+    numbers = _friendly_numbers(db, friendly_id)
+    friendly.set_games(db, friendly_id, [
+        {"number": numbers.get(g["id"], index), "live_match_id": g["id"], "home_goals": scores[g["id"]][0],
+         "away_goals": scores[g["id"]][1], "home_pens": (scores[g["id"]][2] or (None, None))[0],
+         "away_pens": (scores[g["id"]][2] or (None, None))[1], "quit": g["id"] == quit_game_id}
+        for index, g in enumerate(games, 1) if g["id"] in scores])
+
+
 def _report_friendlies(db):
-    """Amistoso: as partidas da sessão (cada uma com o seu card) somam no fim,
-    por jogador, e o total vira o placar do amistoso (friendly.report_from_game)
+    """Amistoso: as partidas da sessão (cada uma com o seu card) entram juntas
     quando a sessão acaba - um dos jogadores saiu. Contam os jogos terminados
     (placar final de acordo nos PCs) e os interrompidos, com o placar de quando
-    pararam; quem saiu no meio do último jogo fica marcado e perde o triplo de
-    XP se o amistoso for confirmado (xp.QUIT_FACTOR). Os dois confirmam ou ele
-    vale sozinho no prazo, contado do fim do último jogo."""
+    pararam: cada um vale sozinho no XP e no V/E/D (friendly_games) e a soma
+    vira o placar do amistoso (friendly.report_from_game - mostrada só com
+    "Placar agregado"). Quem saiu no meio do último jogo fica marcado e perde
+    o triplo de XP nele se o amistoso for confirmado (xp.QUIT_FACTOR). Os dois
+    confirmam ou ele vale sozinho no prazo, contado do fim do último jogo."""
     from .tournament import friendly
     from .tournament.store import TournamentError
     for f in db.execute(
@@ -869,38 +914,24 @@ def _report_friendlies(db):
             "AND m.game_report IS NULL)").fetchall():
         games = db.execute(
             "SELECT * FROM live_matches WHERE friendly_id = ? AND is_test = 0 AND verified = 1 AND game_report IS NULL "
-            "ORDER BY started_at", (f["id"],)).fetchall()
+            "ORDER BY started_at, id", (f["id"],)).fetchall()
         if any(g["status"] == "live" for g in games):
             continue  # ainda jogando
         last = max((g["finished_at"] or g["updated_at"] for g in games), default=None)
-        if not last or last > _ago(REPORT_SETTLE) or not _session_over(db, (f["home_nick"], f["away_nick"]), last):
+        nicks = (f["home_nick"], f["away_nick"])
+        if not last or last > _ago(REPORT_SETTLE) or not _session_over(db, nicks, last):
             continue
-        total, counted, notes, quitter = [0, 0], 0, {}, None
-        for g in games:
-            row = dict(g, home_nick=f["home_nick"], away_nick=f["away_nick"])
-            if g["id"] == games[-1]["id"]:
-                # Quem saiu no meio do último jogo (terminado no PC de quem ficou, ou interrompido).
-                quitter = _game_quitter(db, (f["home_nick"], f["away_nick"]), g)
-            if g["status"] == "abandoned":
-                # Interrompido: vale o placar de quando parou.
-                finals = {(g["local_goals"], g["visita_goals"])}
-            else:
-                finals = {(s["teams"][0]["goals"], s["teams"][1]["goals"]) for s in (
-                    json.loads(r["state_json"]) for r in db.execute(
-                        "SELECT state_json FROM live_match_reports WHERE live_match_id = ? AND final = 1", (g["id"],)))}
-            score = _home_away(row, next(iter(finals))) if len(finals) == 1 else None
-            if score is None:
-                notes[g["id"]] = ("sem o fim mandado pelos PCs" if not finals else "os PCs discordam do placar"
-                                  if len(finals) > 1 else "não deu para saber quem é o mandante")
-                continue
-            total[0] += score[0]
-            total[1] += score[1]
-            counted += 1
+        # Quem saiu no meio do último jogo (terminado no PC de quem ficou, ou interrompido).
+        quitter = _game_quitter(db, nicks, games[-1])
+        scores, notes = _friendly_game_scores(db, nicks, games)
+        total = [sum(score[0] for score in scores.values()), sum(score[1] for score in scores.values())]
+        counted = len(scores)
         outcome = "nenhum jogo para somar"
         if counted:
             quitter_id = _player_id(db, quitter) if quitter else None
             try:
                 friendly.report_from_game(db, f["id"], total[0], total[1], last, quitter_id)
+                _store_friendly_games(db, f["id"], games, scores, games[-1]["id"] if quitter_id else None)
                 outcome = "reportado (soma de %d jogo%s)" % (counted, "s" if counted > 1 else "")
                 if quitter:
                     outcome += "; %s saiu no meio do último jogo" % quitter
@@ -911,6 +942,23 @@ def _report_friendlies(db):
         db.commit()
 
 
+def backfill_friendly_games(db):
+    """Amistosos com placar lido do jogo de antes da tabela friendly_games:
+    grava os jogos deles (refeitos das partidas, como em _report_friendlies;
+    quem saiu, no último). Roda a cada início (db.migrate_db) e só mexe nos
+    que ainda não têm jogos gravados."""
+    for f in db.execute(
+            "SELECT f.id, f.quitter_id, hp.username AS home_nick, ap.username AS away_nick FROM friendly_matches f "
+            "JOIN players hp ON hp.id = f.home_id JOIN players ap ON ap.id = f.away_id "
+            "WHERE f.game_report = 1 AND NOT EXISTS (SELECT 1 FROM friendly_games fg WHERE fg.friendly_id = f.id) "
+            "AND EXISTS (SELECT 1 FROM live_matches m WHERE m.friendly_id = f.id AND m.is_test = 0 "
+            "AND m.verified = 1 AND m.status != 'live')").fetchall():
+        games = db.execute("SELECT * FROM live_matches WHERE friendly_id = ? AND is_test = 0 AND verified = 1 "
+                           "AND status != 'live' ORDER BY started_at, id", (f["id"],)).fetchall()
+        scores, _ = _friendly_game_scores(db, (f["home_nick"], f["away_nick"]), games)
+        _store_friendly_games(db, f["id"], games, scores, games[-1]["id"] if f["quitter_id"] else None)
+
+
 # Anotações de _report_friendlies de um jogo que ficou fora da soma.
 _NOT_SUMMED = ("sem o fim mandado pelos PCs", "os PCs discordam do placar", "não deu para saber quem é o mandante")
 
@@ -918,13 +966,18 @@ _NOT_SUMMED = ("sem o fim mandado pelos PCs", "os PCs discordam do placar", "nã
 def friendly_games(db, friendly_row):
     """As partidas do amistoso (cada uma com o seu card no Ao vivo), em ordem,
     do ponto de vista dele (mandante x visitante): times, placar (o final, ou
-    o de quando parou), pênaltis, situação e se entrou na soma - para os
-    jogadores conferirem o placar somado. Devolve (jogos, soma)."""
+    o de quando parou), pênaltis, situação, se entrou na soma e, nas que
+    valem sozinhas no XP (friendly_games, com o placar lido do jogo), a chave
+    do XP (xp_key, 'a<id>-<nº>') e se foi a de que quem saiu no meio saiu
+    (quit) - para os jogadores conferirem. Devolve (jogos, soma)."""
     from .timeutil import format_local
     nicks = {"home_nick": friendly_row["home_name"], "away_nick": friendly_row["away_name"]}
     games, total = [], [0, 0]
     rows = db.execute("SELECT * FROM live_matches WHERE friendly_id = ? AND is_test = 0 AND verified = 1 "
-                      "ORDER BY started_at", (friendly_row["id"],)).fetchall()
+                      "ORDER BY started_at, id", (friendly_row["id"],)).fetchall()
+    # O placar informado pelos jogadores (game_report = 0) vale como um jogo só: os jogos não têm XP próprio.
+    stored = {row["live_match_id"]: row for row in db.execute(
+        "SELECT * FROM friendly_games WHERE friendly_id = ?", (friendly_row["id"],))} if friendly_row["game_report"] else {}
     for number, match in enumerate(rows, 1):
         sides = _home_side(dict(match, **nicks))
         state = json.loads(match["state_json"] or "{}")
@@ -940,7 +993,11 @@ def friendly_games(db, friendly_row):
                 "date": format_local(match["started_at"], "%d/%m/%Y"),
                 "time": format_local(match["started_at"], "%H:%M"),
                 "status": {"finished": "Encerrado", "abandoned": "Interrompido"}.get(match["status"], "Ao vivo"),
-                "summed": summed, "note": note if note.startswith(_NOT_SUMMED) else ""}
+                "summed": summed, "note": note if note.startswith(_NOT_SUMMED) else "",
+                "xp_key": None, "quit": False}
+        if match["id"] in stored:
+            game.update(xp_key="a%d-%d" % (friendly_row["id"], stored[match["id"]]["number"]),
+                        quit=bool(stored[match["id"]]["quit"]))
         if sides:
             home, away = sides
             game.update(home_team=views[home]["name"], away_team=views[away]["name"],

@@ -17,11 +17,34 @@ Regras (fixas no sistema):
 - Pênaltis contam como empate (vale o placar do jogo, como no W$ e no V/E/D).
 - Jogo de campeonato ou amistoso em que um jogador saiu da sessão no meio
   de um jogo (quitter_id, live.py): o que ele perder é multiplicado por
-  QUIT_FACTOR; quem ganhou ganha o normal.
+  QUIT_FACTOR; quem ganhou ganha o normal. No amistoso, só no jogo de que
+  ele saiu.
+- Amistoso: cada jogo lido do jogo vale sozinho, pelo placar dele
+  (FRIENDLY_RESULTS), com ou sem "Placar agregado" - o placar agregado é
+  só para mostrar.
 """
 from flask import g
 
 from ..db import get_db
+
+# Resultados dos amistosos que valem (confirmados e ranked - friendly.py), do
+# ponto de vista do amistoso (mandante x visitante): um por jogo lido do jogo
+# pelo RetroArch TIERES (friendly_games, chave 'a<id>-<nº do jogo>') ou, sem
+# eles, o placar informado pelos jogadores, como um jogo só (chave 'a<id>').
+# Usado aqui e no V/E/D (stats.py).
+FRIENDLY_RESULTS = """
+SELECT 'a' || f.id || '-' || fg.number AS match_key, f.id AS friendly_id, fg.number AS game_number,
+       f.home_id, f.away_id, fg.home_goals, fg.away_goals, fg.home_pens, fg.away_pens,
+       CASE WHEN fg.quit = 1 THEN f.quitter_id END AS quitter_id, f.confirmed_at, f.game_title_id
+FROM friendly_matches f JOIN friendly_games fg ON fg.friendly_id = f.id
+WHERE f.status = 'confirmed' AND f.ranked = 1 AND f.game_report = 1
+UNION ALL
+SELECT 'a' || f.id, f.id, NULL, f.home_id, f.away_id, f.home_goals, f.away_goals, NULL, NULL,
+       f.quitter_id, f.confirmed_at, f.game_title_id
+FROM friendly_matches f
+WHERE f.status = 'confirmed' AND f.ranked = 1
+  AND NOT (f.game_report = 1 AND EXISTS (SELECT 1 FROM friendly_games fg WHERE fg.friendly_id = f.id))
+"""
 
 RANKS = ("F", "E", "D", "C", "B", "A")
 # XP mínimo de cada rank: cada degrau pede mais que o anterior (100, 150, 200, 250, 300).
@@ -32,12 +55,13 @@ STEP = 5
 MIN_POINTS = 5
 QUIT_FACTOR = 3
 
-# Jogos de torneio (id = id do jogo) e amistosos que valem (id = 'a<id>',
-# como o match_key de stats.py), na ordem em que foram confirmados.
-_MATCHES = """
+# Jogos de torneio (id = id do jogo) e resultados dos amistosos que valem
+# (id = 'a<id>' ou 'a<id>-<nº do jogo>', como o match_key de stats.py), na
+# ordem em que foram confirmados (os jogos do amistoso, na ordem em que foram jogados).
+_MATCHES = f"""
 SELECT id, home, away, home_goals, away_goals, quitter FROM (
     SELECT m.id, he.player_id AS home, ae.player_id AS away, m.home_goals, m.away_goals, m.quitter_id AS quitter,
-           COALESCE(m.confirmed_at, m.updated_at) AS at, 0 AS kind, m.id AS seq
+           COALESCE(m.confirmed_at, m.updated_at) AS at, 0 AS kind, m.id AS seq, 0 AS sub
     FROM tournament_matches m
     JOIN tournament_stages s ON s.id = m.stage_id
     JOIN tournaments t ON t.id = s.tournament_id
@@ -45,10 +69,11 @@ SELECT id, home, away, home_goals, away_goals, quitter FROM (
     JOIN tournament_entries ae ON ae.id = m.away_entry_id
     WHERE m.status = 'confirmed' AND t.status != 'cancelled'
     UNION ALL
-    SELECT 'a' || f.id, f.home_id, f.away_id, f.home_goals, f.away_goals, f.quitter_id, f.confirmed_at, 1, f.id
-    FROM friendly_matches f WHERE f.status = 'confirmed' AND f.ranked = 1
+    SELECT r.match_key, r.home_id, r.away_id, r.home_goals, r.away_goals, r.quitter_id, r.confirmed_at, 1,
+           r.friendly_id, COALESCE(r.game_number, 0)
+    FROM ({FRIENDLY_RESULTS}) r
 )
-ORDER BY at, kind, seq
+ORDER BY at, kind, seq, sub
 """
 
 
@@ -80,10 +105,11 @@ def tournament_peaks(db):
     return peaks
 
 
-def replay(matches, xp=None, peaks=None):
+def replay(matches, xp=None, peaks=None, tripled=None):
     """Aplica as partidas (id, home, away, home_goals, away_goals), em ordem, ao XP
     de cada jogador (`xp`, começando do zero se não vier). Com `peaks`, guarda
-    nele o maior XP de cada jogador ao longo das partidas."""
+    nele o maior XP de cada jogador ao longo das partidas; com `tripled` (um
+    set), os ids das partidas em que quem saiu no meio perdeu o triplo."""
     xp, deltas = dict(xp or {}), {}
     for m in matches:
         home, away = m["home"], m["away"]
@@ -111,6 +137,8 @@ def replay(matches, xp=None, peaks=None):
             d_home = -min(-d_home * QUIT_FACTOR, a)
         elif quitter == away and d_away < 0:
             d_away = -min(-d_away * QUIT_FACTOR, b)
+        if tripled is not None and quitter in (home, away) and (d_home if quitter == home else d_away) < 0:
+            tripled.add(m["id"])
         xp[home], xp[away] = a + d_home, b + d_away
         deltas[m["id"]] = {home: d_home, away: d_away}
         if peaks is not None:
@@ -121,7 +149,10 @@ def replay(matches, xp=None, peaks=None):
 
 def _cached():
     if "xp_table" not in g:
-        g.xp_table = compute(get_db())
+        tripled = set()
+        g.xp_table = replay(get_db().execute(_MATCHES), tripled=tripled)
+        g.xp_tripled = tripled
+        g.pop("xp_friendlies", None)
     return g.xp_table
 
 
@@ -131,6 +162,31 @@ def player_xp(player_id):
 
 def match_deltas(match_id):
     return _cached()[1].get(match_id, {})
+
+
+def match_tripled(match_id):
+    """Na partida, quem saiu no meio perdeu o triplo de XP?"""
+    _cached()
+    return match_id in g.get("xp_tripled", ())
+
+
+def friendly_deltas(friendly_id):
+    """O XP de um amistoso que valeu: {"deltas": {player_id: soma dos jogos},
+    "games": quantos resultados, "tripled": quem saiu no meio perdeu o
+    triplo em algum} - ou None (não valeu, ou ainda não confirmado)."""
+    deltas = _cached()[1]
+    if "xp_friendlies" not in g:
+        found = {}
+        for key, change in deltas.items():
+            if not (isinstance(key, str) and key.startswith("a")):
+                continue
+            item = found.setdefault(int(key[1:].split("-")[0]), {"deltas": {}, "games": 0, "tripled": False})
+            item["games"] += 1
+            item["tripled"] = item["tripled"] or key in g.xp_tripled
+            for player, delta in change.items():
+                item["deltas"][player] = item["deltas"].get(player, 0) + delta
+        g.xp_friendlies = found
+    return g.xp_friendlies.get(friendly_id)
 
 
 def info(player_id):

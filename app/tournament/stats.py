@@ -6,14 +6,19 @@ mais os amistosos confirmados que valem - friendly.py), que é onde o placar fic
 correção ou placar apagado pelo organizador. Torneios cancelados não contam.
 Como no W$ (store._pay_match), vale o placar do jogo: decisão por pênaltis
 conta como empate.
+
+No amistoso, cada jogo lido pelo RetroArch TIERES conta sozinho (como no XP -
+xp.FRIENDLY_RESULTS); o placar informado pelos jogadores conta como um jogo.
 """
+from .xp import FRIENDLY_RESULTS
 
 # Uma linha por jogador por jogo confirmado, do ponto de vista dele: jogos de
-# torneio (kind 't') e amistosos que valem para o ranking (kind 'a' -
+# torneio (kind 't') e jogos de amistoso que valem para o ranking (kind 'a' -
 # friendly.py). match_key identifica a partida nos dois (o id do jogo de
-# torneio; 'a<id>' no amistoso) - é a chave do XP (xp.py) e dos popups.
-_SIDES = """
-WITH sides AS (
+# torneio; 'a<id>' ou 'a<id>-<nº do jogo>' no amistoso, que tem também o
+# game_number) - é a chave do XP (xp.py) e dos popups. match_id do amistoso = o id dele.
+_SIDES = f"""
+WITH friendly_results AS ({FRIENDLY_RESULTS}), sides AS (
     SELECT m.id AS match_id, s.tournament_id, s.name AS stage_name, m.round, m.leg, m.tie_id,
            COALESCE(m.confirmed_at, m.updated_at) AS played_at,
            me.player_id, op.player_id AS opponent_id, me.id AS entry_id, op.id AS opponent_entry_id,
@@ -34,17 +39,20 @@ WITH sides AS (
     JOIN tournament_entries op ON op.id = m.home_entry_id
     WHERE m.status = 'confirmed'
 ), results AS (
-    SELECT sides.*, 't' AS kind, sides.match_id AS match_key, t.slug, t.name AS tournament_name, t.game_title_id
+    SELECT sides.*, 't' AS kind, sides.match_id AS match_key, t.slug, t.name AS tournament_name, t.game_title_id,
+           NULL AS game_number
     FROM sides JOIN tournaments t ON t.id = sides.tournament_id
     WHERE t.status != 'cancelled'
     UNION ALL
-    SELECT f.id, NULL, 'Amistoso', NULL, NULL, NULL, f.confirmed_at, f.home_id, f.away_id, NULL, NULL,
-           f.home_goals, f.away_goals, NULL, NULL, 1, 'a', 'a' || f.id, NULL, 'Amistoso', f.game_title_id
-    FROM friendly_matches f WHERE f.status = 'confirmed' AND f.ranked = 1
+    SELECT r.friendly_id, NULL, 'Amistoso', NULL, NULL, NULL, r.confirmed_at, r.home_id, r.away_id, NULL, NULL,
+           r.home_goals, r.away_goals, r.home_pens, r.away_pens, 1, 'a', r.match_key, NULL, 'Amistoso',
+           r.game_title_id, r.game_number
+    FROM friendly_results r
     UNION ALL
-    SELECT f.id, NULL, 'Amistoso', NULL, NULL, NULL, f.confirmed_at, f.away_id, f.home_id, NULL, NULL,
-           f.away_goals, f.home_goals, NULL, NULL, 0, 'a', 'a' || f.id, NULL, 'Amistoso', f.game_title_id
-    FROM friendly_matches f WHERE f.status = 'confirmed' AND f.ranked = 1
+    SELECT r.friendly_id, NULL, 'Amistoso', NULL, NULL, NULL, r.confirmed_at, r.away_id, r.home_id, NULL, NULL,
+           r.away_goals, r.home_goals, r.away_pens, r.home_pens, 0, 'a', r.match_key, NULL, 'Amistoso',
+           r.game_title_id, r.game_number
+    FROM friendly_results r
 )
 """
 
@@ -111,7 +119,8 @@ def history(db, player_id, game_id=None, opponent_id=None, limit=100):
     return db.execute(
         f"{_SIDES} SELECT r.*, op.username AS opponent_name FROM results r "
         f"JOIN players op ON op.id = r.opponent_id WHERE r.player_id = ?{where} "
-        "ORDER BY r.played_at DESC, r.match_id DESC LIMIT ?", (player_id, *params, limit)).fetchall()
+        "ORDER BY r.played_at DESC, r.match_id DESC, r.game_number DESC LIMIT ?",
+        (player_id, *params, limit)).fetchall()
 
 
 def form(rows, size=5):

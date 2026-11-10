@@ -4,9 +4,10 @@
 {% call info_dialog('amistoso-regras', 'Quando o amistoso vale para o Ranking e o XP') %}
   <ul class="xp-rules-list">
     <li>Os dois jogadores precisam já ter chegado a <strong>{{ rules.min_xp }} XP em campeonatos</strong> (Rank {{ rules.rank }}). O XP de amistosos não conta para isso. Quem chegou lá uma vez continua liberado, mesmo se perder XP depois. Assim, contas novas ou fake não conseguem dar XP para ninguém.{% if rules.my_peak < rules.min_xp %} <span class="muted">Você ainda não chegou: seu maior XP em campeonatos é {{ rules.my_peak }}.</span>{% else %} <span class="muted">Você já está liberado.</span>{% endif %}</li>
-    <li>Vale no máximo <strong>{{ rules.limit }} convites para amistosos por dia</strong> contra o mesmo adversário, mas vocês podem fazer quantos jogos quiserem dentro da mesma conexão, ao final é somado o agregado para confirmarem os resultados e quem tiver mais gols marcados ganha o XP e status V/E/D.</li>
+    <li>Vale no máximo <strong>{{ rules.limit }} convites para amistosos por dia</strong> contra o mesmo adversário, mas vocês podem fazer quantos jogos quiserem dentro da mesma conexão. No fim, os dois confirmam os resultados.</li>
+    <li><strong>Cada jogo vale sozinho</strong> no XP e no V/E/D, pelo placar dele. Com <strong>Placar agregado</strong> marcado no convite, o amistoso também mostra a soma dos gols de todos os jogos; sem ele, mostra só os jogadores. Depois de confirmado, o (i) de cada jogo mostra quanto XP ele deu.</li>
     <li>Qualquer amigo pode ser convidado. Quando um dos dois ainda não está liberado, o amistoso fica registrado, mas não vale.</li>
-    <li>O amistoso que vale entra no Ranking, no V/E/D e no XP como um jogo de campeonato, pelas mesmas regras. Ele não paga W$.</li>
+    <li>Cada jogo do amistoso que vale entra no Ranking, no V/E/D e no XP como um jogo de campeonato, pelas mesmas regras. Ele não paga W$.</li>
     <li>Se um não aceitar o placar, o amistoso fica <strong>suspenso</strong> até um dos dois propor um placar que o outro aceite.</li>
   </ul>
 {% endcall %}
@@ -48,6 +49,9 @@
                      required=true, field_id='amigo-busca', empty='Nenhum amigo com esse nick.') }}
       <label class="wide">Recado (opcional)<input name="mensagem" maxlength="300" placeholder="Ex.: hoje às 21h?"></label>
     </div>
+    {# Só o que aparece no fim: o XP é sempre jogo a jogo (friendly.py). #}
+    <label class="check friendly-aggregate"><input type="checkbox" name="agregado" value="1">
+      <span>Placar agregado <small class="muted">No fim, soma os gols de todos os jogos e mostra o resultado. Desmarcado, mostra só os jogadores. O XP é sempre jogo a jogo.</small></span></label>
     <div class="iso-choice">
       <span class="iso-choice-label">ISO (opcional)</span>
       <input type="hidden" name="iso" id="iso-value" value="">

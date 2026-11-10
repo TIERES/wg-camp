@@ -112,6 +112,18 @@ def match_xp(match_id, player_id):
 
 
 @bp.app_template_global()
+def match_tripled(match_id):
+    """Na partida, quem saiu no meio perdeu o triplo de XP?"""
+    return xp.match_tripled(match_id)
+
+
+@bp.app_template_global()
+def friendly_xp(friendly_id):
+    """XP do amistoso que valeu (a soma dos jogos - xp.friendly_deltas), ou None."""
+    return xp.friendly_deltas(friendly_id)
+
+
+@bp.app_template_global()
 def history_url(row):
     """Link de uma linha do histórico (stats.history): o jogo do torneio ou o amistoso."""
     if row["kind"] == "a":
@@ -595,7 +607,7 @@ def friendly_new():
     me = session["player_id"]
     try:
         friendly_id = friendly.invite(db, me, request.form.get("amigo", type=int), request.form.get("iso"),
-                                      request.form.get("mensagem"))
+                                      request.form.get("mensagem"), aggregate=request.form.get("agregado") == "1")
         db.commit()
     except TournamentError as error:
         db.rollback()
@@ -607,6 +619,8 @@ def friendly_new():
                           + (f" de {row['game_name']}" if row["game_name"] else "") + "."
                           + (f"\nISO: {row['iso_title']} ({row['iso_filename']}). Se você não tem, baixe na página "
                              "do amistoso." if row["iso_title"] else "")
+                          + ("\nPlacar agregado: no fim, os gols de todos os jogos são somados." if row["aggregate"]
+                             else "")
                           + (f"\n\nRecado: {row['message']}" if row["message"] else "")
                           + "\n\nAceite ou recuse em:")
     flash(f"Convite de amistoso enviado para {row['away_name']}.", "success")
@@ -758,7 +772,7 @@ def friendly_action(friendly_id, acao):
     row = friendly.get(db, friendly_id)
     other = friendly.opponent_id(row, me)
     my_name = row["home_name"] if row["home_id"] == me else row["away_name"]
-    score = f"{row['home_name']} {row['home_goals']} x {row['away_goals']} {row['away_name']}"
+    score = friendly.score_text(row)
     mails = {
         "aceitar": (f"{my_name} aceitou o amistoso", f"{my_name} aceitou o amistoso de {row['game_name']}. "
                     "Depois do jogo, informe o placar em:"),

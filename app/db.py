@@ -472,11 +472,31 @@ CREATE TABLE IF NOT EXISTS friendly_matches (
     -- Quem saiu da sessão no meio de um jogo (o placar até ali conta): perde
     -- o triplo de XP se o amistoso for confirmado (xp.QUIT_FACTOR).
     quitter_id INTEGER REFERENCES players(id) ON DELETE SET NULL,
+    -- "Placar agregado" (escolhido no convite): no fim mostra a soma dos gols
+    -- dos jogos; sem ele, só os jogadores. O XP é sempre jogo a jogo (friendly_games).
+    aggregate INTEGER NOT NULL DEFAULT 0,
     CHECK (home_id != away_id)
 );
 CREATE INDEX IF NOT EXISTS friendly_matches_home_idx ON friendly_matches(home_id, status);
 CREATE INDEX IF NOT EXISTS friendly_matches_away_idx ON friendly_matches(away_id, status);
 CREATE INDEX IF NOT EXISTS friendly_matches_confirmed_idx ON friendly_matches(status, ranked, confirmed_at);
+
+-- Os jogos do amistoso lidos pelo RetroArch TIERES (live._report_friendlies),
+-- do ponto de vista do amistoso (mandante x visitante): cada um vale sozinho
+-- no Ranking, no V/E/D e no XP (xp.FRIENDLY_RESULTS). number = o nº do jogo
+-- na lista de partidas do amistoso (live.friendly_games); quit = 1 no jogo de
+-- que o quitter_id do amistoso saiu no meio.
+CREATE TABLE IF NOT EXISTS friendly_games (
+    friendly_id INTEGER NOT NULL REFERENCES friendly_matches(id) ON DELETE CASCADE,
+    number INTEGER NOT NULL,
+    live_match_id INTEGER REFERENCES live_matches(id) ON DELETE SET NULL,
+    home_goals INTEGER NOT NULL,
+    away_goals INTEGER NOT NULL,
+    home_pens INTEGER,
+    away_pens INTEGER,
+    quit INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (friendly_id, number)
+);
 """
 
 
@@ -517,6 +537,10 @@ def ensure_live_columns(database):
     if columns and "quitter_id" not in columns:
         database.execute("ALTER TABLE friendly_matches ADD COLUMN quitter_id INTEGER "
                          "REFERENCES players(id) ON DELETE SET NULL")
+    if columns and "aggregate" not in columns:
+        database.execute("ALTER TABLE friendly_matches ADD COLUMN aggregate INTEGER NOT NULL DEFAULT 0")
+        # Os de antes da opção sempre mostraram a soma dos jogos: continuam assim.
+        database.execute("UPDATE friendly_matches SET aggregate = 1")
     columns = {column["name"] for column in database.execute("PRAGMA table_info(tournament_matches)")}
     if columns and "quitter_id" not in columns:
         database.execute("ALTER TABLE tournament_matches ADD COLUMN quitter_id INTEGER "
@@ -864,6 +888,9 @@ def migrate_db():
     ensure_tournament_columns(database)
     database.executescript(LIVE_DDL)
     ensure_live_columns(database)
+    # Jogos dos amistosos com placar lido do jogo de antes da tabela friendly_games.
+    from .live import backfill_friendly_games
+    backfill_friendly_games(database)
     from .tournament.teams import seed_teams
     from .tournament.games import seed_games
     seed_teams(database)

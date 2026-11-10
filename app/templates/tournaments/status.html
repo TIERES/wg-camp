@@ -29,7 +29,7 @@
       <dt>Resultado</dt><dd><span class="recent"><span class="f-{{ outcome(r) }}">{{ outcome(r) }}</span></span> {{ r.goals_for }} x {{ r.goals_against }}{% if r.pens_for is not none %} <small class="muted">({{ r.pens_for }} x {{ r.pens_against }} pên.)</small>{% endif %}</dd>
       <dt>Adversário</dt><dd>{{ player_link(r.opponent_name) }}</dd>
       {% set delta = match_xp(r.match_key, session.player_id) %}{% if delta is not none %}<dt>Experiência</dt><dd class="xp-delta {{ 'up' if delta > 0 else 'down' if delta < 0 else '' }}">{{ '%+d'|format(delta) }} XP</dd>{% endif %}
-      {% if r.kind == 'a' %}<dt>Partida</dt><dd><a href="{{ history_url(r) }}">Amistoso</a></dd>{% else %}<dt>Campeonato</dt><dd><a href="{{ url_for('tournaments.show', slug=r.slug) }}">{{ r.tournament_name }}</a> <small class="muted">· {{ r.stage_name }}</small></dd>{% endif %}
+      {% if r.kind == 'a' %}<dt>Partida</dt><dd><a href="{{ history_url(r) }}">Amistoso</a>{% if r.game_number %} <small class="muted">· jogo {{ r.game_number }}</small>{% endif %}</dd>{% else %}<dt>Campeonato</dt><dd><a href="{{ url_for('tournaments.show', slug=r.slug) }}">{{ r.tournament_name }}</a> <small class="muted">· {{ r.stage_name }}</small></dd>{% endif %}
       <dt>Data e hora</dt><dd>{{ r.played_at|localtime }}</dd>
     </dl>
     <form method="dialog"><button class="secondary">Fechar</button></form>
