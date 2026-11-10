@@ -1045,6 +1045,107 @@ def friendly_games(db, friendly_row):
     return games, tuple(total)
 
 
+# Artilharia e assistências (campeonato; amistoso com mais de um jogo): os gols
+# que o fork lê da RAM - [autor, minuto, assistência, "og"/"pen"] por time -
+# das partidas que contam. Gol contra não entra (nem quem o fez, que vem no
+# lugar da assistência); gol de pênalti conta (e aparece à parte). Os pênaltis
+# da disputa não estão na lista de gols. O mesmo jogador do jogo controlado
+# por dois jogadores do WE Camp (ex.: os dois de Brasil no amistoso) são dois.
+OWN_GOAL_NAME = "Gol contra"
+
+
+def goal_events(db, match):
+    """Os gols da partida para a artilharia, em ordem: quem fez, quem deu a
+    assistência, se foi de pênalti e o lado (nicks, time e escudo do card)."""
+    state = _match_state(match)
+    teams = state.get("teams") or []
+    events = []
+    for side, team in enumerate(teams[:2]):
+        nicks = json.loads(match[("local_players_json", "visita_players_json")[side]] or "[]")
+        view = None
+        for item in team.get("scorers") or []:
+            name = (item[0] or "").strip()
+            kind = item[3] if len(item) > 3 else ""
+            # Japoneses em Shift-JIS saem sem nome; o fork antigo mandava o gol contra só pelo nome.
+            if kind == "og" or not name or name == OWN_GOAL_NAME:
+                continue
+            view = view or _team_view(db, match, side, team, nicks)
+            events.append({"name": name, "assist": ((item[2] if len(item) > 2 else "") or "").strip(),
+                           "pen": kind == "pen", "nick": " / ".join(nicks), "team": view["name"],
+                           "image": view["image"], "match_id": match["id"]})
+    return events
+
+
+def leaderboard(events):
+    """Artilharia e assistências dos gols (goal_events, em ordem dos jogos):
+    por jogador do jogo e quem o controlou, com o time do último gol; empate
+    no número fica na mesma posição. Devolve {"scorers": [...], "assists": [...]}."""
+    tables = ({}, {})
+    for e in events:
+        for table, name, field in ((tables[0], e["name"], "goals"), (tables[1], e["assist"], "assists")):
+            if not name:
+                continue
+            row = table.setdefault((name.casefold(), e["nick"].casefold()),
+                                   {"name": name, "nick": e["nick"], "goals": 0, "assists": 0, "pens": 0, "games": set()})
+            row.update(team=e["team"], image=e["image"])
+            row[field] += 1
+            row["games"].add(e["match_id"])
+            if field == "goals" and e["pen"]:
+                row["pens"] += 1
+
+    def ranked(table, field):
+        rows = sorted(table.values(), key=lambda r: (-r[field], r["pens"] if field == "goals" else 0,
+                                                     len(r["games"]), r["name"].casefold()))
+        position, last = 0, None
+        for index, row in enumerate(rows, 1):
+            if row[field] != last:
+                position, last = index, row[field]
+            row.update(position=position, games=len(row["games"]))
+        return rows
+    return {"scorers": ranked(tables[0], "goals"), "assists": ranked(tables[1], "assists")}
+
+
+def tournament_scorers(db, tournament_id):
+    """Artilharia do campeonato: os jogos confirmados cuja partida lida do jogo
+    (a mais recente desse jogo, se jogaram de novo) tem o mesmo placar do
+    resultado oficial - um placar corrigido à mão não traz gols de outro jogo.
+    Simulações nunca. Devolve o leaderboard com "games" (jogos que contaram)."""
+    rows = db.execute(
+        "SELECT m.*, tm.home_goals AS official_home, tm.away_goals AS official_away, hp.username AS home_nick, "
+        "ap.username AS away_nick FROM live_matches m JOIN tournament_matches tm ON tm.id = m.tournament_match_id "
+        "JOIN tournament_stages s ON s.id = tm.stage_id "
+        "JOIN tournament_entries he ON he.id = tm.home_entry_id JOIN players hp ON hp.id = he.player_id "
+        "JOIN tournament_entries ae ON ae.id = tm.away_entry_id JOIN players ap ON ap.id = ae.player_id "
+        "WHERE s.tournament_id = ? AND tm.status = 'confirmed' AND m.is_test = 0 AND m.verified = 1 "
+        "AND m.status != 'live' ORDER BY m.started_at DESC, m.id DESC", (tournament_id,)).fetchall()
+    seen, counted = set(), []
+    for row in rows:
+        if row["tournament_match_id"] in seen:
+            continue
+        if _home_away(row, (row["local_goals"] or 0, row["visita_goals"] or 0)) == (row["official_home"],
+                                                                                   row["official_away"]):
+            seen.add(row["tournament_match_id"])
+            counted.append(row)
+    counted.reverse()
+    board = leaderboard([e for row in counted for e in goal_events(db, row)])
+    board["games"] = len(counted)
+    return board
+
+
+def friendly_scorers(db, friendly_row, games):
+    """Artilharia do amistoso: os jogos que entram na soma (friendly_games:
+    summed), só com mais de um - com um, o card da partida já diz tudo. None
+    sem isso."""
+    ids = [g["id"] for g in games if g["summed"]]
+    if len(ids) < 2:
+        return None
+    rows = db.execute("SELECT * FROM live_matches WHERE id IN (%s) ORDER BY started_at, id" % ",".join("?" * len(ids)),
+                      ids).fetchall()
+    board = leaderboard([e for row in rows for e in goal_events(db, row)])
+    board["games"] = len(rows)
+    return board
+
+
 FRIENDLIES = "amistosos"  # o valor de "Amistosos" no filtro de campeonato
 
 

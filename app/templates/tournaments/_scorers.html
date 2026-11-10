@@ -1,0 +1,33 @@
+{# Artilharia e assistências (live.tournament_scorers / live.friendly_scorers):
+   os gols lidos do jogo pelo RetroArch TIERES nos jogos que contam. #}
+{% macro scorer_table(rows, field, title, empty) -%}
+<section class="scorer-board">
+  <h2>{{ title }}</h2>
+  {% if rows %}
+  <div class="table-scroll">
+  <table class="ledger scorers">
+    <thead><tr><th class="num">#</th><th>Jogador</th><th>Time</th><th class="num">{{ 'Gols' if field == 'goals' else 'Assist.' }}</th></tr></thead>
+    <tbody>{% for r in rows %}
+      <tr{% if loop.index > 10 %} class="scorer-more" hidden{% endif %}>
+        <td class="num">{% if loop.first or r.position != loop.previtem.position %}{{ r.position }}º{% endif %}</td>
+        <td><span class="entry-name"><strong>{{ r.name }}</strong>{% if r.nick %}<small>{{ r.nick }}</small>{% endif %}</span></td>
+        <td><span class="entry"><img class="crest" src="{{ r.image }}" alt="" loading="lazy"><span>{{ r.team }}</span></span></td>
+        <td class="num"><strong>{{ r[field] }}</strong>{% if field == 'goals' and r.pens %} <small class="muted" title="De pênalti">({{ r.pens }} pên.)</small>{% endif %}</td>
+      </tr>
+    {% endfor %}</tbody>
+  </table>
+  </div>
+  {% if rows|length > 10 %}<button type="button" class="secondary scorer-toggle" onclick="this.closest('.scorer-board').querySelectorAll('.scorer-more').forEach(function (r) { r.hidden = false }); this.remove()">Ver todos ({{ rows|length }})</button>{% endif %}
+  {% else %}<p class="muted">{{ empty }}</p>{% endif %}
+</section>
+{%- endmacro %}
+
+{# where: o que vem depois de "jogo" no rodapé (where_many no plural, se muda). #}
+{% macro scorer_boards(board, where, where_many=none) -%}
+{% set many = board.games > 1 %}
+<div class="scorer-boards">
+  {{ scorer_table(board.scorers, 'goals', 'Artilharia', 'Nenhum gol ainda.') }}
+  {{ scorer_table(board.assists, 'assists', 'Assistências', 'Nenhuma assistência ainda.') }}
+</div>
+<p class="muted scorer-note">{% if board.games %}Soma {{ 'dos' if many else 'do' }} {{ board.games }} jogo{{ 's' if many }} {{ (where_many or where) if many else where }} com o placar lido do jogo pelo RetroArch TIERES{% else %}Ainda nenhum jogo {{ where }} com o placar lido do jogo pelo RetroArch TIERES{% endif %} (os dois logados no WE Camp). Gol contra não conta; os pênaltis da disputa também não.</p>
+{%- endmacro %}

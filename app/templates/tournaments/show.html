@@ -65,7 +65,8 @@
 <nav class="tabs">
   <a href="?aba=geral" class="{{ 'active' if tab == 'geral' }}">Visão geral</a>
   {% if stages %}<a href="?aba=tabela" class="{{ 'active' if tab == 'tabela' }}">Tabela e chaves</a>
-  <a href="?aba=jogos" class="{{ 'active' if tab == 'jogos' }}">Jogos</a>{% endif %}
+  <a href="?aba=jogos" class="{{ 'active' if tab == 'jogos' }}">Jogos</a>
+  <a href="?aba=artilharia" class="{{ 'active' if tab == 'artilharia' }}">Artilharia</a>{% endif %}
 </nav>
 
 {% if tab == 'geral' %}
@@ -117,6 +118,10 @@
     {% endif %}
   </section>
   {% endfor %}
+
+{% elif tab == 'artilharia' %}
+  {% from 'tournaments/_scorers.html' import scorer_boards %}
+  {{ scorer_boards(scorers, 'confirmado do campeonato', 'confirmados do campeonato') }}
 
 {% else %}
   {% for view in stages %}

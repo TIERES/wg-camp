@@ -639,7 +639,8 @@ def friendly_show(friendly_id):
     from . import live
     games, total = live.friendly_games(db, row)
     return render_template("tournaments/friendly.html", f=row, labels=friendly.STATUS_LABELS,
-                           needs_me=friendly.needs_me, games=games, games_total=total)
+                           needs_me=friendly.needs_me, games=games, games_total=total,
+                           scorers=live.friendly_scorers(db, row, games))
 
 
 def _send_iso_file(stored_name, original_filename, archive_url, local_removed_at, protected=False):
@@ -853,7 +854,7 @@ def show(slug):
     config = store.settings_of(tournament)
     # Encerrado abre na Visão geral, com os vencedores; em andamento, na tabela.
     tab = request.args.get("aba", "tabela" if stages and tournament["status"] != "finished" else "geral")
-    if tab not in ("geral", "tabela", "jogos"):
+    if tab not in ("geral", "tabela", "jogos", "artilharia") or (tab == "artilharia" and not stages):
         tab = "geral"
     pool = store.prize_pool(db, tournament["id"])
     split = engine.parse_split(tournament["prize_split"])
@@ -887,9 +888,13 @@ def show(slug):
     elif tab == "jogos" and tournament["status"] == "running":
         from . import live
         live_table = live.tournament_live(db, tournament["id"])
+    scorers = None
+    if tab == "artilharia":
+        from . import live
+        scorers = live.tournament_scorers(db, tournament["id"])
     return render_template(
         "tournaments/show.html", t=tournament, entries=entries, my_entry=my_entry, stages=stages, tab=tab,
-        live_table=live_table, confirm_hours=setting(db, "torneios_confirmacao_horas"),
+        live_table=live_table, confirm_hours=setting(db, "torneios_confirmacao_horas"), scorers=scorers,
         team_list=team_list, free_teams=free_teams, team_modes=TEAM_MODES, crests=_crests(names), my_pending=my_pending,
         names=names, can_manage=can_manage(tournament), iso=iso_row, iso_ready=iso.downloadable(iso_row, current_app),
         format_label=formats.FORMATS[tournament["format"]], summary=formats.describe(tournament["format"], config),

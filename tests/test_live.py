@@ -1209,6 +1209,83 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertEqual(row["source"], "admin")
         self.assertIn("Camarões", self.cards())
 
+    def test_leaderboard_skips_own_goals_and_ranks_ties(self):
+        from app import live
+        match = {"id": 7, "state_json": json.dumps({"teams": [
+            {"id": 1, "goals": 4, "scorers": [["Gol contra", 5, "J.Leko", "og"], ["Gol contra", 9, ""],
+                                              ["S.Vryzas", 17, "Karagounis"], ["S.Vryzas", 60, "", "pen"]]},
+            {"id": 2, "goals": 2, "scorers": [["J.Leko", 20, "Modric"], ["", 30, ""]]}]}),
+                 "local_players_json": '["TIERES"]', "visita_players_json": '["ANDERSHOW"]',
+                 "tournament_match_id": None, "content_id": "x"}
+        with self.app.app_context():
+            events = live.goal_events(get_db(), match)
+        self.assertEqual([(e["name"], e["assist"], e["pen"], e["nick"]) for e in events],
+                         [("S.Vryzas", "Karagounis", False, "TIERES"), ("S.Vryzas", "", True, "TIERES"),
+                          ("J.Leko", "Modric", False, "ANDERSHOW")])
+        # O mesmo jogador do jogo com outro dono (os dois de Grécia) é outra linha.
+        events.append(dict(events[0], nick="ANDERSHOW", assist="Modric", match_id=8))
+        board = live.leaderboard(events)
+        self.assertEqual([(r["position"], r["name"], r["nick"], r["goals"], r["pens"]) for r in board["scorers"]],
+                         [(1, "S.Vryzas", "TIERES", 2, 1), (2, "J.Leko", "ANDERSHOW", 1, 0),
+                          (2, "S.Vryzas", "ANDERSHOW", 1, 0)])
+        self.assertEqual([(r["position"], r["name"], r["assists"], r["games"]) for r in board["assists"]],
+                         [(1, "Modric", 2, 2), (2, "Karagounis", 1, 1)])
+
+    def test_championship_scorers_only_from_confirmed_games_with_the_same_score(self):
+        from app.tournament import reports
+        self.make_league()
+        self.finish_live(goals=(2, 1))  # TIERES (Grécia, LOCAL) 2 x 1 ANDERSHOW
+        client = self.app.test_client()
+        html = client.get("/torneios/liga-1?aba=artilharia").get_data(as_text=True)
+        self.assertIn('class="active">Artilharia</a>', html)
+        self.assertIn("Ainda nenhum jogo confirmado do campeonato", html)  # reportado, ainda não confirmado
+        with self.app.app_context():
+            reports.auto_confirm(get_db(), at=datetime.now(timezone.utc) + timedelta(hours=25))
+        html = client.get("/torneios/liga-1?aba=artilharia").get_data(as_text=True)
+        self.assertIn("Soma do 1 jogo confirmado do campeonato", html)
+        scorers, assists = html.split("<h2>Assistências</h2>")
+        self.assertIn("<strong>S.Vryzas</strong><small>TIERES</small>", scorers)
+        self.assertRegex(scorers, r"(?s)S\.Vryzas.*?Grécia.*?<strong>2</strong>")
+        self.assertRegex(scorers, r"(?s)J\.Leko.*?Croácia.*?<strong>1</strong>")
+        self.assertRegex(assists, r"(?s)Karagounis.*?<strong>2</strong>")
+        self.assertNotIn("J.Leko", assists)  # gol sem assistência
+        # Placar corrigido à mão (outro que o lido do jogo): os gols lidos não valem.
+        with self.app.app_context():
+            get_db().execute("UPDATE tournament_matches SET home_goals = 3 WHERE status = 'confirmed'")
+            get_db().commit()
+        self.assertNotIn("S.Vryzas", client.get("/torneios/liga-1?aba=artilharia").get_data(as_text=True))
+
+    def test_friendly_scorers_with_more_than_one_game(self):
+        with self.app.app_context():
+            db = get_db()
+            fid = db.execute("INSERT INTO friendly_matches (home_id, away_id, status, created_at, updated_at) "
+                             "VALUES (?, ?, 'accepted', ?, ?)", (self.tieres, self.anders, now(), now())).lastrowid
+            db.commit()
+        client = self.app.test_client()
+        with client.session_transaction() as sess:
+            sess["player_id"] = self.tieres
+        self.play(1000, (2, 1))
+        self.end_session()
+        self.cards()
+        self.assertNotIn("<h2>Artilharia</h2>", client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True))
+        with self.app.app_context():
+            db = get_db()
+            fid = db.execute("INSERT INTO friendly_matches (home_id, away_id, status, created_at, updated_at) "
+                             "VALUES (?, ?, 'accepted', ?, ?)", (self.tieres, self.anders, now(), now())).lastrowid
+            db.execute("UPDATE live_sessions SET ended_at = ?",
+                       ((datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(timespec="seconds"),))
+            db.commit()
+        self.play(40000, (1, 0))
+        self.play(80000, (2, 2))
+        self.end_session()
+        self.cards()
+        page = client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True)
+        self.assertIn("Soma dos 2 jogos deste amistoso", page)
+        scorers, assists = page.split("<h2>Assistências</h2>")
+        self.assertRegex(scorers, r"(?s)S\.Vryzas</strong><small>TIERES</small>.*?<strong>3</strong>")
+        self.assertRegex(scorers, r"(?s)J\.Leko</strong><small>ANDERSHOW</small>.*?<strong>2</strong>")
+        self.assertRegex(assists, r"(?s)Karagounis.*?<strong>3</strong>")
+
 
 if __name__ == "__main__":
     unittest.main()
