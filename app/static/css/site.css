@@ -611,10 +611,8 @@ button.small,.button.small { padding:.4rem .7rem; font-size:.78rem }
 .live-faces.instant .live-face { transition:none }
 @media (prefers-reduced-motion: reduce) { .live-face { transition:none } }
 .live-none { margin:0; text-align:center; color:#9ca3af; font-size:.875rem }
-/* Estatísticas dos times: escudos no alto, número | nome | número, o melhor num balão. */
+/* Estatísticas dos times: número | nome | número, o melhor num balão. */
 .live-stats { display:grid; gap:.55rem; font-size:.875rem }
-.live-stats-head { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:.5rem; text-align:center; text-transform:uppercase; letter-spacing:.04em; font-size:.72rem; color:#d1d5db; margin-bottom:.15rem }
-.live-stats-head img { width:30px; height:24px; object-fit:contain }
 .live-stat { display:grid; grid-template-columns:3rem minmax(0,1fr) 3rem; align-items:center }
 .live-stat-v { justify-self:start; min-width:1.9rem; box-sizing:border-box; padding:.05rem .45rem; border-radius:999px; text-align:center; font-weight:600; line-height:1.4 }
 .live-stat-v.right { justify-self:end } .live-stat-v.best { background:var(--accent); color:#06281d }

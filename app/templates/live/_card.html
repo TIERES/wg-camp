@@ -57,17 +57,16 @@
   </div>
   {% endset %}
   {% if c.stats %}
-  {# Encerrada com as estatísticas (WE 2002): Gols/Estatísticas, como o Ida/Volta dos campeonatos (live-cards.js). #}
+  {# Encerrada com as estatísticas (WE 2002): Gols/Stats, como o Ida/Volta dos campeonatos (live-cards.js). #}
   <div class="live-detail">
     <div class="leg-toggle live-toggle" role="group" aria-label="Mostrar">
-      <button type="button" data-face="0" aria-pressed="true">Gols</button><button type="button" data-face="1" aria-pressed="false">Estatísticas</button>
+      <button type="button" data-face="0" aria-pressed="true">Gols</button><button type="button" data-face="1" aria-pressed="false" title="Estatísticas">Stats</button>
     </div>
     <div class="live-faces" data-live-faces="{{ c.id }}">
       <div class="live-face front">{% if has_events %}{{ events }}{% else %}<p class="live-none">Sem gols</p>{% endif %}</div>
       <div class="live-face back" inert>
         {# Como as estatísticas dos times da TV: o melhor número de cada linha destacado. #}
         <div class="live-stats">
-          <div class="live-stats-head"><img src="{{ a.image }}" alt="{{ a.name }}" title="{{ a.name }}" loading="lazy"><span>Estatísticas dos times</span><img src="{{ b.image }}" alt="{{ b.name }}" title="{{ b.name }}" loading="lazy"></div>
           {% for label, x, y, best in c.stats %}
           <div class="live-stat"><span class="live-stat-v{% if best == 0 %} best{% endif %}">{{ x }}</span><span class="live-stat-name">{{ label }}</span><span class="live-stat-v right{% if best == 1 %} best{% endif %}">{{ y }}</span></div>
           {% endfor %}

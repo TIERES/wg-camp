@@ -878,17 +878,18 @@ class LiveMatchesTest(unittest.TestCase):
                                r"<ul class=\"right\"><li>Messi 70'</li></ul>")
         self.assertRegex(html, r"aria-label=\"Contusões leves[^\"]*\">.*?</svg>\s*<ul class=\"right\"><li>Enzo Fdez\. 42'</li>")
         # Rolando: sem as estatísticas (só no fim).
-        self.assertNotIn("Estatísticas", html)
+        self.assertNotIn("live-toggle", html)
         self.assertNotIn("Chutes ao gol", html)
 
     def test_finished_card_has_goals_and_stats_buttons(self):
         self.post(self.we2002_state(final=True, frame=90000))
         html = self.cards()
         self.assertIn('data-face="0" aria-pressed="true">Gols</button>', html)
-        self.assertIn('data-face="1" aria-pressed="false">Estatísticas</button>', html)
+        self.assertIn('data-face="1" aria-pressed="false" title="Estatísticas">Stats</button>', html)
         self.assertIn("Heinz 40'", html)
         stats = html.split('class="live-face back"')[1]
-        self.assertIn("<span>Estatísticas dos times</span>", stats)
+        # Só as linhas: sem título nem escudos.
+        self.assertNotIn("<img", stats.split('class="live-card-foot"')[0])
         # Na ordem das estatísticas da TV, o melhor de cada linha no balão: mais chutes e
         # escanteios, menos faltas, cartões e impedimentos.
         rows = (("Chutes ao gol", 0, 28, 1), ("Faltas", 13, 1, 1), ("Cartões amarelos", 3, 1, 1),
@@ -919,7 +920,7 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertIn("Heinz 40'", html)
         self.assertIn("Casemiro 9'", html)
         self.post(state(kickoff=50000, final=True, frame=90000, period=1, clock=0))
-        self.assertNotIn("Estatísticas", self.cards())
+        self.assertNotIn("live-toggle", self.cards())
 
     def test_championship_game_left_mid_game_counts_and_marks_who_left(self):
         from app.tournament import reports, store, xp
