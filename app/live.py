@@ -1399,7 +1399,8 @@ def scorer_line(item):
         return Markup("Gol contra {}' <small>({})</small>").format(minute, assist or name)
     if kind == "pen":
         return Markup("{} {}' <small>(Pênalti)</small>").format(name, minute)
-    return Markup("{} {}'{}").format(name, minute, Markup(' <small>(assist. {})</small>').format(assist) if assist else "")
+    # A assistência entre parênteses, só o nome: "J.Alvarez 1' (L.Messi)".
+    return Markup("{} {}'{}").format(name, minute, Markup(' <small>({})</small>').format(assist) if assist else "")
 
 
 @bp.app_template_filter("event")
@@ -1407,7 +1408,7 @@ def event_line(item):
     """Cartão ou contusão do card ([nome, minuto ou [minutos], tipo] - _team_view):
     o grupo (o ícone no meio) já diz o tipo."""
     minutes = item[1] if isinstance(item[1], list) else [item[1]]
-    return Markup("{} {}").format(item[0] or "?", Markup(",").join(Markup("{}'").format(m) for m in minutes))
+    return Markup("{} {}").format(item[0] or "?", Markup(", ").join(Markup("{}'").format(m) for m in minutes))
 
 
 def _by_player(cards):

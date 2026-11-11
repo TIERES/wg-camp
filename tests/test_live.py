@@ -127,7 +127,7 @@ class LiveMatchesTest(unittest.TestCase):
         html = self.cards()
         # Sem campeonato nem cadastro, o nome da tabela da ISO não vale sozinho.
         for text in ("Não identificado", "TIERES", "ANDERSHOW", "1º tempo · 22&#39;", "S.Vryzas 17'",
-                     "assist. Karagounis", "Partida livre", "Ao vivo", "Euro vs Copa America 2004.bin"):
+                     "17' <small>(Karagounis)</small>", "Partida livre", "Ao vivo", "Euro vs Copa America 2004.bin"):
             self.assertIn(text, html)
         self.assertNotIn("Grecia", html)
         # Nome do arquivo longo: |fit (o começo corta com "…" se não couber, o fim fica; o inteiro no title).
@@ -834,7 +834,7 @@ class LiveMatchesTest(unittest.TestCase):
         html = self.cards()
         self.assertIn("Gol contra 17' <small>(Z.Suzuki)</small>", html)
         self.assertIn("Guesung 28' <small>(Pênalti)</small>", html)
-        self.assertIn("D.Maeda 8' <small>(assist. Y.Nagatomo)</small>", html)
+        self.assertIn("D.Maeda 8' <small>(Y.Nagatomo)</small>", html)
         # Fork antigo: gol contra sem o autor, como antes.
         self.post(state(kickoff=50000, goals=(1, 0), scorers=([["Gol contra", 17, ""]], [])))
         self.assertIn("Gol contra 17'</li>", self.cards())
@@ -869,10 +869,10 @@ class LiveMatchesTest(unittest.TestCase):
             "Gols", "Expulsos (cartão vermelho)", "Cartões amarelos",
             "Contusões graves (cruz vermelha): saíram de campo", "Contusões leves (cruz amarela): seguiram em campo")]
         self.assertEqual(icons, sorted(icons))
-        # O 2º amarelo: entre os expulsos, sem dizer como; e nos amarelos, na linha do jogador.
+        # O 2º amarelo: entre os expulsos, sem dizer como; e nos amarelos, na linha do jogador ("9', 43'").
         self.assertRegex(html, r"<ul><li>M\.Cunha 27'</li><li>Casemiro 43'</li></ul>\s*"
                                r'<svg class="live-ico"[^>]*aria-label="Expulsos \(cartão vermelho\)"')
-        self.assertRegex(html, r"<ul><li>Casemiro 9',43'</li><li>Douglas S\. 59'</li></ul>\s*"
+        self.assertRegex(html, r"<ul><li>Casemiro 9', 43'</li><li>Douglas S\. 59'</li></ul>\s*"
                                r'<svg class="live-ico"[^>]*aria-label="Cartões amarelos">.*?</svg>\s*'
                                r"<ul class=\"right\"><li>C\.Romero 88'</li></ul>")
         self.assertRegex(html, r"<ul></ul>\s*<svg class=\"live-ico\"[^>]*aria-label=\"Contusões graves[^\"]*\">.*?</svg>\s*"
@@ -1367,7 +1367,7 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertIn(">Ver card Ao Vivo</a>", page)
         home, away = page.split('class="match-ball"')
         self.assertIn("<li>J.Leko 20'</li>", home)
-        self.assertEqual(away.count("<li>S.Vryzas 17' <small>(assist. Karagounis)</small></li>"), 2)
+        self.assertEqual(away.count("<li>S.Vryzas 17' <small>(Karagounis)</small></li>"), 2)
         # Placar corrigido à mão (outro que o lido do jogo): os gols lidos não valem.
         with self.app.app_context():
             get_db().execute("UPDATE tournament_matches SET home_goals = 3 WHERE status = 'confirmed'")
