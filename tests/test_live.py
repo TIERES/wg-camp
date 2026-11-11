@@ -869,9 +869,10 @@ class LiveMatchesTest(unittest.TestCase):
             "Gols", "Expulsos (cartão vermelho)", "Cartões amarelos",
             "Contusões graves (cruz vermelha): saíram de campo", "Contusões leves (cruz amarela): seguiram em campo")]
         self.assertEqual(icons, sorted(icons))
-        self.assertRegex(html, r"<ul><li>M\.Cunha 27'</li><li>Casemiro 43' <small>\(2º amarelo\)</small></li></ul>\s*"
+        # O 2º amarelo: entre os expulsos, sem dizer como; e nos amarelos, na linha do jogador.
+        self.assertRegex(html, r"<ul><li>M\.Cunha 27'</li><li>Casemiro 43'</li></ul>\s*"
                                r'<svg class="live-ico"[^>]*aria-label="Expulsos \(cartão vermelho\)"')
-        self.assertRegex(html, r"<ul><li>Casemiro 9'</li><li>Douglas S\. 59'</li></ul>\s*"
+        self.assertRegex(html, r"<ul><li>Casemiro 9',43'</li><li>Douglas S\. 59'</li></ul>\s*"
                                r'<svg class="live-ico"[^>]*aria-label="Cartões amarelos">.*?</svg>\s*'
                                r"<ul class=\"right\"><li>C\.Romero 88'</li></ul>")
         self.assertRegex(html, r"<ul></ul>\s*<svg class=\"live-ico\"[^>]*aria-label=\"Contusões graves[^\"]*\">.*?</svg>\s*"

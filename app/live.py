@@ -396,9 +396,10 @@ def _team_view(db, match, side, team_state, nicks):
     return {"name": name or UNKNOWN_TEAM, "known": bool(name), "image": image, "goals": team_state.get("goals", 0),
             "players": list(nicks), "scorers": team_state.get("scorers", []),
             # Os grupos do card, abaixo dos gols: expulsos (vermelho direto e 2º amarelo),
-            # amarelos e as contusões de cruz vermelha e de cruz amarela.
+            # amarelos (o 2º também, na linha do jogador: "Casemiro 1',37'") e as contusões
+            # de cruz vermelha e de cruz amarela.
             "reds": [c for c in team_state.get("cards") or [] if c[2] in ("r", "y2")],
-            "yellows": [c for c in team_state.get("cards") or [] if c[2] == "y"],
+            "yellows": _by_player(c for c in team_state.get("cards") or [] if c[2] in ("y", "y2")),
             "injuries_red": [c for c in team_state.get("injuries") or [] if c[2] == "r"],
             "injuries_yellow": [c for c in team_state.get("injuries") or [] if c[2] == "y"]}
 
@@ -1403,8 +1404,15 @@ def scorer_line(item):
 
 @bp.app_template_filter("event")
 def event_line(item):
-    """Cartão ou contusão do card ([nome, minuto, tipo] - _team_extras): o grupo
-    (o ícone no meio) já diz o tipo; o 2º amarelo, entre os expulsos, diz que foi."""
-    name, minute, kind = item[0], item[1], item[2]
-    note = Markup(" <small>(2º amarelo)</small>") if kind == "y2" else ""
-    return Markup("{} {}'{}").format(name or "?", minute, note)
+    """Cartão ou contusão do card ([nome, minuto ou [minutos], tipo] - _team_view):
+    o grupo (o ícone no meio) já diz o tipo."""
+    minutes = item[1] if isinstance(item[1], list) else [item[1]]
+    return Markup("{} {}").format(item[0] or "?", Markup(",").join(Markup("{}'").format(m) for m in minutes))
+
+
+def _by_player(cards):
+    """Os cartões de cada jogador numa linha só, na ordem do primeiro: [nome, [minutos], tipo]."""
+    lines = {}
+    for name, minute, kind in cards:
+        lines.setdefault(name, [name, [], kind])[1].append(minute)
+    return list(lines.values())
