@@ -322,6 +322,19 @@ def tournament_invites(db, tournament, inviter_name, players):
         f"{starts}\n\nVeja o campeonato e faça a sua inscrição em:\n{page}\n")) for p in players])
 
 
+def entry_notices(db, tournament, notices):
+    """Avisos aos inscritos quando o organizador muda os dados do campeonato antes
+    do início (store.update_before_start): [(player_id, assunto, texto)], com o
+    link do campeonato."""
+    page = external_url("tournaments.show", slug=tournament["slug"], aba="geral")
+    messages = []
+    for player_id, subject, text in notices:
+        to = db.execute("SELECT username, email FROM players WHERE id = ?", (player_id,)).fetchone()
+        if to:
+            messages.append((to["email"], subject, f"Olá, {to['username']}!\n\n{text}\n\nCampeonato:\n{page}\n"))
+    _deliver(messages)
+
+
 def friendly_event(db, friendly, to_id, subject, text):
     """Aviso de um amistoso (convite, aceite, placar, placar não aceito), com o link dele."""
     to = db.execute("SELECT username, email FROM players WHERE id = ?", (to_id,)).fetchone()

@@ -244,9 +244,12 @@ class FriendsAndInvitesTest(unittest.TestCase):
         # Desfeita a amizade, quem já está inscrito continua vendo.
         c0.post(f"/torneios/amigos/{j1}/remover", data={"csrf_token": CSRF})
         self.assertEqual(c1.get(f"/torneios/{slug}").status_code, 200)
-        # Em Gerenciar o organizador tira a marca e o torneio volta a ser público.
-        c0.post(f"/torneios/{slug}/editar", data={"csrf_token": CSRF, "name": "Copa Amigos", "rules": "Regras",
-                                                   "starts_on": "2026-12-01"})
+        # Em Gerenciar (o formulário de criar, antes do início) o organizador tira a marca e o
+        # torneio volta a ser público.
+        c0.post(f"/torneios/{slug}/editar", data={
+            "csrf_token": CSRF, "name": "Copa Amigos", "rules": "Regras", "starts_on": "2026-12-01",
+            "game_title_id": self.game, "format": "knockout", "max_players": "2", "entry_fee": "0",
+            "ko_legs": "1", "final_legs": "1"})
         self.assertIn("Copa Amigos", c2.get("/torneios/").data.decode())
         self.assertEqual(c2.get(f"/torneios/{slug}").status_code, 200)
 

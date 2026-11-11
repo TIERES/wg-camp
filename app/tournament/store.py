@@ -9,7 +9,7 @@ import random
 import secrets
 
 from ..db import now
-from ..wallet import ensure_wallet, post, setting
+from ..wallet import ensure_wallet, format_cents, post, setting
 from . import engine, formats
 from .teams import find_by_name, plain_name
 
@@ -124,6 +124,100 @@ def withdraw(db, tournament, entry):
     db.execute("DELETE FROM tournament_entries WHERE id = ?", (entry["id"],))
 
 
+def entries_without_team(db, tournament):
+    """Inscritos ainda sem time nos modos em que cada um escolhe o seu (o time
+    saiu da lista ou o modo de times mudou: update_before_start)."""
+    if tournament["team_mode"] == "draw":
+        return []
+    return [e for e in entries_of(db, tournament["id"]) if not e["team_name"]]
+
+
+def choose_team(db, tournament, entry, team_name="", team_id=None):
+    """O inscrito sem time escolhe (lista) ou digita (livre) o seu, antes do início."""
+    if tournament["status"] != "registration":
+        raise TournamentError("O campeonato já começou.")
+    if tournament["team_mode"] == "draw":
+        raise TournamentError("Neste campeonato os times são sorteados no início.")
+    if entry["team_name"]:
+        raise TournamentError("Você já tem um time neste campeonato.")
+    team_id, team_name = _entry_team(db, tournament, team_name, team_id)
+    db.execute("UPDATE tournament_entries SET team_id = ?, team_name = ? WHERE id = ?",
+               (team_id, team_name, entry["id"]))
+
+
+def update_before_start(db, tournament, values, editor_id=None):
+    """Os dados básicos do campeonato editados antes do início (values: o
+    formulário validado, tournaments._tournament_form). Com inscritos:
+      - virou "somente amigos": sai quem não é amigo do organizador;
+      - o valor da inscrição mudou: saem todos e se inscrevem de novo, se quiserem;
+      - o time de alguém saiu da lista (ou o modo de times mudou): ele fica sem
+        time e escolhe outro (choose_team) - o campeonato só começa com todos com time.
+    Quem sai recebe de volta o que pagou. Devolve os avisos [(player_id,
+    assunto, texto)] para os e-mails (notify.entry_notices, depois do commit),
+    sem os de quem editou."""
+    if tournament["status"] != "registration":
+        raise TournamentError("O campeonato já começou: os dados básicos não mudam mais.")
+    entries = entries_of(db, tournament["id"])
+    if len(entries) > values["max_players"]:
+        raise TournamentError(f"Já há {len(entries)} inscritos: as vagas não podem ser menos que isso "
+                              "(remova inscrições antes).")
+    name, old_fee, notices = values["name"], tournament["entry_fee_cents"], []
+    refund = f" O valor pago ({format_cents(old_fee)}) voltou para a sua carteira W$." if old_fee else ""
+
+    def notice(entry, subject, text):
+        if entry["player_id"] != editor_id:
+            notices.append((entry["player_id"], f"{name}: {subject}", text))
+
+    def drop(entry, text):
+        _refund(db, tournament, entry)  # o que ele pagou: o valor de antes
+        db.execute("DELETE FROM tournament_entries WHERE id = ?", (entry["id"],))
+        notice(entry, "sua inscrição foi cancelada", text + refund)
+
+    kept = []
+    for entry in entries:
+        if (values["friends_only"] and not tournament["friends_only"] and entry["player_id"] != tournament["organizer_id"]
+                and not are_friends(db, entry["player_id"], tournament["organizer_id"])):
+            drop(entry, f'O campeonato "{name}" passou a ser somente para amigos de quem o criou, e por isso '
+                        "a sua inscrição foi cancelada.")
+        else:
+            kept.append(entry)
+    if values["fee"] != old_fee and kept:
+        for entry in kept:
+            drop(entry, f'O valor da inscrição do campeonato "{name}" mudou de {format_cents(old_fee)} para '
+                        f"{format_cents(values['fee'])}, e por isso a sua inscrição foi cancelada. Para continuar "
+                        "no campeonato, inscreva-se de novo.")
+        kept = []
+    mode, old_mode, listed = values["team_mode"], tournament["team_mode"], set(values["team_ids"])
+    for entry in kept:
+        text = None
+        if mode == "choose" and entry["team_id"] not in listed:
+            if old_mode == "choose" and not entry["team_name"]:
+                continue  # já estava sem time, e foi avisado
+            text = (f'O time {entry["team_name"]}, que você escolheu, saiu da lista do campeonato "{name}". '
+                    if old_mode == "choose" else f'No campeonato "{name}" cada jogador agora escolhe o time da lista. ')
+            text += "A sua inscrição continua: escolha o seu time na página do campeonato."
+        elif mode == "draw" and old_mode != "draw" and entry["team_name"]:
+            text = (f'No campeonato "{name}" os times agora são sorteados no início; o seu ({entry["team_name"]}) '
+                    "volta para o sorteio. A sua inscrição continua.")
+        elif mode == "free" and old_mode == "draw":
+            text = (f'No campeonato "{name}" cada jogador agora escolhe o nome do seu time. A sua inscrição '
+                    "continua: escolha o seu time na página do campeonato.")
+        if text:
+            db.execute("UPDATE tournament_entries SET team_id = NULL, team_name = '' WHERE id = ?", (entry["id"],))
+            notice(entry, "escolha o seu time" if mode != "draw" else "os times serão sorteados", text)
+    db.execute(
+        "UPDATE tournaments SET name = ?, game_title_id = ?, format = ?, max_players = ?, entry_fee_cents = ?, "
+        "prize_split = ?, settings_json = ?, rules = ?, team_mode = ?, starts_on = ?, ends_on = ?, friends_only = ?, "
+        "updated_at = ? WHERE id = ?",
+        (name, values["game_id"], values["format"], values["max_players"], values["fee"], values["split"],
+         json.dumps(values["config"]), values["rules"], mode, values["starts_on"], values["ends_on"],
+         values["friends_only"], now(), tournament["id"]))
+    db.execute("DELETE FROM tournament_teams WHERE tournament_id = ?", (tournament["id"],))
+    db.executemany("INSERT INTO tournament_teams (tournament_id, team_id) VALUES (?, ?)",
+                   [(tournament["id"], team_id) for team_id in values["team_ids"]])
+    return notices
+
+
 def cancel(db, tournament):
     if tournament["status"] in ("finished", "cancelled"):
         raise TournamentError("Este campeonato já foi encerrado.")
@@ -226,6 +320,11 @@ def _knockout_stage(db, tournament, seq, pairs, legs, final_legs, third_place, f
 def start(db, tournament, rng=random):
     if tournament["status"] != "registration":
         raise TournamentError("Abra as inscrições antes de iniciar o campeonato.")
+    missing = entries_without_team(db, tournament)
+    if missing:
+        raise TournamentError("Ainda sem time: " + ", ".join(e["username"] for e in missing) + ". Eles foram avisados "
+                              "por e-mail para escolher; o campeonato começa quando todos tiverem time (ou remova "
+                              "a inscrição deles).")
     entries = [row["id"] for row in entries_of(db, tournament["id"])]
     config = settings_of(tournament)
     error = formats.config_error(tournament["format"], config, len(entries))

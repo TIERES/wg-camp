@@ -1,0 +1,191 @@
+{# O JavaScript de _tournament_fields.html: formato, times, prêmio e o botão de enviar. #}
+<script>
+(function () {
+  var defaults = {{ defaults|tojson }};
+  var select = document.getElementById('format');
+  var form = select.form;
+  // O formulário enviado (criar) ou os dados atuais (editar, tournaments._form_values).
+  var posted = {{ (form.to_dict() if form.to_dict is defined else form)|tojson }};
+  function apply(useDefaults) {
+    var fmt = select.value;
+    form.querySelectorAll('fieldset[data-formats]').forEach(function (fs) {
+      var on = fs.dataset.formats.split(' ').indexOf(fmt) >= 0;
+      fs.hidden = !on;
+      fs.querySelectorAll('input,select').forEach(function (el) { el.disabled = !on; });
+    });
+    var values = useDefaults ? defaults[fmt] : posted;
+    Object.keys(defaults[fmt]).forEach(function (key) {
+      var el = form.elements[key];
+      if (!el) return;
+      if (el.type === 'checkbox') el.checked = useDefaults ? !!values[key] : values[key] === 'on';
+      else if (values[key] !== undefined) el.value = values[key];
+    });
+  }
+  select.addEventListener('change', function () { apply(true); });
+  apply(!posted.format);
+
+  // Classificados para o mata-mata: menos que as vagas.
+  var slots = form.elements.max_players, playoff = document.getElementById('playoff-qualifiers');
+  function limitPlayoff() {
+    var max = Math.max(2, (parseInt(slots.value, 10) || 0) - 1);
+    playoff.max = max;
+    playoff.setCustomValidity(parseInt(playoff.value, 10) > max
+      ? 'Precisa ser menor que o número de vagas (' + slots.value + ').' : '');
+  }
+  slots.addEventListener('input', limitPlayoff);
+  playoff.addEventListener('input', limitPlayoff);
+  limitPlayoff();
+
+  // Times: lista só nos modos com lista; marcar o grupo marca todos os times dele.
+  var picker = document.getElementById('team-picker');
+  var count = document.getElementById('team-count');
+  function refreshTeams() {
+    var mode = form.elements.team_mode.value;
+    picker.hidden = mode === 'free';
+    picker.querySelectorAll('input[name=team_ids]').forEach(function (el) { el.disabled = mode === 'free'; });
+    var ids = {};
+    picker.querySelectorAll('input[name=team_ids]:checked').forEach(function (el) { ids[el.value] = 1; });
+    count.textContent = Object.keys(ids).length;
+    picker.querySelectorAll('.team-group').forEach(function (group) {
+      var boxes = group.querySelectorAll('input[name=team_ids]');
+      var checked = group.querySelectorAll('input[name=team_ids]:checked').length;
+      var toggle = group.querySelector('.group-toggle');
+      toggle.checked = checked === boxes.length;
+      toggle.indeterminate = checked > 0 && checked < boxes.length;
+    });
+  }
+  // O mesmo time pode estar em dois grupos: marcar um marca o outro.
+  picker.addEventListener('change', function (e) {
+    if (e.target.classList.contains('group-toggle')) {
+      e.target.closest('.team-group').querySelectorAll('input[name=team_ids]').forEach(function (el) { el.checked = e.target.checked; sync(el); });
+    } else if (e.target.name === 'team_ids') {
+      sync(e.target);
+      // Marcou um time achado na busca: limpa a busca para procurar o próximo.
+      if (e.target.checked && filter.value) clearFilter();
+    }
+    refreshTeams();
+  });
+  function sync(el) {
+    picker.querySelectorAll('input[name=team_ids][value="' + el.value + '"]').forEach(function (o) { o.checked = el.checked; });
+  }
+  form.elements.team_mode.addEventListener('change', refreshTeams);
+  // Busca sem diferenciar acentos/maiúsculas; se nenhum time tem exatamente o nome
+  // digitado, oferece criá-lo como time avulso. "Somente times selecionados" mostra
+  // só os marcados (com a busca, os marcados que batem com ela).
+  var filter = document.getElementById('team-filter'), onlyChecked = document.getElementById('only-checked');
+  var looseAdd = document.getElementById('loose-add'), looseMsg = document.getElementById('loose-msg');
+  function plain(s) { return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim(); }
+  function filterTeams() {
+    var q = plain(filter.value), only = onlyChecked.checked, exact = false;
+    picker.querySelectorAll('.team-group').forEach(function (group) {
+      var any = false;
+      group.querySelectorAll('.team-option').forEach(function (opt) {
+        var name = plain(opt.dataset.name);
+        var show = (!q || name.indexOf(q) >= 0) && (!only || opt.querySelector('input').checked);
+        opt.hidden = !show; any = any || show; exact = exact || name === q;
+      });
+      group.hidden = !any;
+      if ((q || only) && any) group.open = true;
+    });
+    looseAdd.hidden = q.length < 2 || exact;
+    looseAdd.textContent = 'Adicionar "' + filter.value.trim() + '" como time avulso';
+  }
+  function clearFilter() {
+    filter.value = '';
+    filterTeams();
+    filter.focus({ preventScroll: true });
+  }
+  filter.addEventListener('input', function () { looseMsg.hidden = true; filterTeams(); });
+  onlyChecked.addEventListener('change', filterTeams);
+  // Ao enviar, um time marcado em dois grupos vai uma vez só.
+  form.addEventListener('submit', function () {
+    var seen = {};
+    picker.querySelectorAll('input[name=team_ids]:checked').forEach(function (el) {
+      if (seen[el.value]) el.disabled = true; seen[el.value] = 1;
+    });
+  });
+  refreshTeams();
+
+  // Time avulso: cria na base (ou acha o que já tem esse nome) e marca na lista.
+  function looseGroup() {
+    var group = picker.querySelector('[data-group="avulsos"]');
+    if (group) return group;
+    group = document.createElement('details');
+    group.className = 'team-group';
+    group.dataset.group = 'avulsos';
+    var summary = document.createElement('summary'), label = document.createElement('label'), toggle = document.createElement('input');
+    label.className = 'check';
+    label.onclick = function (e) { e.stopPropagation(); };
+    toggle.type = 'checkbox';
+    toggle.className = 'group-toggle';
+    label.append(toggle, ' Times avulsos');
+    summary.appendChild(label);
+    var grid = document.createElement('div');
+    grid.className = 'team-grid';
+    group.append(summary, grid);
+    picker.querySelector('.team-groups').appendChild(group);
+    return group;
+  }
+  function addLoose() {
+    var name = filter.value.trim();
+    if (looseAdd.hidden) return;
+    var body = new FormData();
+    body.set('name', name);
+    body.set('csrf_token', form.elements.csrf_token.value);
+    looseAdd.disabled = true;
+    fetch('{{ url_for("tournaments.loose_team_new") }}', { method: 'POST', body: body })
+      .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+      .then(function (res) {
+        var team = res.data;
+        looseMsg.hidden = false;
+        if (!res.ok) { looseMsg.textContent = team.error || 'Não foi possível adicionar o time.'; return; }
+        var boxes = picker.querySelectorAll('input[name=team_ids][value="' + team.id + '"]');
+        if (!boxes.length) {
+          var option = document.createElement('label'), box = document.createElement('input'), img = document.createElement('img');
+          option.className = 'team-option';
+          option.dataset.name = team.name.toLowerCase();
+          box.type = 'checkbox'; box.name = 'team_ids'; box.value = team.id;
+          img.className = 'crest'; img.src = team.image; img.alt = '';
+          option.append(box, img, ' ' + team.name);
+          looseGroup().querySelector('.team-grid').appendChild(option);
+          boxes = [box];
+        }
+        boxes.forEach(function (el) {
+          el.checked = true;
+          el.closest('.team-option').hidden = false;
+          var group = el.closest('.team-group');
+          group.hidden = false;
+          group.open = true;
+        });
+        clearFilter();
+        boxes[0].closest('.team-option').scrollIntoView({ block: 'nearest' });
+        refreshTeams();
+        form.dispatchEvent(new Event('change'));
+        looseMsg.textContent = team.existing ? '"' + team.name + '" já estava na lista e foi marcado.'
+          : '"' + team.name + '" foi criado em "Times avulsos" (com escudo genérico) e marcado. Ele fica disponível '
+            + 'para os próximos campeonatos; a administração do WE Camp pode corrigir o nome e enviar o escudo.';
+      })
+      .catch(function () { looseMsg.hidden = false; looseMsg.textContent = 'Não foi possível adicionar o time. Tente de novo.'; })
+      .then(function () { looseAdd.disabled = false; });
+  }
+  looseAdd.addEventListener('click', addLoose);
+  // Enter na busca: cria o avulso quando o botão está à mostra (e nunca envia o formulário).
+  filter.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); addLoose(); } });
+
+  // Prêmio só com inscrição; "Criar campeonato" (ou "Salvar") só com os obrigatórios preenchidos.
+  var fee = form.elements.entry_fee, prize = document.getElementById('prize-split');
+  var button = document.getElementById('create-button'), hint = document.getElementById('create-hint');
+  function filled(name, min) { return form.elements[name].value.trim().length >= (min || 1); }
+  function refreshCreate() {
+    var paid = /[1-9]/.test(fee.value);
+    prize.hidden = !paid;
+    form.elements.prize_split.disabled = !paid;
+    var ok = form.checkValidity() && filled('name', 3) && filled('rules');
+    button.disabled = !ok;
+    hint.hidden = ok;
+  }
+  form.addEventListener('input', refreshCreate);
+  form.addEventListener('change', refreshCreate);
+  refreshCreate();
+})();
+</script>

@@ -882,7 +882,9 @@ def show(slug):
     # Modo livre: a base de times vira sugestão do campo, e o nome digitado que
     # bate com um time da base usa esse time (store._entry_team).
     free_teams = []
-    if tournament["team_mode"] == "free" and tournament["status"] == "registration" and player_id and not my_entry:
+    # (Também para o inscrito sem time: store.choose_team.)
+    if (tournament["team_mode"] == "free" and tournament["status"] == "registration" and player_id
+            and (not my_entry or not my_entry["team_name"])):
         free_teams = [{"name": row["name"], "image": team_image(row)} for row in db.execute(
             "SELECT * FROM teams WHERE is_active = 1 ORDER BY name COLLATE NOCASE")]
     iso_row = iso.get(db, tournament["id"])
@@ -981,59 +983,91 @@ def _form_config(form, fmt):
     return formats.normalize(fmt, raw)
 
 
+def _games(db):
+    return db.execute("SELECT * FROM game_titles WHERE is_active = 1 ORDER BY year, name").fetchall()
+
+
+def _tournament_form(db, form, games, max_fee, keep_team_ids=()):
+    """O formulário de criar campeonato (e o de editar antes do início) validado:
+    dict com os valores ou TournamentError/ValueError com a mensagem.
+    keep_team_ids: times que já estão no campeonato valem mesmo inativos."""
+    name = form.get("name", "").strip()
+    if not 3 <= len(name) <= 80:
+        raise TournamentError("O nome precisa ter entre 3 e 80 caracteres.")
+    game_id = int(form.get("game_title_id") or 0)
+    if not any(g["id"] == game_id for g in games):
+        raise TournamentError("Escolha o jogo base.")
+    fmt = form.get("format", "")
+    if fmt not in formats.FORMATS:
+        raise TournamentError("Escolha um formato.")
+    max_players = int(form.get("max_players") or 0)
+    if max_players < 2:
+        raise TournamentError("O campeonato precisa de pelo menos 2 vagas.")
+    fee = parse_cents(form.get("entry_fee") or "0")
+    if fee > max_fee:
+        raise TournamentError(f"A inscrição pode ser de no máximo {format_cents(max_fee)}.")
+    # Sem inscrição não há prêmio para dividir: o campo nem aparece.
+    split = form.get("prize_split", "") if fee else PRIZE_SPLITS[0]
+    if split not in PRIZE_SPLITS:
+        raise TournamentError("Escolha a divisão do prêmio.")
+    config = _form_config(form, fmt)
+    error = formats.config_error(fmt, config, max_players)
+    if error:
+        raise TournamentError(f"Com {max_players} vagas: {error}")
+    starts_on, ends_on = _dates(form)
+    if not starts_on:
+        raise TournamentError("Informe o início provável.")
+    rules = form.get("rules", "").strip()
+    if not rules:
+        raise TournamentError("Escreva o regulamento / observações.")
+    team_mode = form.get("team_mode", "free")
+    if team_mode not in TEAM_MODES:
+        raise TournamentError("Escolha como serão os times.")
+    team_ids = []
+    if team_mode != "free":
+        wanted = {int(v) for v in form.getlist("team_ids") if v.isdigit()}
+        if wanted:
+            keep = [i for i in keep_team_ids if i in wanted]
+            team_ids = [row[0] for row in db.execute(
+                f"SELECT id FROM teams WHERE (is_active = 1 OR id IN ({','.join('?' * len(keep)) or 'NULL'})) "
+                f"AND id IN ({','.join('?' * len(wanted))}) ORDER BY id", [*keep, *wanted])]
+        if len(team_ids) < max_players:
+            raise TournamentError(f"Marque pelo menos {max_players} times na lista (um por vaga); "
+                                  f"há {len(team_ids)} marcados.")
+    return {"name": name, "game_id": game_id, "format": fmt, "max_players": max_players, "fee": fee, "split": split,
+            "config": config, "starts_on": starts_on, "ends_on": ends_on, "rules": rules[:5000],
+            "team_mode": team_mode, "friends_only": 1 if form.get("friends_only") else 0, "team_ids": team_ids}
+
+
+def _form_values(db, tournament):
+    """Os dados do campeonato como o formulário de criar os manda (strings), para
+    editar antes do início com o mesmo formulário."""
+    values = {"name": tournament["name"], "starts_on": tournament["starts_on"] or "",
+              "ends_on": tournament["ends_on"] or "", "game_title_id": str(tournament["game_title_id"]),
+              "format": tournament["format"], "max_players": str(tournament["max_players"]),
+              "entry_fee": format_cents(tournament["entry_fee_cents"]), "prize_split": tournament["prize_split"],
+              "team_mode": tournament["team_mode"], "rules": tournament["rules"] or "",
+              "friends_only": "on" if tournament["friends_only"] else ""}
+    for key, value in store.settings_of(tournament).items():
+        values[key] = ("on" if value else "") if isinstance(value, bool) else str(value)
+    return values
+
+
 @bp.route("/novo", methods=("GET", "POST"))
 @player_required
 def new():
     db = get_db()
-    games = db.execute("SELECT * FROM game_titles WHERE is_active = 1 ORDER BY year, name").fetchall()
+    games = _games(db)
     max_fee = setting(db, "torneios_inscricao_max")
     form = request.form if request.method == "POST" else {}
     if request.method == "POST":
         validate_csrf()
         try:
-            name = form.get("name", "").strip()
-            if not 3 <= len(name) <= 80:
-                raise TournamentError("O nome precisa ter entre 3 e 80 caracteres.")
-            game_id = int(form.get("game_title_id") or 0)
-            if not any(g["id"] == game_id for g in games):
-                raise TournamentError("Escolha o jogo base.")
-            fmt = form.get("format", "")
-            if fmt not in formats.FORMATS:
-                raise TournamentError("Escolha um formato.")
-            max_players = int(form.get("max_players") or 0)
-            if max_players < 2:
-                raise TournamentError("O campeonato precisa de pelo menos 2 vagas.")
-            fee = parse_cents(form.get("entry_fee") or "0")
-            if fee > max_fee:
-                raise TournamentError(f"A inscrição pode ser de no máximo {format_cents(max_fee)}.")
-            # Sem inscrição não há prêmio para dividir: o campo nem aparece.
-            split = form.get("prize_split", "") if fee else PRIZE_SPLITS[0]
-            if split not in PRIZE_SPLITS:
-                raise TournamentError("Escolha a divisão do prêmio.")
-            config = _form_config(form, fmt)
-            error = formats.config_error(fmt, config, max_players)
-            if error:
-                raise TournamentError(f"Com {max_players} vagas: {error}")
-            starts_on, ends_on = _dates(form)
-            if not starts_on:
-                raise TournamentError("Informe o início provável.")
-            rules = form.get("rules", "").strip()
-            if not rules:
-                raise TournamentError("Escreva o regulamento / observações.")
-            team_mode = form.get("team_mode", "free")
-            if team_mode not in TEAM_MODES:
-                raise TournamentError("Escolha como serão os times.")
-            friends_only = 1 if form.get("friends_only") else 0
-            team_ids = []
-            if team_mode != "free":
-                wanted = {int(v) for v in form.getlist("team_ids") if v.isdigit()}
-                if wanted:
-                    team_ids = [row[0] for row in db.execute(
-                        f"SELECT id FROM teams WHERE is_active = 1 AND id IN ({','.join('?' * len(wanted))})",
-                        list(wanted))]
-                if len(team_ids) < max_players:
-                    raise TournamentError(f"Marque pelo menos {max_players} times na lista (um por vaga); "
-                                          f"há {len(team_ids)} marcados.")
+            values = _tournament_form(db, form, games, max_fee)
+            name, game_id, fmt, max_players, fee, split, config, starts_on, ends_on, rules, team_mode, \
+                friends_only, team_ids = (values[key] for key in (
+                    "name", "game_id", "format", "max_players", "fee", "split", "config", "starts_on", "ends_on",
+                    "rules", "team_mode", "friends_only", "team_ids"))
             if not is_admin():
                 open_count = db.execute("SELECT COUNT(*) FROM tournaments WHERE organizer_id = ? AND status IN "
                                         "('draft', 'registration', 'running')", (session["player_id"],)).fetchone()[0]
@@ -1081,6 +1115,21 @@ def enroll(slug):
     team_id = request.form.get("team_id", type=int)
     _run(lambda db, t: store.enroll(db, t, session["player_id"], request.form.get("team_name", ""), team_id),
          tournament, "Inscrição feita!")
+    return redirect(url_for("tournaments.show", slug=slug, aba="geral"))
+
+
+@bp.post("/<slug>/meu-time")
+@player_required
+def choose_team(slug):
+    """O inscrito sem time (o dele saiu da lista ou o modo de times mudou) escolhe outro."""
+    validate_csrf()
+    tournament = _load(slug)
+    entry = get_db().execute("SELECT * FROM tournament_entries WHERE tournament_id = ? AND player_id = ?",
+                             (tournament["id"], session["player_id"])).fetchone()
+    if entry:
+        team_id = request.form.get("team_id", type=int)
+        _run(lambda db, t: store.choose_team(db, t, entry, request.form.get("team_name", ""), team_id),
+             tournament, "Time escolhido!")
     return redirect(url_for("tournaments.show", slug=slug, aba="geral"))
 
 
@@ -1177,11 +1226,34 @@ def manage(slug):
                           (tournament["id"], session.get("player_id"))).fetchone()
     iso_row = iso.get(db, tournament["id"])
     entries = store.entries_of(db, tournament["id"])
+    # Antes do início: o formulário de criar, com os dados atuais (edit). Os times do
+    # campeonato fora dos grupos da base (inativos) aparecem num grupo à parte.
+    edit_form = None
+    if tournament["status"] == "registration":
+        selected = {row[0] for row in db.execute("SELECT team_id FROM tournament_teams WHERE tournament_id = ?",
+                                                 (tournament["id"],))}
+        catalog = _team_catalog(db)
+        shown = {team["id"] for group in catalog for team in group["teams"]}
+        extra = [dict(row, image=team_image(row)) for row in db.execute(
+            "SELECT t.* FROM tournament_teams tt JOIN teams t ON t.id = tt.team_id WHERE tt.tournament_id = ? "
+            "ORDER BY t.name COLLATE NOCASE", (tournament["id"],)) if row["id"] not in shown]
+        if extra:
+            catalog.append({"group": {"name": "Outros times deste campeonato", "slug": "outros"}, "teams": extra})
+        organizer = tournament["organizer_id"]
+        edit_form = {"games": _games(db), "max_fee": setting(db, "torneios_inscricao_max"),
+                     "form": _form_values(db, tournament), "catalog": catalog, "selected": selected,
+                     # O aviso antes de salvar (quantos inscritos saem ou ficam sem time).
+                     "edit_entries": [{"team": e["team_id"], "named": bool(e["team_name"]),
+                                  "friend": e["player_id"] == organizer or store.are_friends(db, e["player_id"], organizer)}
+                                 for e in entries]}
     entry_search = request.args.get("inscrito", "").strip()
     shown_entries = [e for e in entries if entry_search.lower() in " ".join(
         str(e[key] or "") for key in ("username", "team_name")).lower()] if entry_search else entries
     return render_template("tournaments/manage.html", t=tournament, entries=entries, shown_entries=shown_entries,
-                           entry_search=entry_search,
+                           entry_search=entry_search, editing=edit_form is not None, **(edit_form or {}),
+                           format_labels=formats.FORMATS,
+                           defaults=formats.DEFAULTS, splits=PRIZE_SPLITS, min_players=formats.MIN_PLAYERS,
+                           max_players=formats.MAX_PLAYERS, team_modes=TEAM_MODES,
                            open_reports=open_reports, my_entry_id=None if is_admin() or not my_entry else my_entry[0],
                            current=current, stages=stages, names=_names(db, tournament), decisive=decisive,
                            auto_finish_at=notify.auto_finish_at(tournament),
@@ -1197,6 +1269,26 @@ def manage(slug):
 @bp.post("/<slug>/editar")
 @manager_required
 def edit(tournament):
+    db = get_db()
+    if tournament["status"] == "registration":
+        # Antes do início: tudo o que se escolheu ao criar (store.update_before_start
+        # cuida de quem já está inscrito e manda os avisos).
+        current = store.get_tournament(db, tournament["id"])
+        keep = [row[0] for row in db.execute("SELECT team_id FROM tournament_teams WHERE tournament_id = ?",
+                                             (tournament["id"],))]
+        try:
+            values = _tournament_form(db, request.form, _games(db), setting(db, "torneios_inscricao_max"), keep)
+            notices = store.update_before_start(db, current, values, session.get("player_id"))
+        except (TournamentError, InsufficientFunds, ValueError) as error:
+            db.rollback()
+            flash(str(error), "error")
+        else:
+            db.commit()
+            notify.entry_notices(db, store.get_tournament(db, tournament["id"]), notices)
+            players = len({player for player, _, _ in notices})
+            flash("Campeonato atualizado." + (f" {players} inscrito(s) avisado(s) por e-mail." if players else ""),
+                  "success")
+        return redirect(url_for("tournaments.manage", slug=tournament["slug"], _anchor="dados"))
     name = request.form.get("name", "").strip()
     try:
         if not 3 <= len(name) <= 80:

@@ -1,25 +1,6 @@
 {% extends 'base.html' %}{% from '_avatar.html' import avatar_button %}{% from 'tournaments/_macros.html' import standings, stage_groups, bracket, match_line, stage_rounds %}
-{% block title %}{{ t.name }} · Campeonatos WE Camp{% endblock %}{% block content %}
-<section class="t-header">
-  <div class="t-header-images">
-    {% if t.image %}<img class="t-header-cover t-image" src="{{ image_url('torneio', t.image) }}" alt="Imagem do campeonato {{ t.name }}">{% endif %}
-    <img class="t-header-cover" src="{{ game_cover(t.game_code) }}" alt="{{ t.game_name }}" width="200" height="250">
-  </div>
-  <span class="badge status-{{ t.status }}">{{ status_labels[t.status] }}</span>{% if t.friends_only %} <span class="badge friends-only" title="Só os amigos de quem criou veem e se inscrevem">Somente amigos</span>{% endif %}
-  <h1>{{ t.name }}</h1>
-  <p class="muted">{{ t.game_name }}{% if t.platform %} ({{ t.platform }}){% endif %} · {{ format_label }} · organizado por <strong>{{ t.organizer_name }}</strong></p>
-  {% if invite %}
-  <div class="invite-notice"><span><strong>{{ t.organizer_name }}</strong> convidou você para este campeonato. Faça a sua inscrição abaixo.</span>
-    <form method="post" action="{{ url_for('tournaments.invite_decline', slug=t.slug) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="voltar" value="{{ url_for('tournaments.show', slug=t.slug, aba='geral') }}"><button class="secondary">Recusar convite</button></form></div>
-  {% endif %}
-  <div class="t-actions">
-    {% if t.status == 'registration' %}
-      {% if my_entry %}
-        <form method="post" action="{{ url_for('tournaments.leave', slug=t.slug) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Sair do campeonato{% if t.entry_fee_cents %} (devolve {{ t.entry_fee_cents|wcash }}){% endif %}</button></form>
-      {% elif session.player_id %}
-        {% if entries|length < t.max_players %}
-        <form method="post" action="{{ url_for('tournaments.enroll', slug=t.slug) }}" class="enroll-form">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{# O time na inscrição e no "escolha o seu time" (quem ficou sem: store.choose_team). #}
+{% macro team_fields() %}
           {% if t.team_mode == 'free' %}
             <input name="team_name" id="free-team" maxlength="60" minlength="2" required placeholder="Nome do seu time" list="free-team-list" autocomplete="off">
             <datalist id="free-team-list">{% for team in free_teams %}<option value="{{ team.name }}">{% endfor %}</datalist>
@@ -40,6 +21,38 @@
           {% else %}
             <p class="muted">Seu time será sorteado quando o organizador fechar as inscrições.</p>
           {% endif %}
+{% endmacro %}
+{% block title %}{{ t.name }} · Campeonatos WE Camp{% endblock %}{% block content %}
+<section class="t-header">
+  <div class="t-header-images">
+    {% if t.image %}<img class="t-header-cover t-image" src="{{ image_url('torneio', t.image) }}" alt="Imagem do campeonato {{ t.name }}">{% endif %}
+    <img class="t-header-cover" src="{{ game_cover(t.game_code) }}" alt="{{ t.game_name }}" width="200" height="250">
+  </div>
+  <span class="badge status-{{ t.status }}">{{ status_labels[t.status] }}</span>{% if t.friends_only %} <span class="badge friends-only" title="Só os amigos de quem criou veem e se inscrevem">Somente amigos</span>{% endif %}
+  <h1>{{ t.name }}</h1>
+  <p class="muted">{{ t.game_name }}{% if t.platform %} ({{ t.platform }}){% endif %} · {{ format_label }} · organizado por <strong>{{ t.organizer_name }}</strong></p>
+  {% if invite %}
+  <div class="invite-notice"><span><strong>{{ t.organizer_name }}</strong> convidou você para este campeonato. Faça a sua inscrição abaixo.</span>
+    <form method="post" action="{{ url_for('tournaments.invite_decline', slug=t.slug) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="voltar" value="{{ url_for('tournaments.show', slug=t.slug, aba='geral') }}"><button class="secondary">Recusar convite</button></form></div>
+  {% endif %}
+  <div class="t-actions">
+    {% if t.status == 'registration' %}
+      {% if my_entry %}
+        {% if t.team_mode != 'draw' and not my_entry.team_name %}
+        {# O time dele saiu da lista ou o organizador mudou como os times são escolhidos. #}
+        <form method="post" action="{{ url_for('tournaments.choose_team', slug=t.slug) }}" class="enroll-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <p class="notice">Você está inscrito, mas ainda sem time: o seu saiu da lista ou o organizador mudou como os times são escolhidos. Escolha o seu time para o campeonato poder começar.</p>
+          {{ team_fields() }}
+          <button>Escolher este time</button>
+        </form>
+        {% endif %}
+        <form method="post" action="{{ url_for('tournaments.leave', slug=t.slug) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Sair do campeonato{% if t.entry_fee_cents %} (devolve {{ t.entry_fee_cents|wcash }}){% endif %}</button></form>
+      {% elif session.player_id %}
+        {% if entries|length < t.max_players %}
+        <form method="post" action="{{ url_for('tournaments.enroll', slug=t.slug) }}" class="enroll-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {{ team_fields() }}
           <button>Inscrever-se{% if t.entry_fee_cents %} por {{ t.entry_fee_cents|wcash }}{% else %} (grátis){% endif %}</button>
         </form>
         {% else %}<span class="muted">Vagas esgotadas.</span>{% endif %}

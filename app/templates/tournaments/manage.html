@@ -79,7 +79,7 @@
     <div class="t-card no-side">
       <span class="t-body">
         <span class="with-avatar friend-name">{{ avatar_button(e.player_id, e.username) }}<strong class="t-name">{{ e.username }}</strong></span>
-        <span class="t-meta"><span>{{ icon('shield') }}{{ e.team_name }}</span></span>
+        <span class="t-meta"><span>{{ icon('shield') }}{% if e.team_name %}{{ e.team_name }}{% elif t.team_mode == 'draw' %}<em class="muted">sorteado no início</em>{% else %}<em class="muted">sem time: avisado para escolher</em>{% endif %}</span></span>
         <span class="t-meta"><span>{{ icon('clock') }}Inscrito em {{ e.created_at|localtime }}</span></span>
       </span>
       {% if t.status == 'registration' %}<div class="t-foot"><form method="post" action="{{ url_for('tournaments.remove_entry', slug=t.slug, entry_id=e.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Remover</button></form></div>{% endif %}
@@ -101,8 +101,20 @@
 </section>
 {% endif %}
 
-{% if t.status not in ('finished', 'cancelled') %}
-<section>
+{% if editing %}
+{# Antes do início: o formulário de criar com os dados atuais (tournaments.edit / store.update_before_start). #}
+<section id="dados">
+  <h2>Dados do campeonato</h2>
+  <p class="muted">Até o início do campeonato dá para mudar tudo o que foi escolhido ao criar. Depois que ele começar, só o nome, as datas e o regulamento.</p>
+  <form method="post" action="{{ url_for('tournaments.edit', slug=t.slug) }}" class="form t-form" id="edit-tournament">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <p class="muted">Os campos com <span class="req">*</span> são obrigatórios.</p>
+    {% include 'tournaments/_tournament_fields.html' %}
+    <div class="card-actions"><button id="create-button">Salvar alterações</button><span class="muted" id="create-hint" hidden>Preencha os campos obrigatórios para salvar.</span></div>
+  </form>
+</section>
+{% elif t.status not in ('finished', 'cancelled') %}
+<section id="dados">
   <h2>Dados do campeonato</h2>
   <form method="post" action="{{ url_for('tournaments.edit', slug=t.slug) }}" class="form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -184,4 +196,43 @@
 <script src="{{ url_for('static', filename='js/archive-progress.js') }}"></script>
 <script src="{{ url_for('static', filename='js/pens.js') }}"></script>
 <script src="{{ url_for('static', filename='js/leg-flip.js') }}" defer></script>
+{% if editing %}
+{% include 'tournaments/_tournament_fields_js.html' %}
+<script src="{{ url_for('static', filename='js/wcash-mask.js') }}"></script>
+<script>
+// Antes de salvar: o que acontece com quem já está inscrito (o mesmo que store.update_before_start faz).
+(function () {
+  var form = document.getElementById('edit-tournament');
+  var entries = {{ edit_entries|tojson }};
+  var before = {{ {'fee': t.entry_fee_cents, 'friends': t.friends_only, 'mode': t.team_mode}|tojson }};
+  if (!form || !entries.length) return;
+  function cents(text) { return parseInt((text || '').replace(/\D/g, '') || '0', 10); }
+  form.addEventListener('submit', function (e) {
+    var kept = entries, lines = [];
+    if (form.elements.friends_only.checked && !before.friends) {
+      var out = kept.filter(function (x) { return !x.friend; });
+      if (out.length) lines.push('- ' + out.length + ' inscrito(s) que não são seus amigos saem do campeonato.');
+      kept = kept.filter(function (x) { return x.friend; });
+    }
+    if (cents(form.elements.entry_fee.value) !== before.fee && kept.length) {
+      lines.push('- O valor da inscrição mudou: os ' + kept.length + ' inscrito(s) saem e podem se inscrever de novo.');
+      kept = [];
+    }
+    var mode = form.elements.team_mode.value, lost = [];
+    if (mode === 'choose') {
+      var ids = {};
+      form.querySelectorAll('input[name=team_ids]:checked').forEach(function (el) { ids[el.value] = 1; });
+      lost = kept.filter(function (x) { return !(x.team && ids[x.team]) && (x.named || before.mode !== 'choose'); });
+      if (lost.length) lines.push('- ' + lost.length + ' inscrito(s) ficam sem time e precisam escolher outro.');
+    } else if (mode === 'draw' && before.mode !== 'draw' && kept.length) {
+      lines.push('- Os times dos ' + kept.length + ' inscrito(s) voltam para o sorteio do início.');
+    } else if (mode === 'free' && before.mode === 'draw' && kept.length) {
+      lines.push('- Os ' + kept.length + ' inscrito(s) precisam escolher o nome do seu time.');
+    }
+    if (lines.length && !window.confirm(lines.join('\n') + '\n\nQuem sai recebe de volta o valor pago, e todos são '
+        + 'avisados por e-mail. Salvar assim?')) e.preventDefault();
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

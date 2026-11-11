@@ -1,0 +1,127 @@
+{# Os campos de criar campeonato (new.html) e de editar antes do início (manage.html, editing):
+   form = os valores (o formulário enviado, ou tournaments._form_values). O JavaScript fica em
+   _tournament_fields_js.html. #}
+  <div class="form-row">
+    <label class="wide"><span>Nome do campeonato <span class="req">*</span></span><input name="name" maxlength="80" minlength="3" required value="{{ form.get('name', '') }}" placeholder="Copa WE Camp de Inverno"></label>
+    <label><span>Início provável <span class="req">*</span></span><input type="date" name="starts_on" required value="{{ form.get('starts_on', '') }}"></label>
+    <label>Fim provável<input type="date" name="ends_on" value="{{ form.get('ends_on', '') }}"></label>
+  </div>
+  {% if not editing %}
+  <fieldset>
+    <legend>Imagem do campeonato <small class="muted">(opcional)</small></legend>
+    <div class="t-image-edit">
+      <img id="t-image-preview" class="t-image-thumb" alt="" hidden>
+      <div>
+        <p class="muted">Logo ou arte do campeonato; aparece ao lado da capa do jogo. <strong>Tamanho ideal: 480 × 600 px</strong> (em pé, proporção 4:5, igual à capa); outras proporções aparecem inteiras, com sobra nas laterais ou em cima e embaixo. PNG, JPG ou WebP (PNG/WebP com fundo transparente ficam melhor). Dá para trocar depois, em Gerenciar.</p>
+        <input type="file" name="image" accept="image/png,image/jpeg,image/webp" data-resize="max:600" data-preview="t-image-preview" aria-label="Escolher imagem do campeonato">
+      </div>
+    </div>
+  </fieldset>
+  {% endif %}
+  <fieldset class="game-pick">
+    <legend>Jogo base <span class="req">*</span></legend>
+    <div class="game-covers">
+    {% for g in games %}
+      <label class="game-cover-option"><input type="radio" name="game_title_id" value="{{ g.id }}" required {% if form.get('game_title_id')|int == g.id %}checked{% endif %}>
+        <img src="{{ game_cover(g.code) }}" alt="" width="200" height="250"><span>{{ g.name }}{% if g.year %} <small class="muted">({{ g.year }})</small>{% endif %}</span></label>
+    {% endfor %}
+    </div>
+    {% if not editing %}<p class="muted">A ISO com o patch do campeonato é enviada depois de criar, em Gerenciar.</p>{% endif %}
+  </fieldset>
+  <div class="form-row">
+    <label class="wide">Formato
+      <select name="format" id="format" required>
+        {% for key, label in format_labels.items() %}<option value="{{ key }}" {% if form.get('format') == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label><span>Vagas <span class="req">*</span></span><input type="number" name="max_players" min="{{ min_players }}" max="{{ max_players }}" required value="{{ form.get('max_players', 8) }}"></label>
+    <label>Inscrição (W$, máx. {{ max_fee|wcash }})<input name="entry_fee" inputmode="numeric" data-wcash value="{{ form.get('entry_fee', '0,00') }}"></label>
+  </div>
+  {% if editing and edit_entries %}{% set n = edit_entries|length %}<p class="muted">Mudar o valor da inscrição cancela {{ 'a inscrição feita' if n == 1 else 'as %d inscrições feitas' % n }}: o valor pago volta para cada inscrito, que recebe um e-mail para se inscrever de novo.</p>{% endif %}
+  <div id="prize-split" class="form-block">
+    <label><span>Divisão do prêmio (1º / 2º / 3º, em %) <span class="req">*</span></span>
+      <select name="prize_split" required>
+        <option value="">Escolha...</option>
+        {% for s in splits %}<option value="{{ s }}" {% if form.get('prize_split') == s %}selected{% endif %}>{{ s.replace(',', ' / ') }}</option>{% endfor %}
+      </select>
+    </label>
+    <p class="muted">Todo o valor das inscrições vira o prêmio, dividido entre os 3 primeiros.</p>
+  </div>
+  <p class="muted">Cada jogo também rende W$ para os jogadores (vitória/empate), pago pelo WE Camp.</p>
+
+  <div class="form-row phase-row">
+  <fieldset data-formats="league league_knockout">
+    <legend>Pontos corridos</legend>
+    <label>Jogos<select name="legs"><option value="2">Turno e returno (ida e volta)</option><option value="1">Turno único</option></select></label>
+  </fieldset>
+
+  <fieldset data-formats="league_knockout">
+    <legend>Classificação para o mata-mata</legend>
+    <label><span>Classificados para o mata-mata <span class="req">*</span></span><input type="number" name="playoff_qualifiers" id="playoff-qualifiers" min="2" value="4" required></label>
+    <p class="muted">Os primeiros da tabela vão ao mata-mata (1º contra o último classificado, 2º contra o penúltimo...). Precisa ser menor que o número de vagas. Se não fechar uma chave (2, 4, 8, 16...), os melhores colocados esperam na repescagem.</p>
+  </fieldset>
+
+  <fieldset data-formats="world_cup libertadores">
+    <legend>Fase de grupos</legend>
+    <div class="form-row">
+      <label>Grupos<input type="number" name="groups" min="1" max="16" value="2"></label>
+      <label>Classificados por grupo<input type="number" name="qualifiers" min="1" max="8" value="2"></label>
+      <label>Jogos nos grupos<select name="group_legs"><option value="1">Jogo único</option><option value="2">Ida e volta</option></select></label>
+    </div>
+  </fieldset>
+
+  <fieldset data-formats="ucl">
+    <legend>Fase de liga (formato novo da Liga dos Campeões)</legend>
+    <p class="muted">Os inscritos são sorteados em potes. Cada um enfrenta adversários de todos os potes (inclusive o seu) e todos ficam numa tabela única. Os primeiros vão direto ao mata-mata; os seguintes (o dobro) disputam o playoff; os demais são eliminados. Oficial: 36 jogadores, 4 potes, 2 por pote, 8 direto.</p>
+    <div class="form-row">
+      <label>Potes<input type="number" name="pots" min="1" max="8" value="4"></label>
+      <label>Adversários de cada pote<select name="per_pot"><option value="1">1 (um jogo por pote)</option><option value="2">2 (um em casa e um fora)</option></select></label>
+      <label>Classificados direto ao mata-mata<select name="direct">{% for n in (1, 2, 4, 8, 16) %}<option value="{{ n }}" {% if n == 2 %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
+    </div>
+  </fieldset>
+
+  <fieldset data-formats="world_cup libertadores ucl knockout league_knockout">
+    <legend>Mata-mata</legend>
+    <div class="form-row">
+      <label>Confrontos<select name="ko_legs"><option value="1">Jogo único</option><option value="2">Ida e volta</option></select></label>
+      <label>Final<select name="final_legs"><option value="1">Jogo único</option><option value="2">Ida e volta</option></select></label>
+    </div>
+    <label class="check"><input type="checkbox" name="third_place"> Disputa de 3º lugar (entre os eliminados nas semifinais)</label>
+    <p class="muted">Sem a disputa, o 3º lugar é o semifinalista eliminado com a melhor campanha no campeonato. Empate no agregado vai para os pênaltis do último jogo.</p>
+  </fieldset>
+  </div>
+
+  <fieldset>
+    <legend>Times</legend>
+    <div class="form-row">
+      <label class="wide">Como os jogadores ficam com os times
+        <select name="team_mode">
+          {% for key, label in team_modes.items() %}<option value="{{ key }}" {% if form.get('team_mode', 'free') == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+    </div>
+    <div id="team-picker">
+      <p class="muted">Marque os times disponíveis (pelo menos um por vaga). Marque um grupo inteiro ou abra o grupo para escolher time a time. Marcados: <strong id="team-count">0</strong>{% if editing and edit_entries %}<br>Quem já escolheu um time que você desmarcar continua inscrito e recebe um e-mail para escolher outro.{% endif %}</p>
+      <div class="form-row">
+        <label class="wide">Buscar time<input type="search" id="team-filter" maxlength="60" placeholder="Nome do time..." autocomplete="off"></label>
+        <button type="button" class="secondary" id="loose-add" hidden>Adicionar time avulso</button>
+        <label class="check only-checked"><input type="checkbox" id="only-checked"> Somente times selecionados</label>
+      </div>
+      <p class="muted" id="loose-msg" aria-live="polite" hidden></p>
+      <div class="team-groups">
+      {% for g in catalog %}
+        <details class="team-group" data-group="{{ g.group.slug }}">
+          <summary><label class="check" onclick="event.stopPropagation()"><input type="checkbox" class="group-toggle"> {{ g.group.name }}</label> <small class="muted">({{ g.teams|length }})</small></summary>
+          <div class="team-grid">
+          {% for team in g.teams %}
+            <label class="team-option" data-name="{{ team.name|lower }}"><input type="checkbox" name="team_ids" value="{{ team.id }}" {% if team.id in selected %}checked{% endif %}><img class="crest" src="{{ team.image }}" alt="" loading="lazy"> {{ team.name }}</label>
+          {% endfor %}
+          </div>
+        </details>
+      {% endfor %}
+      </div>
+    </div>
+  </fieldset>
+
+  <label><span>Regulamento / observações <span class="req">*</span></span><textarea name="rules" rows="5" maxlength="5000" required placeholder="Horários, regras do jogo, times permitidos...">{{ form.get('rules', '') }}</textarea></label>
+  <label class="check"><input type="checkbox" name="friends_only" id="friends-only" {% if form.get('friends_only') %}checked{% endif %}> <span><strong>Somente para amigos</strong> <small class="muted">— o campeonato deixa de ser público: só os seus amigos veem, se inscrevem e podem ser convidados.{% if editing and edit_entries %} Quem já está inscrito e não é seu amigo sai, com a inscrição devolvida e um aviso por e-mail.{% endif %}</small></span></label>
