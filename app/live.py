@@ -1393,7 +1393,7 @@ def identify_isos():
 
 @bp.app_template_filter("scorer")
 def scorer_line(item):
-    name, minute, assist = item[0], item[1], item[2] if len(item) > 2 else ""
+    name, minute, assist = player_label(item[0]), item[1], player_label(item[2] if len(item) > 2 else "")
     kind = item[3] if len(item) > 3 else ""
     if kind == "og":  # o autor do gol contra (no lugar da assistência), entre parênteses
         return Markup("Gol contra {}' <small>({})</small>").format(minute, assist or name)
@@ -1408,7 +1408,19 @@ def event_line(item):
     """Cartão ou contusão do card ([nome, minuto ou [minutos], tipo] - _team_view):
     o grupo (o ícone no meio) já diz o tipo."""
     minutes = item[1] if isinstance(item[1], list) else [item[1]]
-    return Markup("{} {}").format(item[0] or "?", Markup(", ").join(Markup("{}'").format(m) for m in minutes))
+    return Markup("{} {}").format(player_label(item[0]) or "?",
+                                  Markup(", ").join(Markup("{}'").format(m) for m in minutes))
+
+
+_SHIRT = re.compile(r"^#(\d{1,2})$")
+
+
+@bp.app_template_filter("player")
+def player_label(name):
+    """O jogador como o card mostra: o fork manda "#8" quando não consegue ler o
+    nome (os japoneses do WE3, em Shift-JIS) - aqui vira "Número 8"."""
+    match = _SHIRT.match(name or "")
+    return "Número %s" % match.group(1) if match else (name or "")
 
 
 def _by_player(cards):

@@ -13,9 +13,9 @@
     <tbody>{% for r in rows %}{% set pend = r['pending_' ~ field] %}
       <tr class="{{ ['scorer-more' if loop.index > 10 else '', 'scorer-pending' if pend else '']|select|join(' ') }}"{% if loop.index > 10 %} hidden{% endif %}>
         <td class="num">{% if loop.first or r.position != loop.previtem.position %}{{ r.position }}º{% endif %}</td>
-        <td><span class="entry-name"><strong>{{ r.name }}</strong>{% if r.nick %}<small>{{ r.nick }}</small>{% endif %}</span></td>
+        <td><span class="entry-name"><strong>{{ r.name|player }}</strong>{% if r.nick %}<small>{{ r.nick }}</small>{% endif %}</span></td>
         <td><span class="entry"><img class="crest" src="{{ r.image }}" alt="" loading="lazy"><span>{{ r.team }}</span></span></td>
-        <td class="num">{% if pend %}{% set tip = '%s possui %d %s' % (r.name, pend, noun[0] if pend == 1 else noun[1]) %}<span class="tip-badge" tabindex="0" role="note" aria-label="{{ tip }}" data-tip="{{ tip }}">i</span> {% endif -%}
+        <td class="num">{% if pend %}{% set tip = '%s possui %d %s' % (r.name|player, pend, noun[0] if pend == 1 else noun[1]) %}<span class="tip-badge" tabindex="0" role="note" aria-label="{{ tip }}" data-tip="{{ tip }}">i</span> {% endif -%}
           <strong>{{ r[field] }}</strong></td>
       </tr>
     {% endfor %}</tbody>

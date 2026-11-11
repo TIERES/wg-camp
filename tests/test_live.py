@@ -882,6 +882,20 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertNotIn("live-toggle", html)
         self.assertNotIn("Chutes ao gol", html)
 
+    def test_unreadable_player_shows_the_shirt_number(self):
+        # O fork manda "#8" quando não lê o nome (os japoneses do WE3, em Shift-JIS).
+        scorers = ([["#8", 17, "#10"], ["Gol contra", 30, "#2", "og"]], [])
+        data = json.loads(state(v=2, goals=(2, 0), scorers=scorers))
+        data["teams"][0]["cards"] = [["#5", 73, "y"], ["#5", 80, "y2"], ["Nakata", 85, "r"]]
+        self.post(json.dumps(data))
+        html = self.cards()
+        self.assertIn("Número 8 17' <small>(Número 10)</small>", html)
+        self.assertIn("Gol contra 30' <small>(Número 2)</small>", html)
+        self.assertIn("<li>Número 5 73', 80'</li>", html)
+        self.assertIn("<li>Número 5 80'</li>", html)
+        self.assertIn("<li>Nakata 85'</li>", html)
+        self.assertNotIn("#8", html)
+
     def test_finished_card_has_goals_and_stats_buttons(self):
         self.post(self.we2002_state(final=True, frame=90000))
         html = self.cards()
