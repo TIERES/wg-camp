@@ -36,16 +36,39 @@
   playoff.addEventListener('input', limitPlayoff);
   limitPlayoff();
 
-  // Times: lista só nos modos com lista; marcar o grupo marca todos os times dele.
+  // Times: lista só nos modos com lista; marcar o grupo marca todos os times dele. Quem vai
+  // no formulário são os checkboxes da lista dos grupos (name=team_ids); a lista sem grupos
+  // ("Somente times escolhidos") e a importação do CSV só marcam/desmarcam esses.
   var picker = document.getElementById('team-picker');
   var count = document.getElementById('team-count');
+  var groupsBox = picker.querySelector('.team-groups');
+  var chosen = document.getElementById('team-chosen'), chosenEmpty = document.getElementById('team-chosen-empty');
+  var filter = document.getElementById('team-filter'), onlyChecked = document.getElementById('only-checked');
+  var looseAdd = document.getElementById('loose-add'), looseMsg = document.getElementById('loose-msg');
+  function plain(s) { return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim(); }
+  // Cada time uma vez (o mesmo time pode estar em dois grupos): nome e escudo.
+  function teamsById() {
+    var out = {};
+    groupsBox.querySelectorAll('input[name=team_ids]').forEach(function (el) {
+      if (out[el.value]) return;
+      var opt = el.closest('.team-option'), img = opt.querySelector('img');
+      out[el.value] = { id: el.value, name: opt.textContent.trim(), image: img ? img.src : '' };
+    });
+    return out;
+  }
+  function checkedIds() {
+    var ids = {};
+    groupsBox.querySelectorAll('input[name=team_ids]:checked').forEach(function (el) { ids[el.value] = 1; });
+    return ids;
+  }
+  function setTeam(id, on) {
+    groupsBox.querySelectorAll('input[name=team_ids][value="' + id + '"]').forEach(function (o) { o.checked = on; });
+  }
   function refreshTeams() {
     var mode = form.elements.team_mode.value;
     picker.hidden = mode === 'free';
     picker.querySelectorAll('input[name=team_ids]').forEach(function (el) { el.disabled = mode === 'free'; });
-    var ids = {};
-    picker.querySelectorAll('input[name=team_ids]:checked').forEach(function (el) { ids[el.value] = 1; });
-    count.textContent = Object.keys(ids).length;
+    count.textContent = Object.keys(checkedIds()).length;
     picker.querySelectorAll('.team-group').forEach(function (group) {
       var boxes = group.querySelectorAll('input[name=team_ids]');
       var checked = group.querySelectorAll('input[name=team_ids]:checked').length;
@@ -53,6 +76,32 @@
       toggle.checked = checked === boxes.length;
       toggle.indeterminate = checked > 0 && checked < boxes.length;
     });
+  }
+  // "Somente times escolhidos": os marcados numa lista só, sem os grupos, em ordem
+  // alfabética (com a busca, os que batem com ela). Desmarcado aqui, o time continua
+  // à mostra (para desfazer) até a lista ser montada de novo.
+  function renderChosen() {
+    var q = plain(filter.value), all = teamsById();
+    var list = Object.keys(checkedIds()).map(function (id) { return all[id]; }).filter(Boolean)
+      .sort(function (a, b) { return a.name.localeCompare(b.name, 'pt-BR'); });
+    chosen.textContent = '';
+    list.forEach(function (team) {
+      if (q && plain(team.name).indexOf(q) < 0) return;
+      var label = document.createElement('label'), box = document.createElement('input'), img = document.createElement('img');
+      label.className = 'team-option';
+      box.type = 'checkbox'; box.checked = true; box.dataset.team = team.id;
+      img.className = 'crest'; img.src = team.image; img.alt = '';
+      label.append(box, img, ' ' + team.name);
+      chosen.appendChild(label);
+    });
+    chosenEmpty.hidden = list.length > 0;
+  }
+  function showChosen(on) {
+    onlyChecked.checked = on;
+    chosen.hidden = !on;
+    groupsBox.hidden = on;
+    chosenEmpty.hidden = true;
+    filterTeams();
   }
   // O mesmo time pode estar em dois grupos: marcar um marca o outro.
   picker.addEventListener('change', function (e) {
@@ -62,31 +111,31 @@
       sync(e.target);
       // Marcou um time achado na busca: limpa a busca para procurar o próximo.
       if (e.target.checked && filter.value) clearFilter();
+    } else if (e.target.dataset.team) {
+      setTeam(e.target.dataset.team, e.target.checked);
     }
     refreshTeams();
   });
-  function sync(el) {
-    picker.querySelectorAll('input[name=team_ids][value="' + el.value + '"]').forEach(function (o) { o.checked = el.checked; });
-  }
+  function sync(el) { setTeam(el.value, el.checked); }
   form.elements.team_mode.addEventListener('change', refreshTeams);
   // Busca sem diferenciar acentos/maiúsculas; se nenhum time tem exatamente o nome
-  // digitado, oferece criá-lo como time avulso. "Somente times selecionados" mostra
-  // só os marcados (com a busca, os marcados que batem com ela).
-  var filter = document.getElementById('team-filter'), onlyChecked = document.getElementById('only-checked');
-  var looseAdd = document.getElementById('loose-add'), looseMsg = document.getElementById('loose-msg');
-  function plain(s) { return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim(); }
+  // digitado, oferece criá-lo como time avulso.
   function filterTeams() {
-    var q = plain(filter.value), only = onlyChecked.checked, exact = false;
-    picker.querySelectorAll('.team-group').forEach(function (group) {
-      var any = false;
-      group.querySelectorAll('.team-option').forEach(function (opt) {
-        var name = plain(opt.dataset.name);
-        var show = (!q || name.indexOf(q) >= 0) && (!only || opt.querySelector('input').checked);
-        opt.hidden = !show; any = any || show; exact = exact || name === q;
+    var q = plain(filter.value), all = teamsById(), exact = false;
+    Object.keys(all).forEach(function (id) { exact = exact || plain(all[id].name) === q; });
+    if (onlyChecked.checked) {
+      renderChosen();
+    } else {
+      picker.querySelectorAll('.team-group').forEach(function (group) {
+        var any = false;
+        group.querySelectorAll('.team-option').forEach(function (opt) {
+          var show = !q || plain(opt.dataset.name).indexOf(q) >= 0;
+          opt.hidden = !show; any = any || show;
+        });
+        group.hidden = !any;
+        if (q && any) group.open = true;
       });
-      group.hidden = !any;
-      if ((q || only) && any) group.open = true;
-    });
+    }
     looseAdd.hidden = q.length < 2 || exact;
     looseAdd.textContent = 'Adicionar "' + filter.value.trim() + '" como time avulso';
   }
@@ -96,7 +145,7 @@
     filter.focus({ preventScroll: true });
   }
   filter.addEventListener('input', function () { looseMsg.hidden = true; filterTeams(); });
-  onlyChecked.addEventListener('change', filterTeams);
+  onlyChecked.addEventListener('change', function () { showChosen(onlyChecked.checked); });
   // Ao enviar, um time marcado em dois grupos vai uma vez só.
   form.addEventListener('submit', function () {
     var seen = {};
@@ -123,24 +172,20 @@
     var grid = document.createElement('div');
     grid.className = 'team-grid';
     group.append(summary, grid);
-    picker.querySelector('.team-groups').appendChild(group);
+    groupsBox.appendChild(group);
     return group;
   }
-  function addLoose() {
-    var name = filter.value.trim();
-    if (looseAdd.hidden) return;
+  // done(time) com o time já marcado; fail(mensagem) se não deu.
+  function createLoose(name, done, fail) {
     var body = new FormData();
     body.set('name', name);
     body.set('csrf_token', form.elements.csrf_token.value);
-    looseAdd.disabled = true;
     fetch('{{ url_for("tournaments.loose_team_new") }}', { method: 'POST', body: body })
       .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
       .then(function (res) {
         var team = res.data;
-        looseMsg.hidden = false;
-        if (!res.ok) { looseMsg.textContent = team.error || 'Não foi possível adicionar o time.'; return; }
-        var boxes = picker.querySelectorAll('input[name=team_ids][value="' + team.id + '"]');
-        if (!boxes.length) {
+        if (!res.ok) { fail(team.error || 'Não foi possível adicionar o time.'); return; }
+        if (!groupsBox.querySelector('input[name=team_ids][value="' + team.id + '"]')) {
           var option = document.createElement('label'), box = document.createElement('input'), img = document.createElement('img');
           option.className = 'team-option';
           option.dataset.name = team.name.toLowerCase();
@@ -148,26 +193,154 @@
           img.className = 'crest'; img.src = team.image; img.alt = '';
           option.append(box, img, ' ' + team.name);
           looseGroup().querySelector('.team-grid').appendChild(option);
-          boxes = [box];
         }
-        boxes.forEach(function (el) {
-          el.checked = true;
+        setTeam(team.id, true);
+        refreshTeams();
+        form.dispatchEvent(new Event('change'));
+        done(team);
+      })
+      .catch(function () { fail('Não foi possível adicionar o time. Tente de novo.'); });
+  }
+  function looseNote(team) {
+    return team.existing ? '"' + team.name + '" já estava na lista e foi marcado.'
+      : '"' + team.name + '" foi criado em "Times avulsos" (com escudo genérico) e marcado. Ele fica disponível '
+        + 'para os próximos campeonatos; a administração do WE Camp pode corrigir o nome e enviar o escudo.';
+  }
+  function addLoose() {
+    if (looseAdd.hidden) return;
+    looseAdd.disabled = true;
+    createLoose(filter.value.trim(), function (team) {
+      clearFilter();
+      if (!onlyChecked.checked) {
+        groupsBox.querySelectorAll('input[name=team_ids][value="' + team.id + '"]').forEach(function (el) {
           el.closest('.team-option').hidden = false;
           var group = el.closest('.team-group');
           group.hidden = false;
           group.open = true;
         });
-        clearFilter();
-        boxes[0].closest('.team-option').scrollIntoView({ block: 'nearest' });
-        refreshTeams();
-        form.dispatchEvent(new Event('change'));
-        looseMsg.textContent = team.existing ? '"' + team.name + '" já estava na lista e foi marcado.'
-          : '"' + team.name + '" foi criado em "Times avulsos" (com escudo genérico) e marcado. Ele fica disponível '
-            + 'para os próximos campeonatos; a administração do WE Camp pode corrigir o nome e enviar o escudo.';
-      })
-      .catch(function () { looseMsg.hidden = false; looseMsg.textContent = 'Não foi possível adicionar o time. Tente de novo.'; })
-      .then(function () { looseAdd.disabled = false; });
+        groupsBox.querySelector('input[name=team_ids][value="' + team.id + '"]').closest('.team-option').scrollIntoView({ block: 'nearest' });
+      }
+      looseMsg.hidden = false;
+      looseMsg.textContent = looseNote(team);
+      looseAdd.disabled = false;
+    }, function (message) {
+      looseMsg.hidden = false;
+      looseMsg.textContent = message;
+      looseAdd.disabled = false;
+    });
   }
+
+  // Importar CSV: nomes separados por ";" (ou um por linha). Os que batem com um time
+  // da lista (sem diferenciar acentos/maiúsculas) ficam marcados e a lista passa a
+  // mostrar só os escolhidos, sem os grupos; os outros aparecem para corrigir o nome
+  // (procurando de novo) ou cadastrar como time avulso.
+  var csv = document.getElementById('team-csv'), csvResult = document.getElementById('csv-result');
+  var csvSummary = document.getElementById('csv-summary'), csvMissing = document.getElementById('csv-missing');
+  var csvState = null;
+  function decodeCsv(buffer) {
+    // O Excel no Windows grava em ANSI: sem ser UTF-8 válido, lê como Windows-1252.
+    try { return new TextDecoder('utf-8', { fatal: true }).decode(buffer); }
+    catch (e) { return new TextDecoder('windows-1252').decode(buffer); }
+  }
+  function csvNames(text) {
+    var names = [], seen = {};
+    text.replace(/^﻿/, '').split(/[;\r\n]+/).forEach(function (raw) {
+      var name = raw.trim().replace(/^"([\s\S]*)"$/, '$1').replace(/""/g, '"').replace(/\s+/g, ' ').trim();
+      if (name.length < 2 || seen[plain(name)]) return;
+      seen[plain(name)] = 1;
+      names.push(name);
+    });
+    return names;
+  }
+  function findTeam(name) {
+    var key = plain(name), all = teamsById();
+    var id = Object.keys(all).filter(function (i) { return plain(all[i].name) === key; })[0];
+    return id ? all[id] : null;
+  }
+  function updateCsvSummary() {
+    var left = csvMissing.children.length;
+    csvSummary.textContent = 'Arquivo ' + csvState.file + ': ' + csvState.total + ' nome(s), ' + csvState.found
+      + ' encontrado(s) e marcado(s).' + (left ? ' ' + left + ' não encontrado(s): corrija o nome para procurar de novo '
+      + 'ou cadastre como time avulso.' : '');
+  }
+  function smallButton(text) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'secondary'; b.textContent = text;
+    return b;
+  }
+  function resolved(li) {
+    li.remove();
+    csvState.found += 1;
+    refreshTeams();
+    if (onlyChecked.checked) renderChosen();
+    updateCsvSummary();
+    form.dispatchEvent(new Event('change'));
+  }
+  function addMissing(name) {
+    var li = document.createElement('li'), input = document.createElement('input'), hits = document.createElement('div');
+    var add = smallButton(''), skip = smallButton('Ignorar'), note = document.createElement('span');
+    input.value = name; input.maxLength = 60;
+    input.setAttribute('aria-label', 'Nome do time não encontrado: ' + name);
+    hits.className = 'csv-hits';
+    note.className = 'muted';
+    function search() {
+      var typed = input.value.trim(), q = plain(typed), all = teamsById();
+      add.textContent = 'Cadastrar "' + typed + '"';
+      add.disabled = typed.length < 2;
+      hits.textContent = '';
+      if (q.length < 2) return;
+      // Contém o que foi digitado, ou o nome do time está dentro do digitado ("Flamengo RJ" acha "Flamengo").
+      var matches = Object.keys(all).map(function (id) { return all[id]; }).filter(function (team) {
+        var key = plain(team.name);
+        return key.indexOf(q) >= 0 || (key.length >= 4 && q.indexOf(key) >= 0);
+      }).sort(function (a, b) {
+        return (plain(b.name) === q) - (plain(a.name) === q) || a.name.localeCompare(b.name, 'pt-BR');
+      }).slice(0, 8);
+      if (!matches.length) {
+        hits.append('Nenhum time da lista com esse nome.');
+        return;
+      }
+      hits.append('Marcar: ');
+      matches.forEach(function (team) {
+        var b = smallButton(' ' + team.name), img = document.createElement('img');
+        img.className = 'crest'; img.src = team.image; img.alt = '';
+        b.prepend(img);
+        b.addEventListener('click', function () { setTeam(team.id, true); resolved(li); });
+        hits.appendChild(b);
+      });
+    }
+    input.addEventListener('input', search);
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') e.preventDefault(); });
+    add.addEventListener('click', function () {
+      add.disabled = true;
+      createLoose(input.value.trim(), function () { resolved(li); },
+                  function (message) { note.textContent = message; add.disabled = false; });
+    });
+    skip.addEventListener('click', function () { li.remove(); updateCsvSummary(); });
+    li.append(input, add, skip, note, hits);
+    csvMissing.appendChild(li);
+    search();
+  }
+  csv.addEventListener('change', function () {
+    var file = csv.files[0];
+    if (!file) return;
+    file.arrayBuffer().then(function (buffer) {
+      var names = csvNames(decodeCsv(buffer)), found = 0;
+      csvMissing.textContent = '';
+      names.forEach(function (name) {
+        var team = findTeam(name);
+        if (team) { setTeam(team.id, true); found += 1; } else { addMissing(name); }
+      });
+      csvState = { file: file.name, total: names.length, found: found };
+      csvResult.hidden = false;
+      updateCsvSummary();
+      csv.value = '';
+      refreshTeams();
+      filter.value = '';
+      showChosen(true);
+      form.dispatchEvent(new Event('change'));
+    });
+  });
   looseAdd.addEventListener('click', addLoose);
   // Enter na busca: cria o avulso quando o botão está à mostra (e nunca envia o formulário).
   filter.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); addLoose(); } });

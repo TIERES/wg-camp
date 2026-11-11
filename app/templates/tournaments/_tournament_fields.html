@@ -101,13 +101,23 @@
       </label>
     </div>
     <div id="team-picker">
-      <p class="muted">Marque os times disponíveis (pelo menos um por vaga). Marque um grupo inteiro ou abra o grupo para escolher time a time. Marcados: <strong id="team-count">0</strong>{% if editing and edit_entries %}<br>Quem já escolheu um time que você desmarcar continua inscrito e recebe um e-mail para escolher outro.{% endif %}</p>
-      <div class="form-row">
+      <p class="muted">Marque os times disponíveis (pelo menos um por vaga): um grupo inteiro, time a time abrindo o grupo, ou importe a lista de um arquivo CSV com os nomes separados por ";".{% if editing and edit_entries %}<br>Quem já escolheu um time que você desmarcar continua inscrito e recebe um e-mail para escolher outro.{% endif %}</p>
+      <p class="team-count-line">Times escolhidos: <strong id="team-count">0</strong></p>
+      <div class="form-row team-tools">
         <label class="wide">Buscar time<input type="search" id="team-filter" maxlength="60" placeholder="Nome do time..." autocomplete="off"></label>
         <button type="button" class="secondary" id="loose-add" hidden>Adicionar time avulso</button>
-        <label class="check only-checked"><input type="checkbox" id="only-checked"> Somente times selecionados</label>
+        <label class="button secondary team-csv-button">Importar CSV<input type="file" id="team-csv" accept=".csv,.txt,text/csv,text/plain" hidden></label>
+        <label class="check only-checked"><input type="checkbox" id="only-checked"> Somente times escolhidos</label>
       </div>
       <p class="muted" id="loose-msg" aria-live="polite" hidden></p>
+      {# Importar CSV: os nomes que não bateram com nenhum time, para corrigir ou cadastrar. #}
+      <div class="csv-result" id="csv-result" hidden>
+        <p id="csv-summary" aria-live="polite"></p>
+        <ul class="csv-missing" id="csv-missing"></ul>
+      </div>
+      {# "Somente times escolhidos" (e depois de importar): os marcados numa lista só, sem os grupos. #}
+      <div class="team-grid team-chosen" id="team-chosen" hidden></div>
+      <p class="muted" id="team-chosen-empty" hidden>Nenhum time escolhido ainda.</p>
       <div class="team-groups">
       {% for g in catalog %}
         <details class="team-group" data-group="{{ g.group.slug }}">

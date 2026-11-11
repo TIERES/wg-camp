@@ -99,6 +99,17 @@ class TournamentEditTest(unittest.TestCase):
         self.assertEqual(len(self.query("SELECT 1 FROM tournament_teams WHERE tournament_id = ?", t["id"])), 8)
         self.assertEqual(self.mails(), [])  # ninguém inscrito: nenhum aviso
 
+    def test_team_picker_has_csv_import_and_chosen_only(self):
+        """Criar e editar: importar CSV, "Somente times escolhidos" e a contagem (o resto é no navegador)."""
+        t = self.create()
+        for url in ("/torneios/novo", f"/torneios/{t['slug']}/gerenciar"):
+            page = self.client(self.owner).get(url).data.decode()
+            self.assertIn('id="team-csv" accept=".csv,.txt,text/csv,text/plain"', page)
+            self.assertIn("Somente times escolhidos", page)
+            self.assertIn('Times escolhidos: <strong id="team-count">', page)
+            self.assertIn('id="team-chosen"', page)
+            self.assertIn('id="csv-missing"', page)
+
     def test_fee_change_cancels_entries_with_refund_and_email(self):
         t = self.create()
         before = {p: self.wallet(p) for p in (self.p1, self.p2)}
