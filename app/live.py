@@ -75,6 +75,32 @@ def _text(value, cap):
     return str(value or "").strip()[:cap]
 
 
+# WE 2002 (fork): estatísticas da tela RESULT do fim da partida, na ordem do card,
+# e se o maior número é o melhor (o card destaca o melhor de cada linha).
+STATS = (("shots", "Chutes ao gol", True), ("fouls", "Faltas", False), ("yellow", "Cartões amarelos", False),
+         ("red", "Cartões vermelhos", False), ("offsides", "Impedimentos", False), ("corners", "Escanteios", True))
+# Cartão: amarelo, 2º amarelo (expulso) e vermelho direto. Contusão: cruz
+# amarela (segue em campo) e vermelha (sai e não volta).
+CARD_KINDS = {"y": "Cartão amarelo", "y2": "2º amarelo (expulso)", "r": "Cartão vermelho"}
+INJURY_KINDS = {"y": "Contusão leve (cruz amarela): seguiu em campo", "r": "Contusão grave (cruz vermelha): saiu de campo"}
+
+
+def _team_extras(team):
+    """Estatísticas, cartões e contusões de um time (só o WE 2002 manda): só
+    as chaves que vieram, para o estado dos outros motores ficar como era.
+    Item de tipo desconhecido (fork mais novo) fica de fora."""
+    extras = {}
+    stats = team.get("stats")
+    if isinstance(stats, dict):
+        extras["stats"] = {key: _int(stats.get(key) or 0, 0, 255) for key, _, _ in STATS}
+    for field, kinds in (("cards", CARD_KINDS), ("injuries", INJURY_KINDS)):
+        items = team.get(field)
+        if isinstance(items, list):
+            extras[field] = [[_text(item[0], 24), _int(item[1], 0, 200), item[2]] for item in items[:32]
+                             if isinstance(item, list) and len(item) >= 3 and item[2] in kinds]
+    return extras
+
+
 def parse_state(raw):
     """JSON do fork -> dict validado (ValueError se não serve). Do v2 em
     diante o nome de cada time vem da tela de seleção de times (o que os
@@ -91,8 +117,10 @@ def parse_state(raw):
             if len(item) > 3 and item[3] in ("og", "pen"):
                 scorer.append(item[3])
             scorers.append(scorer)
-        teams.append({"id": _int(team["id"], 0, 255), "name": _text(team.get("name"), 24) if version >= 2 else "",
-                      "code": _text(team.get("code"), 3), "goals": _int(team["goals"], 0, 99), "scorers": scorers})
+        entry = {"id": _int(team["id"], 0, 255), "name": _text(team.get("name"), 24) if version >= 2 else "",
+                 "code": _text(team.get("code"), 3), "goals": _int(team["goals"], 0, 99), "scorers": scorers}
+        entry.update(_team_extras(team))
+        teams.append(entry)
     if len(teams) != 2:
         raise ValueError("teams")
     pens = data.get("pens")
@@ -366,7 +394,26 @@ def _team_view(db, match, side, team_state, nicks):
             name = row["ram_name"]
     image = team_image(team) if team else generated_badge(name or "?")
     return {"name": name or UNKNOWN_TEAM, "known": bool(name), "image": image, "goals": team_state.get("goals", 0),
-            "players": list(nicks), "scorers": team_state.get("scorers", [])}
+            "players": list(nicks), "scorers": team_state.get("scorers", []),
+            # Os grupos do card, abaixo dos gols: expulsos (vermelho direto e 2º amarelo),
+            # amarelos e as contusões de cruz vermelha e de cruz amarela.
+            "reds": [c for c in team_state.get("cards") or [] if c[2] in ("r", "y2")],
+            "yellows": [c for c in team_state.get("cards") or [] if c[2] == "y"],
+            "injuries_red": [c for c in team_state.get("injuries") or [] if c[2] == "r"],
+            "injuries_yellow": [c for c in team_state.get("injuries") or [] if c[2] == "y"]}
+
+
+def _stats_view(match, teams):
+    """As estatísticas do fim da partida (WE 2002), para o botão Gols/Estatísticas
+    do card: [(rótulo, LOCAL, VISITA, o lado do melhor número - 0, 1 ou None no
+    empate)] - só com a partida encerrada e as dos dois times."""
+    if match["status"] != "finished" or len(teams) < 2 or not all(isinstance(t.get("stats"), dict) for t in teams[:2]):
+        return None
+    rows = []
+    for key, label, more_is_better in STATS:
+        a, b = teams[0]["stats"].get(key, 0), teams[1]["stats"].get(key, 0)
+        rows.append((label, a, b, None if a == b else int((b > a) == more_is_better)))
+    return rows
 
 
 # WE3: o relógio fica em 0 durante o acréscimo (não é o intervalo).
@@ -593,7 +640,7 @@ def card(db, match):
                            "url": url_for("tournaments.show", slug=tournament["slug"], aba="tabela")} if tournament else None,
             # Sem campeonato com imagem: a ISO do cadastro (a do amistoso ou a mesma ISO).
             "iso": {"name": catalog["name"], "image": image_url("torneio", catalog["image"])} if catalog else None,
-            "pens": state.get("pens"), "teams": views,
+            "pens": state.get("pens"), "teams": views, "stats": _stats_view(match, teams),
             "tie": _tie_view(db, match, sides, (views[0]["goals"], views[1]["goals"]))}
 
 
@@ -1352,3 +1399,12 @@ def scorer_line(item):
     if kind == "pen":
         return Markup("{} {}' <small>(Pênalti)</small>").format(name, minute)
     return Markup("{} {}'{}").format(name, minute, Markup(' <small>(assist. {})</small>').format(assist) if assist else "")
+
+
+@bp.app_template_filter("event")
+def event_line(item):
+    """Cartão ou contusão do card ([nome, minuto, tipo] - _team_extras): o grupo
+    (o ícone no meio) já diz o tipo; o 2º amarelo, entre os expulsos, diz que foi."""
+    name, minute, kind = item[0], item[1], item[2]
+    note = Markup(" <small>(2º amarelo)</small>") if kind == "y2" else ""
+    return Markup("{} {}'{}").format(name or "?", minute, note)

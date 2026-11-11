@@ -47,6 +47,34 @@
     teams.forEach(function (t) { ro.observe(t); });
     return ro;
   }
+  // Encerrada com as estatísticas: Gols/Estatísticas (site.css .live-faces). A escolha
+  // de cada partida fica guardada aqui: os cards recarregam a cada EVERY e voltam nela,
+  // sem a animação.
+  var shown = {};
+  function showFace(faces, back, animate) {
+    if (!animate) faces.classList.add('instant');
+    faces.classList.toggle('flipped', back);
+    Array.prototype.forEach.call(faces.children, function (face) {
+      face.inert = face.classList.contains('back') !== back;
+    });
+    faces.parentNode.querySelectorAll('.live-toggle button').forEach(function (b) {
+      b.setAttribute('aria-pressed', String((b.dataset.face === '1') === back));
+    });
+    if (!animate) { void faces.offsetWidth; faces.classList.remove('instant'); }
+  }
+  function restoreFaces(root) {
+    root.querySelectorAll('[data-live-faces]').forEach(function (faces) {
+      if (shown[faces.dataset.liveFaces]) showFace(faces, true, false);
+    });
+  }
+  document.addEventListener('click', function (e) {
+    var button = e.target.closest('.live-toggle button');
+    if (!button) return;
+    var faces = button.closest('.live-detail').querySelector('[data-live-faces]');
+    var back = button.dataset.face === '1';
+    shown[faces.dataset.liveFaces] = back;
+    showFace(faces, back, true);
+  });
   document.querySelectorAll('[data-live-src]').forEach(function (box) {
     var section = box.closest('[data-live-section]');
     var empty = section && section.querySelector('[data-live-empty]');
@@ -55,6 +83,7 @@
       var x = box.scrollLeft;  // no carrossel (_carousel.html), continua no mesmo card
       if (watcher) watcher.disconnect();  // os cards antigos saem da página
       box.innerHTML = html;
+      restoreFaces(box);
       watcher = watchTeams(box);
       box.scrollLeft = x;
       phase(box);

@@ -839,6 +839,88 @@ class LiveMatchesTest(unittest.TestCase):
         self.post(state(kickoff=50000, goals=(1, 0), scorers=([["Gol contra", 17, ""]], [])))
         self.assertIn("Gol contra 17'</li>", self.cards())
 
+    def we2002_state(self, final=False, frame=20000, goals=(0, 5), scorers=None, stats=True):
+        """Estado do fork com o que só o WE 2002 manda: estatísticas, cartões e contusões."""
+        data = json.loads(state(v=2, engine="SLPM_870.56", goals=goals, final=final, frame=frame,
+                                period=1 if final else 0, clock=0 if final else 9000,
+                                scorers=scorers or ([], [["Heinz", 40, "Koller"]] * goals[1])))
+        extras = (
+            {"stats": {"shots": 0, "offsides": 0, "fouls": 13, "yellow": 3, "red": 2, "corners": 0},
+             "cards": [["Casemiro", 9, "y"], ["M.Cunha", 27, "r"], ["Casemiro", 43, "y2"], ["Douglas S.", 59, "y"],
+                       ["Bola", 60, "x"]],
+             "injuries": []},
+            {"stats": {"shots": 28, "offsides": 1, "fouls": 1, "yellow": 1, "red": 0, "corners": 5},
+             "cards": [["C.Romero", 88, "y"]], "injuries": [["Enzo Fdez.", 42, "y"], ["Messi", 70, "r"]]})
+        for team, extra in zip(data["teams"], extras):
+            team.update(extra if stats else {k: v for k, v in extra.items() if k != "stats"})
+        return json.dumps(data)
+
+    def test_cards_and_injuries_on_the_card(self):
+        self.post(self.we2002_state())
+        saved = json.loads(self.rows("SELECT state_json FROM live_matches")[0]["state_json"])
+        # Tipo desconhecido (fork mais novo) fica de fora; o resto, como veio.
+        self.assertEqual(saved["teams"][0]["cards"], [["Casemiro", 9, "y"], ["M.Cunha", 27, "r"],
+                                                      ["Casemiro", 43, "y2"], ["Douglas S.", 59, "y"]])
+        self.assertEqual(saved["teams"][1]["stats"]["shots"], 28)
+        html = self.cards()
+        # Um grupo por tipo abaixo dos gols, o ícone no meio: expulsos (vermelho direto e 2º
+        # amarelo), amarelos, contusões de cruz vermelha e de cruz amarela - nessa ordem.
+        icons = [html.index('aria-label="%s"' % label) for label in (
+            "Gols", "Expulsos (cartão vermelho)", "Cartões amarelos",
+            "Contusões graves (cruz vermelha): saíram de campo", "Contusões leves (cruz amarela): seguiram em campo")]
+        self.assertEqual(icons, sorted(icons))
+        self.assertRegex(html, r"<ul><li>M\.Cunha 27'</li><li>Casemiro 43' <small>\(2º amarelo\)</small></li></ul>\s*"
+                               r'<svg class="live-ico"[^>]*aria-label="Expulsos \(cartão vermelho\)"')
+        self.assertRegex(html, r"<ul><li>Casemiro 9'</li><li>Douglas S\. 59'</li></ul>\s*"
+                               r'<svg class="live-ico"[^>]*aria-label="Cartões amarelos">.*?</svg>\s*'
+                               r"<ul class=\"right\"><li>C\.Romero 88'</li></ul>")
+        self.assertRegex(html, r"<ul></ul>\s*<svg class=\"live-ico\"[^>]*aria-label=\"Contusões graves[^\"]*\">.*?</svg>\s*"
+                               r"<ul class=\"right\"><li>Messi 70'</li></ul>")
+        self.assertRegex(html, r"aria-label=\"Contusões leves[^\"]*\">.*?</svg>\s*<ul class=\"right\"><li>Enzo Fdez\. 42'</li>")
+        # Rolando: sem as estatísticas (só no fim).
+        self.assertNotIn("Estatísticas", html)
+        self.assertNotIn("Chutes ao gol", html)
+
+    def test_finished_card_has_goals_and_stats_buttons(self):
+        self.post(self.we2002_state(final=True, frame=90000))
+        html = self.cards()
+        self.assertIn('data-face="0" aria-pressed="true">Gols</button>', html)
+        self.assertIn('data-face="1" aria-pressed="false">Estatísticas</button>', html)
+        self.assertIn("Heinz 40'", html)
+        stats = html.split('class="live-face back"')[1]
+        self.assertIn("<span>Estatísticas dos times</span>", stats)
+        # Na ordem das estatísticas da TV, o melhor de cada linha no balão: mais chutes e
+        # escanteios, menos faltas, cartões e impedimentos.
+        rows = (("Chutes ao gol", 0, 28, 1), ("Faltas", 13, 1, 1), ("Cartões amarelos", 3, 1, 1),
+                ("Cartões vermelhos", 2, 0, 1), ("Impedimentos", 0, 1, 0), ("Escanteios", 0, 5, 1))
+        at = [stats.index('<span class="live-stat-name">%s</span>' % label) for label, *_ in rows]
+        self.assertEqual(at, sorted(at))
+        for label, a, b, best in rows:
+            self.assertIn('<span class="live-stat-v%s">%d</span><span class="live-stat-name">%s</span>'
+                          '<span class="live-stat-v right%s">%d</span>'
+                          % (" best" if best == 0 else "", a, label, " best" if best == 1 else "", b), stats)
+        # Sem gol, cartão nem contusão (e um empate numa estatística): o lado dos gols diz.
+        data = json.loads(self.we2002_state(final=True, frame=90000, goals=(0, 0)))
+        data["kickoff"] = 60000
+        for team in data["teams"]:
+            team.update(cards=[], injuries=[], scorers=[])
+            team["stats"]["fouls"] = 4
+        self.post(json.dumps(data))
+        html = self.cards()
+        self.assertIn('<p class="live-none">Sem gols</p>', html)
+        self.assertIn('<span class="live-stat-v">4</span><span class="live-stat-name">Faltas</span>'
+                      '<span class="live-stat-v right">4</span>', html)
+
+    def test_finished_card_without_stats_has_no_buttons(self):
+        # Outros motores (e o fork antigo) não mandam as estatísticas.
+        self.post(self.we2002_state(final=True, frame=90000, stats=False))
+        html = self.cards()
+        self.assertNotIn("live-toggle", html)
+        self.assertIn("Heinz 40'", html)
+        self.assertIn("Casemiro 9'", html)
+        self.post(state(kickoff=50000, final=True, frame=90000, period=1, clock=0))
+        self.assertNotIn("Estatísticas", self.cards())
+
     def test_championship_game_left_mid_game_counts_and_marks_who_left(self):
         from app.tournament import reports, store, xp
         self.make_league()  # mandante no campeonato = ANDERSHOW; no jogo o LOCAL é o TIERES

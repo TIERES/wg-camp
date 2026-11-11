@@ -593,9 +593,32 @@ button.small,.button.small { padding:.4rem .7rem; font-size:.78rem }
 .live-mid { display:grid; justify-items:center; gap:.35rem }
 .live-tie { display:grid; justify-items:center; gap:.15rem; margin-top:-.35rem; color:#d1d5db; font-size:.9rem; text-align:center } .live-tie small { color:#fdba74 } .live-pens { font-size:.85rem; font-weight:600; color:#d1d5db; white-space:nowrap }
 .live-card.ended .live-goals { color:#d1d5db }
-.live-scorers { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); gap:.75rem; align-items:start; border-top:1px solid #374151; padding-top:.75rem; font-size:.875rem }
+.live-scorers { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); gap:.6rem .75rem; align-items:start; border-top:1px solid #374151; padding-top:.75rem; font-size:.875rem }
 .live-scorers ul { list-style:none; margin:0; padding:0; display:grid; gap:.15rem; min-width:0 } .live-scorers ul.right { text-align:right }
 .live-ball { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:1.6; color:#d1d5db; margin-top:.1rem }
+/* Expulsos, amarelos e contusões (WE 2002): o ícone do grupo no meio, como a bola dos gols. */
+.live-ico { width:20px; height:20px; margin-top:.1rem } .live-ico-red { fill:#ef4444 } .live-ico-yellow { fill:#facc15 }
+/* Encerrada com as estatísticas: botões Gols/Estatísticas (o visual do Ida/Volta); os
+   gols sobem e saem, as estatísticas sobem de baixo - e voltam descendo. */
+.live-detail { display:grid; gap:.6rem; border-top:1px solid #374151; padding-top:.6rem; min-width:0 }
+.live-detail .live-toggle { justify-self:center; margin:0 }
+.live-detail .live-scorers { border-top:0; padding-top:0 }
+.live-faces { display:grid; overflow:hidden; min-width:0 }
+.live-face { grid-area:1/1; min-width:0; transition:transform .45s cubic-bezier(.4,.2,.2,1), opacity .45s }
+.live-face.back { transform:translateY(100%); opacity:0 }
+.live-faces.flipped .live-face.front { transform:translateY(-100%); opacity:0 }
+.live-faces.flipped .live-face.back { transform:none; opacity:1 }
+.live-faces.instant .live-face { transition:none }
+@media (prefers-reduced-motion: reduce) { .live-face { transition:none } }
+.live-none { margin:0; text-align:center; color:#9ca3af; font-size:.875rem }
+/* Estatísticas dos times: escudos no alto, número | nome | número, o melhor num balão. */
+.live-stats { display:grid; gap:.55rem; font-size:.875rem }
+.live-stats-head { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:.5rem; text-align:center; text-transform:uppercase; letter-spacing:.04em; font-size:.72rem; color:#d1d5db; margin-bottom:.15rem }
+.live-stats-head img { width:30px; height:24px; object-fit:contain }
+.live-stat { display:grid; grid-template-columns:3rem minmax(0,1fr) 3rem; align-items:center }
+.live-stat-v { justify-self:start; min-width:1.9rem; box-sizing:border-box; padding:.05rem .45rem; border-radius:999px; text-align:center; font-weight:600; line-height:1.4 }
+.live-stat-v.right { justify-self:end } .live-stat-v.best { background:var(--accent); color:#06281d }
+.live-stat-name { text-align:center; color:#d1d5db }
 .live-card-foot { display:flex; justify-content:space-between; gap:.5rem; flex-wrap:wrap; color:#9ca3af; font-size:.8rem } .live-agreed { color:#6ee7b7 }
 .badge.live-test { background:#92400e; color:#fde68a; font-size:.7rem; padding:.05rem .4rem; border-radius:4px; text-transform:uppercase }
 .live-admin { display:flex; flex-wrap:wrap; gap:.75rem; align-items:center }

@@ -32,13 +32,50 @@
   {% if c.tie %}
   <div class="live-tie">{{ c.tie.label }}{% if c.tie.aggregate %}<span>Total com jogo de ida: {{ c.tie.aggregate[0] }} - {{ c.tie.aggregate[1] }}{% if c.tie.provisional %} <small title="O placar do jogo de ida ainda não foi confirmado pelos jogadores">(ida não confirmada)</small>{% endif %}</span>{% endif %}</div>
   {% endif %}
-  {% if a.scorers or b.scorers %}
+  {# Gols e, abaixo, os expulsos, os amarelos e as contusões (WE 2002): um grupo por
+     tipo, LOCAL à esquerda e VISITA à direita, o ícone do tipo no meio (live._team_view). #}
+  {% set groups = [
+       ('reds', 'Expulsos (cartão vermelho)', '<rect class="live-ico-red" x="6.5" y="3" width="11" height="16" rx="1.5" transform="rotate(12 12 11)"/>'),
+       ('yellows', 'Cartões amarelos', '<rect class="live-ico-yellow" x="6.5" y="3" width="11" height="16" rx="1.5" transform="rotate(12 12 11)"/>'),
+       ('injuries_red', 'Contusões graves (cruz vermelha): saíram de campo', '<path class="live-ico-red" d="M9.5 4h5v5.5H20v5h-5.5V20h-5v-5.5H4v-5h5.5z"/>'),
+       ('injuries_yellow', 'Contusões leves (cruz amarela): seguiram em campo', '<path class="live-ico-yellow" d="M9.5 4h5v5.5H20v5h-5.5V20h-5v-5.5H4v-5h5.5z"/>')] %}
+  {% set ns = namespace(any=a.scorers or b.scorers) %}
+  {% for key, label, icon in groups %}{% if a[key] or b[key] %}{% set ns.any = true %}{% endif %}{% endfor %}
+  {% set has_events = ns.any %}
+  {% set events %}
   <div class="live-scorers">
+    {% if a.scorers or b.scorers %}
     <ul>{% for g in a.scorers %}<li>{{ g|scorer }}</li>{% endfor %}</ul>
-    <svg class="live-ball" viewBox="0 0 24 24" aria-label="Gols"><circle cx="12" cy="12" r="9"/><path d="m12 7 4 3-1.5 4.5h-5L8 10z"/><path d="M12 3v4M21 10h-5M3 10h5M7 20l2.5-5.5M17 20l-2.5-5.5"/></svg>
+    <svg class="live-ball" viewBox="0 0 24 24" role="img" aria-label="Gols"><title>Gols</title><circle cx="12" cy="12" r="9"/><path d="m12 7 4 3-1.5 4.5h-5L8 10z"/><path d="M12 3v4M21 10h-5M3 10h5M7 20l2.5-5.5M17 20l-2.5-5.5"/></svg>
     <ul class="right">{% for g in b.scorers %}<li>{{ g|scorer }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% for key, label, icon in groups if a[key] or b[key] %}
+    <ul>{% for g in a[key] %}<li>{{ g|event }}</li>{% endfor %}</ul>
+    <svg class="live-ico" viewBox="0 0 24 24" role="img" aria-label="{{ label }}"><title>{{ label }}</title>{{ icon|safe }}</svg>
+    <ul class="right">{% for g in b[key] %}<li>{{ g|event }}</li>{% endfor %}</ul>
+    {% endfor %}
   </div>
-  {% endif %}
+  {% endset %}
+  {% if c.stats %}
+  {# Encerrada com as estatísticas (WE 2002): Gols/Estatísticas, como o Ida/Volta dos campeonatos (live-cards.js). #}
+  <div class="live-detail">
+    <div class="leg-toggle live-toggle" role="group" aria-label="Mostrar">
+      <button type="button" data-face="0" aria-pressed="true">Gols</button><button type="button" data-face="1" aria-pressed="false">Estatísticas</button>
+    </div>
+    <div class="live-faces" data-live-faces="{{ c.id }}">
+      <div class="live-face front">{% if has_events %}{{ events }}{% else %}<p class="live-none">Sem gols</p>{% endif %}</div>
+      <div class="live-face back" inert>
+        {# Como as estatísticas dos times da TV: o melhor número de cada linha destacado. #}
+        <div class="live-stats">
+          <div class="live-stats-head"><img src="{{ a.image }}" alt="{{ a.name }}" title="{{ a.name }}" loading="lazy"><span>Estatísticas dos times</span><img src="{{ b.image }}" alt="{{ b.name }}" title="{{ b.name }}" loading="lazy"></div>
+          {% for label, x, y, best in c.stats %}
+          <div class="live-stat"><span class="live-stat-v{% if best == 0 %} best{% endif %}">{{ x }}</span><span class="live-stat-name">{{ label }}</span><span class="live-stat-v right{% if best == 1 %} best{% endif %}">{{ y }}</span></div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% elif has_events %}{{ events }}{% endif %}
   <div class="live-card-foot">
     <small class="live-card-file"><span>{{ c.when }} ·</span>{{ c.file|fit }}</small>
     {% if c.status == 'finished' and c.agreed %}<small class="live-agreed">Placar conferido nos {{ c.reporters }} PCs</small>{% endif %}
