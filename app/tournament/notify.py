@@ -371,3 +371,55 @@ def iso_rejected(db, row, reason=""):
     _deliver([(row["requester_email"], f"Sua ISO {row['name']} não foi liberada", (
         f"Olá, {row['requester_name']}!\n\nA administração do WE Camp não liberou a ISO \"{row['name']}\"."
         f"{why}\n"))])
+
+
+def iso_edit_request(db, row, result):
+    """Quem enviou a ISO a alterou (iso_catalog.request_edit): a administração
+    confere - e, se ela já estava liberada, aprova ou recusa a alteração, que é
+    aprovada sozinha se ninguém responder no prazo."""
+    from .iso_catalog import auto_approve_at
+    link = external_url("tournaments_admin.admin_iso_edit", catalog_id=row["id"])
+    who = f"{row['requester_name']} ({row['requester_email']})"
+    changes = "\n".join(f"  {line}" for line in result["changes"])
+    if result["mode"] == "direct":
+        subject = f"{row['requester_name']} alterou a ISO {row['name']}, que aguarda liberação"
+        text = (f"{who} alterou a ISO \"{row['name']}\", que ainda aguarda a liberação:\n\n{changes}\n\n"
+                f"Confira o nome, o jogo base, cadastre a imagem e libere em:\n{link}\n")
+    else:
+        deadline = format_local(auto_approve_at(row["rev_submitted_at"]), "%d/%m/%Y às %H:%M")
+        subject = f"{row['requester_name']} alterou a ISO {row['name']}: aprove a alteração"
+        text = (f"{who} alterou a ISO \"{row['name']}\" ({row['game_name']}), já liberada para os amistosos:\n\n"
+                f"{changes}\n\nAté a aprovação, os amistosos continuam com a versão atual. Aprove ou recuse em:\n"
+                f"{link}\n\nSem resposta até {deadline}, a alteração é aprovada automaticamente.\n")
+    _deliver([(email, subject, text) for email in admin_emails(db)])
+
+
+def iso_edit_approved(db, row, auto=False):
+    """A alteração da ISO entrou: avisa quem enviou (e, se foi pelo prazo, a administração)."""
+    if not row:
+        return
+    link = external_url("tournaments.friendlies")
+    how = ("Como a administração do WE Camp não respondeu em 24 h, a sua alteração na ISO foi aprovada "
+           "automaticamente" if auto else "A administração do WE Camp aprovou a sua alteração na ISO")
+    messages = []
+    if row["requester_email"]:
+        messages.append((row["requester_email"], f"Sua alteração na ISO {row['name']} foi aprovada", (
+            f"Olá, {row['requester_name']}!\n\n{how}. A ISO \"{row['name']}\" ({row['game_name']}) já está "
+            f"atualizada nos amistosos:\n{link}\n")))
+    if auto:
+        admin_link = external_url("tournaments_admin.admin_iso_edit", catalog_id=row["id"])
+        messages += [(email, f"Alteração da ISO {row['name']} aprovada automaticamente", (
+            f"A alteração que {row['requester_name'] or 'o jogador'} pediu na ISO \"{row['name']}\" "
+            f"({row['game_name']}) ficou 24 h sem resposta e foi aprovada automaticamente.\n\n"
+            f"Confira a ISO em:\n{admin_link}\n")) for email in admin_emails(db)]
+    _deliver(messages)
+
+
+def iso_edit_rejected(db, row, revision, reason=""):
+    """Avisa quem enviou que a alteração da ISO foi recusada (a ISO continua como estava)."""
+    if not row or not row["requester_email"]:
+        return
+    why = f"\nMotivo: {reason.strip()[:300]}" if reason and reason.strip() else ""
+    _deliver([(row["requester_email"], f"Sua alteração na ISO {row['name']} não foi aprovada", (
+        f"Olá, {row['requester_name']}!\n\nA administração do WE Camp não aprovou a alteração que você pediu na ISO "
+        f"\"{row['name']}\" (o nome pedido era \"{revision['name']}\"). A ISO continua como estava.{why}\n"))])

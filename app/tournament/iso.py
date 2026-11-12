@@ -8,6 +8,7 @@ por torneio. As ISOs do cadastro da administração (catalog_isos -
 iso_catalog.py) usam o mesmo envio: as funções recebem a tabela. Se o item já tem um arquivo com o mesmo MD5 (a ISO de um
 campeonato ou de outro torneio), nada é enviado: o torneio aponta para ele.
 """
+import sqlite3
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -21,10 +22,15 @@ from .store import TournamentError
 ARCHIVE_ITEM = "one-two-iso"
 EXTENSIONS = {"iso", "bin", "chd", "zip", "7z", "rar"}
 # Um envio parado em 'uploading' há mais que isso (servidor reiniciado no
-# meio) não impede mais um novo envio.
+# meio) não impede mais um novo envio - e heal() envia de novo.
 STALE = timedelta(hours=3)
-# Tabela com a ISO -> coluna que identifica a linha.
-TABLES = {"tournament_isos": "tournament_id", "catalog_isos": "id"}
+# Tabela com a ISO -> coluna que identifica a linha. catalog_iso_revisions guarda
+# o arquivo novo de uma alteração esperando aprovação (iso_catalog.request_edit).
+TABLES = {"tournament_isos": "tournament_id", "catalog_isos": "id", "catalog_iso_revisions": "id"}
+# As threads do envio esperam até isto por uma escrita no banco travada por outra
+# requisição (o padrão do sqlite3 é 5 s). Sem isso, um "database is locked" no fim
+# da conferência matava a thread e a ISO ficava em "conferindo" para sempre.
+THREAD_BUSY_TIMEOUT_MS = 120_000
 
 
 def get(db, tournament_id):
@@ -164,10 +170,56 @@ def start_archive(app, key, table="tournament_isos"):
         return
     _set(get_db(), row, table, archive_status="uploading", archive_error=None, archive_progress=0)
     get_db().commit()
+    _spawn(app, _archive, key, row["stored_name"], table)
+
+
+def _spawn(app, target, *args):
+    """Roda o envio/conferência numa thread (na hora, em testes)."""
     if app.config.get("TESTING"):
-        _archive(app, key, row["stored_name"], table)
+        target(app, *args)
     else:
-        threading.Thread(target=_archive, args=(app, key, row["stored_name"], table), daemon=True).start()
+        threading.Thread(target=target, args=(app, *args), daemon=True).start()
+
+
+def verify_stale_after(app):
+    """Conferência em 'verifying' há mais que isto: a thread que esperava o
+    archive.org listar o arquivo já teria terminado (com done ou error), então
+    ela morreu (servidor reiniciado no meio, erro do banco)."""
+    return timedelta(seconds=app.config.get("ARCHIVE_VERIFY_TIMEOUT", 45 * 60)) + timedelta(minutes=5)
+
+
+def heal(app, table, row):
+    """Envio parado porque a thread morreu: 'verifying' há mais que o prazo da
+    conferência volta a conferir (o arquivo normalmente já está no archive.org);
+    'uploading' sem progresso há mais que STALE é enviado de novo (o _archive vê
+    antes se o archive.org já tem o arquivo). Chamada pelas consultas da situação
+    do envio (barras de progresso). Devolve a linha como ficou."""
+    if row is None or not row["stored_name"] or row["local_removed_at"] or not archive_configured(app):
+        return row
+    current, stamp = row["archive_status"], row["archive_updated_at"]
+    if current not in ("verifying", "uploading") or not stamp:
+        return row
+    age = datetime.now(timezone.utc) - datetime.fromisoformat(stamp)
+    if not ((current == "verifying" and age > verify_stale_after(app)) or (current == "uploading" and age > STALE)):
+        return row
+    db, key = get_db(), row[TABLES[table]]
+    # Só uma requisição recomeça: as barras de progresso consultam ao mesmo tempo.
+    try:
+        claimed = db.execute(
+            f"UPDATE {table} SET archive_updated_at = ? WHERE {TABLES[table]} = ? AND stored_name = ? "
+            "AND archive_status = ? AND archive_updated_at = ?",
+            (now(), key, row["stored_name"], current, stamp)).rowcount
+        db.commit()
+    except sqlite3.OperationalError:  # banco travado agora: a próxima consulta tenta de novo
+        db.rollback()
+        return row
+    if claimed:
+        app.logger.warning("archive.org: envio parado em '%s' (%s %s) desde %s - recomeçando", current, table, key, stamp)
+        if current == "verifying":
+            _spawn(app, _resume_verify, key, row["stored_name"], table)
+        else:
+            start_archive(app, key, table)
+    return _row(db, table, key)
 
 
 def _set(db, row, table="tournament_isos", **values):
@@ -196,9 +248,46 @@ def _wait_for_md5(app, remote_name, md5):
         time.sleep(interval)
 
 
+def _thread_db():
+    """Conexão da thread do envio: espera a trava de outra escrita em vez de falhar."""
+    db = get_db()
+    db.execute(f"PRAGMA busy_timeout = {THREAD_BUSY_TIMEOUT_MS}")
+    return db
+
+
+def _fail(app, db, row, table, error):
+    """Erro inesperado na thread (banco travado além do prazo...): registra no log
+    e, se der, deixa a ISO com erro em vez de parada em 'uploading'/'verifying'."""
+    app.logger.exception("archive.org: falha no envio da ISO (%s %s)", table, row[TABLES[table]])
+    try:
+        db.rollback()
+        _set(db, row, table, archive_status="error", archive_error=f"Falha no envio para o archive.org: {error}")
+        db.commit()
+    except sqlite3.Error:
+        pass
+
+
+def _finish(db, row, table, remote_name, verified):
+    """Fim da conferência: com o mesmo MD5 no archive.org, a cópia deste servidor
+    é apagada e o download passa a ir para lá; sem, fica com erro (e a cópia)."""
+    if not verified:
+        _set(db, row, table, archive_status="error",
+             archive_error="Enviada, mas o archive.org ainda não lista o arquivo com o mesmo MD5. A cópia "
+                           "deste servidor foi mantida; tente enviar para o archive.org de novo mais tarde.")
+        db.commit()
+        return
+    _set(db, row, table, archive_status="done", archive_name=remote_name,
+         archive_url=download_url(ARCHIVE_ITEM, remote_name), archive_error=None, local_removed_at=now())
+    db.commit()
+    try:
+        delete_stored_file(row["stored_name"])
+    except (ValueError, OSError):
+        pass
+
+
 def _archive(app, key, stored_name, table="tournament_isos"):
     with app.app_context():
-        db = get_db()
+        db = _thread_db()
         row = db.execute(f"SELECT * FROM {table} WHERE {TABLES[table]} = ? AND stored_name = ?",
                          (key, stored_name)).fetchone()
         if row is None:
@@ -206,6 +295,7 @@ def _archive(app, key, stored_name, table="tournament_isos"):
         try:
             existing = list_item_files(ARCHIVE_ITEM)
             remote_name = next((name for name, info in existing.items() if info["md5"] == row["md5"]), None)
+            verified = True
             if remote_name is None:
                 remote_name = row["archive_name"]
 
@@ -219,20 +309,24 @@ def _archive(app, key, stored_name, table="tournament_isos"):
                 _set(db, row, table, archive_status="verifying", archive_name=remote_name,
                      archive_url=download_url(ARCHIVE_ITEM, remote_name))
                 db.commit()
-                if not _wait_for_md5(app, remote_name, row["md5"]):
-                    _set(db, row, table, archive_status="error",
-                         archive_error="Enviada, mas o archive.org ainda não lista o arquivo com o mesmo MD5. A cópia "
-                                       "deste servidor foi mantida; tente enviar para o archive.org de novo mais tarde.")
-                    db.commit()
-                    return
+                verified = _wait_for_md5(app, remote_name, row["md5"])
+            _finish(db, row, table, remote_name, verified)
         except (ArchiveOrgError, OSError) as error:
             _set(db, row, table, archive_status="error", archive_error=str(error))
             db.commit()
+        except Exception as error:  # noqa: BLE001 - a thread nunca morre deixando a ISO parada
+            _fail(app, db, row, table, error)
+
+
+def _resume_verify(app, key, stored_name, table):
+    """Recomeça a conferência de uma ISO parada em 'verifying' (heal)."""
+    with app.app_context():
+        db = _thread_db()
+        row = db.execute(f"SELECT * FROM {table} WHERE {TABLES[table]} = ? AND stored_name = ?",
+                         (key, stored_name)).fetchone()
+        if row is None or row["archive_status"] != "verifying" or not row["archive_name"]:
             return
-        _set(db, row, table, archive_status="done", archive_name=remote_name, archive_url=download_url(ARCHIVE_ITEM, remote_name),
-             archive_error=None, local_removed_at=now())
-        db.commit()
         try:
-            delete_stored_file(stored_name)
-        except (ValueError, OSError):
-            pass
+            _finish(db, row, table, row["archive_name"], _wait_for_md5(app, row["archive_name"], row["md5"]))
+        except Exception as error:  # noqa: BLE001
+            _fail(app, db, row, table, error)

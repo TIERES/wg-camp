@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'tournaments/_friendly.html' import friendly_carousel %}{% from '_carousel.html' import carousel, carousel_arrow, carousel_count %}{% from '_dialog.html' import info_button, info_dialog %}{% from '_user_picker.html' import user_picker %}{% block title %}Amistosos · WE Camp{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from 'tournaments/_friendly.html' import friendly_carousel %}{% from '_carousel.html' import carousel, carousel_arrow, carousel_count %}{% from '_dialog.html' import info_button, info_dialog, form_dialog %}{% from '_icons.html' import icon %}{% from '_user_picker.html' import user_picker %}{% block title %}Amistosos · WE Camp{% endblock %}{% block content %}
 <h1 class="title-info">Amistosos {{ info_button('amistoso-regras', 'Quando o amistoso vale para o Ranking e o XP') }}</h1>
 <p class="muted">Jogos com seus amigos, fora dos campeonatos. Quem é chamado aceita o convite. Depois do jogo, um informa o placar e o outro confirma.</p>
 {% call info_dialog('amistoso-regras', 'Quando o amistoso vale para o Ranking e o XP') %}
@@ -215,7 +215,8 @@
 
 {% if my_isos %}
 {# As ISOs que o jogador enviou: cards como os da escolha da ISO, em carrossel,
-   com a liberação no selo e o envio para o archive.org no rodapé. #}
+   com a liberação no selo, a alteração pendente (se houver) e, no rodapé, o
+   envio para o archive.org e o "Editar" (janela #iso-edit, preenchida pelo botão). #}
 <section id="minhas-isos">
   <h2>Minhas ISOs enviadas</h2>
   {% call carousel('ISOs anteriores', 'Próximas ISOs', 'per-3 my-isos', fit=false) %}
@@ -226,15 +227,92 @@
         <img class="t-cover" src="{{ game_cover(i.game_code) }}" alt="{{ i.game_name }}" width="200" height="250" loading="lazy">
       </span></span>
       <span class="t-body">
-        <span class="badge {{ 'iso-catalog' if i.approved_at else 'iso-pending' }}">{{ 'Liberada' if i.approved_at else 'Aguardando liberação' }}</span>
+        <span class="t-badges">
+          <span class="badge {{ 'iso-catalog' if i.approved_at else 'iso-pending' }}">{{ 'Liberada' if i.approved_at else 'Aguardando liberação' }}</span>
+          {% if i.rev_id %}<span class="badge iso-revision">{{ 'Alteração aprovada' if i.rev_approved_at else 'Alteração em análise' }}</span>{% endif %}
+        </span>
         <strong class="t-name">{{ i.name }}</strong>
         <span class="muted">{{ i.game_name }}</span>
         {% if i.original_filename %}<small class="muted iso-file">{{ i.original_filename|fit }}</small>{% endif %}
       </span>
-      {% if i.stored_name %}<div class="t-foot"><div class="archive-progress" data-archive-status="{{ url_for('tournaments.catalog_iso_status', catalog_id=i.id) }}"></div></div>{% endif %}
+      {% if i.rev_id %}
+      <div class="iso-revision-box">
+        <strong class="iso-revision-title">{{ icon('edit') }}Alteração enviada</strong>
+        <ul class="iso-revision-list">
+          {% if i.rev_name != i.name %}<li>Nome: <strong>{{ i.rev_name }}</strong></li>{% endif %}
+          {% if i.rev_game_id != i.game_title_id %}<li>Jogo base: <strong>{{ i.rev_game_name }}</strong></li>{% endif %}
+          {% if i.rev_filename %}<li class="iso-revision-file">Arquivo: <span class="iso-file">{{ i.rev_filename|fit }}</span></li>{% endif %}
+        </ul>
+        <small class="muted">{% if i.rev_approved_at %}Aprovada pela administração: entra no lugar da atual assim que o arquivo novo terminar de ir para o archive.org.{% else %}Até a aprovação, os amistosos usam a versão atual. Sem resposta da administração, é aprovada automaticamente em {{ auto_approve_at(i.rev_submitted_at)|localtime('%d/%m às %H:%M') }}.{% endif %}</small>
+        {% if i.rev_stored_name %}<div class="archive-progress" data-archive-status="{{ url_for('tournaments.catalog_iso_revision_status', catalog_id=i.id) }}"></div>{% endif %}
+      </div>
+      {% endif %}
+      <div class="t-foot">
+        {% if i.stored_name %}<div class="archive-progress" data-archive-status="{{ url_for('tournaments.catalog_iso_status', catalog_id=i.id) }}"></div>{% endif %}
+        <div class="my-iso-actions">
+          {% if i.rev_id and not i.rev_approved_at %}<button type="button" class="secondary" data-dialog="cancelar-alteracao-{{ i.id }}" aria-haspopup="dialog">Cancelar alteração</button>{% endif %}
+          <button type="button" class="icon-button" aria-haspopup="dialog" data-iso-edit="{{ url_for('tournaments.friendly_iso_edit', catalog_id=i.id) }}"
+                  data-name="{{ i.rev_name or i.name }}" data-game="{{ i.rev_game_id or i.game_title_id }}"
+                  data-file="{{ i.rev_filename or i.original_filename or '' }}" data-approved="{{ '1' if i.approved_at else '' }}"
+                  data-revision="{{ '1' if i.rev_id else '' }}">{{ icon('edit') }}Editar</button>
+        </div>
+      </div>
     </div>
     {% endfor %}
   {% endcall %}
+  {% for i in my_isos if i.rev_id and not i.rev_approved_at %}
+  {% call form_dialog('cancelar-alteracao-%d' % i.id, url_for('tournaments.friendly_iso_edit_cancel', catalog_id=i.id), 'Cancelar a alteração?', 'Cancelar alteração') %}
+    <p>A ISO <strong>{{ i.name }}</strong> continua como está{% if i.rev_filename %} e o arquivo novo enviado ({{ i.rev_filename }}) é apagado{% endif %}.</p>
+  {% endcall %}
+  {% endfor %}
+
+  <dialog class="iso-picker iso-upload" id="iso-edit" aria-labelledby="iso-edit-title">
+    <div class="iso-picker-head">
+      <h2 id="iso-edit-title">Editar ISO</h2>
+      <form method="dialog"><button class="secondary" aria-label="Fechar">&times;</button></form>
+    </div>
+    <p class="muted" id="iso-edit-note"></p>
+    <form method="post" action="" class="form" enctype="multipart/form-data" data-upload="{{ iso_max_bytes }}" id="iso-edit-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-row">
+        <label class="wide">Nome da ISO<input name="name" maxlength="120" required placeholder="Ex.: WE 2002 Brasileirão 2026"></label>
+        <label>Jogo base<select name="game_title_id" required>
+          <option value="">Escolha...</option>
+          {% for g in games %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}
+        </select></label>
+      </div>
+      <label>Arquivo novo (opcional)<input type="file" name="iso" accept="{{ iso_accept }}"></label>
+      <p class="muted iso-edit-file" id="iso-edit-file"></p>
+      {% include 'tournaments/_upload_progress.html' %}
+      <div class="card-actions"><button>Salvar alteração</button></div>
+    </form>
+  </dialog>
+  <script>
+  (function () {
+    // "Editar" de cada card: a mesma janela, preenchida com a ISO (ou a alteração pendente).
+    var dialog = document.getElementById('iso-edit'), form = document.getElementById('iso-edit-form');
+    var note = document.getElementById('iso-edit-note'), fileNote = document.getElementById('iso-edit-file');
+    var HOURS = {{ auto_approve_hours }};
+    document.querySelectorAll('[data-iso-edit]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        form.action = button.dataset.isoEdit;
+        form.reset();
+        form.elements.name.value = button.dataset.name;
+        form.elements.game_title_id.value = button.dataset.game;
+        note.textContent = button.dataset.approved
+          ? 'A ISO já está liberada: a alteração vai para a administração do WE Camp aprovar. Até lá, os amistosos usam a versão atual. Sem resposta em ' + HOURS + ' h, ela é aprovada automaticamente.'
+            + (button.dataset.revision ? ' Esta edição substitui a alteração que já está esperando (e o prazo recomeça).' : '')
+          : 'A ISO ainda aguarda a liberação: a alteração entra na hora e a administração confere tudo antes de liberar.';
+        fileNote.textContent = button.dataset.file
+          ? 'Para manter o arquivo ' + button.dataset.file + ', deixe em branco. Até {{ iso_max_bytes|filesize }} ({{ iso_accept.replace(",", ", ") }}).'
+          : 'Até {{ iso_max_bytes|filesize }} ({{ iso_accept.replace(",", ", ") }}).';
+        dialog.showModal();
+        form.elements.name.focus();
+      });
+    });
+    dialog.addEventListener('click', function (e) { if (e.target === dialog) dialog.close(); });
+  })();
+  </script>
 </section>
 {% endif %}
 
