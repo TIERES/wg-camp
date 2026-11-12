@@ -331,7 +331,8 @@ class TournamentsWebTest(unittest.TestCase):
         page = self.client().get(f"/torneios/{slug}?aba=geral").data.decode()
         head = page[:page.index("</head>")]
         url = f"https://we2002.example/torneios/{slug}"
-        description = "Datas prováveis: 15/11/2026 a 30/11/2026 · Vagas: 1 de 16 · Inscrição: W$10,00 · Prêmio: W$10,00"
+        description = ("Cadastre-se, participe, ganhe W$ e suba seu Rank! Datas prováveis: 15/11/2026 a 30/11/2026 · "
+                       "Vagas Preenchidas: 1 de 16 · Inscrição: W$10,00 · Prêmio: Moeda W$ entre os primeiros colocados.")
         for tag in ('<meta property="og:site_name" content="Campeonatos WE Camp">',
                     f'<meta property="og:url" content="{url}">',
                     '<meta property="og:title" content="Copa &#34;Aspas&#34; &amp; Cia">',
@@ -348,8 +349,9 @@ class TournamentsWebTest(unittest.TestCase):
         # Grátis, só com o início e sem inscritos; as outras páginas não ganham as tags.
         owner.post("/torneios/novo", data={**data, "name": "Gratis", "ends_on": "", "entry_fee": "0"})
         free = self.query("SELECT slug FROM tournaments WHERE name = 'Gratis'")[0]["slug"]
-        self.assertIn('<meta property="og:description" content="Datas prováveis: início em 15/11/2026 · Vagas: 0 de 16 · '
-                      'Inscrição: Grátis · Prêmio: Sem prêmio em inscrições">', self.client().get(f"/torneios/{free}").data.decode())
+        self.assertIn('<meta property="og:description" content="Cadastre-se, participe, ganhe W$ e suba seu Rank! Datas '
+                      'prováveis: início em 15/11/2026 · Vagas Preenchidas: 0 de 16 · Inscrição: Grátis · Prêmio: Não possui.">',
+                      self.client().get(f"/torneios/{free}").data.decode())
         self.assertNotIn("og:title", self.client().get("/torneios/").data.decode())
 
         # "Somente amigos" também se compartilha: quem abre o link sem ser amigo vê a página (abaixo).

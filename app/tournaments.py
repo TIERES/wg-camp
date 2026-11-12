@@ -856,28 +856,31 @@ def _plain(value):
     return normalize("NFKD", value or "").encode("ascii", "ignore").decode().casefold()
 
 
-def _share(tournament, enrolled, pool):
+def _share(tournament, enrolled):
     """Como o link do campeonato aparece ao ser compartilhado (WhatsApp, Telegram,
     Discord...): as tags og: da página (templates/_share.html) e o link que o
-    botão de compartilhar copia. A descrição repete a Visão geral: datas
-    prováveis, vagas, inscrição e prêmio. A imagem é o cartão JPEG 1200 x 630
-    (tournament_share_image); enquanto ele não existe, vale a imagem como foi
-    enviada (WebP, que nem todo aplicativo mostra)."""
+    botão de compartilhar copia. A descrição traz o convite para se cadastrar,
+    as datas prováveis, as vagas preenchidas, a inscrição e se há prêmio (o
+    prêmio sai das inscrições: sem inscrição paga não há; o valor não entra,
+    porque muda a cada inscrito e os aplicativos guardam a prévia). A imagem é o
+    cartão JPEG 1200 x 630 (tournament_share_image); enquanto ele não existe,
+    vale a imagem como foi enviada (WebP, que nem todo aplicativo mostra)."""
     parts = []
     start, end = date_br(tournament["starts_on"]), date_br(tournament["ends_on"])
     if start and end:
         parts.append(f"Datas prováveis: {start} a {end}")
     elif start or end:
         parts.append("Datas prováveis: " + (f"início em {start}" if start else f"fim em {end}"))
-    parts.append(f"Vagas: {enrolled} de {tournament['max_players']}")
+    parts.append(f"Vagas Preenchidas: {enrolled} de {tournament['max_players']}")
     fee = tournament["entry_fee_cents"]
     parts.append("Inscrição: " + (format_cents(fee) if fee else "Grátis"))
-    parts.append("Prêmio: " + (format_cents(pool) if pool else "Sem prêmio em inscrições"))
+    parts.append("Prêmio: " + ("Moeda W$ entre os primeiros colocados." if fee else "Não possui."))
     image = tournament["share_image"] or tournament["image"]
     return {
         "url": absolute_url(url_for("tournaments.show", slug=tournament["slug"])),
         "title": tournament["name"],
-        "description": " · ".join(parts),
+        # O convite na frente: o WhatsApp corta o fim da descrição quando ela não cabe.
+        "description": "Cadastre-se, participe, ganhe W$ e suba seu Rank! " + " · ".join(parts),
         "image": absolute_url(images.url("torneio", image)) if image else None,
         "image_alt": f"Imagem do campeonato {tournament['name']}",
         "card": bool(tournament["share_image"]),
@@ -945,7 +948,7 @@ def show(slug):
         team_list=team_list, free_teams=free_teams, team_modes=TEAM_MODES, crests=_crests(names), my_pending=my_pending,
         names=names, can_manage=can_manage(tournament), iso=iso_row, iso_ready=iso.downloadable(iso_row, current_app),
         format_label=formats.FORMATS[tournament["format"]], summary=formats.describe(tournament["format"], config),
-        status_labels=STATUS_LABELS, pool=pool, split=split, share=_share(tournament, len(entries), pool),
+        status_labels=STATUS_LABELS, pool=pool, split=split, share=_share(tournament, len(entries)),
         outsider=outsider, prizes=engine.split_prize(pool, split, 3) if pool else [],
         podium=sorted((e for e in entries if e["final_position"]), key=lambda e: e["final_position"]),
         invite=(friends.my_invite(db, tournament["id"], player_id)
