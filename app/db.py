@@ -438,6 +438,36 @@ CREATE TABLE IF NOT EXISTS catalog_isos (
     updated_at TEXT NOT NULL
 );
 
+-- Alteração de uma ISO já liberada, pedida por quem a enviou (iso_catalog.request_edit):
+-- nome, jogo base e, opcionalmente, um arquivo novo (mesmas colunas do archive.org de
+-- catalog_isos - vai para lá na hora). Até ser aplicada, os amistosos continuam com a
+-- versão atual. Aplica quando a administração aprova (approved_at) ou sozinha depois de
+-- 24 h do envio (submitted_at) - em ambos os casos, só depois de o arquivo novo terminar
+-- de ir para o archive.org. Uma por ISO: editar de novo substitui a anterior.
+CREATE TABLE IF NOT EXISTS catalog_iso_revisions (
+    id INTEGER PRIMARY KEY,
+    catalog_iso_id INTEGER NOT NULL UNIQUE REFERENCES catalog_isos(id) ON DELETE CASCADE,
+    requested_by INTEGER REFERENCES players(id) ON DELETE SET NULL,
+    name TEXT NOT NULL,
+    game_title_id INTEGER NOT NULL REFERENCES game_titles(id) ON DELETE RESTRICT,
+    stored_name TEXT,
+    original_filename TEXT,
+    file_size INTEGER,
+    md5 TEXT,
+    content_id TEXT,
+    archive_name TEXT,
+    archive_status TEXT,
+    archive_url TEXT,
+    archive_error TEXT,
+    archive_updated_at TEXT,
+    archive_progress INTEGER,
+    local_removed_at TEXT,
+    approved_at TEXT,
+    submitted_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 -- Amistoso entre dois amigos, fora dos campeonatos (app/tournament/friendly.py):
 -- invited -> accepted -> reported (placar proposto por um) -> confirmed (o outro aceitou).
 -- Placar recusado = suspended, até um dos dois propor um placar que o outro aceite.

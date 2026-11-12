@@ -22,8 +22,11 @@
     <img class="t-cover" src="{{ game_cover(row.game_code) }}" alt="{{ row.game_name }}" width="200" height="250" loading="lazy">
   </span></span>
   <span class="t-body">
+    <span class="t-badges">
     {% if pending %}<span class="badge iso-pending">Aguardando liberação</span>
     {% else %}<span class="badge {{ 'iso-catalog' if row.is_active else 'iso-pending' }}">{{ 'Ativa' if row.is_active else 'Inativa' }}</span>{% endif %}
+    {% if row.rev_id %}<span class="badge iso-revision">Alteração pendente</span>{% endif %}
+    </span>
     <strong class="t-name">{{ row.name }}</strong>
     <span class="muted">{{ row.game_name }}</span>
     {% if filename(row) %}<small class="muted iso-file">{{ filename(row) }}</small>{% endif %}
@@ -35,11 +38,42 @@
 </div>
 {% endmacro %}
 
+{# Alteração pedida por quem enviou a ISO: a versão atual e o que muda. #}
+{% macro revision_card(row) %}
+<div class="t-card">
+  <span class="t-side"><span class="t-side-images">
+    {% if row.image %}<img class="t-cover t-image" src="{{ image_url('torneio', row.image) }}" alt="" loading="lazy">{% endif %}
+    <img class="t-cover" src="{{ game_cover(row.game_code) }}" alt="{{ row.game_name }}" width="200" height="250" loading="lazy">
+  </span></span>
+  <span class="t-body">
+    <span class="badge iso-revision">{{ 'Aprovada, esperando o arquivo' if row.rev_approved_at else 'Alteração em análise' }}</span>
+    <strong class="t-name">{{ row.name }}</strong>
+    <span class="muted">{{ row.game_name }}</span>
+    <ul class="iso-revision-list">
+      {% if row.rev_name != row.name %}<li>Nome → <strong>{{ row.rev_name }}</strong></li>{% endif %}
+      {% if row.rev_game_id != row.game_title_id %}<li>Jogo base → <strong>{{ row.rev_game_name }}</strong></li>{% endif %}
+      {% if row.rev_filename %}<li class="iso-revision-file">Arquivo → <span class="iso-file">{{ row.rev_filename|fit }}</span></li>{% endif %}
+    </ul>
+    <span class="t-meta"><span>{{ icon('user') }}{{ row.requester_name or 'quem enviou' }} · {{ row.rev_submitted_at|localtime }}</span></span>
+    {% if not row.rev_approved_at %}<small class="muted">Aprovada automaticamente em {{ auto_approve_at(row.rev_submitted_at)|localtime('%d/%m/%Y às %H:%M') }}, se ninguém responder.</small>{% endif %}
+  </span>
+  <div class="t-foot"><a class="button icon-button" href="{{ url_for('tournaments_admin.admin_iso_edit', catalog_id=row.id, _anchor='alteracao') }}">{{ icon('edit') }}{{ 'Abrir' if row.rev_approved_at else 'Abrir e aprovar' }}</a></div>
+</div>
+{% endmacro %}
+
 {% if pending %}
 <section>
   <h2>Aguardando liberação ({{ pending|length }})</h2>
   <p class="muted">ISOs enviadas pelos jogadores. Abra a ISO para confirmar o nome e o jogo base, cadastrar a imagem e liberar.</p>
   {% call carousel('ISOs anteriores', 'Próximas ISOs', 't-cards per-3', fit=false) %}{% for row in pending %}{{ iso_card(row, true) }}{% endfor %}{% endcall %}
+</section>
+{% endif %}
+
+{% if revisions %}
+<section>
+  <h2>Alterações aguardando aprovação ({{ revisions_waiting }})</h2>
+  <p class="muted">Quem enviou a ISO pediu para mudar o nome, o jogo base ou o arquivo. Até a aprovação, os amistosos usam a versão atual. Sem resposta em {{ auto_approve_hours }} h, a alteração é aprovada automaticamente.</p>
+  {% call carousel('Alterações anteriores', 'Próximas alterações', 't-cards per-3', fit=false) %}{% for row in revisions %}{{ revision_card(row) }}{% endfor %}{% endcall %}
 </section>
 {% endif %}
 

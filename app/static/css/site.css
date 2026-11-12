@@ -213,7 +213,7 @@ details.team-group summary .check { display:inline-flex }
 [hidden] { display:none !important }
 /* F2: reporte/confirmação de resultados */
 .todo-badge { background:#fb923c; color:#1c1917; border-radius:999px; padding:0 .45rem; font-size:.8rem; font-weight:700; line-height:1.4 }
-.user-menu[open] > summary .todo-badge { display:none } .user-menu-list .todo-badge { margin-left:auto }
+.user-menu-list .todo-badge { margin-left:auto }  /* o do nome continua à vista com o menu aberto */
 .chip { display:block; font-size:.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; margin-top:.15rem }
 .chip-reported { color:#fbbf24 } .chip-disputed { color:#f87171 }
 a.match-line { color:var(--text); text-decoration:none } a.match-line:hover { background:#273449 }
@@ -326,7 +326,14 @@ header nav { align-items:center }
 .user-menu-list .ico { color:var(--accent) }
 .user-menu-list form { display:block; margin:0; padding-top:.35rem; border-top:1px solid #374151; margin-top:.25rem }
 .user-menu-list form .ico { color:#f87171 }
-@media (max-width:550px) { .user-menu-list { right:auto; left:0 } }
+/* Celular: o menu aberto ocupa a largura do cabeçalho, logo abaixo do nome (que fica sempre na
+   última linha do cabeçalho). Alinhado ao nome, ele saía da tela pela direita (nome à direita do
+   título) e a página ganhava barra de rolagem horizontal. */
+@media (max-width:600px) {
+  header { position:relative }
+  .user-menu { position:static }
+  .user-menu-list { left:1rem; right:1rem; top:calc(100% - .6rem); min-width:0 }
+}
 /* Status: gráfico da evolução do aproveitamento. */
 .evo-chart { position:relative; background:var(--card); border:1px solid #374151; border-radius:8px; padding:.5rem }
 .evo-chart svg { display:block; width:100%; height:auto }
@@ -543,6 +550,20 @@ button.small,.button.small { padding:.4rem .7rem; font-size:.78rem }
 /* Minhas ISOs enviadas: cards em carrossel, o envio para o archive.org no rodapé. */
 .my-iso-card .t-name { overflow-wrap:anywhere } .my-iso-card .t-foot .archive-progress { margin:0 }
 .badge.iso-pending { background:#78350f; color:#fde68a }
+/* Alteração da ISO pedida por quem enviou (esperando aprovação): selo, quadro no card e na administração. */
+.badge.iso-revision { background:#1e3a8a; color:#bfdbfe }
+.my-iso-card .t-foot { flex-direction:column; flex-wrap:nowrap; align-items:stretch }
+.my-iso-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:.5rem }
+.iso-revision-box { display:grid; grid-template-columns:minmax(0,1fr); gap:.3rem; min-width:0; padding:.6rem .7rem; background:#172554; border:1px solid #1e40af; border-radius:6px }
+.iso-revision-title { display:inline-flex; align-items:center; gap:.4rem; font-size:.9rem } .iso-revision-title .ico { color:#93c5fd; width:1rem; height:1rem }
+.iso-revision-list { margin:0; padding-left:1.1rem; font-size:.9rem; min-width:0 } .iso-revision-list li { min-width:0 }
+.my-iso-card > .iso-revision-box { grid-column:1 / -1 }
+.iso-revision-box .archive-progress { margin:0 }
+.t-card .iso-revision-list { padding-left:1rem; font-size:.85rem }
+.iso-revision-admin { display:grid; gap:.5rem; margin:1rem 0; padding:1rem } .iso-revision-admin h2 { margin:0; font-size:1.15rem } .iso-revision-admin p { margin:0 }
+.iso-revision-diff { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:.25rem .75rem; margin:0 }
+.iso-revision-diff dt { color:#9ca3af } .iso-revision-diff dd { margin:0; overflow-wrap:anywhere }
+@media (max-width:550px) { .iso-revision-diff { grid-template-columns:1fr } .iso-revision-diff dd { margin-bottom:.35rem } }
 
 /* Cadastro: campos obrigatórios e conferência enquanto digita (players/register.html) */
 .req { color:#f87171; font-weight:700 }
@@ -633,7 +654,8 @@ button.small,.button.small { padding:.4rem .7rem; font-size:.78rem }
 .carousel { --carousel-arrow-top:6.75rem }
 .carousel-arrow { position:absolute; top:min(var(--carousel-arrow-top), var(--carousel-arrow-max, 100vh)); z-index:2; transform:translateY(-50%); display:grid; place-items:center; width:2.2rem; height:2.2rem; padding:0; border-radius:50%; box-shadow:0 2px 8px rgba(0,0,0,.45) }
 .carousel-arrow svg { display:block } .carousel-arrow[hidden] { display:none }
-.carousel-arrow.prev { left:-1.1rem } .carousel-arrow.next { right:-1.1rem }
+/* -1rem = o padding do main: com -1.1rem a seta passava da tela (rolagem horizontal) até ~1130px. */
+.carousel-arrow.prev { left:-1rem } .carousel-arrow.next { right:-1rem }
 @media (max-width:600px) { .carousel { --carousel-arrow-top:6.4rem } .carousel-arrow { width:2rem; height:2rem } .carousel-arrow.prev { left:-.7rem } .carousel-arrow.next { right:-.7rem } }
 .carousel-track { position:relative; display:flex; gap:1rem; overflow-x:auto; overflow-y:hidden; scroll-snap-type:x mandatory; scrollbar-width:none; overscroll-behavior-x:contain }
 .carousel-track::-webkit-scrollbar { display:none }

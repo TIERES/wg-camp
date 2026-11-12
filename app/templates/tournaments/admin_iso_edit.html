@@ -1,9 +1,37 @@
-{% extends 'base.html' %}{% block title %}{{ 'Editar ISO' if row else 'Nova ISO' }} · Administração{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from '_dialog.html' import form_dialog %}{% block title %}{{ 'Editar ISO' if row else 'Nova ISO' }} · Administração{% endblock %}{% block content %}
 <h1>{{ 'Editar ISO' if row else 'Nova ISO' }}</h1>
 <p><a href="{{ url_for('tournaments_admin.admin_isos') }}">← ISOs para amistosos</a></p>
 {% set v = form or {} %}
 {% set pending = row and not row.approved_at %}
 {% if pending %}<p class="notice">Enviada por <strong>{{ row.requester_name or 'um jogador' }}</strong> em {{ row.created_at|localtime }}, aguardando liberação. Confira o nome e o jogo base, cadastre a imagem e clique em <strong>Liberar ISO</strong>. Quem enviou recebe um e-mail avisando.</p>{% endif %}
+{% if revision %}
+{# Alteração pedida por quem enviou a ISO (iso_catalog.request_edit): o que muda e aprovar/recusar. #}
+<section class="notice iso-revision-admin" id="alteracao">
+  <h2>Alteração pedida por {{ revision.requester_name or 'quem enviou' }}</h2>
+  <p>Enviada em {{ revision.submitted_at|localtime }}.
+    {% if revision.approved_at %}Aprovada: entra no lugar da versão atual assim que o arquivo novo terminar de ir para o archive.org.
+    {% else %}Até a aprovação, os amistosos usam a versão atual. Sem resposta, ela é aprovada automaticamente em <strong>{{ auto_approve_at|localtime('%d/%m/%Y às %H:%M') }}</strong>.{% endif %}</p>
+  <dl class="iso-revision-diff">
+    <dt>Nome</dt><dd>{% if revision.name != row.name %}{{ row.name }} → <strong>{{ revision.name }}</strong>{% else %}{{ row.name }} <span class="muted">(sem mudança)</span>{% endif %}</dd>
+    <dt>Jogo base</dt><dd>{% if revision.game_title_id != row.game_title_id %}{{ row.game_name }} → <strong>{{ revision.game_name }}</strong>{% else %}{{ row.game_name }} <span class="muted">(sem mudança)</span>{% endif %}</dd>
+    <dt>Arquivo</dt><dd>{% if revision.stored_name %}{{ row.original_filename or row.file_filename or '-' }} → <strong>{{ revision.original_filename }}</strong>{% if revision.file_size %} ({{ revision.file_size|filesize }}){% endif %} · <a href="{{ url_for('tournaments_admin.admin_iso_revision_file', catalog_id=row.id) }}">baixar o arquivo novo</a>{% else %}{{ row.original_filename or row.file_filename or '-' }} <span class="muted">(sem mudança)</span>{% endif %}</dd>
+  </dl>
+  {% if revision.stored_name %}<div class="archive-progress" data-archive-status="{{ url_for('tournaments.catalog_iso_revision_status', catalog_id=row.id) }}"></div>{% endif %}
+  {% if not revision.approved_at %}
+  <div class="card-actions">
+    <form method="post" action="{{ url_for('tournaments_admin.admin_iso_edit_approve', catalog_id=row.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Aprovar alteração</button></form>
+    <button type="button" class="danger btn-left" data-dialog="recusar-alteracao" aria-haspopup="dialog" {% if revision_uploading %}disabled title="O arquivo novo ainda está indo para o archive.org"{% endif %}>Recusar alteração</button>
+  </div>
+  {% if revision_busy %}<p class="muted">O arquivo novo ainda está indo para o archive.org. Dá para aprovar agora: a ISO é atualizada assim que o envio terminar.</p>{% endif %}
+  {% endif %}
+</section>
+{% if not revision.approved_at %}
+{% call form_dialog('recusar-alteracao', url_for('tournaments_admin.admin_iso_edit_reject', catalog_id=row.id), 'Recusar a alteração?', 'Recusar alteração') %}
+  <p>A ISO continua como está{% if revision.stored_name %} e o arquivo novo é apagado deste servidor{% endif %}. Quem enviou recebe um e-mail.</p>
+  <label>Motivo (opcional, vai no e-mail)<input name="motivo" maxlength="300"></label>
+{% endcall %}
+{% endif %}
+{% endif %}
 <form method="post" enctype="multipart/form-data" class="form" id="iso-form" data-upload="{{ iso_max_bytes }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="form-row">

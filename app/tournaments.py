@@ -592,6 +592,8 @@ def friendlies():  # noqa: C901 - a lista, os filtros e as partidas de cada amis
                            friends=my_friends, chosen=chosen, chosen_friend=chosen_friend,
                            open_opponents=opponents(open_all), history_opponents=opponents(history),
                            iso_options=iso_catalog.options(db, me), my_isos=iso_catalog.requested_by(db, me),
+                           auto_approve_at=iso_catalog.auto_approve_at,
+                           auto_approve_hours=iso_catalog.AUTO_APPROVE_HOURS,
                            games=db.execute("SELECT id, name FROM game_titles WHERE is_active = 1 "
                                             "ORDER BY year, name").fetchall(), **_iso_limits(),
                            rules={"min_xp": friendly.MIN_XP, "limit": friendly.PAIR_DAILY_LIMIT,
@@ -730,15 +732,95 @@ def friendly_iso_upload():
     return back
 
 
+@bp.post("/amistosos/isos/<int:catalog_id>/editar")
+def friendly_iso_edit(catalog_id):
+    """Quem enviou a ISO altera o nome, o jogo base e/ou envia um arquivo novo
+    (iso_catalog.request_edit). A administração recebe o e-mail para conferir."""
+    # Como no envio: o tamanho é conferido antes de ler o formulário.
+    if "player_id" not in session:
+        return redirect(url_for("players.login", next=url_for("tournaments.friendlies")))
+    back = redirect(url_for("tournaments.friendlies", _anchor="minhas-isos"))
+    try:
+        iso.check_size(request, current_app.config["TOURNAMENT_ISO_MAX_BYTES"])
+    except TournamentError as error:
+        flash(str(error), "error")
+        return back
+    validate_csrf()
+    db = get_db()
+    upload = request.files.get("iso")
+    try:
+        result = iso_catalog.request_edit(db, session["player_id"], catalog_id, request.form.get("name"),
+                                          request.form.get("game_title_id", type=int),
+                                          upload if upload and upload.filename else None)
+        db.commit()
+    except TournamentError as error:
+        db.rollback()
+        flash(f"A ISO não foi alterada: {error}", "error")
+        return back
+    if result["mode"] == "cancelled":
+        flash("Tudo ficou igual à versão atual: a alteração que esperava aprovação foi descartada.", "success")
+        return back
+    app = current_app._get_current_object()
+    row = iso_catalog.get(db, catalog_id)
+    if result["uploaded"]:
+        if result["mode"] == "direct":
+            iso.start_archive(app, catalog_id, "catalog_isos")
+        else:
+            iso.start_archive(app, row["rev_id"], iso_catalog.REVISIONS)
+    notify.iso_edit_request(db, iso_catalog.get(db, catalog_id), result)
+    if result["mode"] == "direct":
+        flash("ISO alterada. Ela continua aguardando a liberação da administração do WE Camp.", "success")
+    else:
+        flash("Alteração enviada para a administração do WE Camp aprovar. Até lá, os amistosos continuam com a versão "
+              f"atual. Sem resposta em {iso_catalog.AUTO_APPROVE_HOURS} h, ela é aprovada automaticamente.", "success")
+    return back
+
+
+@bp.post("/amistosos/isos/<int:catalog_id>/cancelar-alteracao")
+@player_required
+def friendly_iso_edit_cancel(catalog_id):
+    """Quem enviou desiste da alteração que esperava aprovação."""
+    validate_csrf()
+    db = get_db()
+    try:
+        iso_catalog.cancel_edit(db, session["player_id"], catalog_id)
+        db.commit()
+        flash("Alteração cancelada: a ISO continua como estava.", "success")
+    except TournamentError as error:
+        db.rollback()
+        flash(str(error), "error")
+    return redirect(url_for("tournaments.friendlies", _anchor="minhas-isos"))
+
+
+def _catalog_iso_allowed(row):
+    return is_admin() or (session.get("player_id") and session["player_id"] == row["requested_by"])
+
+
 @bp.get("/isos/<int:catalog_id>/status")
 def catalog_iso_status(catalog_id):
     """Situação do envio para o archive.org (barra de progresso) - admin ou quem enviou."""
     row = iso_catalog.get(get_db(), catalog_id)
-    if row is None or not (is_admin() or (session.get("player_id") and session["player_id"] == row["requested_by"])):
+    if row is None or not _catalog_iso_allowed(row):
         abort(404)
     if row["file_id"]:
         return jsonify({"state": "done", "progress": 100})
+    row = iso.heal(current_app._get_current_object(), "catalog_isos", row)
     return jsonify(iso.status(row, current_app))
+
+
+@bp.get("/isos/<int:catalog_id>/alteracao/status")
+def catalog_iso_revision_status(catalog_id):
+    """Situação do envio do arquivo novo da alteração pendente. Depois de
+    aplicada, a do arquivo da ISO (a barra não fica consultando um 404)."""
+    db = get_db()
+    row = iso_catalog.get(db, catalog_id)
+    if row is None or not _catalog_iso_allowed(row):
+        abort(404)
+    rev = iso_catalog.revision(db, catalog_id)
+    if rev is None:
+        return catalog_iso_status(catalog_id)
+    rev = iso.heal(current_app._get_current_object(), iso_catalog.REVISIONS, rev)
+    return jsonify(iso.status(rev, current_app))
 
 
 _FRIENDLY_MESSAGES = {
@@ -1311,7 +1393,8 @@ def iso_status(slug):
     tournament = _load(slug)
     if not can_manage(tournament):
         abort(403)
-    return jsonify(iso.status(iso.get(get_db(), tournament["id"]), current_app))
+    row = iso.heal(current_app._get_current_object(), "tournament_isos", iso.get(get_db(), tournament["id"]))
+    return jsonify(iso.status(row, current_app))
 
 
 @bp.get("/<slug>/iso")
@@ -1690,6 +1773,9 @@ def _auto_confirm_reports():
         for tournament_id, match_id in disputed:
             notify.score_disputed(db, store.get_tournament(db, tournament_id), match_id)
         notify.sweep(db)  # avisa o fim dos jogos e encerra quem passou do prazo
+        # Alterações de ISO aprovadas (esperando o arquivo novo) ou sem resposta em 24 h.
+        for row, auto in iso_catalog.apply_due(db, current_app._get_current_object()):
+            notify.iso_edit_approved(db, row, auto=auto)
     except sqlite3.OperationalError:
         pass  # banco sem as tabelas ainda
 
@@ -1945,6 +2031,9 @@ def admin_isos():
     filters = {"name": request.args.get("nome", "").strip(), "status": request.args.get("ativa", "")}
     pending = [row for row in rows if not row["approved_at"]]
     approved = [row for row in rows if row["approved_at"]]
+    # Alterações pedidas por quem enviou a ISO: as esperando aprovação primeiro.
+    revisions = sorted((row for row in approved if row["rev_id"]),
+                       key=lambda row: (row["rev_approved_at"] is not None, row["rev_submitted_at"]))
     if filters["name"]:
         text = filters["name"].lower()
         approved = [row for row in approved if text in " ".join(
@@ -1953,14 +2042,21 @@ def admin_isos():
     if filters["status"] in ("sim", "nao"):
         approved = [row for row in approved if bool(row["is_active"]) == (filters["status"] == "sim")]
     approved, approved_total = cap(approved)
-    return render_template("tournaments/admin_isos.html", pending=pending, approved=approved,
+    return render_template("tournaments/admin_isos.html", pending=pending, approved=approved, revisions=revisions,
+                           revisions_waiting=sum(1 for row in revisions if not row["rev_approved_at"]),
                            approved_total=approved_total, filters=filters, filtered=any(filters.values()),
-                           uploading=iso.uploading, filename=iso_catalog.filename)
+                           uploading=iso.uploading, filename=iso_catalog.filename,
+                           auto_approve_at=iso_catalog.auto_approve_at,
+                           auto_approve_hours=iso_catalog.AUTO_APPROVE_HOURS)
 
 
-def _iso_form_context(db):
+def _iso_form_context(db, row=None):
+    revision = iso_catalog.revision(db, row["id"]) if row else None
     return {"games": db.execute("SELECT id, name FROM game_titles WHERE is_active = 1 ORDER BY year, name").fetchall(),
-            "files": iso_catalog.championship_files(db), **_iso_limits()}
+            "files": iso_catalog.championship_files(db), "revision": revision,
+            "revision_busy": iso_catalog.busy(revision), "revision_uploading": iso.uploading(revision),
+            "auto_approve_at": iso_catalog.auto_approve_at(revision["submitted_at"]) if revision else None,
+            **_iso_limits()}
 
 
 @admin_bp.route("/isos/nova", methods=("GET", "POST"))
@@ -2004,7 +2100,7 @@ def admin_iso_edit(catalog_id=None):
             db.rollback()
             images.delete("torneio", new_image)
             flash(str(error), "error")
-            return render_template("tournaments/admin_iso_edit.html", row=row, form=form, **_iso_form_context(db))
+            return render_template("tournaments/admin_iso_edit.html", row=row, form=form, **_iso_form_context(db, row))
         if row and (new_image or "remove_image" in form):
             images.delete("torneio", row["image"])
         if releasing:
@@ -2020,7 +2116,7 @@ def admin_iso_edit(catalog_id=None):
         elif not releasing:
             flash("ISO salva.", "success")
         return redirect(url_for("tournaments_admin.admin_isos"))
-    return render_template("tournaments/admin_iso_edit.html", row=row, form={}, **_iso_form_context(db))
+    return render_template("tournaments/admin_iso_edit.html", row=row, form={}, **_iso_form_context(db, row))
 
 
 @admin_bp.post("/isos/<int:catalog_id>/recusar")
@@ -2059,7 +2155,72 @@ def admin_iso_retry(catalog_id):
     return redirect(url_for("tournaments_admin.admin_isos"))
 
 
+@admin_bp.post("/isos/<int:catalog_id>/alteracao/aprovar")
+@login_required
+def admin_iso_edit_approve(catalog_id):
+    """Aprova a alteração pedida por quem enviou a ISO (iso_catalog.approve_edit)."""
+    validate_csrf()
+    db = get_db()
+    try:
+        applied = iso_catalog.approve_edit(db, catalog_id)
+        db.commit()
+    except TournamentError as error:
+        db.rollback()
+        flash(str(error), "error")
+        return redirect(url_for("tournaments_admin.admin_iso_edit", catalog_id=catalog_id))
+    if applied:
+        notify.iso_edit_approved(db, iso_catalog.get(db, catalog_id), auto=False)
+        flash("Alteração aprovada: a ISO já está atualizada para os jogadores.", "success")
+    else:
+        flash("Alteração aprovada. O arquivo novo ainda está indo para o archive.org: a ISO é atualizada assim que o "
+              "envio terminar (quem enviou recebe o e-mail nessa hora).", "success")
+    return redirect(url_for("tournaments_admin.admin_isos"))
+
+
+@admin_bp.get("/isos/<int:catalog_id>/alteracao/arquivo")
+@login_required
+def admin_iso_revision_file(catalog_id):
+    """O arquivo novo da alteração, para a administração conferir antes de aprovar."""
+    rev = iso_catalog.revision(get_db(), catalog_id)
+    if rev is None or not rev["stored_name"]:
+        abort(404)
+    response = _send_iso_file(rev["stored_name"], rev["original_filename"], rev["archive_url"],
+                              rev["local_removed_at"], protected=True)
+    if response is None:
+        abort(404)
+    return response
+
+
+@admin_bp.post("/isos/<int:catalog_id>/alteracao/recusar")
+@login_required
+def admin_iso_edit_reject(catalog_id):
+    """Recusa a alteração: a ISO continua como está, quem enviou recebe o motivo."""
+    validate_csrf()
+    db = get_db()
+    try:
+        rev = iso_catalog.reject_edit(db, catalog_id)
+        db.commit()
+    except TournamentError as error:
+        db.rollback()
+        flash(str(error), "error")
+        return redirect(url_for("tournaments_admin.admin_iso_edit", catalog_id=catalog_id))
+    notify.iso_edit_rejected(db, iso_catalog.get(db, catalog_id), rev, request.form.get("motivo"))
+    flash("Alteração recusada: a ISO continua como estava.", "success")
+    return redirect(url_for("tournaments_admin.admin_isos"))
+
+
 # --- Template helpers ---------------------------------------------------------
+
+@admin_bp.app_context_processor
+def inject_admin_todo():
+    """Selo no menu da administração: ISOs enviadas por jogadores esperando a
+    liberação + alterações de ISO esperando aprovação."""
+    if "user_id" not in session:
+        return {}
+    try:
+        return {"isos_todo": iso_catalog.pending_count(get_db())}
+    except sqlite3.OperationalError:
+        return {}  # banco sem as tabelas ainda
 
 @bp.app_context_processor
 def inject_wallet():
