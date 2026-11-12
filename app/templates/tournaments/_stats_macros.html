@@ -1,12 +1,71 @@
+{% from '_carousel.html' import carousel %}{% from '_icons.html' import icon %}{% from '_avatar.html' import avatar_button %}
+{# Filtro por jogo base: cards com a capa (como na lista de Campeonatos), só os
+   jogos liberados para campeonato (tournaments._game_filter). Cada card é um
+   link para a mesma página com ?jogo= (e os outros parâmetros de `extra`). #}
 {% macro game_filter(games, game, extra={}) -%}
-<form method="get" class="filters">
-  {% for key, value in extra.items() if value %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
-  <select name="jogo" onchange="this.form.submit()" aria-label="Jogo">
-    <option value="">Todos os jogos</option>
-    {% for g in games %}<option value="{{ g.id }}" {% if g.id == game %}selected{% endif %}>{{ g.name }}</option>{% endfor %}
-  </select>
-  <noscript><button>Filtrar</button></noscript>
-</form>
+{% set args = dict(request.view_args or {}, **extra) %}
+<nav class="game-filter" aria-label="Filtrar por jogo">
+  <a href="{{ url_for(request.endpoint, **args) }}" class="game-chip all{% if not game %} active{% endif %}" {% if not game %}aria-current="true"{% endif %}><span>Todos os jogos</span></a>
+  {% for g in games %}
+  <a href="{{ url_for(request.endpoint, jogo=g.id, **args) }}" class="game-chip{% if g.id == game %} active{% endif %}" title="{{ g.name }}" {% if g.id == game %}aria-current="true"{% endif %}><img src="{{ game_cover(g.code) }}" alt="" width="200" height="250"><span>{{ g.name|replace('Winning Eleven ', 'WE ') }}</span></a>
+  {% endfor %}
+</nav>
+{%- endmacro %}
+
+{# Troféu (1º ouro, 2º prata, 3º bronze - a cor vem do CSS: .trophy-1/2/3). #}
+{% macro trophy_icon(place) -%}
+<svg class="trophy" viewBox="0 0 64 64" aria-hidden="true"><path class="trophy-handles" d="M19 14H9v4a11 11 0 0 0 11 11M45 14h10v4a11 11 0 0 1-11 11"/><path class="trophy-cup" d="M17 7h30v15a15 15 0 0 1-30 0z"/><path class="trophy-cup" d="M28 36h8v9h-8z"/><rect class="trophy-cup" x="19" y="45" width="26" height="9" rx="2"/><text class="trophy-number" x="32" y="25" text-anchor="middle">{{ place }}</text></svg>
+{%- endmacro %}
+
+{# Galeria de troféus do jogador (tournaments._trophies): quantos 1º, 2º e 3º
+   lugares e um card por troféu (campeonato encerrado), do mais recente. Os
+   quadros dos totais filtram os cards (clicar de novo mostra todos). #}
+{% macro trophy_gallery(trophies, empty) -%}
+{% set labels = {1: ('título', 'títulos', 'Campeão'), 2: ('vice', 'vices', 'Vice-campeão'), 3: ('3º lugar', '3º lugares', '3º lugar')} %}
+<section class="trophies" id="trofeus">
+  <h2>Galeria de troféus</h2>
+  {% if trophies['items'] %}<p class="muted trophy-hint" data-trophy-hint aria-live="polite">Selecione o troféu para filtrar.</p>{% endif %}
+  <div class="trophy-summary">
+    {% for place in (1, 2, 3) %}{% set n = trophies.counts[place] %}
+    <button type="button" class="trophy-tile trophy-{{ place }}{% if not n %} none{% endif %}" data-trophy-filter="{{ place }}" aria-pressed="false"{% if not n %} disabled{% endif %} title="{{ ('Mostrar só os ' ~ labels[place][1]) if n else ('Nenhum ' ~ labels[place][0]) }}">{{ trophy_icon(place) }}<strong>{{ n }}</strong><span>{{ labels[place][0] if n == 1 else labels[place][1] }}</span></button>
+    {% endfor %}
+  </div>
+  {% if trophies['items'] %}
+  {% call carousel('Troféus anteriores', 'Próximos troféus', 't-cards per-3 trophy-cards', fit=false) %}
+    {% for t in trophies['items'] %}
+    <a class="t-card trophy-card trophy-{{ t.final_position }}" data-place="{{ t.final_position }}" href="{{ url_for('tournaments.show', slug=t.slug) }}">
+      <span class="t-side">{{ trophy_icon(t.final_position) }}</span>
+      <span class="t-body">
+        <span class="badge trophy-badge">{{ labels[t.final_position][2] }}</span>
+        <strong class="t-name">{{ t.tournament_name }}</strong>
+        <span class="muted">{{ t.game_name }}</span>
+        {% if t.team_name %}<span class="trophy-team"><img class="crest" src="{{ t.crest }}" alt="" loading="lazy">{{ t.team_name }}</span>{% endif %}
+        <span class="t-meta">{% if t.finished_at %}<span>{{ icon('calendar') }}{{ t.finished_at|localtime('%d/%m/%Y') }}</span>{% endif %}<span>{{ icon('users') }}{{ t.players }} jogador{{ 'es' if t.players != 1 }}</span></span>
+      </span>
+    </a>
+    {% endfor %}
+  {% endcall %}
+  <script>
+  (function () {
+    // Filtro pelos quadros dos totais: um troféu por vez; clicar no mesmo de novo mostra todos.
+    var box = document.getElementById('trofeus'), hint = box.querySelector('[data-trophy-hint]');
+    var buttons = box.querySelectorAll('[data-trophy-filter]'), cards = box.querySelectorAll('.trophy-card');
+    var carousel = box.querySelector('[data-carousel]');
+    var names = { 1: 'os títulos', 2: 'os vices', 3: 'os 3º lugares' };
+    buttons.forEach(function (button) {
+      button.addEventListener('click', function () {
+        var place = button.getAttribute('aria-pressed') === 'true' ? null : button.dataset.trophyFilter;
+        buttons.forEach(function (b) { b.setAttribute('aria-pressed', b === button && place ? 'true' : 'false'); });
+        cards.forEach(function (card) { card.hidden = !!place && card.dataset.place !== place; });
+        hint.textContent = place ? 'Mostrando só ' + names[place] + '. Clique de novo no troféu para ver todos.'
+          : 'Selecione o troféu para filtrar.';
+        if (carousel) carousel.dispatchEvent(new Event('carousel:refresh'));
+      });
+    });
+  })();
+  </script>
+  {% else %}<p class="muted">{{ empty }}</p>{% endif %}
+</section>
 {%- endmacro %}
 
 {% macro player_link(username, game=none) -%}
@@ -27,7 +86,7 @@
       <td>{{ r.played_at|localtime }}</td>
       <td class="recent"><span class="f-{{ o }}">{{ o }}</span></td>
       <td><a href="{{ history_url(r) }}"><strong>{{ r.goals_for }} x {{ r.goals_against }}</strong>{% if r.pens_for is not none %} <small>({{ r.pens_for }} x {{ r.pens_against }} pên.)</small>{% endif %}</a></td>
-      {% if show_opponent %}<td>{{ player_link(r.opponent_name, game) }}</td>{% endif %}
+      {% if show_opponent %}<td><span class="with-avatar">{{ avatar_button(r.opponent_id, r.opponent_name) }}{{ player_link(r.opponent_name, game) }}</span></td>{% endif %}
       <td class="hide-sm">{% if r.kind == 'a' %}<a href="{{ history_url(r) }}">Amistoso</a>{% if r.game_number %} <small class="muted">· jogo {{ r.game_number }}</small>{% endif %}{% else %}<a href="{{ url_for('tournaments.show', slug=r.slug) }}">{{ r.tournament_name }}</a> <small class="muted">· {{ r.stage_name }}</small>{% endif %}</td>
     </tr>
   {% endfor %}</tbody>

@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from app.db import get_db, init_db, now
-from app.tournament import formats, stats, store
+from app.tournament import formats, friends, stats, store
 from tests.test_tournament_store import add_player, make_app
 
 
@@ -42,6 +42,11 @@ class StatsTest(unittest.TestCase):
         store.start(self.db, store.get_tournament(self.db, tid), random.Random(1))
         self.db.commit()
         return tid
+
+    def befriend(self, a, b):
+        friends.request(self.db, a, b)
+        friends.respond(self.db, b, a, True)
+        self.db.commit()
 
     def play(self, tid, a, b, goals_a, goals_b):
         """Placar do jogo entre os jogadores a e b, seja quem for o mandante."""
@@ -137,28 +142,43 @@ class StatsTest(unittest.TestCase):
         self.assertEqual(page.status_code, 200)
         self.assertIn("Histórico de partidas".encode(), page.data)
         self.assertEqual(client.get("/torneios/jogadores/ninguem").status_code, 404)
+        # Comparar: só com login (volta para a mesma comparação depois de entrar).
         page = client.get("/torneios/comparar?a=p0&b=p1")
-        self.assertEqual(page.status_code, 200)
-        self.assertIn("Confronto direto".encode(), page.data)
-        self.assertNotIn("Gols pró".encode(), page.data)
-        self.assertIn("Entre</a> para ver os seus últimos resultados".encode(), page.data)  # sem login
-        self.assertIn("Jogador não encontrado".encode(), client.get("/torneios/comparar?a=p0&b=zzz").data)
-        self.assertIn("dois jogadores diferentes".encode(), client.get("/torneios/comparar?a=p0&b=p0").data)
-        self.assertEqual(client.get("/torneios/comparar").status_code, 200)
+        self.assertEqual(page.status_code, 302)
+        self.assertIn("/conta/entrar?next=/torneios/comparar?a%3Dp0%26b%3Dp1", page.headers["Location"])
         page = client.get(f"/torneios/{slug}/jogos/{match_id}")
         self.assertEqual(page.status_code, 200)
-        self.assertIn("Comparar os dois".encode(), page.data)
+        self.assertNotIn("Comparar os dois".encode(), page.data)  # sem login
         with client.session_transaction() as session:
             session["player_id"] = p1
         page = client.get("/torneios/ranking")
         self.assertIn(b"qualified", page.data)  # a linha de quem está logado fica marcada
         self.assertIn(b'value="p1"', client.get("/torneios/comparar").data)
+        # Ainda sem amigos: só ele mesmo na escolha.
+        page = client.get("/torneios/comparar?a=p1&b=p0").get_data(as_text=True)
+        self.assertIn("Só dá para comparar você e os seus amigos.", page)
+        self.assertNotIn("Confronto direto", page)
+        self.assertIn("Você ainda não tem amigos para comparar", page)
+        self.assertNotIn("Comparar os dois", client.get(f"/torneios/{slug}/jogos/{match_id}").get_data(as_text=True))
+        self.befriend(p0, p1)
+        page = client.get("/torneios/comparar?a=p0&b=p1").get_data(as_text=True)
+        self.assertIn("Confronto direto", page)
+        self.assertNotIn("Gols pró", page)
+        self.assertIn('data-nick="p0"', page)
+        self.assertNotIn('data-nick="p2"', page)  # só você e os seus amigos na escolha
+        self.assertIn("Comparar os dois", client.get(f"/torneios/{slug}/jogos/{match_id}").get_data(as_text=True))
+        self.assertIn("Jogador não encontrado", client.get("/torneios/comparar?a=p0&b=zzz").get_data(as_text=True))
+        self.assertIn("dois jogadores diferentes", client.get("/torneios/comparar?a=p0&b=P0").get_data(as_text=True))
+        self.assertIn("Só dá para comparar você e os seus amigos.",
+                      client.get("/torneios/comparar?a=p0&b=p2").get_data(as_text=True))
 
     def test_compare_shows_my_last_results_against_each_player(self):
         p0, p1, p2 = self.players[:3]
         tid = self.league([p0, p1, p2])
         self.play(tid, p0, p1, 2, 1)
         self.play(tid, p0, p2, 0, 1)
+        self.befriend(p0, p1)
+        self.befriend(p2, p0)
         client = self.app.test_client()
         with client.session_transaction() as session:
             session["player_id"] = p0
@@ -232,6 +252,157 @@ class StatsTest(unittest.TestCase):
         faces = page.split('class="leg-face back"')
         self.assertEqual(faces[0].count('class="match-line'), 6)  # 4 times: 6 jogos em cada turno
         self.assertEqual(faces[1].count('class="match-line'), 6)
+
+class TrophyGalleryTest(unittest.TestCase):
+    """Galeria de troféus (1º, 2º e 3º dos campeonatos encerrados) no Status e na
+    página do jogador, e o filtro de jogo em cards, só com os liberados."""
+
+    # Os helpers do StatsTest, sem herdar (e repetir) os testes dele.
+    setUp, tearDown, add_game, league, play = (StatsTest.setUp, StatsTest.tearDown, StatsTest.add_game,
+                                               StatsTest.league, StatsTest.play)
+
+    def finished_league(self, players, game=None):
+        """Liga encerrada: players[0] campeão, players[1] vice, players[2] 3º."""
+        tid = self.league(players, game)
+        for i, a in enumerate(players):
+            for b in players[i + 1:]:
+                self.play(tid, a, b, 2, 0)
+        store.finish(self.db, store.get_tournament(self.db, tid))
+        self.db.commit()
+        return tid
+
+    def test_trophies_pages_and_game_filter(self):
+        p0, p1, p2, p3 = self.players
+        other = self.add_game("WE 4 Teste")
+        retired = self.db.execute("INSERT INTO game_titles (name, is_active, created_at, updated_at) "
+                                  "VALUES ('Jogo Antigo', 0, ?, ?)", (now(), now())).lastrowid
+        self.db.commit()
+        first = self.finished_league([p0, p1, p2])
+        second = self.finished_league([p1, p0, p2], game=other)
+        self.league([p0, p1, p3])  # em andamento: não dá troféu
+
+        trophies = stats.trophies(self.db, p0)
+        self.assertEqual([(t["tournament_id"], t["final_position"]) for t in trophies], [(second, 2), (first, 1)])
+        self.assertEqual([t["tournament_id"] for t in stats.trophies(self.db, p0, other)], [second])
+        self.assertEqual([t["final_position"] for t in stats.trophies(self.db, p2)], [3, 3])
+        self.assertEqual(stats.trophies(self.db, p3), [])
+
+        client = self.app.test_client()
+        page = client.get("/torneios/jogadores/p0").get_data(as_text=True)
+        self.assertIn("Galeria de troféus", page)
+        self.assertIn("Campeão", page)
+        self.assertIn("Vice-campeão", page)
+        self.assertIn(f'href="/torneios/{store.get_tournament(self.db, first)["slug"]}"', page)
+        # Filtro em cards: os jogos liberados (com o atual marcado), sem os desativados.
+        self.assertIn('class="game-chip all active"', page)
+        self.assertIn(f'href="/torneios/jogadores/p0?jogo={other}"', page)
+        self.assertNotIn(f"jogo={retired}", page)
+        self.assertNotIn('<select name="jogo"', page)
+        filtered = client.get(f"/torneios/jogadores/p0?jogo={other}").get_data(as_text=True)
+        self.assertIn("Vice-campeão", filtered)
+        self.assertNotIn(">Campeão<", filtered)
+        self.assertIn("Nenhum troféu ainda", client.get("/torneios/jogadores/p3").get_data(as_text=True))
+        # Jogo desativado no ?jogo=: vale como "Todos os jogos".
+        self.assertIn('class="game-chip all active"',
+                      client.get(f"/torneios/ranking?jogo={retired}").get_data(as_text=True))
+
+        with client.session_transaction() as session:
+            session["player_id"] = p0
+        status = client.get("/torneios/status").get_data(as_text=True)
+        self.assertIn("Galeria de troféus", status)
+        self.assertIn("<strong>1</strong><span>título</span>", status)
+        self.assertIn("<strong>1</strong><span>vice</span>", status)
+        # Os quadros dos totais filtram os cards: 3º lugar sem troféu fica desabilitado.
+        self.assertIn("Selecione o troféu para filtrar.", status)
+        self.assertIn('data-trophy-filter="1" aria-pressed="false" title', status)
+        self.assertIn('data-trophy-filter="3" aria-pressed="false" disabled', status)
+        self.assertIn('data-place="2"', status)
+        with client.session_transaction() as session:
+            session["player_id"] = p3
+        self.assertIn("Você ainda não tem troféus", client.get("/torneios/status").get_data(as_text=True))
+
+    def test_player_history_filters_and_opponent_photos(self):
+        from datetime import timedelta
+        from app.timeutil import to_local
+        p0, p1, p2, _ = self.players
+        liga = self.league([p0, p1, p2])
+        copa = self.league([p0, p1])
+        self.db.execute("UPDATE tournaments SET name = 'Copa Lendária' WHERE id = ?", (copa,))
+        self.db.commit()
+        self.play(liga, p0, p1, 1, 0)
+        self.play(liga, p0, p2, 2, 2)
+        self.play(copa, p0, p1, 0, 3)
+        client = self.app.test_client()
+        with client.session_transaction() as session:  # os filtros são só para quem está logado
+            session["player_id"] = self.players[3]
+
+        def history(**args):
+            page = client.get("/torneios/jogadores/p0", query_string=args).get_data(as_text=True)
+            return page[page.index('id="historico"'):]
+
+        page = history()
+        self.assertEqual(page.count('class="recent"><span class="f-'), 3)
+        self.assertIn('class="avatar-btn"', page)  # foto e rank do adversário
+        self.assertIn('data-nick="p1"', page)  # adversários no autocompletar com foto
+        self.assertIn("Copa Lend\\u00e1ria", page)  # campeonatos no autocompletar
+        # Adversário: o nick escolhido (exato) ou um trecho.
+        self.assertEqual(history(adversario="P1").count('class="recent"><span class="f-'), 2)
+        self.assertEqual(history(adversario="p").count('class="recent"><span class="f-'), 3)
+        # Campeonato: trecho do nome, sem acento.
+        self.assertEqual(history(campeonato="lendaria").count('class="recent"><span class="f-'), 1)
+        self.assertEqual(history(campeonato="liga", adversario="p2").count('class="recent"><span class="f-'), 1)
+        # Datas (dia local do jogo).
+        today = to_local(now()).date()
+        self.assertEqual(history(de=today.isoformat(), ate=today.isoformat()).count('class="recent"><span class="f-'),
+                         3)
+        self.assertIn("Nenhum jogo com esses filtros.", history(de=(today + timedelta(days=1)).isoformat()))
+        self.assertIn("Nenhum jogo com esses filtros.", history(ate=(today - timedelta(days=1)).isoformat()))
+        # Os cards de jogo mantêm os filtros do histórico.
+        full = client.get("/torneios/jogadores/p0?adversario=p1").get_data(as_text=True)
+        self.assertIn(f"/torneios/jogadores/p0?jogo={self.game}&amp;adversario=p1", full)
+        # Adversários mais enfrentados: com a foto, sem a coluna "Confronto".
+        top = full[full.index("Adversários mais enfrentados"):full.index('id="historico"')]
+        self.assertIn('class="avatar-btn"', top)
+        self.assertNotIn("Confronto", top)
+
+    def test_player_history_page_size_and_top_ten_opponents(self):
+        """Histórico: os 20 mais recentes por padrão, com o "Mostrar" (20/50/100);
+        Adversários mais enfrentados: sempre os 10 primeiros."""
+        p0 = self.players[0]
+        others = self.players[1:] + [add_player(self.db, f"x{i:02d}") for i in range(18)]
+        tid = self.league([p0] + others)
+        for other in others:  # 21 jogos do p0
+            self.play(tid, p0, other, 1, 0)
+        client = self.app.test_client()
+        with client.session_transaction() as session:  # o "Mostrar" é só para quem está logado
+            session["player_id"] = p0
+        rows = 'class="recent"><span class="f-'
+
+        page = client.get("/torneios/jogadores/p0").get_data(as_text=True)
+        history = page[page.index('id="historico"'):]
+        self.assertEqual(history.count(rows), 20)
+        self.assertIn('<form method="get" class="per-page-form" action="#historico">', history)
+        self.assertIn('<option value="50" >21</option>', history)
+        self.assertIn("Mostrando 20 de 21 jogos.", history)
+        top = page[page.index("Adversários mais enfrentados"):page.index('id="historico"')]
+        self.assertEqual(top.count("<tr><td class=\"name-col\">"), 10)
+
+        page = client.get("/torneios/jogadores/p0?mostrar=50").get_data(as_text=True)
+        history = page[page.index('id="historico"'):]
+        self.assertEqual(history.count(rows), 21)
+        self.assertNotIn("Mostrando 20 de", history)
+        self.assertIn('<input type="hidden" name="mostrar" value="50">', history)  # o filtro mantém
+        self.assertIn(f"/torneios/jogadores/p0?jogo={self.game}&amp;mostrar=50", page)  # os cards de jogo também
+
+        # Sem login: só as 10 últimas partidas, sem filtros nem "Mostrar" (os parâmetros são ignorados).
+        page = self.app.test_client().get("/torneios/jogadores/p0?mostrar=50&adversario=x01").get_data(as_text=True)
+        history = page[page.index('id="historico"'):]
+        self.assertEqual(history.count(rows), 10)
+        self.assertNotIn("history-filters", history)
+        self.assertNotIn("per-page-form", history)
+        self.assertIn("Mostrando as 10 últimas partidas de 21.", history)
+        self.assertIn("para ver o histórico completo", history)
+
 
 if __name__ == "__main__":
     unittest.main()
