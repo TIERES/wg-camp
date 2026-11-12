@@ -786,3 +786,13 @@ input[type=checkbox] { width:1.05rem; height:1.05rem; margin:0; padding:0; flex:
   .trophy-tile { grid-template-columns:1fr; justify-items:center; text-align:center; padding:.5rem .3rem }
   .trophy-tile .trophy { grid-row:auto; width:2.2rem; height:2.2rem }
 }
+/* Quadros dos totais da galeria: são botões que filtram os cards (_stats_macros.html: trophy_gallery). */
+.trophy-hint { margin:-.4rem 0 .6rem; font-size:.9rem }
+button.trophy-tile { width:auto; font:inherit; color:var(--text); background:var(--card); text-align:left; cursor:pointer }
+button.trophy-tile:hover:not(:disabled), button.trophy-tile:focus-visible { border-color:var(--trophy); outline:0 }
+button.trophy-tile[aria-pressed="true"] { border-color:var(--trophy); box-shadow:inset 0 0 0 1px var(--trophy); background:#273449 }
+button.trophy-tile:disabled { cursor:default; opacity:.45 }
+/* Filtros do Histórico de partidas (página do jogador): adversário, datas e campeonato (autocompletar). */
+.ac-field { display:grid; gap:.35rem; min-width:0 } .ac-field > label { font-size:.875rem; color:#9ca3af }
+.history-filters .ac { position:relative; display:flex; min-width:0 } .history-filters .ac input { width:100%; min-width:0 }
+@media(max-width:859px){ .live-filters > .ac-field { grid-column:1 / -1 } }

@@ -1605,6 +1605,40 @@ def ranking():
                            my_record=stats.player_record(db, me, game) if me else None)
 
 
+HISTORY_LIMIT = 100
+# Filtros do Histórico de partidas da página do jogador: parâmetro -> chave.
+HISTORY_FILTERS = {"adversario": "opponent", "de": "date_from", "ate": "date_to", "campeonato": "tournament"}
+
+
+def _history_filters():
+    """Filtros do Histórico (?adversario=&de=&ate=&campeonato=), já limpos."""
+    sizes = {"adversario": 32, "de": 10, "ate": 10, "campeonato": 120}
+    return {key: request.args.get(arg, "").strip()[:sizes[arg]] for arg, key in HISTORY_FILTERS.items()}
+
+
+def _history_matches(row, filters, exact_opponent):
+    """A partida passa nos filtros do Histórico? Adversário: o nick escolhido na
+    lista (exato) ou um trecho dele; data do jogo (horário local) entre "de" e
+    "até"; campeonato: um trecho do nome ("Amistoso" para os amistosos) - sem
+    diferenciar acentos e maiúsculas."""
+    from .timeutil import to_local
+    if filters["opponent"]:
+        typed, name = _plain(filters["opponent"]), _plain(row["opponent_name"])
+        if (typed != name) if exact_opponent else (typed not in name):
+            return False
+    if filters["tournament"] and _plain(filters["tournament"]) not in _plain(row["tournament_name"]):
+        return False
+    played = to_local(row["played_at"])
+    for key, after in (("date_from", True), ("date_to", False)):
+        try:
+            limit = date.fromisoformat(filters[key]) if filters[key] else None
+        except ValueError:
+            limit = None
+        if limit and (played is None or (played.date() < limit if after else played.date() > limit)):
+            return False
+    return True
+
+
 @bp.get("/jogadores/<nome>")
 def player(nome):
     db = get_db()
@@ -1612,10 +1646,20 @@ def player(nome):
     if target is None:
         abort(404)
     game, games = _game_filter(db)
-    rows = stats.history(db, target["id"], game)
+    everything = stats.history(db, target["id"], game, limit=-1)
+    # Histórico: filtro por adversário, datas e campeonato; no máximo os 100 mais recentes.
+    filters = _history_filters()
+    faced = sorted(stats.opponents(db, target["id"], game, limit=-1), key=lambda o: _plain(o["username"]))
+    exact = any(_plain(o["username"]) == _plain(filters["opponent"]) for o in faced)
+    filtered = [row for row in everything if _history_matches(row, filters, exact)]
+    history_args = {arg: filters[key] for arg, key in HISTORY_FILTERS.items() if filters[key]}
     return render_template("tournaments/player.html", p=target, games=games, game=game,
                            record=stats.player_record(db, target["id"], game),
-                           position=stats.position(db, target["id"], game), rows=rows, form=stats.form(rows),
+                           position=stats.position(db, target["id"], game), rows=filtered[:HISTORY_LIMIT],
+                           rows_total=len(filtered), has_history=bool(everything), form=stats.form(everything),
+                           history_filters=filters, history_args=history_args,
+                           opponent_options=[{"id": o["player_id"], "username": o["username"]} for o in faced],
+                           tournament_options=sorted({row["tournament_name"] for row in everything}, key=_plain),
                            opponents=stats.opponents(db, target["id"], game), outcome=stats.outcome,
                            relation=friends.relation(db, session.get("player_id"), target["id"]),
                            trophies=_trophies(db, target["id"], game))

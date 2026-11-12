@@ -292,9 +292,56 @@ class TrophyGalleryTest(unittest.TestCase):
         self.assertIn("Galeria de troféus", status)
         self.assertIn("<strong>1</strong><span>título</span>", status)
         self.assertIn("<strong>1</strong><span>vice</span>", status)
+        # Os quadros dos totais filtram os cards: 3º lugar sem troféu fica desabilitado.
+        self.assertIn("Selecione o troféu para filtrar.", status)
+        self.assertIn('data-trophy-filter="1" aria-pressed="false" title', status)
+        self.assertIn('data-trophy-filter="3" aria-pressed="false" disabled', status)
+        self.assertIn('data-place="2"', status)
         with client.session_transaction() as session:
             session["player_id"] = p3
         self.assertIn("Você ainda não tem troféus", client.get("/torneios/status").get_data(as_text=True))
+
+    def test_player_history_filters_and_opponent_photos(self):
+        from datetime import timedelta
+        from app.timeutil import to_local
+        p0, p1, p2, _ = self.players
+        liga = self.league([p0, p1, p2])
+        copa = self.league([p0, p1])
+        self.db.execute("UPDATE tournaments SET name = 'Copa Lendária' WHERE id = ?", (copa,))
+        self.db.commit()
+        self.play(liga, p0, p1, 1, 0)
+        self.play(liga, p0, p2, 2, 2)
+        self.play(copa, p0, p1, 0, 3)
+        client = self.app.test_client()
+
+        def history(**args):
+            page = client.get("/torneios/jogadores/p0", query_string=args).get_data(as_text=True)
+            return page[page.index('id="historico"'):]
+
+        page = history()
+        self.assertEqual(page.count('class="recent"><span class="f-'), 3)
+        self.assertIn('class="avatar-btn"', page)  # foto e rank do adversário
+        self.assertIn('data-nick="p1"', page)  # adversários no autocompletar com foto
+        self.assertIn("Copa Lend\\u00e1ria", page)  # campeonatos no autocompletar
+        # Adversário: o nick escolhido (exato) ou um trecho.
+        self.assertEqual(history(adversario="P1").count('class="recent"><span class="f-'), 2)
+        self.assertEqual(history(adversario="p").count('class="recent"><span class="f-'), 3)
+        # Campeonato: trecho do nome, sem acento.
+        self.assertEqual(history(campeonato="lendaria").count('class="recent"><span class="f-'), 1)
+        self.assertEqual(history(campeonato="liga", adversario="p2").count('class="recent"><span class="f-'), 1)
+        # Datas (dia local do jogo).
+        today = to_local(now()).date()
+        self.assertEqual(history(de=today.isoformat(), ate=today.isoformat()).count('class="recent"><span class="f-'),
+                         3)
+        self.assertIn("Nenhum jogo com esses filtros.", history(de=(today + timedelta(days=1)).isoformat()))
+        self.assertIn("Nenhum jogo com esses filtros.", history(ate=(today - timedelta(days=1)).isoformat()))
+        # Os cards de jogo mantêm os filtros do histórico.
+        full = client.get("/torneios/jogadores/p0?adversario=p1").get_data(as_text=True)
+        self.assertIn(f"/torneios/jogadores/p0?jogo={self.game}&amp;adversario=p1", full)
+        # Adversários mais enfrentados: com a foto, sem a coluna "Confronto".
+        top = full[full.index("Adversários mais enfrentados"):full.index('id="historico"')]
+        self.assertIn('class="avatar-btn"', top)
+        self.assertNotIn("Confronto", top)
 
 
 if __name__ == "__main__":
