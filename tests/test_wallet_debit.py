@@ -89,8 +89,17 @@ class WalletDebitTest(unittest.TestCase):
             "torneios_vitoria": "W$ 0,50", "torneios_empate": "W$ 0,25", "torneios_derrota": "W$ 0,00",
             "torneios_abertos_por_jogador": "3", "torneios_confirmacao_horas": "24"})
         self.assertEqual(self.query("SELECT value FROM site_settings WHERE key = 'torneios_derrota'")[0][0], "-60")
+        # Na Carteira: em negrito, verde o que entra e vermelho (com o sinal) o que sai.
         wallet = self.client(self.players[1]).get("/torneios/carteira").data.decode()
-        self.assertIn("derrota desconta W$0,60 (só até zerar o saldo)", wallet)
+        self.assertIn('vitória <strong class="wcash-pos">W$0,50</strong>, empate <strong class="wcash-pos">W$0,25</strong>, '
+                      'derrota <strong class="wcash-neg">-W$0,60</strong> (só até zerar o saldo).', wallet)
+        # Derrota que paga aparece em verde, sem o aviso; valor zerado fica sem cor.
+        self.save_settings("W$ 0,10")
+        wallet = self.client(self.players[1]).get("/torneios/carteira").data.decode()
+        self.assertIn('derrota <strong class="wcash-pos">W$0,10</strong>. W$ não pode', wallet)
+        self.save_settings("W$ 0,00")
+        wallet = self.client(self.players[1]).get("/torneios/carteira").data.decode()
+        self.assertIn("derrota <strong>W$0,00</strong>. W$ não pode", wallet)
 
     def test_debit_stops_at_zero_and_warns_once(self):
         self.save_settings("-W$ 0,60")

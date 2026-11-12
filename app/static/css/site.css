@@ -355,6 +355,7 @@ header nav { align-items:center }
 .evo-tip { position:absolute; display:grid; gap:.1rem; padding:.4rem .6rem; background:#111827; border:1px solid #4b5563; border-radius:6px; font-size:.85rem; white-space:nowrap; pointer-events:none }
 .evo-tip strong { font-size:1rem }
 .evo-zero { stroke:#6b7280 }
+.wcash-pos { color:#34d399 } .wcash-neg { color:#f87171 }  /* valores por resultado no texto da Carteira W$ */
 .wallet-dot { display:inline-block; width:.6rem; height:.6rem; border-radius:50%; vertical-align:middle } .wallet-dot.pos { background:#34d399 } .wallet-dot.neg { background:#f87171 }
 .evo-table { margin:.5rem 0 } .evo-table summary { cursor:pointer; color:var(--accent) }
 

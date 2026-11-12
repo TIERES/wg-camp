@@ -1,9 +1,12 @@
-{% extends 'base.html' %}{% block title %}Carteira W$ · WE Camp{% endblock %}{% block content %}
+{% extends 'base.html' %}
+{# Valor de um resultado, em negrito: verde o que entra, vermelho (com o sinal) o que sai. #}
+{% macro result_value(cents) %}<strong{% if cents %} class="{{ 'wcash-pos' if cents > 0 else 'wcash-neg' }}"{% endif %}>{{ cents|wcash }}</strong>{% endmacro %}
+{% block title %}Carteira W$ · WE Camp{% endblock %}{% block content %}
 <section class="wallet-head">
   <h1>Carteira W$</h1>
   <p class="wallet-balance">{{ player.wallet_cents|wcash }}</p>
   {% if player.wallet_cents <= 0 %}<p class="notice">Seu saldo W$ acabou. A Administração do WE Camp já foi avisada e estará creditando um novo valor na sua carteira.</p>{% endif %}
-  <p class="muted">W$ é o dinheiro dos campeonatos do WE Camp: paga inscrições e vira prêmio para os 3 primeiros. Cada jogo também rende W$: vitória {{ values.torneios_vitoria|wcash }}, empate {{ values.torneios_empate|wcash }}, derrota {% if values.torneios_derrota < 0 %}desconta {{ (-values.torneios_derrota)|wcash }} (só até zerar o saldo){% else %}{{ values.torneios_derrota|wcash }}{% endif %}. W$ não pode ser trocado por dinheiro de verdade.</p>
+  <p class="muted">W$ é o dinheiro dos campeonatos do WE Camp: paga inscrições e vira prêmio para os 3 primeiros. Cada jogo também rende W$: vitória {{ result_value(values.torneios_vitoria) }}, empate {{ result_value(values.torneios_empate) }}, derrota {{ result_value(values.torneios_derrota) }}{% if values.torneios_derrota < 0 %} (só até zerar o saldo){% endif %}. W$ não pode ser trocado por dinheiro de verdade.</p>
 </section>
 <section>
   <h2>Extrato</h2>
