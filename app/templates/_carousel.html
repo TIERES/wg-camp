@@ -22,13 +22,14 @@
 {# Quantos mostrar, no contador do carrossel: "1–3 de [20 ▾]" (app/listing.py:
    page_size; 20 por padrão). Só com mais de 20 no total; as opções vão até
    cobrir o total (37 itens: 20 e 37). Trocar recarrega a página com os
-   mesmos filtros. #}
-{% macro per_page_select(total) -%}
+   mesmos filtros (e volta para a âncora `anchor`, se houver - listas no meio
+   da página, como o Histórico de partidas do jogador). #}
+{% macro per_page_select(total, anchor='') -%}
 {% set current = request.args.get('mostrar', 20)|int %}
 {% set ns = namespace(sizes=[], chosen=20) %}
 {% for n in [20, 50, 100] %}{% if not ns.sizes or ns.sizes[-1] < total %}{% set ns.sizes = ns.sizes + [n] %}{% endif %}{% endfor %}
 {% for n in ns.sizes %}{% if n <= current %}{% set ns.chosen = n %}{% endif %}{% endfor %}
-<form method="get" class="per-page-form">
+<form method="get" class="per-page-form"{% if anchor %} action="#{{ anchor }}"{% endif %}>
   {% for key, value in request.args.items(multi=true) if key != 'mostrar' %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
   <select name="mostrar" aria-label="Quantos mostrar" title="Quantos mostrar" onchange="this.form.submit()">
     {% for n in ns.sizes %}<option value="{{ n }}" {% if n == ns.chosen %}selected{% endif %}>{{ n if n < total else total }}</option>{% endfor %}

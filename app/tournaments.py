@@ -1605,7 +1605,6 @@ def ranking():
                            my_record=stats.player_record(db, me, game) if me else None)
 
 
-HISTORY_LIMIT = 100
 # Filtros do Histórico de partidas da página do jogador: parâmetro -> chave.
 HISTORY_FILTERS = {"adversario": "opponent", "de": "date_from", "ate": "date_to", "campeonato": "tournament"}
 
@@ -1647,17 +1646,21 @@ def player(nome):
         abort(404)
     game, games = _game_filter(db)
     everything = stats.history(db, target["id"], game, limit=-1)
-    # Histórico: filtro por adversário, datas e campeonato; no máximo os 100 mais recentes.
+    # Histórico: filtro por adversário, datas e campeonato; os mais recentes, quantos o
+    # jogador escolher no "Mostrar" (listing.page_size: 20, 50 ou 100).
+    from .listing import cap
     filters = _history_filters()
     faced = sorted(stats.opponents(db, target["id"], game, limit=-1), key=lambda o: _plain(o["username"]))
     exact = any(_plain(o["username"]) == _plain(filters["opponent"]) for o in faced)
-    filtered = [row for row in everything if _history_matches(row, filters, exact)]
+    shown, total = cap(row for row in everything if _history_matches(row, filters, exact))
     history_args = {arg: filters[key] for arg, key in HISTORY_FILTERS.items() if filters[key]}
+    if request.args.get("mostrar") in ("20", "50", "100"):
+        history_args["mostrar"] = request.args["mostrar"]  # os cards de jogo mantêm o "Mostrar"
     return render_template("tournaments/player.html", p=target, games=games, game=game,
                            record=stats.player_record(db, target["id"], game),
-                           position=stats.position(db, target["id"], game), rows=filtered[:HISTORY_LIMIT],
-                           rows_total=len(filtered), has_history=bool(everything), form=stats.form(everything),
-                           history_filters=filters, history_args=history_args,
+                           position=stats.position(db, target["id"], game), rows=shown,
+                           rows_total=total, has_history=bool(everything), form=stats.form(everything),
+                           history_filters=filters, history_args=history_args, history_filtered=any(filters.values()),
                            opponent_options=[{"id": o["player_id"], "username": o["username"]} for o in faced],
                            tournament_options=sorted({row["tournament_name"] for row in everything}, key=_plain),
                            opponents=stats.opponents(db, target["id"], game), outcome=stats.outcome,

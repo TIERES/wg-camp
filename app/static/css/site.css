@@ -796,3 +796,7 @@ button.trophy-tile:disabled { cursor:default; opacity:.45 }
 .ac-field { display:grid; gap:.35rem; min-width:0 } .ac-field > label { font-size:.875rem; color:#9ca3af }
 .history-filters .ac { position:relative; display:flex; min-width:0 } .history-filters .ac input { width:100%; min-width:0 }
 @media(max-width:859px){ .live-filters > .ac-field { grid-column:1 / -1 } }
+/* "Mostrar [20 ▾] de N jogos" acima de uma tabela grande (Histórico de partidas do jogador). */
+.table-top { display:flex; justify-content:flex-end; align-items:center; flex-wrap:wrap; gap:.35rem; margin:0 0 .45rem; font-size:.85rem; color:#9ca3af }
+.table-top .per-page-form { margin:0; display:inline-flex }
+.table-top .per-page-form select { width:auto; min-width:0; max-width:5.5rem; padding:.1rem .2rem .1rem .4rem; font-size:.85rem; border-radius:4px; color:var(--text) }

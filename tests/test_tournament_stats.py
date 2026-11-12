@@ -343,6 +343,33 @@ class TrophyGalleryTest(unittest.TestCase):
         self.assertIn('class="avatar-btn"', top)
         self.assertNotIn("Confronto", top)
 
+    def test_player_history_page_size_and_top_ten_opponents(self):
+        """Histórico: os 20 mais recentes por padrão, com o "Mostrar" (20/50/100);
+        Adversários mais enfrentados: sempre os 10 primeiros."""
+        p0 = self.players[0]
+        others = self.players[1:] + [add_player(self.db, f"x{i:02d}") for i in range(18)]
+        tid = self.league([p0] + others)
+        for other in others:  # 21 jogos do p0
+            self.play(tid, p0, other, 1, 0)
+        client = self.app.test_client()
+        rows = 'class="recent"><span class="f-'
+
+        page = client.get("/torneios/jogadores/p0").get_data(as_text=True)
+        history = page[page.index('id="historico"'):]
+        self.assertEqual(history.count(rows), 20)
+        self.assertIn('<form method="get" class="per-page-form" action="#historico">', history)
+        self.assertIn('<option value="50" >21</option>', history)
+        self.assertIn("Mostrando 20 de 21 jogos.", history)
+        top = page[page.index("Adversários mais enfrentados"):page.index('id="historico"')]
+        self.assertEqual(top.count("<tr><td class=\"name-col\">"), 10)
+
+        page = client.get("/torneios/jogadores/p0?mostrar=50").get_data(as_text=True)
+        history = page[page.index('id="historico"'):]
+        self.assertEqual(history.count(rows), 21)
+        self.assertNotIn("Mostrando 20 de", history)
+        self.assertIn('<input type="hidden" name="mostrar" value="50">', history)  # o filtro mantém
+        self.assertIn(f"/torneios/jogadores/p0?jogo={self.game}&amp;mostrar=50", page)  # os cards de jogo também
+
 
 if __name__ == "__main__":
     unittest.main()

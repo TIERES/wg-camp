@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from '_avatar.html' import avatar, avatar_button %}{% from '_user_picker.html' import user_picker %}{% from 'tournaments/_stats_macros.html' import game_filter, player_link, form_badges, history_table, xp_bar, trophy_gallery %}
+{% extends 'base.html' %}{% from '_avatar.html' import avatar, avatar_button %}{% from '_user_picker.html' import user_picker %}{% from '_carousel.html' import per_page_select, list_note %}{% from 'tournaments/_stats_macros.html' import game_filter, player_link, form_badges, history_table, xp_bar, trophy_gallery %}
 {% block title %}{{ p.username }} · WE Camp{% endblock %}{% block content %}
 <p><a href="{{ url_for('tournaments.ranking', jogo=game) }}">← Ranking</a></p>
 <div class="page-title"><div class="player-title">{{ avatar(p.id, p.username, 'lg') }}<h1>{{ p.username }}</h1>{% if session.user_id and player_avatar(p.id) %}<form method="post" action="{{ url_for('tournaments.player_avatar_remove', player_id=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary" title="Moderação: tira a foto deste jogador">Remover foto</button></form>{% endif %}</div>{% if session.player_id and session.player_id != p.id %}<div class="card-actions">
@@ -44,6 +44,7 @@
   {% set f = history_filters %}
   <form method="get" action="{{ url_for('tournaments.player', nome=p.username) }}#historico" class="live-filters history-filters">
     {% if game %}<input type="hidden" name="jogo" value="{{ game }}">{% endif %}
+    {% if history_args.mostrar %}<input type="hidden" name="mostrar" value="{{ history_args.mostrar }}">{% endif %}
     {{ user_picker('adversario', 'Adversário', opponent_options, f.opponent, field_id='historico-adversario') }}
     <label>De<input type="date" name="de" value="{{ f.date_from }}"></label>
     <label>Até<input type="date" name="ate" value="{{ f.date_to }}"></label>
@@ -53,11 +54,15 @@
              data-options="{{ tournament_options|tojson|forceescape }}">
       <ul class="ac-list" id="historico-campeonato-lista" role="listbox" hidden></ul>
     </div></div>
-    <div class="live-filter-actions"><a class="button secondary" href="{{ url_for('tournaments.player', nome=p.username, jogo=game) }}#historico">Limpar filtro</a><button>Filtrar</button></div>
+    <div class="live-filter-actions"><a class="button secondary" href="{{ url_for('tournaments.player', nome=p.username, jogo=game, mostrar=history_args.get('mostrar')) }}#historico">Limpar filtro</a><button>Filtrar</button></div>
   </form>
   {% endif %}
-  {% if rows %}{{ history_table(rows, outcome, game) }}{% if rows_total > rows|length %}<p class="muted">Mostrando os {{ rows|length }} jogos mais recentes de {{ rows_total }}{% if history_args %} com esses filtros{% endif %}: use os filtros para achar os outros.</p>{% endif %}
-  {% elif history_args %}<p class="muted">Nenhum jogo com esses filtros.</p>
+  {% if rows %}
+  {# Lista grande: os mais recentes, quantos escolher no "Mostrar" (20, 50 ou 100 - app/listing.py). #}
+  {% if rows_total > 20 %}<div class="table-top"><span>Mostrar</span>{{ per_page_select(rows_total, 'historico') }}<span>de {{ rows_total }} jogos{% if history_filtered %} com esses filtros{% endif %}</span></div>{% endif %}
+  {{ history_table(rows, outcome, game) }}
+  {{ list_note(rows|length, rows_total, 'jogos', history_filtered) }}
+  {% elif history_filtered %}<p class="muted">Nenhum jogo com esses filtros.</p>
   {% else %}<p class="muted">Nenhum jogo confirmado ainda{% if game %} neste jogo{% endif %}.</p>{% endif %}
 </section>
 <script src="{{ url_for('static', filename='js/ac.js', v='20261112a') }}"></script>
