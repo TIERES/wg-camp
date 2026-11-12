@@ -764,3 +764,25 @@ input[type=checkbox] { width:1.05rem; height:1.05rem; margin:0; padding:0; flex:
 .t-card,.live-card,.friendly-card { overflow-wrap:anywhere }
 .live-card-file { display:flex; gap:.3rem; min-width:0; max-width:100%; white-space:nowrap } .live-card-file > span { flex:none }
 .iso-file { display:block; min-width:0 }
+/* Galeria de troféus (Status e página do jogador - _stats_macros.html: trophy_gallery):
+   ouro, prata e bronze como no pódio do campeonato. */
+.trophy-1 { --trophy:#fbbf24 } .trophy-2 { --trophy:#d1d5db } .trophy-3 { --trophy:#d97706 }
+.trophy { display:block; width:100%; height:100% }
+.trophy .trophy-cup { fill:var(--trophy) }
+.trophy .trophy-handles { fill:none; stroke:var(--trophy); stroke-width:4; stroke-linecap:round }
+.trophy .trophy-number { fill:#1f2937; font:800 15px system-ui,sans-serif }
+.trophy-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.6rem; margin:0 0 1rem }
+.trophy-tile { display:grid; grid-template-columns:auto minmax(0,1fr); column-gap:.65rem; align-items:center; padding:.6rem .8rem; background:var(--card); border:1px solid #374151; border-top:3px solid var(--trophy); border-radius:8px }
+.trophy-tile .trophy { grid-row:1 / 3; width:3rem; height:3rem }
+.trophy-tile strong { font-size:1.5rem; line-height:1.1 } .trophy-tile span { color:#9ca3af; font-size:.85rem }
+.trophy-tile.none { opacity:.45 }
+.t-card.trophy-card, .t-card.trophy-card:hover, .t-card.trophy-card:focus-within { border-top:3px solid var(--trophy) }
+.trophy-card .t-side { display:grid; place-items:center; align-self:start; padding-top:.2rem }
+.trophy-card .t-side .trophy { width:64px; height:64px; filter:drop-shadow(0 0 7px rgb(0 0 0 / .5)) }
+.badge.trophy-badge { background:var(--trophy); color:#1c1917 }
+.trophy-team { display:flex; align-items:center; gap:.4rem; min-width:0; font-size:.9rem }
+.trophy-team .crest { width:1.4rem; height:1.4rem; object-fit:contain; flex:none }
+@media (max-width:420px) {
+  .trophy-tile { grid-template-columns:1fr; justify-items:center; text-align:center; padding:.5rem .3rem }
+  .trophy-tile .trophy { grid-row:auto; width:2.2rem; height:2.2rem }
+}

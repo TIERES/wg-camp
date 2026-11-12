@@ -175,3 +175,20 @@ def compare(db, a, b, game_id=None):
         "head_to_head": player_record(db, a, game_id, opponent_id=b),
         "a_form": form(history(db, a, game_id, limit=5)), "b_form": form(history(db, b, game_id, limit=5)),
     }
+
+
+def trophies(db, player_id, game_id=None):
+    """Galeria de troféus: os 1º, 2º e 3º lugares do jogador nos campeonatos
+    encerrados (store.finish grava final_position), do mais recente ao mais
+    antigo, com o time que ele usou (escudo: teams) e o total de inscritos."""
+    sql = ("SELECT e.final_position, e.team_name, tm.name AS team_db_name, tm.logo, tm.flag, t.id AS tournament_id, "
+           "t.slug, t.name AS tournament_name, t.finished_at, g.name AS game_name, g.code AS game_code, "
+           "(SELECT COUNT(*) FROM tournament_entries x WHERE x.tournament_id = t.id) AS players "
+           "FROM tournament_entries e JOIN tournaments t ON t.id = e.tournament_id "
+           "JOIN game_titles g ON g.id = t.game_title_id LEFT JOIN teams tm ON tm.id = e.team_id "
+           "WHERE e.player_id = ? AND t.status = 'finished' AND e.final_position BETWEEN 1 AND 3")
+    params = [player_id]
+    if game_id:
+        sql += " AND t.game_title_id = ?"
+        params.append(game_id)
+    return db.execute(sql + " ORDER BY t.finished_at DESC, t.id DESC", params).fetchall()

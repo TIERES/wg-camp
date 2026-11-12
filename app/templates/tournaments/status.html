@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'tournaments/_stats_macros.html' import player_link, xp_bar %}{% from 'tournaments/_macros.html' import match_line %}
+{% extends 'base.html' %}{% from 'tournaments/_stats_macros.html' import player_link, xp_bar, trophy_gallery %}{% from 'tournaments/_macros.html' import match_line %}
 {% block title %}Status · WE Camp{% endblock %}{% block content %}
 <div class="page-title"><h1>Status</h1>{% if player_name %}<a class="button secondary" href="{{ url_for('tournaments.player', nome=player_name) }}">Histórico completo</a>{% endif %}</div>
 
@@ -12,6 +12,9 @@
   <div class="stat-tile"><span>Gols (saldo)</span><strong>{{ record.goals_for }}:{{ record.goals_against }} <small>({{ '%+d'|format(record.goal_diff) }})</small></strong></div>
   <div class="stat-tile"><span>Aproveitamento</span><strong>{{ record.efficiency }}%</strong></div>
 </div>
+
+
+{{ trophy_gallery(trophies, 'Você ainda não tem troféus. Terminar entre os 3 primeiros de um campeonato coloca o troféu aqui.') }}
 
 <section>
   <h2>Últimas partidas</h2>

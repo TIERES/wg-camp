@@ -1535,8 +1535,8 @@ def my_matches():
 @bp.get("/status")
 @player_required
 def my_status():
-    """Resumo do jogador logado: últimas 10 partidas (com o popup de cada uma),
-    V/E/D no geral e a evolução do aproveitamento jogo a jogo."""
+    """Resumo do jogador logado: galeria de troféus, últimas 10 partidas (com o
+    popup de cada uma), V/E/D no geral e a evolução do aproveitamento jogo a jogo."""
     db = get_db()
     me = session["player_id"]
     rows = stats.history(db, me, limit=100)
@@ -1545,7 +1545,7 @@ def my_status():
     return render_template("tournaments/status.html", record=stats.player_record(db, me),
                            position=stats.position(db, me), last=last, outcome=stats.outcome,
                            games_by_id=games_by_id, names=names, evolution=stats.evolution(rows),
-                           total=len(rows))
+                           total=len(rows), trophies=_trophies(db, me))
 
 # --- Ranking, histórico e comparação (app/tournament/stats.py) ----------------
 
@@ -1564,10 +1564,27 @@ def _match_popups(db, rows):
 
 
 def _game_filter(db):
-    """Jogo escolhido no filtro (?jogo=) e a lista de jogos para o <select>."""
-    games = db.execute("SELECT id, name FROM game_titles ORDER BY name").fetchall()
+    """Jogo escolhido no filtro (?jogo=) e os jogos do filtro: só os liberados
+    para campeonato (games.GAMES), na ordem de lançamento, com o código da capa
+    (os cards do filtro - _stats_macros.html: game_filter)."""
+    games = db.execute("SELECT id, name, code FROM game_titles WHERE is_active = 1 ORDER BY year, name").fetchall()
     game = request.args.get("jogo", type=int)
     return (game if any(g["id"] == game for g in games) else None), games
+
+
+def _trophies(db, player_id, game=None):
+    """Galeria de troféus do jogador (stats.trophies) com o escudo do time de
+    cada campeonato e a contagem de 1º, 2º e 3º lugares."""
+    items = []
+    for row in stats.trophies(db, player_id, game):
+        item = dict(row)
+        if row["team_db_name"]:
+            item["crest"] = team_image({"name": row["team_db_name"], "logo": row["logo"], "flag": row["flag"]})
+        elif row["team_name"]:
+            item["crest"] = generated_badge(row["team_name"])
+        items.append(item)
+    return {"items": items, "counts": {place: sum(1 for i in items if i["final_position"] == place)
+                                       for place in (1, 2, 3)}}
 
 
 def _player_by_name(db, username):
@@ -1600,7 +1617,8 @@ def player(nome):
                            record=stats.player_record(db, target["id"], game),
                            position=stats.position(db, target["id"], game), rows=rows, form=stats.form(rows),
                            opponents=stats.opponents(db, target["id"], game), outcome=stats.outcome,
-                           relation=friends.relation(db, session.get("player_id"), target["id"]))
+                           relation=friends.relation(db, session.get("player_id"), target["id"]),
+                           trophies=_trophies(db, target["id"], game))
 
 
 @bp.get("/jogadores/<nome>/resumo")

@@ -233,6 +233,70 @@ class StatsTest(unittest.TestCase):
         self.assertEqual(faces[0].count('class="match-line'), 6)  # 4 times: 6 jogos em cada turno
         self.assertEqual(faces[1].count('class="match-line'), 6)
 
+class TrophyGalleryTest(unittest.TestCase):
+    """Galeria de troféus (1º, 2º e 3º dos campeonatos encerrados) no Status e na
+    página do jogador, e o filtro de jogo em cards, só com os liberados."""
+
+    # Os helpers do StatsTest, sem herdar (e repetir) os testes dele.
+    setUp, tearDown, add_game, league, play = (StatsTest.setUp, StatsTest.tearDown, StatsTest.add_game,
+                                               StatsTest.league, StatsTest.play)
+
+    def finished_league(self, players, game=None):
+        """Liga encerrada: players[0] campeão, players[1] vice, players[2] 3º."""
+        tid = self.league(players, game)
+        for i, a in enumerate(players):
+            for b in players[i + 1:]:
+                self.play(tid, a, b, 2, 0)
+        store.finish(self.db, store.get_tournament(self.db, tid))
+        self.db.commit()
+        return tid
+
+    def test_trophies_pages_and_game_filter(self):
+        p0, p1, p2, p3 = self.players
+        other = self.add_game("WE 4 Teste")
+        retired = self.db.execute("INSERT INTO game_titles (name, is_active, created_at, updated_at) "
+                                  "VALUES ('Jogo Antigo', 0, ?, ?)", (now(), now())).lastrowid
+        self.db.commit()
+        first = self.finished_league([p0, p1, p2])
+        second = self.finished_league([p1, p0, p2], game=other)
+        self.league([p0, p1, p3])  # em andamento: não dá troféu
+
+        trophies = stats.trophies(self.db, p0)
+        self.assertEqual([(t["tournament_id"], t["final_position"]) for t in trophies], [(second, 2), (first, 1)])
+        self.assertEqual([t["tournament_id"] for t in stats.trophies(self.db, p0, other)], [second])
+        self.assertEqual([t["final_position"] for t in stats.trophies(self.db, p2)], [3, 3])
+        self.assertEqual(stats.trophies(self.db, p3), [])
+
+        client = self.app.test_client()
+        page = client.get("/torneios/jogadores/p0").get_data(as_text=True)
+        self.assertIn("Galeria de troféus", page)
+        self.assertIn("Campeão", page)
+        self.assertIn("Vice-campeão", page)
+        self.assertIn(f'href="/torneios/{store.get_tournament(self.db, first)["slug"]}"', page)
+        # Filtro em cards: os jogos liberados (com o atual marcado), sem os desativados.
+        self.assertIn('class="game-chip all active"', page)
+        self.assertIn(f'href="/torneios/jogadores/p0?jogo={other}"', page)
+        self.assertNotIn(f"jogo={retired}", page)
+        self.assertNotIn('<select name="jogo"', page)
+        filtered = client.get(f"/torneios/jogadores/p0?jogo={other}").get_data(as_text=True)
+        self.assertIn("Vice-campeão", filtered)
+        self.assertNotIn(">Campeão<", filtered)
+        self.assertIn("Nenhum troféu ainda", client.get("/torneios/jogadores/p3").get_data(as_text=True))
+        # Jogo desativado no ?jogo=: vale como "Todos os jogos".
+        self.assertIn('class="game-chip all active"',
+                      client.get(f"/torneios/ranking?jogo={retired}").get_data(as_text=True))
+
+        with client.session_transaction() as session:
+            session["player_id"] = p0
+        status = client.get("/torneios/status").get_data(as_text=True)
+        self.assertIn("Galeria de troféus", status)
+        self.assertIn("<strong>1</strong><span>título</span>", status)
+        self.assertIn("<strong>1</strong><span>vice</span>", status)
+        with client.session_transaction() as session:
+            session["player_id"] = p3
+        self.assertIn("Você ainda não tem troféus", client.get("/torneios/status").get_data(as_text=True))
+
+
 if __name__ == "__main__":
     unittest.main()
 
