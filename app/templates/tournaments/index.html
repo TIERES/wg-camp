@@ -43,7 +43,7 @@
       </div>
     </div>
     <div class="t-body">
-      <span class="t-badges"><span class="badge status-{{ t.status }}">{{ status_labels[t.status] }}</span>{% if t.friends_only %}<span class="badge friends-only" title="Só os amigos de quem criou veem e se inscrevem">Somente amigos</span>{% endif %}</span>
+      <span class="t-badges"><span class="badge status-{{ t.status }}">{{ status_labels[t.status] }}</span>{% if t.friends_only %}<span class="badge friends-only" title="Campeonato privado: só os amigos de quem criou se inscrevem">Somente amigos</span>{% endif %}</span>
       <strong class="t-name">{{ t.name }}</strong>
       <span class="muted">{{ t.game_name }} · {{ format_labels[t.format] }}</span>
       <span class="t-meta">

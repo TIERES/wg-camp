@@ -1,0 +1,27 @@
+{# Como o link de uma página aparece ao ser compartilhado (WhatsApp, Telegram, Discord,
+   Facebook...): as tags Open Graph, no bloco `share` do base.html.
+   share = url, title, description, image (URLs completas; image pode faltar), image_alt e
+   card (a imagem é o cartão JPEG 1200 x 630 - static/js/share-image.js).
+   Os aplicativos guardam a prévia por um tempo: uma mudança aqui demora a aparecer. #}
+{% macro share_tags(share) %}
+  <meta name="description" content="{{ share.description }}">
+  <meta property="og:site_name" content="Campeonatos WE Camp">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="pt_BR">
+  <meta property="og:url" content="{{ share.url }}">
+  <meta property="og:title" content="{{ share.title }}">
+  <meta property="og:description" content="{{ share.description }}">
+  {% if share.image %}
+  <meta property="og:image" content="{{ share.image }}">
+  {% if share.card %}
+  <meta property="og:image:type" content="image/jpeg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  {% endif %}
+  <meta property="og:image:alt" content="{{ share.image_alt }}">
+  {% endif %}
+  <meta name="twitter:card" content="{{ 'summary_large_image' if share.card else 'summary' }}">
+{% endmacro %}
+
+{# Botão que copia o link (static/js/share.js) e avisa num toast. #}
+{% macro share_button(url, label, message) %}<button type="button" class="share-button" data-share-url="{{ url }}" data-share-message="{{ message }}" title="{{ label }}" aria-label="{{ label }}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg></button>{% endmacro %}

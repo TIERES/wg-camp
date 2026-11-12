@@ -10,6 +10,7 @@ from tests.test_tournament_store import add_player, make_app
 
 CSRF = "test-csrf"
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+JPG = b"\xff\xd8\xff\xe0" + b"\x00" * 64
 
 
 class ImagesTest(unittest.TestCase):
@@ -151,6 +152,52 @@ class ImagesTest(unittest.TestCase):
         owner.post("/torneios/copa/imagem", data={"csrf_token": CSRF, "acao": "remover"})
         self.assertIsNone(self.one("SELECT image FROM tournaments WHERE slug = 'copa'"))
         self.assertFalse((self.root / "tournament-images" / name).exists())
+
+    def share_image(self, client, origin, data=JPG):
+        return client.post("/torneios/copa/imagem-compartilhar", content_type="multipart/form-data", data={
+            "csrf_token": CSRF, "origem": origin, "image": (io.BytesIO(data), "compartilhar.jpg")})
+
+    def test_share_image_card_for_shared_links(self):
+        """O cartão JPEG do link compartilhado: quem gerencia envia (share-image.js) e a troca da imagem o apaga."""
+        owner, folder = self.client(self.players[0]), self.root / "tournament-images"
+        self.assertEqual(self.share_image(owner, "").status_code, 409)  # campeonato sem imagem
+        self.upload(owner, "/torneios/copa/imagem", "image")
+        image = self.one("SELECT image FROM tournaments WHERE slug = 'copa'")
+        # Sem o cartão, a página de quem gerencia (e o Gerenciar) pede para o navegador montar; a dos outros não.
+        script = f'data-origin="{image}" data-post="/torneios/copa/imagem-compartilhar"'
+        self.assertIn(script, owner.get("/torneios/copa").data.decode())
+        self.assertIn(script, owner.get("/torneios/copa/gerenciar").data.decode())
+        self.assertIn(script, self.client(admin=True).get("/torneios/copa").data.decode())
+        visitor = self.client(self.players[1]).get("/torneios/copa").data.decode()
+        self.assertNotIn("share-image.js", visitor)
+        self.assertIn(f'<meta property="og:image" content="http://localhost/imagens/torneio/{image}">', visitor)
+        self.assertNotIn("og:image:width", visitor)
+
+        self.assertEqual(self.share_image(self.client(self.players[1]), image).status_code, 403)
+        self.assertEqual(self.share_image(owner, "outra.webp").status_code, 409)  # a imagem já foi trocada
+        self.assertEqual(self.share_image(owner, image, data=PNG).status_code, 400)  # só JPEG
+        self.assertIsNone(self.one("SELECT share_image FROM tournaments WHERE slug = 'copa'"))
+        self.assertEqual(self.share_image(owner, image).status_code, 204)
+        card = self.one("SELECT share_image FROM tournaments WHERE slug = 'copa'")
+        self.assertTrue(card.endswith(".jpg") and (folder / card).exists())
+        page = self.client().get("/torneios/copa").data.decode()
+        self.assertIn(f'<meta property="og:image" content="http://localhost/imagens/torneio/{card}">', page)
+        self.assertIn('<meta property="og:image:width" content="1200">', page)
+        self.assertIn('<meta name="twitter:card" content="summary_large_image">', page)
+        self.assertNotIn("share-image.js", owner.get("/torneios/copa").data.decode())
+        self.assertNotIn("share-image.js", owner.get("/torneios/copa/gerenciar").data.decode())
+
+        # Trocar a imagem apaga o cartão da antiga (o navegador monta o da nova); remover também.
+        self.upload(owner, "/torneios/copa/imagem", "image")
+        self.assertIsNone(self.one("SELECT share_image FROM tournaments WHERE slug = 'copa'"))
+        self.assertFalse((folder / card).exists())
+        self.assertIn("share-image.js", owner.get("/torneios/copa/gerenciar").data.decode())
+        self.assertEqual(self.share_image(owner, self.one("SELECT image FROM tournaments WHERE slug = 'copa'")).status_code, 204)
+        card = self.one("SELECT share_image FROM tournaments WHERE slug = 'copa'")
+        owner.post("/torneios/copa/imagem", data={"csrf_token": CSRF, "acao": "remover"})
+        self.assertIsNone(self.one("SELECT share_image FROM tournaments WHERE slug = 'copa'"))
+        self.assertEqual(list(folder.iterdir()), [])
+        self.assertNotIn("og:image", self.client().get("/torneios/copa").data.decode())
 
     def test_create_tournament_with_image(self):
         owner = self.client(self.players[2])

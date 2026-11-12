@@ -24,6 +24,7 @@ from flask import (abort, Blueprint, current_app, flash, g, jsonify, redirect, r
 from markupsafe import Markup
 
 from . import images
+from .accounts import absolute_url
 from .db import get_db, now
 from .players import player_required
 from .security import login_required, validate_csrf
@@ -153,7 +154,10 @@ def can_manage(tournament):
     return is_admin() or session.get("player_id") == tournament["organizer_id"]
 
 
-def _load(slug):
+def _load(slug, private_ok=False):
+    """O campeonato da URL, ou 404. "Somente para amigos" só existe para quem pode
+    vê-lo (can_view); com private_ok ele vem assim mesmo, e quem chama cuida do
+    que mostra a quem não é amigo (a página do campeonato - show)."""
     db = get_db()
     tournament = db.execute(
         "SELECT t.*, g.name AS game_name, g.platform, g.code AS game_code, p.username AS organizer_name "
@@ -162,13 +166,15 @@ def _load(slug):
         (slug,)).fetchone()
     if tournament is None or (tournament["status"] == "draft" and not can_manage(tournament)):
         abort(404)
-    if tournament["friends_only"] and not can_view(db, tournament):
+    if tournament["friends_only"] and not private_ok and not can_view(db, tournament):
         abort(404)
     return tournament
 
 
 def can_view(db, tournament):
-    """Torneio "Somente para amigos": só o organizador (e o admin), os amigos dele e quem já está inscrito."""
+    """Torneio "Somente para amigos": só o organizador (e o admin), os amigos dele e quem já
+    está inscrito entram nele. Os outros não o veem nas listas; com o link, veem só o aviso
+    de campeonato privado e os dados da Visão geral (show)."""
     me = session.get("player_id")
     if not tournament["friends_only"] or can_manage(tournament):
         return True
@@ -850,18 +856,50 @@ def _plain(value):
     return normalize("NFKD", value or "").encode("ascii", "ignore").decode().casefold()
 
 
+def _share(tournament, enrolled, pool):
+    """Como o link do campeonato aparece ao ser compartilhado (WhatsApp, Telegram,
+    Discord...): as tags og: da página (templates/_share.html) e o link que o
+    botão de compartilhar copia. A descrição repete a Visão geral: datas
+    prováveis, vagas, inscrição e prêmio. A imagem é o cartão JPEG 1200 x 630
+    (tournament_share_image); enquanto ele não existe, vale a imagem como foi
+    enviada (WebP, que nem todo aplicativo mostra)."""
+    parts = []
+    start, end = date_br(tournament["starts_on"]), date_br(tournament["ends_on"])
+    if start and end:
+        parts.append(f"Datas prováveis: {start} a {end}")
+    elif start or end:
+        parts.append("Datas prováveis: " + (f"início em {start}" if start else f"fim em {end}"))
+    parts.append(f"Vagas: {enrolled} de {tournament['max_players']}")
+    fee = tournament["entry_fee_cents"]
+    parts.append("Inscrição: " + (format_cents(fee) if fee else "Grátis"))
+    parts.append("Prêmio: " + (format_cents(pool) if pool else "Sem prêmio em inscrições"))
+    image = tournament["share_image"] or tournament["image"]
+    return {
+        "url": absolute_url(url_for("tournaments.show", slug=tournament["slug"])),
+        "title": tournament["name"],
+        "description": " · ".join(parts),
+        "image": absolute_url(images.url("torneio", image)) if image else None,
+        "image_alt": f"Imagem do campeonato {tournament['name']}",
+        "card": bool(tournament["share_image"]),
+    }
+
+
 @bp.get("/<slug>")
 def show(slug):
     db = get_db()
-    tournament = _load(slug)
+    tournament = _load(slug, private_ok=True)
+    # "Somente amigos" aberto por quem não é amigo (o link compartilhado): a página avisa
+    # que o campeonato é privado e mostra só a Visão geral - sem as outras abas, a ISO e
+    # a inscrição (que o store.enroll também recusa). O resto do campeonato continua 404.
+    outsider = not can_view(db, tournament)
     entries = store.entries_of(db, tournament["id"])
     player_id = session.get("player_id")
     my_entry = next((e for e in entries if e["player_id"] == player_id), None)
-    stages = _stage_views(db, tournament)
+    stages = [] if outsider else _stage_views(db, tournament)
     config = store.settings_of(tournament)
     # Encerrado abre na Visão geral, com os vencedores; em andamento, na tabela.
     tab = request.args.get("aba", "tabela" if stages and tournament["status"] != "finished" else "geral")
-    if tab not in ("geral", "tabela", "jogos", "artilharia") or (tab == "artilharia" and not stages):
+    if outsider or tab not in ("geral", "tabela", "jogos", "artilharia") or (tab == "artilharia" and not stages):
         tab = "geral"
     pool = store.prize_pool(db, tournament["id"])
     split = engine.parse_split(tournament["prize_split"])
@@ -883,11 +921,11 @@ def show(slug):
     # bate com um time da base usa esse time (store._entry_team).
     free_teams = []
     # (Também para o inscrito sem time: store.choose_team.)
-    if (tournament["team_mode"] == "free" and tournament["status"] == "registration" and player_id
+    if (tournament["team_mode"] == "free" and tournament["status"] == "registration" and player_id and not outsider
             and (not my_entry or not my_entry["team_name"])):
         free_teams = [{"name": row["name"], "image": team_image(row)} for row in db.execute(
             "SELECT * FROM teams WHERE is_active = 1 ORDER BY name COLLATE NOCASE")]
-    iso_row = iso.get(db, tournament["id"])
+    iso_row = None if outsider else iso.get(db, tournament["id"])
     # Campeonato em andamento: na aba Tabela, "Ao vivo", o placar dos jogos
     # rolando agora e a classificação com os placares ainda não confirmados;
     # na aba Jogos, o link "Ao vivo" no jogo que está rolando.
@@ -907,10 +945,11 @@ def show(slug):
         team_list=team_list, free_teams=free_teams, team_modes=TEAM_MODES, crests=_crests(names), my_pending=my_pending,
         names=names, can_manage=can_manage(tournament), iso=iso_row, iso_ready=iso.downloadable(iso_row, current_app),
         format_label=formats.FORMATS[tournament["format"]], summary=formats.describe(tournament["format"], config),
-        status_labels=STATUS_LABELS, pool=pool, split=split,
-        prizes=engine.split_prize(pool, split, 3) if pool else [],
+        status_labels=STATUS_LABELS, pool=pool, split=split, share=_share(tournament, len(entries), pool),
+        outsider=outsider, prizes=engine.split_prize(pool, split, 3) if pool else [],
         podium=sorted((e for e in entries if e["final_position"]), key=lambda e: e["final_position"]),
-        invite=friends.my_invite(db, tournament["id"], player_id) if player_id and not my_entry else None)
+        invite=(friends.my_invite(db, tournament["id"], player_id)
+                if player_id and not my_entry and not outsider else None))
 
 
 @bp.get("/<slug>/tabela-ao-vivo")
@@ -1326,11 +1365,40 @@ def tournament_image(tournament):
             flash(str(error), "error")
             return redirect(url_for("tournaments.manage", slug=tournament["slug"], _anchor="imagem"))
         message = "Imagem do campeonato salva."
-    db.execute("UPDATE tournaments SET image = ?, updated_at = ? WHERE id = ?", (new_name, now(), tournament["id"]))
+    # O cartão do link compartilhado era da imagem antiga: o navegador monta o da
+    # nova ao voltar para Gerenciar (tournament_share_image).
+    db.execute("UPDATE tournaments SET image = ?, share_image = NULL, updated_at = ? WHERE id = ?",
+               (new_name, now(), tournament["id"]))
     db.commit()
     images.delete("torneio", old)
+    images.delete("torneio", tournament["share_image"])
     flash(message, "success")
     return redirect(url_for("tournaments.manage", slug=tournament["slug"], _anchor="imagem"))
+
+
+@bp.post("/<slug>/imagem-compartilhar")
+@manager_required
+def tournament_share_image(tournament):
+    """Guarda a imagem do campeonato como ela aparece no link compartilhado: um
+    JPEG 1200 x 630 que o navegador de quem gerencia monta a partir da imagem
+    (static/js/share-image.js) ao abrir o campeonato ou o Gerenciar. A imagem é
+    guardada em WebP, que WhatsApp e Telegram não mostram, e o servidor não
+    mexe em imagem (app/images.py). `origem` é a imagem de que o cartão saiu:
+    se ela já foi trocada, o cartão não serve mais."""
+    if not tournament["image"] or request.form.get("origem") != tournament["image"]:
+        return "", 409
+    upload = request.files.get("image")
+    try:
+        if not upload or not upload.filename:
+            raise images.ImageError("Faltou a imagem.")
+        new_name = images.save("torneio", upload, only=(".jpg",))
+    except images.ImageError as error:
+        return str(error), 400
+    db = get_db()
+    db.execute("UPDATE tournaments SET share_image = ? WHERE id = ?", (new_name, tournament["id"]))
+    db.commit()
+    images.delete("torneio", tournament["share_image"])
+    return "", 204
 
 
 # --- ISO do torneio (app/tournament/iso.py) ----------------------------------

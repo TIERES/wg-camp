@@ -228,11 +228,12 @@ class FriendsAndInvitesTest(unittest.TestCase):
         self.assertEqual([r[0] for r in self.query("SELECT player_id FROM tournament_invites WHERE tournament_id = ?",
                                                   t["id"])], [j1])
         slug = t["slug"]
-        # Fora da lista pública e de Meus campeonatos para quem não é amigo; página dá 404.
+        # Fora da lista pública e de Meus campeonatos para quem não é amigo; pelo link a página
+        # abre com o aviso de campeonato privado, sem inscrição (test_tournaments_web).
         self.assertNotIn("Copa Amigos", c2.get("/torneios/").data.decode())
         self.assertNotIn("Copa Amigos", c2.get("/torneios/meus-campeonatos?status=todos").data.decode())
         self.assertNotIn("Copa Amigos", self.app.test_client().get("/torneios/").data.decode())
-        self.assertEqual(c2.get(f"/torneios/{slug}").status_code, 404)
+        self.assertIn("Campeonato privado.", c2.get(f"/torneios/{slug}").data.decode())
         c2.post(f"/torneios/{slug}/inscrever", data={"csrf_token": CSRF, "team_name": "Time 2"})
         self.assertFalse(self.query("SELECT 1 FROM tournament_entries WHERE tournament_id = ?", t["id"]))
         # O amigo vê em Meus campeonatos (sem estar inscrito), na lista pública e se inscreve.

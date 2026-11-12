@@ -316,6 +316,107 @@ class TournamentsWebTest(unittest.TestCase):
         self.assertEqual(self.query("SELECT status FROM tournaments")[0][0], "cancelled")
         self.assertEqual(self.query("SELECT wallet_cents FROM players WHERE id = ?", self.players[3])[0][0], 100000)
 
+    def test_shared_link_preview_and_share_button(self):
+        """As tags og: do link compartilhado (WhatsApp, Telegram...) e o botão que copia o link."""
+        self.app.config["PUBLIC_URL"] = "https://we2002.example/"
+        game = self.query("SELECT id FROM game_titles WHERE code = 'we2002'")[0]["id"]
+        owner = self.client(self.players[0])
+        data = {"csrf_token": CSRF, "name": 'Copa "Aspas" & Cia', "starts_on": "2026-11-15", "ends_on": "2026-11-30",
+                "rules": "Regras", "game_title_id": game, "format": "league", "max_players": "16", "entry_fee": "10,00",
+                "prize_split": "60,30,10", "legs": "1"}
+        owner.post("/torneios/novo", data=data)
+        slug = self.query("SELECT slug FROM tournaments")[0]["slug"]
+        self.client(self.players[3]).post(f"/torneios/{slug}/inscrever", data={"csrf_token": CSRF, "team_name": "Real"})
+        # Quem lê é o aplicativo, sem login; a aba aberta não muda o endereço compartilhado.
+        page = self.client().get(f"/torneios/{slug}?aba=geral").data.decode()
+        head = page[:page.index("</head>")]
+        url = f"https://we2002.example/torneios/{slug}"
+        description = "Datas prováveis: 15/11/2026 a 30/11/2026 · Vagas: 1 de 16 · Inscrição: W$10,00 · Prêmio: W$10,00"
+        for tag in ('<meta property="og:site_name" content="Campeonatos WE Camp">',
+                    f'<meta property="og:url" content="{url}">',
+                    '<meta property="og:title" content="Copa &#34;Aspas&#34; &amp; Cia">',
+                    f'<meta property="og:description" content="{description}">',
+                    f'<meta name="description" content="{description}">',
+                    '<meta name="twitter:card" content="summary">'):
+            self.assertIn(tag, head)
+        self.assertNotIn("og:image", head)  # campeonato sem imagem
+        self.assertIn(f'<h1>Copa &#34;Aspas&#34; &amp; <span class="t-title-end">Cia <button type="button" '
+                      f'class="share-button" data-share-url="{url}" data-share-message="Link do campeonato copiado, '
+                      'você pode compartilhar utilizando o CTRL + V!"', page)
+        self.assertIn("/static/js/share.js", page)
+
+        # Grátis, só com o início e sem inscritos; as outras páginas não ganham as tags.
+        owner.post("/torneios/novo", data={**data, "name": "Gratis", "ends_on": "", "entry_fee": "0"})
+        free = self.query("SELECT slug FROM tournaments WHERE name = 'Gratis'")[0]["slug"]
+        self.assertIn('<meta property="og:description" content="Datas prováveis: início em 15/11/2026 · Vagas: 0 de 16 · '
+                      'Inscrição: Grátis · Prêmio: Sem prêmio em inscrições">', self.client().get(f"/torneios/{free}").data.decode())
+        self.assertNotIn("og:title", self.client().get("/torneios/").data.decode())
+
+        # "Somente amigos" também se compartilha: quem abre o link sem ser amigo vê a página (abaixo).
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE tournaments SET friends_only = 1 WHERE slug = ?", (slug,))
+            db.commit()
+        private = self.client().get(f"/torneios/{slug}").data.decode()
+        self.assertIn(f'<meta property="og:description" content="{description}">', private)
+        self.assertIn(f'class="share-button" data-share-url="{url}"', private)
+
+    def test_private_tournament_page_for_who_is_not_a_friend(self):
+        """Campeonato "Somente amigos" aberto pelo link por quem não é amigo: o aviso de campeonato
+        privado e os dados da Visão geral, sem inscrição; o resto do campeonato continua fechado."""
+        game = self.query("SELECT id FROM game_titles WHERE code = 'we2002'")[0]["id"]
+        owner, friend, other = (self.client(self.players[i]) for i in (0, 1, 2))
+        owner.post("/torneios/amigos/adicionar", data={"csrf_token": CSRF, "nome": "jog1"})
+        friend.post(f"/torneios/amigos/{self.players[0]}/aceitar", data={"csrf_token": CSRF})
+        owner.post("/torneios/novo", data={
+            "csrf_token": CSRF, "name": "Copa Fechada", "starts_on": "2026-11-15", "rules": "Regras da casa",
+            "game_title_id": game, "format": "league", "max_players": "4", "entry_fee": "0", "legs": "1",
+            "friends_only": "on"})
+        slug = self.query("SELECT slug FROM tournaments")[0]["slug"]
+        friend.post(f"/torneios/{slug}/inscrever", data={"csrf_token": CSRF, "team_name": "Real"})
+
+        # Sem login: os dados, o aviso e o caminho para entrar.
+        anon = self.client().get(f"/torneios/{slug}")
+        self.assertEqual(anon.status_code, 200)
+        page = anon.data.decode()
+        self.assertIn('<div class="private-notice"><strong>Campeonato privado.</strong> Só os amigos de <strong>jog0</strong> '
+                      'podem se inscrever.', page)
+        self.assertIn("Para se inscrever, você precisa estar logado.", page)
+        self.assertIn(f'href="/conta/entrar?next=/torneios/{slug}">Entre para se inscrever</a>', page)
+        for shown in ("Copa Fechada", "<dt>Vagas</dt><dd>1 de 4</dd>", "<dt>Inscrição</dt><dd>Grátis</dd>",
+                      "Regras da casa", "Inscritos (1)", 'class="share-button"', "og:title"):
+            self.assertIn(shown, page)
+        self.assertNotIn("/inscrever", page)
+
+        # Logado e não amigo: o aviso manda pedir a amizade; não há formulário e a inscrição é recusada.
+        page = other.get(f"/torneios/{slug}").data.decode()
+        self.assertIn('Para participar, peça a amizade de jog0 em <a href="/torneios/amigos">Amigos</a>.', page)
+        self.assertNotIn("/inscrever", page)
+        self.assertNotIn("Entre para se inscrever", page)
+        other.post(f"/torneios/{slug}/inscrever", data={"csrf_token": CSRF, "team_name": "Barca"})
+        self.assertEqual(self.query("SELECT COUNT(*) FROM tournament_entries")[0][0], 1)
+        # O amigo, o inscrito e o organizador veem a página de sempre, sem o aviso.
+        for client in (friend, owner, self.client(admin=True)):
+            self.assertNotIn("private-notice", client.get(f"/torneios/{slug}").data.decode())
+
+        # Em andamento: quem não é amigo fica na Visão geral (sem as abas nem a ISO) e as outras
+        # páginas do campeonato continuam não existindo para ele.
+        self.client(self.players[3]).post(f"/torneios/amigos/adicionar", data={"csrf_token": CSRF, "nome": "jog0"})
+        owner.post(f"/torneios/amigos/{self.players[3]}/aceitar", data={"csrf_token": CSRF})
+        self.client(self.players[3]).post(f"/torneios/{slug}/inscrever", data={"csrf_token": CSRF, "team_name": "Milan"})
+        owner.post(f"/torneios/{slug}/iniciar", data={"csrf_token": CSRF})
+        self.assertEqual(self.query("SELECT status FROM tournaments")[0][0], "running")
+        match = self.query("SELECT id FROM tournament_matches")[0]["id"]
+        page = other.get(f"/torneios/{slug}?aba=jogos").data.decode()
+        self.assertIn("Só os amigos de <strong>jog0</strong> participam.", page)
+        self.assertNotIn("peça a amizade", page)
+        self.assertIn("<dt>Vagas</dt>", page)
+        for hidden in ("?aba=tabela", "?aba=jogos", f"/jogos/{match}", "<dt>ISO</dt>"):
+            self.assertNotIn(hidden, page)
+        self.assertIn("?aba=tabela", friend.get(f"/torneios/{slug}").data.decode())
+        for path in (f"/torneios/{slug}/jogos/{match}", f"/torneios/{slug}/tabela-ao-vivo", f"/torneios/{slug}/gerenciar"):
+            self.assertEqual(other.get(path).status_code, 404, path)
+
 
 if __name__ == "__main__":
     unittest.main()

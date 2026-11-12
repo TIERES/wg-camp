@@ -1,0 +1,4 @@
+{# Só para quem gerencia (página do campeonato e Gerenciar): se a imagem do campeonato ainda não
+   tem o cartão do link compartilhado, o navegador monta e envia (static/js/share-image.js,
+   tournaments.tournament_share_image). #}
+{% if t.image and not t.share_image %}<script src="{{ url_for('static', filename='js/share-image.js', v='20261112a') }}" data-image="{{ image_url('torneio', t.image) }}" data-origin="{{ t.image }}" data-post="{{ url_for('tournaments.tournament_share_image', slug=t.slug) }}" data-csrf="{{ csrf_token() }}" defer></script>{% endif %}

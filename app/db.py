@@ -188,7 +188,11 @@ CREATE TABLE IF NOT EXISTS tournaments (
     all_played_at TEXT,
     -- Imagem do campeonato enviada pelo organizador (arquivo em TOURNAMENT_IMAGES_DIR - app/images.py).
     image TEXT,
-    -- Somente para amigos: só o organizador, os amigos dele e os inscritos veem o campeonato; só amigos se inscrevem.
+    -- A imagem como aparece no link compartilhado (WhatsApp, Telegram...): um JPEG 1200 x 630 montado no
+    -- navegador de quem gerencia (static/js/share-image.js), na mesma pasta da imagem.
+    share_image TEXT,
+    -- Somente para amigos (privado): só o organizador, os amigos dele e os inscritos o veem nas listas e entram
+    -- nele; só amigos se inscrevem. Com o link, os outros veem o aviso e a Visão geral (tournaments.show).
     friends_only INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -558,7 +562,7 @@ def ensure_tournament_columns(database):
     columns = {column["name"] for column in database.execute("PRAGMA table_info(tournaments)")}
     if not columns:
         return  # banco sem torneios ainda - o TOURNAMENTS_DDL cria a tabela completa
-    for column in ("starts_on", "ends_on", "all_played_at", "image"):
+    for column in ("starts_on", "ends_on", "all_played_at", "image", "share_image"):
         if column not in columns:
             database.execute(f"ALTER TABLE tournaments ADD COLUMN {column} TEXT")
     if "friends_only" not in columns:

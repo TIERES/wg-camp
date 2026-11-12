@@ -9,7 +9,7 @@ import re
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from flask import current_app, url_for
+from flask import current_app, request, url_for
 
 from .db import now
 
@@ -160,6 +160,14 @@ def revoke_api_tokens(db, player_id):
         "UPDATE player_tokens SET used_at = ? WHERE player_id = ? AND kind = 'api' AND used_at IS NULL",
         (now(), player_id),
     )
+
+
+def absolute_url(path):
+    """Caminho do site ("/torneios/copa") -> URL completa, para quem lê a página
+    de fora (as tags og: do link compartilhado). Como em external_url, vale o
+    PUBLIC_URL: atrás do Caddy o Flask só vê http."""
+    base = (current_app.config.get("PUBLIC_URL") or request.host_url).rstrip("/")
+    return base + path
 
 
 def external_url(endpoint, **values):

@@ -41,12 +41,13 @@ def _folder(kind):
     return Path(current_app.config[KINDS[kind][0]])
 
 
-def save(kind, upload):
-    """Grava o arquivo enviado e devolve o nome; ImageError se não servir."""
+def save(kind, upload, only=None):
+    """Grava o arquivo enviado e devolve o nome; ImageError se não servir
+    (only: as extensões aceitas, quando não são todas - ex. (".jpg",))."""
     limit = KINDS[kind][1]
     data = upload.read(limit + 1)
     ext = image_extension(data)
-    if not ext or len(data) > limit:
+    if not ext or len(data) > limit or (only and ext not in only):
         raise ImageError(f"Imagem inválida: envie PNG, JPG ou WebP de até {limit // 1024 // 1024} MB.")
     name = secrets.token_hex(12) + ext
     folder = _folder(kind)
