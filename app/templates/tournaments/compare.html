@@ -2,6 +2,7 @@
 {% block title %}Comparar jogadores · WE Camp{% endblock %}{% block content %}
 <p><a href="{{ url_for('tournaments.ranking', jogo=game) }}">← Ranking</a></p>
 <h1>Comparar jogadores</h1>
+<p class="muted">Compare você e os seus amigos: escolha dois jogadores diferentes.</p>
 
 <form method="get" class="filters compare-form">
   {% for field, other, label, value in (('a', 'b', 'Jogador 1', request.args.get('a') or (a.username if a else '')), ('b', 'a', 'Jogador 2', request.args.get('b', ''))) %}
@@ -49,7 +50,6 @@
   </div>
 </section>
 
-{% if session.player_id %}
 <div class="my-last-grid">
 {% for card in mine %}
 <section class="my-last">
@@ -75,9 +75,6 @@
 </section>
 {% endfor %}
 </div>
-{% else %}
-<p class="muted"><a href="{{ url_for('players.login', next=request.full_path) }}">Entre</a> para ver os seus últimos resultados contra esses jogadores.</p>
-{% endif %}
 <script>
 document.querySelectorAll('[data-dialog]').forEach(function (button) {
   var dialog = document.getElementById(button.dataset.dialog);
@@ -86,6 +83,6 @@ document.querySelectorAll('[data-dialog]').forEach(function (button) {
   dialog.addEventListener('click', function (e) { if (e.target === dialog) dialog.close(); });
 });
 </script>
-{% elif not players %}<p class="muted">Nenhum jogo confirmado ainda.</p>
+{% elif players|length < 2 %}<p class="muted">Você ainda não tem amigos para comparar. <a href="{{ url_for('tournaments.friends_page') }}">Adicione amigos</a>: dá para comparar você e os seus amigos.</p>
 {% endif %}
 {% endblock %}

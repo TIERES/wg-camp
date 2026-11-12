@@ -37,6 +37,6 @@
   {% else %}<p class="muted">Nenhum jogo confirmado ainda.</p>{% endif %}
   <div class="card-actions">
     <a class="button" href="{{ url_for('tournaments.player', nome=p.username) }}">Ver perfil completo</a>
-    {% if session.player_id and session.player_id != p.id %}<a class="button secondary" href="{{ url_for('tournaments.compare', b=p.username) }}">Comparar comigo</a>{% endif %}
+    {% if session.player_id and session.player_id != p.id and relation == 'friends' %}<a class="button secondary" href="{{ url_for('tournaments.compare', b=p.username) }}">Comparar comigo</a>{% endif %}
   </div>
 </div>

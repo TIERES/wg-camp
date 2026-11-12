@@ -1423,6 +1423,9 @@ def match(slug, match_id):
     quitter = next((s["username"] for s in sides.values() if m["quitter_id"] and s["player_id"] == m["quitter_id"]), None)
     h2h = {"home": home["username"], "away": away["username"],
            "record": stats.player_record(db, home["player_id"], opponent_id=away["player_id"])} if home and away else None
+    if h2h:  # "Comparar os dois": só para quem está logado e pode comparar os dois (ele mesmo ou amigos)
+        allowed = {row["id"] for row in comparable(db, session.get("player_id"))}
+        h2h["can_compare"] = home["player_id"] in allowed and away["player_id"] in allowed
     live_now = None
     if tournament["status"] == "running" and m["status"] != "confirmed":
         from . import live
@@ -1605,6 +1608,8 @@ def ranking():
                            my_record=stats.player_record(db, me, game) if me else None)
 
 
+# Histórico de partidas da página do jogador para quem não está logado: só as últimas.
+HISTORY_PUBLIC_LIMIT = 10
 # Filtros do Histórico de partidas da página do jogador: parâmetro -> chave.
 HISTORY_FILTERS = {"adversario": "opponent", "de": "date_from", "ate": "date_to", "campeonato": "tournament"}
 
@@ -1647,20 +1652,23 @@ def player(nome):
     game, games = _game_filter(db)
     everything = stats.history(db, target["id"], game, limit=-1)
     # Histórico: filtro por adversário, datas e campeonato; os mais recentes, quantos o
-    # jogador escolher no "Mostrar" (listing.page_size: 20, 50 ou 100).
+    # jogador escolher no "Mostrar" (listing.page_size: 20, 50 ou 100). Sem login: só
+    # as últimas HISTORY_PUBLIC_LIMIT partidas, sem filtros nem "Mostrar".
     from .listing import cap
-    filters = _history_filters()
+    logged = bool(session.get("player_id")) or is_admin()
+    filters = _history_filters() if logged else dict.fromkeys(HISTORY_FILTERS.values(), "")
     faced = sorted(stats.opponents(db, target["id"], game, limit=-1), key=lambda o: _plain(o["username"]))
     exact = any(_plain(o["username"]) == _plain(filters["opponent"]) for o in faced)
-    shown, total = cap(row for row in everything if _history_matches(row, filters, exact))
+    shown, total = cap((row for row in everything if _history_matches(row, filters, exact)),
+                       None if logged else HISTORY_PUBLIC_LIMIT)
     history_args = {arg: filters[key] for arg, key in HISTORY_FILTERS.items() if filters[key]}
-    if request.args.get("mostrar") in ("20", "50", "100"):
+    if logged and request.args.get("mostrar") in ("20", "50", "100"):
         history_args["mostrar"] = request.args["mostrar"]  # os cards de jogo mantêm o "Mostrar"
     return render_template("tournaments/player.html", p=target, games=games, game=game,
                            record=stats.player_record(db, target["id"], game),
                            position=stats.position(db, target["id"], game), rows=shown,
                            rows_total=total, has_history=bool(everything), form=stats.form(everything),
-                           history_filters=filters, history_args=history_args, history_filtered=any(filters.values()),
+                           history_filters=filters, history_args=history_args, history_filtered=any(filters.values()), logged=logged,
                            opponent_options=[{"id": o["player_id"], "username": o["username"]} for o in faced],
                            tournament_options=sorted({row["tournament_name"] for row in everything}, key=_plain),
                            opponents=stats.opponents(db, target["id"], game), outcome=stats.outcome,
@@ -1703,30 +1711,45 @@ def player_avatar_remove(player_id):
     return redirect(url_for("tournaments.player", nome=row["username"]))
 
 
+def comparable(db, me):
+    """Quem o jogador logado pode comparar: ele mesmo (primeiro) e os amigos."""
+    if not me:
+        return []
+    own = db.execute("SELECT id, username FROM players WHERE id = ?", (me,)).fetchone()
+    return ([own] if own else []) + list(friends.friends(db, me))
+
+
 @bp.get("/comparar")
 def compare():
+    """Só para quem está logado, entre ele mesmo e os amigos (a escolha de
+    usuário padrão só com eles); nunca o mesmo jogador dos dois lados."""
+    if "player_id" not in session:
+        return redirect(url_for("players.login", next=request.full_path.rstrip("?")))
     db = get_db()
+    me_id = session["player_id"]
     game, games = _game_filter(db)
+    players = comparable(db, me_id)
+    allowed = {row["username"].casefold(): row for row in players}
     names = (request.args.get("a", "").strip(), request.args.get("b", "").strip())
-    a, b = (_player_by_name(db, name) if name else None for name in names)
-    if not names[0] and session.get("player_id"):  # sem escolha: começa por quem está logado
-        a = db.execute("SELECT id, username FROM players WHERE id = ?", (session["player_id"],)).fetchone()
+    a, b = (allowed.get(name.casefold()) if name else None for name in names)
+    if not names[0]:  # sem escolha: começa por quem está logado
+        a = players[0]
     result = None
-    if (names[0] and a is None) or (names[1] and b is None):
-        flash("Jogador não encontrado.", "error")
+    refused = [name for name, row in zip(names, (a, b)) if name and row is None]
+    if refused:
+        flash("Jogador não encontrado." if any(_player_by_name(db, name) is None for name in refused)
+              else "Só dá para comparar você e os seus amigos.", "error")
     elif a and b and a["id"] == b["id"]:
         flash("Escolha dois jogadores diferentes.", "error")
     elif a and b:
         result = stats.compare(db, a["id"], b["id"], game)
     # Os últimos jogos de quem está logado contra cada jogador escolhido
     # (menos ele mesmo), com o jogo (para o popup) e os nomes com escudo.
-    me_id = session.get("player_id")
     mine = [{"opponent": other, "matches": stats.history(db, me_id, game, opponent_id=other["id"], limit=5)}
-            for other in (a, b) if result and me_id and other["id"] != me_id]
+            for other in (a, b) if result and other["id"] != me_id]
     games_by_id, names = _match_popups(db, [r for card in mine for r in card["matches"]])
     return render_template("tournaments/compare.html", a=a, b=b, result=result, games=games, game=game,
-                           players=stats.players_with_matches(db),
-                           outcome=stats.outcome, mine=mine, games_by_id=games_by_id, names=names)
+                           players=players, outcome=stats.outcome, mine=mine, games_by_id=games_by_id, names=names)
 
 
 _last_auto_confirm = [0.0]

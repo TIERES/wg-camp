@@ -6,7 +6,7 @@
   {% elif relation == 'sent' %}<span class="friend-tag">Pedido de amizade enviado</span>
   {% elif relation == 'received' %}<form method="post" action="{{ url_for('tournaments.friend_action', player_id=p.id, acao='aceitar') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="voltar" value="{{ request.full_path }}"><button>Aceitar amizade</button></form>
   {% else %}<form method="post" action="{{ url_for('tournaments.friend_add') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="nome" value="{{ p.username }}"><input type="hidden" name="voltar" value="{{ request.full_path }}"><button class="secondary">Adicionar amigo</button></form>{% endif %}
-  <a class="button" href="{{ url_for('tournaments.compare', b=p.username, jogo=game) }}">Comparar comigo</a></div>{% else %}<a class="button" href="{{ url_for('tournaments.compare', a=p.username, jogo=game) }}">Comparar com…</a>{% endif %}</div>
+  {% if relation == 'friends' %}<a class="button" href="{{ url_for('tournaments.compare', b=p.username, jogo=game) }}">Comparar comigo</a>{% endif %}</div>{% elif session.player_id %}<a class="button" href="{{ url_for('tournaments.compare', a=p.username, jogo=game) }}">Comparar com…</a>{% endif %}</div>
 {{ xp_bar(player_rank(p.id)) }}
 {{ game_filter(games, game, history_args) }}
 
@@ -39,8 +39,8 @@
 
 <section id="historico">
   <h2>Histórico de partidas</h2>
-  {% if has_history %}
-  {# Filtros: adversário (escolha com foto - _user_picker.html), datas e campeonato (autocompletar - static/js/ac.js). #}
+  {% if has_history and logged %}
+  {# Filtros (só para quem está logado): adversário (escolha com foto - _user_picker.html), datas e campeonato (autocompletar - static/js/ac.js). #}
   {% set f = history_filters %}
   <form method="get" action="{{ url_for('tournaments.player', nome=p.username) }}#historico" class="live-filters history-filters">
     {% if game %}<input type="hidden" name="jogo" value="{{ game }}">{% endif %}
@@ -58,10 +58,12 @@
   </form>
   {% endif %}
   {% if rows %}
-  {# Lista grande: os mais recentes, quantos escolher no "Mostrar" (20, 50 ou 100 - app/listing.py). #}
-  {% if rows_total > 20 %}<div class="table-top"><span>Mostrar</span>{{ per_page_select(rows_total, 'historico') }}<span>de {{ rows_total }} jogos{% if history_filtered %} com esses filtros{% endif %}</span></div>{% endif %}
+  {# Lista grande: os mais recentes, quantos escolher no "Mostrar" (20, 50 ou 100 - app/listing.py).
+     Sem login: só as últimas 10, sem filtros nem "Mostrar". #}
+  {% if logged and rows_total > 20 %}<div class="table-top"><span>Mostrar</span>{{ per_page_select(rows_total, 'historico') }}<span>de {{ rows_total }} jogos{% if history_filtered %} com esses filtros{% endif %}</span></div>{% endif %}
   {{ history_table(rows, outcome, game) }}
-  {{ list_note(rows|length, rows_total, 'jogos', history_filtered) }}
+  {% if logged %}{{ list_note(rows|length, rows_total, 'jogos', history_filtered) }}
+  {% else %}<p class="muted list-note">{% if rows_total > rows|length %}Mostrando as {{ rows|length }} últimas partidas de {{ rows_total }}. {% endif %}<a href="{{ url_for('players.login', next=request.full_path.rstrip('?') ~ '#historico') }}">Entre</a> para ver o histórico completo e filtrar por adversário, data e campeonato.</p>{% endif %}
   {% elif history_filtered %}<p class="muted">Nenhum jogo com esses filtros.</p>
   {% else %}<p class="muted">Nenhum jogo confirmado ainda{% if game %} neste jogo{% endif %}.</p>{% endif %}
 </section>
