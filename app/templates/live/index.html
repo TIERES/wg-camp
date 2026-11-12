@@ -8,7 +8,7 @@
   </span>
   {% endif %}
 </div>
-<p class="muted">As partidas jogadas no RetroArch TIERES, com o placar extraído direto do jogo, ficam armazenadas aqui. As partidas com status "Ao Vivo" estão sendo transmitidas em tempo real e exibem as informações de Tempo de jogo, Gols, Assistências e Cartões. Ao final, é exibido todo o histórico de Chutes ao gol, Faltas, Cartões, Impedimentos e Escanteios. Caso esteja procurando uma partida, pode utilizar o filtro abaixo.</p>
+<p class="muted">As partidas jogadas no RetroArch TIERES, com o placar extraído direto do jogo, ficam armazenadas aqui. As partidas com status "Ao vivo" estão sendo transmitidas em tempo real e exibem as informações de Tempo de jogo, Gols, Assistências e Cartões. Ao final, é exibido todo o histórico de Chutes ao gol, Faltas, Cartões, Impedimentos e Escanteios. Caso esteja procurando uma partida, pode utilizar o filtro abaixo.</p>
 {% set filtered = filters.player or filters.tournament_id or filters.friendlies or filters.date_from or filters.date_to or filters.match_id %}
 {% if filters.match_id %}<p class="muted">Mostrando só a partida escolhida na tabela do campeonato. <a href="{{ url_for('live.index') }}">Ver todas</a></p>{% endif %}
 <section data-live-section>
