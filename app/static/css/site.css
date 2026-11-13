@@ -819,6 +819,8 @@ button.small,.button.small { padding:.4rem .7rem; font-size:.78rem }
    centralizadas na 1ª linha do texto - também quando o texto quebra em mais linhas. */
 input[type=checkbox] { width:1.05rem; height:1.05rem; margin:0; padding:0; flex:none; vertical-align:middle; cursor:pointer }
 .check > input[type=checkbox] { margin-top:calc((1.4em - 1.05rem) / 2) }
+/* E-mail é sempre gravado em minúsculas (accounts.normalize_email): o campo já mostra assim ao digitar. */
+input[type=email] { text-transform:lowercase }
 /* Texto longo sem espaço (nome de ISO, arquivo...): o filtro |fit corta o começo com "…" e
    deixa o fim à vista, numa linha, quando não cabe (padrão dos cards). Rede de segurança: o
    resto do texto dos cards quebra em qualquer ponto em vez de estourar o card. */

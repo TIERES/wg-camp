@@ -4,7 +4,7 @@
   <p>Informe o e-mail do cadastro. Enviaremos o seu usuário e um link para criar uma nova senha.</p>
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>E-mail<input type="email" name="email" autocomplete="email" required></label>
+    <label>E-mail<input type="email" name="email" autocomplete="email" autocapitalize="off" spellcheck="false" required></label>
     <button>Enviar</button>
   </form>
 </section>

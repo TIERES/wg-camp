@@ -17,7 +17,25 @@ from .db import now
 # lista de jogadores separada por vírgula) e só ASCII, para o nick do
 # kailleraclient.dll bater byte a byte com o cadastro.
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_.\-\[\]()!+=~|]{2,31}$")
-EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$")
+# E-mail: gravado e procurado sempre em minúsculas (normalize_email) e
+# conferido por email_error.
+EMAIL_LOCAL_CHAR_RE = re.compile(r"[a-z0-9._%+\-]")
+EMAIL_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9\-]{0,61}[a-z0-9])?$")
+EMAIL_TLD_RE = re.compile(r"^[a-z]{2,24}$")
+# Provedores gratuitos mais usados, pelo nome logo depois do @. Estes só
+# existem com um final: qualquer outro é erro (gmail.com.br, bol.com).
+EMAIL_FIXED_ENDINGS = {"gmail": "com", "googlemail": "com", "icloud": "com", "bol": "com.br", "uol": "com.br"}
+# Estes têm finais por país (hotmail.es, yahoo.com.ar, outlook.pt...): só é
+# erro o final com cara de .com / .com.br mal digitado.
+EMAIL_COUNTRY_ENDINGS = {"hotmail", "outlook", "live", "msn", "yahoo", "ymail", "protonmail"}
+# Nomes em que uma letra errada é erro de digitação (gmial, hotmal, outlok)...
+EMAIL_TYPO_NAMES = ("gmail", "hotmail", "outlook", "yahoo", "icloud", "protonmail")
+# ...menos estes, que são domínios de verdade.
+EMAIL_NOT_TYPOS = {"mail", "email", "ymail", "cloud"}
+# Finais que existem e ficam a uma letra de "com": não são erro de digitação
+# num domínio qualquer (.cam, .bom, .mom; nom.br, cim.br, coz.br).
+EMAIL_REAL_TLDS = {"cam", "bom", "mom"}
+EMAIL_REAL_BR_CATEGORIES = {"nom", "cim", "coz"}
 PASSWORD_MIN = 8
 PASSWORD_MAX = 128
 
@@ -66,9 +84,108 @@ def username_error(username):
     return None
 
 
+def normalize_email(email):
+    """E-mail como é gravado e procurado: sem espaços nas pontas e em minúsculas."""
+    return (email or "").strip().lower()
+
+
+def _near(word, target):
+    """word é target com um erro de digitação - uma letra trocada, faltando ou
+    sobrando, ou duas vizinhas invertidas?"""
+    if word == target or abs(len(word) - len(target)) > 1:
+        return False
+    if len(word) == len(target):
+        diff = [i for i, (a, b) in enumerate(zip(word, target)) if a != b]
+        return len(diff) == 1 or (len(diff) == 2 and diff[1] == diff[0] + 1
+                                  and word[diff[0]] == target[diff[1]] and word[diff[1]] == target[diff[0]])
+    short, longer = sorted((word, target), key=len)
+    return any(longer[:i] + longer[i + 1:] == short for i in range(len(longer)))
+
+
+def _fixed_ending(ending, big_provider):
+    """Final do domínio (as partes depois do nome) com cara de .com ou .com.br
+    mal digitado -> o final certo; senão, o mesmo final. Num domínio qualquer,
+    final de duas letras pode ser de país (.co, .cm) e fica como está."""
+    last = ending[-1]
+    if last == "combr":
+        return ending[:-1] + ["com", "br"]
+    if len(ending) >= 2:
+        before = ending[-2]
+        if last == "br" and _near(before, "com") and before not in EMAIL_REAL_BR_CATEGORIES:
+            return ending[:-2] + ["com", "br"]
+        if before == "com" and _near(last, "br") and len(last) != 2:  # com.ar, com.tr... existem
+            return ending[:-2] + ["com", "br"]
+    if _near(last, "com") and (big_provider or (len(last) != 2 and last not in EMAIL_REAL_TLDS)):
+        return ending[:-1] + ["com"]
+    return ending
+
+
+def _email_provider(name):
+    """Provedor conhecido com esse nome, ou do qual o nome é erro de digitação."""
+    if name in EMAIL_FIXED_ENDINGS or name in EMAIL_COUNTRY_ENDINGS:
+        return name
+    if name in EMAIL_NOT_TYPOS:
+        return None
+    return next((known for known in EMAIL_TYPO_NAMES if _near(name, known)), None)
+
+
+def _fixed_domain(labels):
+    """Partes do domínio sem os erros de digitação reconhecidos (as mesmas
+    quando não há o que corrigir); None quando falta o final (nome@gmail)."""
+    name, ending = labels[0], labels[1:]
+    if not ending:
+        # Sem ponto: "gmail", "gmailcom", "hotmailcombr".
+        for glued in ("combr", "com"):
+            if name.endswith(glued) and _email_provider(name[:-len(glued)]):
+                name, ending = name[:-len(glued)], (["com", "br"] if glued == "combr" else ["com"])
+                break
+    provider = _email_provider(name)
+    if provider in EMAIL_FIXED_ENDINGS:
+        return [provider] + EMAIL_FIXED_ENDINGS[provider].split(".")
+    if provider:
+        return [provider] + (_fixed_ending(ending, True) if ending else ["com"])
+    return [name] + _fixed_ending(ending, False) if ending else None
+
+
 def email_error(email):
-    if not EMAIL_RE.match(email or "") or len(email) > 254:
-        return "Informe um e-mail válido."
+    """Erro do e-mail (já passado por normalize_email), dizendo o que está
+    errado, ou None. Além do formato, pega o que mais faz o link de confirmação
+    nunca chegar: domínio dos provedores gratuitos mal digitado (gmial.com,
+    hotmail.con, gmail.com.br), com a sugestão do endereço certo."""
+    email = email or ""
+    if not email:
+        return "Informe o e-mail."
+    if any(ch.isspace() for ch in email):
+        return "O e-mail não pode ter espaços."
+    if email != email.lower():
+        return "Use apenas letras minúsculas no e-mail."
+    local, at, domain = email.partition("@")
+    if not at or not local or not domain or "@" in domain or len(local) > 64 or len(email) > 254:
+        return "Informe um e-mail válido, como nome@gmail.com."
+    if any(ord(ch) > 127 for ch in email):
+        return "O e-mail não pode ter acentos nem ç."
+    bad = "".join(sorted({ch for ch in local if not EMAIL_LOCAL_CHAR_RE.match(ch)}))
+    if bad:
+        return f"O e-mail tem caractere não permitido antes do @ ({bad})."
+    if local.startswith(".") or local.endswith(".") or ".." in local:
+        return "Antes do @, o e-mail não pode começar nem terminar com ponto, nem ter dois pontos seguidos."
+    labels = domain.split(".")
+    if not all(EMAIL_LABEL_RE.match(label) for label in labels):
+        return f"O endereço depois do @ ({domain}) não é válido."
+    fixed = _fixed_domain(labels)
+    if fixed is None:
+        return "Falta o final do e-mail depois do @ (como em gmail.com)."
+    if fixed != labels:
+        return f"\"{domain}\" parece ter erro de digitação. Você quis dizer {local}@{'.'.join(fixed)}?"
+    if not EMAIL_TLD_RE.match(labels[-1]):
+        return f"O endereço depois do @ ({domain}) não é válido."
+    if domain in ("gmail.com", "googlemail.com"):
+        # Regras do Gmail para o nome (o que vem depois de um "+" é livre).
+        user = local.split("+", 1)[0]
+        if not re.fullmatch(r"[a-z0-9.]+", user):
+            return "No Gmail, antes do @ só há letras, números e pontos (não existe _ nem -). Confira o seu e-mail."
+        if len(user) < 6 or len(user.replace(".", "")) > 30:
+            return "No Gmail, o nome antes do @ tem de 6 a 30 caracteres. Confira o seu e-mail."
     return None
 
 
