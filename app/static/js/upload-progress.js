@@ -4,7 +4,8 @@
 // redirect, ou o formulário com o erro) substitui a página atual.
 (function () {
   document.querySelectorAll('form[data-upload]').forEach(function (form) {
-    var input = form.querySelector('input[type=file]');
+    // O arquivo da ISO (o formulário pode ter também a imagem dela).
+    var input = form.querySelector('input[type=file][name=iso]') || form.querySelector('input[type=file]');
     var box = form.querySelector('.upload-progress');
     var max = Number(form.dataset.upload);
     form.addEventListener('submit', function (e) {

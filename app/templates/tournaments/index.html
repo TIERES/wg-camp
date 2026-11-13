@@ -34,7 +34,7 @@
 {% call carousel('Campeonatos anteriores', 'Próximos campeonatos', 't-cards per-3', fit=false) %}
   {% for t in tournaments %}
   {% set own = session.player_id and t.organizer_id == session.player_id %}
-  {% set manageable = own or session.user_id %}{% set iso_ok = t.id in iso_ready %}
+  {% set manageable = own or session.user_id %}{% set helps = not manageable and t.id in helping %}{% set iso_ok = t.id in iso_ready %}
   <div class="t-card">
     <div class="t-side">
       <div class="t-side-images">
@@ -43,7 +43,7 @@
       </div>
     </div>
     <div class="t-body">
-      <span class="t-badges"><span class="badge status-{{ t.status }}">{{ status_labels[t.status] }}</span>{% if t.friends_only %}<span class="badge friends-only" title="Campeonato privado: só os amigos de quem criou se inscrevem">Somente amigos</span>{% endif %}</span>
+      <span class="t-badges"><span class="badge status-{{ t.status }}">{{ status_labels[t.status] }}</span>{% if t.friends_only %}<span class="badge friends-only" title="Campeonato privado: só os amigos de quem criou se inscrevem">Somente amigos</span>{% endif %}{% if t.id in pending_changes %}<span class="badge iso-revision" title="Alteração nos dados, na imagem ou na ISO esperando a confirmação de outro responsável">{{ 'Confirme a alteração' if pending_changes[t.id] == 'confirm' else 'Alteração em análise' }}</span>{% endif %}</span>
       <strong class="t-name">{{ t.name }}</strong>
       <span class="muted">{{ t.game_name }} · {{ format_labels[t.format] }}</span>
       <span class="t-meta">
@@ -51,12 +51,14 @@
         <span>Inscrição: {{ t.entry_fee_cents|wcash if t.entry_fee_cents else 'grátis' }}</span>
         {% if t.starts_on %}<span>{{ t.starts_on|date_br }}{% if t.ends_on %} a {{ t.ends_on|date_br }}{% endif %}</span>{% endif %}
       </span>
-      <small class="muted">{% if own %}Criado por você{% else %}Organizado por {{ t.organizer_name }}{% endif %}</small>
+      <small class="muted">{% if own %}Criado por você{% else %}Organizado por {{ t.organizer_name }}{% endif %}{% if helps %} · você ajuda a editar{% endif %}</small>
     </div>
-    {% if iso_ok or manageable %}
+    {% if iso_ok or manageable or helps %}
     <div class="t-foot">
       {% if iso_ok %}<a class="button secondary" href="{{ url_for('tournaments.iso_download', slug=t.slug) }}" title="Baixar {{ t.iso_name }}">Download ISO</a>{% endif %}
-      {% if manageable %}<a class="button" href="{{ url_for('tournaments.manage', slug=t.slug) }}">Gerenciar</a>{% endif %}
+      {% set anchor = 'alteracao' if t.id in pending_changes else None %}
+      {% if manageable %}<a class="button" href="{{ url_for('tournaments.manage', slug=t.slug, _anchor=anchor) }}">Gerenciar</a>
+      {% elif helps %}<a class="button" href="{{ url_for('tournaments.manage', slug=t.slug, _anchor=anchor) }}" title="Você ajuda a editar os dados, a imagem e a ISO deste campeonato">Editar</a>{% endif %}
     </div>
     {% endif %}
     <a class="t-link" href="{{ url_for('tournaments.show', slug=t.slug) }}" aria-label="{{ t.name }}"></a>

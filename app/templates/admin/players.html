@@ -1,5 +1,14 @@
-{% extends 'base.html' %}{% from '_carousel.html' import carousel, list_note %}{% from '_icons.html' import icon %}{% block title %}Jogadores · Administração{% endblock %}{% block content %}
-<div class="page-title"><h1>Jogadores cadastrados</h1><a href="{{ url_for('admin.games_list') }}">Jogos do Memory Card</a></div>
+{% extends 'base.html' %}{% from '_carousel.html' import carousel, list_note %}{% from '_icons.html' import icon %}{% from '_dialog.html' import info_button, info_dialog %}{% from '_password.html' import password_toggle %}{% block title %}Jogadores · Administração{% endblock %}{% block content %}
+<div class="page-title"><h1 class="title-info">Jogadores cadastrados {{ info_button('jogadores-regras', 'Cadastros não confirmados') }}</h1><a href="{{ url_for('admin.games_list') }}">Jogos do Memory Card</a></div>
+{% call info_dialog('jogadores-regras', 'Cadastros não confirmados') %}
+  <ul>
+    <li>Quem se cadastra só entra no site depois de abrir o link de confirmação enviado por e-mail (vale por {{ reserve_hours }} h).</li>
+    <li>Enquanto isso, o <strong>nick e o e-mail ficam reservados por {{ reserve_hours }} h</strong>, contadas do cadastro ou do último link reenviado. Passado esse prazo, um novo cadastro com o mesmo nick (ou e-mail) é aceito e apaga o pendente sozinho.</li>
+    <li><strong>Editar</strong> corrige o e-mail digitado errado (num cadastro pendente, o link de confirmação vai para o e-mail novo) e define uma nova senha. A senha não vai por e-mail: o jogador recebe só o aviso de que ela foi trocada, e você passa a senha para ele.</li>
+    <li><strong>Reenviar confirmação</strong> manda um link novo e renova a reserva por mais {{ reserve_hours }} h.</li>
+    <li><strong>Excluir</strong> apaga um cadastro pendente na hora, liberando o nick e o e-mail sem esperar o prazo.</li>
+  </ul>
+{% endcall %}
 <form method="get" class="live-filters">
   <label class="filter-wide">Nick ou e-mail<input name="nome" value="{{ filters.name }}"></label>
   <label>Confirmado<select name="confirmado"><option value="">Todos</option><option value="sim" {% if filters.status == 'sim' %}selected{% endif %}>Sim</option><option value="nao" {% if filters.status == 'nao' %}selected{% endif %}>Não</option></select></label>
@@ -16,10 +25,71 @@
       <span class="t-meta"><span>{{ icon('disk') }}{{ player.cards }} Memory Card{{ 's' if player.cards != 1 }}</span></span>
       <span class="t-meta"><span>{{ icon('calendar') }}Cadastro {{ player.created_at|localtime }}</span></span>
       <span class="t-meta"><span>{{ icon('login') }}Último acesso {{ player.last_login_at|localtime if player.last_login_at else '—' }}</span></span>
+      {% if not player.email_verified_at %}
+      <span class="t-meta player-reserve"><span>{{ icon('clock') }}{% if reserved[player.id] %}Nick reservado até {{ reserved[player.id]|localtime('%d-%m-%Y %H:%M') }}{% else %}Nick livre para um novo cadastro{% endif %}</span></span>
+      {% endif %}
     </span>
+    <div class="t-foot player-actions">
+      <button type="button" class="secondary icon-button" data-dialog="jogador-editar" aria-haspopup="dialog" data-player-edit="{{ url_for('admin.player_edit', player_id=player.id) }}" data-nick="{{ player.username }}" data-email="{{ player.email }}" data-pending="{{ '' if player.email_verified_at else '1' }}">{{ icon('edit') }}Editar</button>
+      {% if not player.email_verified_at %}
+      <form method="post" action="{{ url_for('admin.player_resend', player_id=player.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="voltar" value="{{ request.full_path }}"><button class="secondary icon-button">{{ icon('mail') }}Reenviar confirmação</button></form>
+      <button type="button" class="danger icon-button" data-dialog="jogador-excluir" aria-haspopup="dialog" data-player-delete="{{ url_for('admin.player_delete', player_id=player.id) }}" data-nick="{{ player.username }}" data-email="{{ player.email }}">{{ icon('trash') }}Excluir</button>
+      {% endif %}
+    </div>
   </div>
   {% endfor %}
 {% endcall %}
 {% endif %}
 {{ list_note(players|length, total, 'jogadores', filtered) }}
+
+{# As janelas de Editar e Excluir, uma para a lista toda: o botão de cada card preenche (script abaixo). #}
+<dialog class="form-dialog" id="jogador-editar" aria-labelledby="jogador-editar-title">
+  <form method="post" action="" class="form-dialog-body">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="voltar" value="{{ request.full_path }}">
+    <h2 id="jogador-editar-title">Editar o jogador</h2>
+    <label>E-mail<input type="email" name="email" required maxlength="254" autocomplete="off" spellcheck="false"></label>
+    <small class="muted" data-fill="email-note"></small>
+    <label>Nova senha (opcional)
+      <span class="input-icon">{{ icon('lock') }}<input type="password" name="password" minlength="8" maxlength="128" autocomplete="new-password" placeholder="Em branco: a senha continua a mesma">{{ password_toggle() }}</span>
+    </label>
+    <small class="muted">Mínimo de 8 caracteres. A senha não vai por e-mail: o jogador recebe só o aviso de que ela foi trocada, e você passa a senha nova para ele. As conexões do RetroArch TIERES dele caem e precisam entrar de novo.</small>
+    <div class="card-actions dialog-actions"><button type="button" class="secondary" data-dialog-close>Voltar</button><button>Salvar</button></div>
+  </form>
+</dialog>
+<dialog class="form-dialog" id="jogador-excluir" aria-labelledby="jogador-excluir-title">
+  <form method="post" action="" class="form-dialog-body">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="voltar" value="{{ request.full_path }}">
+    <h2 id="jogador-excluir-title">Excluir o cadastro?</h2>
+    <p data-fill="note"></p>
+    <div class="card-actions dialog-actions"><button type="button" class="secondary" data-dialog-close>Voltar</button><button class="danger">Excluir cadastro</button></div>
+  </form>
+</dialog>
+<script>
+(function () {
+  // O botão do card preenche a janela antes de o dialogs.js abri-la (o clique chega nele primeiro).
+  var edit = document.getElementById('jogador-editar'), remove = document.getElementById('jogador-excluir');
+  document.querySelectorAll('[data-player-edit]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var form = edit.querySelector('form'), data = button.dataset;
+      form.reset();
+      form.action = data.playerEdit;
+      form.elements.email.value = data.email;
+      form.elements.password.type = 'password';
+      edit.querySelector('h2').textContent = 'Editar ' + data.nick;
+      edit.querySelector('[data-fill=email-note]').textContent = data.pending
+        ? data.nick + ' ainda não confirmou o cadastro: mudando o e-mail, o link de confirmação vai para o e-mail novo (e o do e-mail antigo deixa de valer).'
+        : data.nick + ' já confirmou o cadastro: mudando o e-mail, ele recebe um aviso no e-mail novo, que passa a ser o da recuperação de senha.';
+    });
+  });
+  document.querySelectorAll('[data-player-delete]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var data = button.dataset;
+      remove.querySelector('form').action = data.playerDelete;
+      remove.querySelector('h2').textContent = 'Excluir o cadastro de ' + data.nick + '?';
+      remove.querySelector('[data-fill=note]').textContent = data.nick + ' ainda não confirmou o cadastro. O nick ' + data.nick
+        + ' e o e-mail ' + data.email + ' ficam livres para um novo cadastro na hora. Não dá para desfazer.';
+    });
+  });
+})();
+</script>
 {% endblock %}

@@ -1,0 +1,102 @@
+{% extends 'base.html' %}{% from '_avatar.html' import avatar_button %}{% from '_share.html' import share_tags, share_button %}{% from '_dialog.html' import form_dialog %}{% from '_icons.html' import icon %}{% from 'tournaments/_changes.html' import change_list %}
+{# A página de uma ISO dos amistosos (tournaments.iso_page), com o link para compartilhar:
+   as imagens - a da ISO no maior tamanho que couber, a capa do jogo base ao lado do nome -,
+   as informações e o download, só para quem está logado. Os responsáveis (quem enviou e os
+   ajudantes) veem aqui a alteração que espera confirmação, com o antes e o depois. #}
+{% block title %}{{ iso.name }} · ISO · WE Camp{% endblock %}{% block share %}{{ share_tags(share) }}{% endblock %}{% block content %}
+{% set public = iso.approved_at and iso.is_active %}
+{% set logged = session.player_id or session.user_id %}
+{% if not public %}
+<p class="notice">{% if not iso.approved_at %}Esta ISO ainda aguarda a liberação da administração do WE Camp: por enquanto só os responsáveis por ela veem esta página.{% else %}Esta ISO está desativada: só os responsáveis por ela e a administração veem esta página.{% endif %}</p>
+{% endif %}
+
+{% if iso.rev_id and (responsible or session.user_id) %}
+<section class="change-box" id="alteracao">
+  <h2>{{ icon('edit') }}Alteração esperando {{ 'o arquivo novo' if iso.rev_approved_at else 'confirmação' }}</h2>
+  <p>{{ 'Você alterou' if my_change else (iso.rev_requester_name or 'Um responsável') ~ ' alterou' }} esta ISO em {{ iso.rev_submitted_at|localtime('%d/%m/%Y às %H:%M') }}. O que muda (antes → depois):</p>
+  {{ change_list(changes) }}
+  <p class="muted">{% if iso.rev_approved_at %}{{ 'Confirmada por outro responsável' if iso.rev_confirmed_by else 'Aprovada pela administração' }}: entra no lugar da versão atual assim que o arquivo novo terminar de ir para o archive.org.
+    {% elif can_confirm %}Se você confirmar, a alteração entra no lugar da versão atual. Sem confirmação, vale a aprovação da administração do WE Camp ou, sem resposta, a automática em {{ auto_approve_at|localtime('%d/%m/%Y às %H:%M') }}.
+    {% elif my_change %}Ela entra assim que outro responsável confirmar ou a administração do WE Camp aprovar; sem resposta, é aprovada automaticamente em {{ auto_approve_at|localtime('%d/%m/%Y às %H:%M') }}. Até lá, os amistosos usam a versão atual.
+    {% else %}Até a aprovação, os amistosos usam a versão atual. Sem resposta, é aprovada automaticamente em {{ auto_approve_at|localtime('%d/%m/%Y às %H:%M') }}.{% endif %}</p>
+  {% if iso.rev_stored_name %}<div class="archive-progress" data-archive-status="{{ url_for('tournaments.catalog_iso_revision_status', catalog_id=iso.id) }}"></div>{% endif %}
+  <div class="card-actions change-actions">
+    {% if can_confirm %}
+    <form method="post" action="{{ url_for('tournaments.iso_change_action', catalog_id=iso.id, acao='confirmar') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Confirmar alteração</button></form>
+    <button type="button" class="danger" data-dialog="recusar-alteracao" aria-haspopup="dialog">Recusar</button>
+    {% endif %}
+    {% if my_change and not iso.rev_approved_at %}<button type="button" class="secondary" data-dialog="cancelar-alteracao" aria-haspopup="dialog">Cancelar alteração</button>{% endif %}
+    {% if iso.rev_stored_name and responsible %}<a href="{{ url_for('tournaments.iso_change_file', catalog_id=iso.id) }}">Baixar o arquivo novo</a>{% endif %}
+    {% if session.user_id %}<a class="button secondary" href="{{ url_for('tournaments_admin.admin_iso_edit', catalog_id=iso.id, _anchor='alteracao') }}">Abrir na administração</a>{% endif %}
+  </div>
+</section>
+{% if can_confirm %}
+{% call form_dialog('recusar-alteracao', url_for('tournaments.iso_change_action', catalog_id=iso.id, acao='recusar'), 'Recusar a alteração?', 'Recusar alteração') %}
+  <p>A ISO <strong>{{ iso.name }}</strong> continua como está{% if iso.rev_stored_name %} e o arquivo novo enviado é apagado{% endif %}. {{ iso.rev_requester_name or 'Quem fez a alteração' }} recebe um e-mail.</p>
+  <label>Motivo (opcional, vai no e-mail)<input name="motivo" maxlength="300"></label>
+{% endcall %}
+{% endif %}
+{% if my_change and not iso.rev_approved_at %}
+{% call form_dialog('cancelar-alteracao', url_for('tournaments.friendly_iso_edit_cancel', catalog_id=iso.id), 'Cancelar a alteração?', 'Cancelar alteração', back=url_for('tournaments.iso_page', catalog_id=iso.id)) %}
+  <p>A ISO <strong>{{ iso.name }}</strong> continua como está{% if iso.rev_stored_name %} e o arquivo novo enviado é apagado{% endif %}.</p>
+{% endcall %}
+{% endif %}
+{% endif %}
+
+<article class="iso-page{% if not iso.image %} no-image{% endif %}">
+  <div class="iso-page-media">
+    {% if iso.image %}
+    <a class="iso-page-image" href="{{ image_url('torneio', iso.image) }}" target="_blank" rel="noopener" title="Abrir a imagem inteira"><img class="t-image" src="{{ image_url('torneio', iso.image) }}" alt="Imagem da ISO {{ iso.name }}"></a>
+    {% else %}
+    <img class="iso-page-cover-big" src="{{ game_cover(iso.game_code) }}" alt="{{ iso.game_name }}" width="200" height="250">
+    {% endif %}
+  </div>
+  <div class="iso-page-info">
+    <div class="iso-page-head">
+      {% if iso.image %}<img class="iso-page-cover" src="{{ game_cover(iso.game_code) }}" alt="{{ iso.game_name }}" width="200" height="250">{% endif %}
+      <div>
+        <span class="t-badges"><span class="badge iso-catalog">ISO do WE Camp</span>{% if not iso.approved_at %}<span class="badge iso-pending">Aguardando liberação</span>{% elif not iso.is_active %}<span class="badge iso-pending">Desativada</span>{% endif %}</span>
+        {# O botão de compartilhar vai colado na última palavra do nome, como no campeonato. #}
+        {% set words = iso.name.split() %}
+        <h1>{{ words[:-1]|join(' ') }} <span class="t-title-end">{{ words[-1] }} {{ share_button(share.url, 'Compartilhar a ISO (copia o link)', 'Link da ISO copiado, você pode compartilhar utilizando o CTRL + V!') }}</span></h1>
+        <p class="muted">{{ iso.game_name }} · para os amistosos do WE Camp</p>
+      </div>
+    </div>
+
+    <div class="iso-download">
+      {% if logged %}
+        {% if ready %}
+        <a class="button iso-download-button" href="{{ url_for('tournaments.iso_page_download', catalog_id=iso.id) }}">{{ icon('download') }}Baixar a ISO</a>
+        <small class="iso-file">{{ filename }}{% if file_size %} · {{ file_size|filesize }}{% endif %}</small>
+        {% else %}
+        <p class="muted">A ISO está sendo enviada para o archive.org: o download fica disponível em alguns minutos.</p>
+        {% endif %}
+      {% else %}
+        <a class="button iso-download-button" href="{{ url_for('players.login', next=request.path) }}">{{ icon('login') }}Entre para baixar a ISO</a>
+        <small>O download é só para jogadores cadastrados. Ainda não tem conta? <a href="{{ url_for('players.register') }}">Cadastre-se</a>, é grátis.</small>
+      {% endif %}
+    </div>
+
+    <section class="t-info iso-page-data">
+      <dl>
+        <dt>Jogo base</dt><dd>{{ iso.game_name }}</dd>
+        <dt>Arquivo</dt><dd class="iso-file">{{ filename or '-' }}{% if file_size %} <small>({{ file_size|filesize }})</small>{% endif %}</dd>
+        <dt>Enviada por</dt><dd>{% if iso.requested_by %}<span class="with-avatar">{{ avatar_button(iso.requested_by, iso.requester_name) }}<span>{{ iso.requester_name }}</span></span>{% else %}Administração do WE Camp{% endif %}</dd>
+        {% if helpers %}<dt>{{ 'Ajudante' if helpers|length == 1 else 'Ajudantes' }}</dt><dd class="iso-page-helpers">{% for p in helpers %}<span class="with-avatar">{{ avatar_button(p.id, p.username) }}<span>{{ p.username }}</span></span>{% endfor %}</dd>{% endif %}
+        {% if iso.approved_at %}<dt>Liberada em</dt><dd>{{ iso.approved_at|localtime('%d/%m/%Y') }}</dd>{% endif %}
+        {% if iso.updated_at and iso.approved_at and iso.updated_at[:10] != iso.approved_at[:10] %}<dt>Atualizada em</dt><dd>{{ iso.updated_at|localtime('%d/%m/%Y') }}</dd>{% endif %}
+      </dl>
+    </section>
+
+    <div class="t-actions">
+      {% if session.player_id and public %}<a class="button secondary" href="{{ url_for('tournaments.friendlies', iso='c:%d' % iso.id) }}">Chamar um amigo para um amistoso com esta ISO</a>{% endif %}
+      {% if responsible %}<a class="button secondary icon-button" href="{{ url_for('tournaments.friendlies', _anchor='minhas-isos') }}">{{ icon('edit') }}Editar em Minhas ISOs</a>{% endif %}
+      {% if session.user_id %}<a class="button secondary icon-button" href="{{ url_for('tournaments_admin.admin_iso_edit', catalog_id=iso.id) }}">{{ icon('edit') }}Editar na administração</a>{% endif %}
+    </div>
+  </div>
+</article>
+<script src="{{ url_for('static', filename='js/archive-progress.js') }}"></script>
+{# Responsável (ou administração) abrindo a página de uma ISO com imagem e ainda sem o cartão do
+   link compartilhado: o navegador monta e envia (static/js/share-image.js, tournaments.iso_share_image). #}
+{% if can_card and iso.image and not iso.share_image %}<script src="{{ url_for('static', filename='js/share-image.js', v='20261112a') }}" data-image="{{ image_url('torneio', iso.image) }}" data-origin="{{ iso.image }}" data-post="{{ url_for('tournaments.iso_share_image', catalog_id=iso.id) }}" data-csrf="{{ csrf_token() }}" defer></script>{% endif %}
+{% endblock %}

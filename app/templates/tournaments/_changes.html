@@ -1,0 +1,28 @@
+{# O antes e o depois de uma alteração que espera confirmação:
+   [{"field", "label", "before", "after"}] - iso_catalog.pending_changes (ISO dos
+   amistosos) e changes.diff (campeonato). Imagem: as duas miniaturas (before/after são
+   os nomes dos arquivos; "" = sem imagem). Texto longo ou de várias linhas (o
+   regulamento): os dois blocos, um embaixo do outro. #}
+{% macro change_list(changes, cls='') -%}
+<ul class="change-list{% if cls %} {{ cls }}{% endif %}">
+  {% for c in changes %}
+  <li class="change-item change-{{ c.field }}">
+    <span class="change-label">{{ c.label }}</span>
+    {% if c.field == 'image' %}
+    <span class="change-values change-images">
+      {% if c.before %}<a href="{{ image_url('torneio', c.before) }}" target="_blank" rel="noopener" title="Imagem atual"><img class="change-thumb t-image" src="{{ image_url('torneio', c.before) }}" alt="Imagem atual" loading="lazy"></a>{% else %}<span class="muted">sem imagem</span>{% endif %}
+      <span class="change-arrow" aria-label="passa a ser">→</span>
+      {% if c.after %}<a href="{{ image_url('torneio', c.after) }}" target="_blank" rel="noopener" title="Imagem nova"><img class="change-thumb t-image" src="{{ image_url('torneio', c.after) }}" alt="Imagem nova" loading="lazy"></a>{% else %}<strong>sem imagem</strong>{% endif %}
+    </span>
+    {% elif '\n' in (c.before ~ c.after) or (c.before ~ c.after)|length > 110 %}
+    <span class="change-values change-long">
+      <span class="change-block"><small class="muted">Antes</small><span class="change-text">{{ c.before or '-' }}</span></span>
+      <span class="change-block"><small class="muted">Depois</small><strong class="change-text">{{ c.after or '-' }}</strong></span>
+    </span>
+    {% else %}
+    <span class="change-values"><span class="change-before">{{ c.before }}</span> <span class="change-arrow" aria-label="passa a ser">→</span> <strong>{{ c.after }}</strong></span>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{%- endmacro %}

@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'tournaments/_macros.html' import match_line, status_chip, leg_flip, stage_rounds %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% from '_avatar.html' import avatar_button %}{% from '_carousel.html' import carousel %}{% from '_icons.html' import icon %}{% block title %}Gerenciar {{ t.name }} · Campeonatos WE Camp{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from 'tournaments/_macros.html' import match_line, status_chip, leg_flip, stage_rounds %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% from '_avatar.html' import avatar_button %}{% from '_carousel.html' import carousel %}{% from '_icons.html' import icon %}{% from '_dialog.html' import form_dialog %}{% from '_helpers_picker.html' import helpers_picker, people_line %}{% from 'tournaments/_changes.html' import change_list %}{% block title %}Gerenciar {{ t.name }} · Campeonatos WE Camp{% endblock %}{% block content %}
 {# Formulários de resultado de uma lista de jogos (com ou sem Ida/Volta). #}
 {% macro result_forms(ms) %}{% for m in ms %}{% set shown = m if m.status == 'confirmed' else reported_score(m) %}
     <form method="post" action="{{ url_for('tournaments.result', slug=t.slug, match_id=m.id) }}" class="result-form{% if m.status == 'confirmed' %} done{% endif %}" id="jogo-{{ m.id }}">
@@ -16,8 +16,47 @@
 {% endmacro %}
 
 <div class="page-title"><h1>Gerenciar: {{ t.name }}</h1><a href="{{ url_for('tournaments.show', slug=t.slug) }}">Ver página do campeonato</a></div>
-<p><span class="badge status-{{ t.status }}">{{ status_labels[t.status] }}</span> {% if is_admin and session.player_id != t.organizer_id %}<small class="muted">Você está gerenciando como administração do WE Camp.</small>{% endif %}</p>
+<p><span class="badge status-{{ t.status }}">{{ status_labels[t.status] }}</span> {% if is_admin and session.player_id != t.organizer_id %}<small class="muted">Você está gerenciando como administração do WE Camp.</small>{% elif not full %}<small class="muted">Você ajuda {{ t.organizer_name }} a editar este campeonato: os dados, a imagem e a ISO.</small>{% endif %}</p>
 
+{% if change %}
+{# A alteração de um responsável esperando a confirmação de outro (tournament/changes.py): o antes e o
+   depois, o que acontece com os inscritos ao confirmar e os botões de quem pode agir. #}
+<section class="change-box" id="alteracao">
+  <h2>{{ icon('edit') }}Alteração esperando confirmação</h2>
+  <p>{{ 'Você alterou' if change.mine else (change.row.requester_name or 'Um responsável') ~ ' alterou' }} este campeonato em {{ change.row.submitted_at|localtime('%d/%m/%Y às %H:%M') }}. O que muda (antes → depois):</p>
+  {{ change_list(change.diff) }}
+  {% if change.preview.error %}<p class="notice error">Do jeito que está, a alteração não pode ser confirmada: {{ change.preview.error }}</p>{% endif %}
+  {% if change.preview.effects %}
+  <div><strong>Ao confirmar:</strong>
+    <ul class="change-effects">{% for effect in change.preview.effects %}<li>{{ effect }}</li>{% endfor %}</ul>
+    <small class="muted">Todos são avisados por e-mail.</small></div>
+  {% endif %}
+  <p class="muted">{% if change.can_confirm and not change.mine %}Se você confirmar, a alteração entra na hora. Até lá, o campeonato continua como está.
+    {% elif change.can_confirm %}Não há mais outro responsável para confirmar: você mesmo pode confirmar a alteração.
+    {% else %}Ela entra quando outro responsável confirmar{% if change.waiting %} ({{ change.waiting|join(', ') }}){% endif %}: ele recebeu o e-mail com o antes e o depois. Até lá, o campeonato continua como está.{% endif %}</p>
+  <div class="card-actions change-actions">
+    {% if change.can_confirm %}
+    <form method="post" action="{{ url_for('tournaments.change_action', slug=t.slug, acao='confirmar') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Confirmar alteração</button></form>
+    {% if not change.mine %}<button type="button" class="danger" data-dialog="recusar-alteracao" aria-haspopup="dialog">Recusar</button>{% endif %}
+    {% endif %}
+    {% if change.mine %}<button type="button" class="secondary" data-dialog="cancelar-alteracao" aria-haspopup="dialog">Cancelar alteração</button>{% endif %}
+    {% if change.row.stored_name %}<a href="{{ url_for('tournaments.change_file', slug=t.slug) }}">Baixar a ISO nova</a>{% endif %}
+  </div>
+</section>
+{% if change.can_confirm and not change.mine %}
+{% call form_dialog('recusar-alteracao', url_for('tournaments.change_action', slug=t.slug, acao='recusar'), 'Recusar a alteração?', 'Recusar alteração') %}
+  <p>O campeonato continua como está{% if change.row.stored_name %} e a ISO nova enviada é apagada{% endif %}. {{ change.row.requester_name or 'Quem fez a alteração' }} recebe um e-mail.</p>
+  <label>Motivo (opcional, vai no e-mail)<input name="motivo" maxlength="300"></label>
+{% endcall %}
+{% endif %}
+{% if change.mine %}
+{% call form_dialog('cancelar-alteracao', url_for('tournaments.change_action', slug=t.slug, acao='cancelar'), 'Cancelar a alteração?', 'Cancelar alteração') %}
+  <p>O campeonato continua como está{% if change.row.stored_name %} e a ISO nova enviada é apagada{% endif %}.</p>
+{% endcall %}
+{% endif %}
+{% endif %}
+
+{% if full %}
 <section class="manage-actions">
   {% if t.status == 'registration' %}
     <form method="post" action="{{ url_for('tournaments.start', slug=t.slug) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -100,12 +139,32 @@
   </form>
 </section>
 {% endif %}
+{% endif %}{# full #}
+
+{% if t.status != 'cancelled' %}
+{# Ajudantes (tournament/editors.py): quem criou escolhe; o ajudante só vê quem são os responsáveis. #}
+<section id="ajudantes">
+  <h2>Ajudantes</h2>
+  {% if full %}
+  <p class="muted">Amigos {{ 'seus' if session.player_id == t.organizer_id else 'de ' ~ t.organizer_name }} que ajudam a editar os dados, a imagem e a ISO do campeonato; o resto do Gerenciar continua só com quem criou. Com ajudantes, o que um responsável alterar só entra depois que outro responsável confirmar: ele recebe um e-mail com o antes e o depois.</p>
+  <form method="post" action="{{ url_for('tournaments.helpers_save', slug=t.slug) }}" class="form helpers-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {{ helpers_picker(helper_options, helpers, field_id='t-ajudantes', max=max_helpers, label='Amigos que ajudam a editar') }}
+    <div class="card-actions"><button>Salvar ajudantes</button></div>
+  </form>
+  {% else %}
+  <p>Responsáveis por este campeonato: {{ people_line(t.organizer_name, helpers, 'criou') }}.</p>
+  <p class="muted">O que um responsável alterar nos dados, na imagem ou na ISO só entra depois que outro responsável confirmar: ele recebe um e-mail com o antes e o depois.</p>
+  {% endif %}
+</section>
+{% endif %}
 
 {% if editing %}
 {# Antes do início: o formulário de criar com os dados atuais (tournaments.edit / store.update_before_start). #}
 <section id="dados">
   <h2>Dados do campeonato</h2>
   <p class="muted">Até o início do campeonato dá para mudar tudo o que foi escolhido ao criar. Depois que ele começar, só o nome, as datas e o regulamento.</p>
+  {% if needs_confirmation %}<p class="notice helper-note">Este campeonato tem ajudantes: o que você salvar fica guardado até outro responsável confirmar.{% if change and change.row.values_json %} O formulário já está com os dados da alteração que espera confirmação.{% endif %}</p>{% endif %}
   <form method="post" action="{{ url_for('tournaments.edit', slug=t.slug) }}" class="form t-form" id="edit-tournament">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <p class="muted">Os campos com <span class="req">*</span> são obrigatórios.</p>
@@ -116,15 +175,16 @@
 {% elif t.status not in ('finished', 'cancelled') %}
 <section id="dados">
   <h2>Dados do campeonato</h2>
+  {% if needs_confirmation %}<p class="notice helper-note">Este campeonato tem ajudantes: o que você salvar fica guardado até outro responsável confirmar.{% if change and change.row.values_json %} O formulário já está com os dados da alteração que espera confirmação.{% endif %}</p>{% endif %}
   <form method="post" action="{{ url_for('tournaments.edit', slug=t.slug) }}" class="form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="form-row">
-      <label class="wide">Nome<input name="name" value="{{ t.name }}" maxlength="80" minlength="3" required></label>
-      <label>Início provável<input type="date" name="starts_on" value="{{ t.starts_on or '' }}"></label>
-      <label>Fim provável<input type="date" name="ends_on" value="{{ t.ends_on or '' }}"></label>
+      <label class="wide">Nome<input name="name" value="{{ basic.name }}" maxlength="80" minlength="3" required></label>
+      <label>Início provável<input type="date" name="starts_on" value="{{ basic.starts_on or '' }}"></label>
+      <label>Fim provável<input type="date" name="ends_on" value="{{ basic.ends_on or '' }}"></label>
     </div>
-    <label>Regulamento / observações<textarea name="rules" rows="5" maxlength="5000">{{ t.rules }}</textarea></label>
-    <label class="check"><input type="checkbox" name="friends_only" {% if t.friends_only %}checked{% endif %}> <span><strong>Somente para amigos</strong> <small class="muted">— campeonato privado: fora das listas para quem não é amigo de quem criou, e só os amigos se inscrevem (quem já está inscrito continua). Quem recebe o link vê os dados do campeonato, sem poder se inscrever.</small></span></label>
+    <label>Regulamento / observações<textarea name="rules" rows="5" maxlength="5000">{{ basic.rules }}</textarea></label>
+    <label class="check"><input type="checkbox" name="friends_only" {% if basic.friends_only %}checked{% endif %}> <span><strong>Somente para amigos</strong> <small class="muted">— campeonato privado: fora das listas para quem não é amigo de quem criou, e só os amigos se inscrevem (quem já está inscrito continua). Quem recebe o link vê os dados do campeonato, sem poder se inscrever.</small></span></label>
     <button>Salvar</button>
   </form>
 </section>
@@ -137,6 +197,7 @@
   <div class="t-image-edit">
     <img id="t-image-preview" class="t-image-thumb" src="{{ image_url('torneio', t.image) or '' }}" alt="" {% if not t.image %}hidden{% endif %}>
     <div>
+      {% if needs_confirmation %}<p class="notice helper-note">Com ajudantes, a imagem nova só entra depois que outro responsável confirmar.</p>{% endif %}
       <p class="muted">Logo ou arte do campeonato; aparece ao lado da capa do jogo na página e nos cards. <strong>Tamanho ideal: 480 × 600 px</strong> (em pé, proporção 4:5, igual à capa); outras proporções aparecem inteiras, com sobra nas laterais ou em cima e embaixo. PNG, JPG ou WebP (PNG/WebP com fundo transparente ficam melhor).</p>
       <form method="post" action="{{ url_for('tournaments.tournament_image', slug=t.slug) }}" enctype="multipart/form-data" class="image-upload-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -155,6 +216,7 @@
 <section id="iso">
   <h2>ISO do campeonato</h2>
   <p class="muted">A ISO do {{ t.game_name }} com o patch deste campeonato. Dá para trocar a qualquer momento.</p>
+  {% if needs_confirmation %}<p class="notice helper-note">Com ajudantes, a ISO nova fica guardada e só substitui a atual depois que outro responsável confirmar.</p>{% endif %}
   {% if iso %}
     <p><strong>{{ iso.original_filename }}</strong> <small>({{ iso.file_size|filesize }})</small><br>
     {% if iso.local_removed_at %}No archive.org: <a href="{{ iso.archive_url }}" rel="noopener">{{ iso.archive_url }}</a>
@@ -180,7 +242,7 @@
 </section>
 {% endif %}
 
-{% if t.status not in ('finished', 'cancelled') %}
+{% if full and t.status not in ('finished', 'cancelled') %}
 {% if t.status != 'running' or is_admin %}
 <section>
   <h2>Cancelar campeonato</h2>
@@ -230,8 +292,9 @@
     } else if (mode === 'free' && before.mode === 'draw' && kept.length) {
       lines.push('- Os ' + kept.length + ' inscrito(s) precisam escolher o nome do seu time.');
     }
+    var when = {{ 'true' if needs_confirmation else 'false' }} ? '\n\nIsso acontece quando outro responsável confirmar a alteração.' : '';
     if (lines.length && !window.confirm(lines.join('\n') + '\n\nQuem sai recebe de volta o valor pago, e todos são '
-        + 'avisados por e-mail. Salvar assim?')) e.preventDefault();
+        + 'avisados por e-mail.' + when + ' Salvar assim?')) e.preventDefault();
   });
 })();
 </script>

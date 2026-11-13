@@ -10,6 +10,10 @@
   - último jogo confirmado: o organizador é avisado para encerrar; sem isso, o torneio
     encerra sozinho (e paga o prêmio) AUTO_FINISH_HOURS depois (tournaments.all_played_at).
 
+  - ajudantes (editors.py): quem entra ou sai dos ajudantes de uma ISO ou de um campeonato
+    é avisado; a alteração feita por um responsável vai para os outros responsáveis com o
+    antes e o depois (change_lines) e o link para confirmar ou recusar.
+
 As mensagens são montadas na requisição (precisam de url_for) e enviadas numa
 thread, para o SMTP não atrasar a página; falha de envio só vai para o log.
 Chame as funções depois do commit da ação.
@@ -344,23 +348,97 @@ def friendly_event(db, friendly, to_id, subject, text):
     _deliver([(to["email"], subject, f"Olá, {to['username']}!\n\n{text}\n{link}\n")])
 
 
+def _image_text(name):
+    return external_url("images.serve", kind="torneio", name=name) if name else "sem imagem"
+
+
+def change_lines(items):
+    """O antes e o depois de uma alteração, para o corpo do e-mail. items:
+    [{"field", "label", "before", "after"}] (iso_catalog._changes, changes.diff).
+    Valor curto: "Nome: antes → depois"; texto longo, de várias linhas ou imagem
+    (o link dela): um bloco com "Antes" e "Depois"."""
+    lines = []
+    for item in items:
+        before, after = item["before"], item["after"]
+        if item["field"] == "image":
+            before, after = _image_text(before), _image_text(after)
+        if "\n" in before + after or len(before) + len(after) > 90:
+            lines.append(f"  {item['label']}:")
+            for title, text in (("Antes", before), ("Depois", after)):
+                lines.append(f"    {title}:")
+                lines += [f"      {line}" for line in (text or "-").splitlines()]
+        else:
+            lines.append(f"  {item['label']}: {before} → {after}")
+    return "\n".join(lines)
+
+
+def _names(people):
+    return ", ".join(p["username"] for p in people)
+
+
+def _player(db, player_id):
+    return db.execute("SELECT id, username, email FROM players WHERE id = ?", (player_id,)).fetchone() \
+        if player_id else None
+
+
+def helpers_changed(db, kind, row, by_id, added, removed):
+    """Quem entrou ou saiu dos ajudantes de uma ISO (kind "iso", row de
+    catalog_isos) ou de um campeonato (kind "tournament"): cada um é avisado."""
+    if not added and not removed:
+        return
+    by = _player(db, by_id)
+    who = by["username"] if by else "A administração do WE Camp"
+    if kind == "iso":
+        what, link = f"da ISO \"{row['name']}\"", external_url("tournaments.friendlies") + "#minhas-isos"
+        can = ("Agora você pode editar o nome, o jogo base e a imagem dessa ISO e enviar um arquivo novo, em "
+               "Amistosos > Minhas ISOs:")
+    else:
+        what, link = f"do campeonato \"{row['name']}\"", external_url("tournaments.manage", slug=row["slug"])
+        can = "Agora você pode editar os dados, a imagem e a ISO desse campeonato:"
+    messages = [(p["email"], f"{who} adicionou você como ajudante {what}", (
+        f"Olá, {p['username']}!\n\n{who} adicionou você como ajudante {what}. {can}\n{link}\n\n"
+        "O que um responsável altera é confirmado por outro responsável: você recebe um e-mail com o antes e o "
+        "depois de cada alteração para confirmar.\n")) for p in added]
+    messages += [(p["email"], f"Você não é mais ajudante {what}", (
+        f"Olá, {p['username']}!\n\n{who} tirou você dos ajudantes {what}.\n")) for p in removed]
+    _deliver(messages)
+
+
 def iso_request(db, row):
     """ISO enviada por um jogador: a administração confere e libera."""
+    from . import editors
     link = external_url("tournaments_admin.admin_iso_edit", catalog_id=row["id"])
+    helpers = editors.helpers(db, "iso", row["id"])
+    extra = (f"Imagem: {_image_text(row['image'])}\n" if row["image"] else "") + (
+        f"Ajudantes: {_names(helpers)}\n" if helpers else "")
+    check = "Confira o nome, o jogo base e a imagem" if row["image"] else "Confira o nome, o jogo base, cadastre a imagem"
     _deliver([(email, f"{row['requester_name']} enviou uma ISO para liberar", (
         f"{row['requester_name']} ({row['requester_email']}) enviou uma ISO para os amistosos:\n\n"
-        f"Nome: {row['name']}\nJogo base: {row['game_name']}\nArquivo: {row['original_filename']}\n\n"
-        f"Confira o nome, o jogo base, cadastre a imagem e libere em:\n{link}\n")) for email in admin_emails(db)])
+        f"Nome: {row['name']}\nJogo base: {row['game_name']}\nArquivo: {row['original_filename']}\n{extra}\n"
+        f"{check} e libere em:\n{link}\n")) for email in admin_emails(db)])
+
+
+def _iso_people(db, row, *extra_ids):
+    """Os responsáveis pela ISO (quem enviou e os ajudantes) e mais quem vier em
+    extra_ids (quem fez a alteração, se já não é mais responsável), sem repetir."""
+    from . import iso_catalog
+    people = {p["id"]: p for p in iso_catalog.responsible(db, row)}
+    for player_id in extra_ids:
+        player = _player(db, player_id) if player_id and player_id not in people else None
+        if player:
+            people[player["id"]] = player
+    return list(people.values())
 
 
 def iso_approved(db, row):
-    """Avisa quem enviou a ISO que ela foi liberada."""
-    if not row or not row["requester_email"]:
+    """Avisa os responsáveis pela ISO que ela foi liberada."""
+    if not row:
         return
-    link = external_url("tournaments.friendlies")
-    _deliver([(row["requester_email"], f"Sua ISO {row['name']} foi liberada", (
-        f"Olá, {row['requester_name']}!\n\nA administração do WE Camp liberou a ISO \"{row['name']}\" "
-        f"({row['game_name']}). Ela já aparece para escolher no convite de amistoso:\n{link}\n"))])
+    link = external_url("tournaments.iso_page", catalog_id=row["id"])
+    _deliver([(p["email"], f"{'Sua' if p['id'] == row['requested_by'] else 'A'} ISO {row['name']} foi liberada", (
+        f"Olá, {p['username']}!\n\nA administração do WE Camp liberou a ISO \"{row['name']}\" "
+        f"({row['game_name']}). Ela já aparece para escolher no convite de amistoso e tem a sua página, "
+        f"com o link para compartilhar:\n{link}\n")) for p in _iso_people(db, row)])
 
 
 def iso_rejected(db, row, reason=""):
@@ -373,53 +451,160 @@ def iso_rejected(db, row, reason=""):
         f"{why}\n"))])
 
 
-def iso_edit_request(db, row, result):
-    """Quem enviou a ISO a alterou (iso_catalog.request_edit): a administração
-    confere - e, se ela já estava liberada, aprova ou recusa a alteração, que é
-    aprovada sozinha se ninguém responder no prazo."""
+def iso_edit_request(db, row, result, editor_id=None):
+    """Um responsável alterou a ISO (iso_catalog.request_edit).
+
+    A administração confere - e, se a ISO já estava liberada, aprova ou recusa a
+    alteração, que é aprovada sozinha se ninguém responder no prazo. Os outros
+    responsáveis recebem o antes e o depois: com a ISO já liberada, o link para
+    confirmar (a alteração entra assim que um deles confirma)."""
     from .iso_catalog import auto_approve_at
     link = external_url("tournaments_admin.admin_iso_edit", catalog_id=row["id"])
-    who = f"{row['requester_name']} ({row['requester_email']})"
-    changes = "\n".join(f"  {line}" for line in result["changes"])
+    editor = _player(db, editor_id) or {"id": row["requested_by"], "username": row["requester_name"],
+                                        "email": row["requester_email"]}
+    who = f"{editor['username']} ({editor['email']})"
+    changes = change_lines(result["changes"])
+    others = [p for p in _iso_people(db, row) if p["id"] != editor["id"]]
     if result["mode"] == "direct":
-        subject = f"{row['requester_name']} alterou a ISO {row['name']}, que aguarda liberação"
+        subject = f"{editor['username']} alterou a ISO {row['name']}, que aguarda liberação"
         text = (f"{who} alterou a ISO \"{row['name']}\", que ainda aguarda a liberação:\n\n{changes}\n\n"
-                f"Confira o nome, o jogo base, cadastre a imagem e libere em:\n{link}\n")
-    else:
-        deadline = format_local(auto_approve_at(row["rev_submitted_at"]), "%d/%m/%Y às %H:%M")
-        subject = f"{row['requester_name']} alterou a ISO {row['name']}: aprove a alteração"
-        text = (f"{who} alterou a ISO \"{row['name']}\" ({row['game_name']}), já liberada para os amistosos:\n\n"
-                f"{changes}\n\nAté a aprovação, os amistosos continuam com a versão atual. Aprove ou recuse em:\n"
-                f"{link}\n\nSem resposta até {deadline}, a alteração é aprovada automaticamente.\n")
-    _deliver([(email, subject, text) for email in admin_emails(db)])
+                f"Confira o nome, o jogo base e a imagem e libere em:\n{link}\n")
+        messages = [(email, subject, text) for email in admin_emails(db)]
+        messages += [(p["email"], f"{editor['username']} alterou a ISO {row['name']}", (
+            f"Olá, {p['username']}!\n\n{editor['username']} alterou a ISO \"{row['name']}\", da qual você é um dos "
+            f"responsáveis. O que mudou (antes → depois):\n\n{changes}\n\nA ISO ainda aguarda a liberação da "
+            "administração do WE Camp, então a alteração já entrou. Veja em Amistosos > Minhas ISOs:\n"
+            f"{external_url('tournaments.friendlies')}#minhas-isos\n")) for p in others]
+        _deliver(messages)
+        return
+    deadline = format_local(auto_approve_at(row["rev_submitted_at"]), "%d/%m/%Y às %H:%M")
+    subject = f"{editor['username']} alterou a ISO {row['name']}: aprove a alteração"
+    also = (f"Os outros responsáveis pela ISO ({_names(others)}) também receberam o pedido: se um deles confirmar, "
+            "a alteração entra sem passar por aqui.\n\n" if others else "")
+    text = (f"{who} alterou a ISO \"{row['name']}\" ({row['game_name']}), já liberada para os amistosos:\n\n"
+            f"{changes}\n\nAté a aprovação, os amistosos continuam com a versão atual. Aprove ou recuse em:\n"
+            f"{link}\n\n{also}Sem resposta até {deadline}, a alteração é aprovada automaticamente.\n")
+    messages = [(email, subject, text) for email in admin_emails(db)]
+    confirm = external_url("tournaments.iso_change", catalog_id=row["id"])
+    messages += [(p["email"], f"Confirme a alteração de {editor['username']} na ISO {row['name']}", (
+        f"Olá, {p['username']}!\n\n{editor['username']} alterou a ISO \"{row['name']}\" ({row['game_name']}), da qual "
+        f"você é um dos responsáveis. O que muda (antes → depois):\n\n{changes}\n\n"
+        f"Confira e confirme (ou recuse) a alteração em:\n{confirm}\n\n"
+        "Assim que você ou outro responsável confirmar, a alteração entra no lugar da versão atual. Sem confirmação, "
+        f"vale a aprovação da administração do WE Camp ou, sem resposta até {deadline}, a automática.\n"))
+        for p in others]
+    _deliver(messages)
 
 
-def iso_edit_approved(db, row, auto=False):
-    """A alteração da ISO entrou: avisa quem enviou (e, se foi pelo prazo, a administração)."""
+def iso_edit_approved(db, row, auto=False, rev=None):
+    """A alteração da ISO entrou: avisa quem a fez e os outros responsáveis (menos
+    quem confirmou) e, se foi pelo prazo, a administração. rev: a alteração como
+    estava (iso_catalog.revision); sem ela, quem fez foi quem enviou a ISO."""
     if not row:
         return
-    link = external_url("tournaments.friendlies")
-    how = ("Como a administração do WE Camp não respondeu em 24 h, a sua alteração na ISO foi aprovada "
-           "automaticamente" if auto else "A administração do WE Camp aprovou a sua alteração na ISO")
+    link = external_url("tournaments.iso_page", catalog_id=row["id"])
+    author_id = rev["requested_by"] if rev is not None else row["requested_by"]
+    confirmer_id = rev["confirmed_by"] if rev is not None else None
+    confirmer = _player(db, confirmer_id)
+    author = _player(db, author_id)
+    author_name = author["username"] if author else "um responsável"
     messages = []
-    if row["requester_email"]:
-        messages.append((row["requester_email"], f"Sua alteração na ISO {row['name']} foi aprovada", (
-            f"Olá, {row['requester_name']}!\n\n{how}. A ISO \"{row['name']}\" ({row['game_name']}) já está "
+    for p in _iso_people(db, row, author_id):
+        if p["id"] == confirmer_id:
+            continue
+        mine = p["id"] == author_id
+        whose = "a sua alteração" if mine else f"a alteração de {author_name}"
+        if auto:
+            how = f"Como ninguém respondeu em 24 h, {whose} na ISO foi aprovada automaticamente"
+        elif confirmer:
+            how = f"{confirmer['username']} confirmou {whose} na ISO"
+        else:
+            how = f"A administração do WE Camp aprovou {whose} na ISO"
+        subject = (f"Sua alteração na ISO {row['name']} foi aprovada" if mine
+                   else f"A alteração de {author_name} na ISO {row['name']} foi aprovada")
+        messages.append((p["email"], subject, (
+            f"Olá, {p['username']}!\n\n{how}. A ISO \"{row['name']}\" ({row['game_name']}) já está "
             f"atualizada nos amistosos:\n{link}\n")))
     if auto:
         admin_link = external_url("tournaments_admin.admin_iso_edit", catalog_id=row["id"])
         messages += [(email, f"Alteração da ISO {row['name']} aprovada automaticamente", (
-            f"A alteração que {row['requester_name'] or 'o jogador'} pediu na ISO \"{row['name']}\" "
+            f"A alteração que {author_name if author else 'o jogador'} pediu na ISO \"{row['name']}\" "
             f"({row['game_name']}) ficou 24 h sem resposta e foi aprovada automaticamente.\n\n"
             f"Confira a ISO em:\n{admin_link}\n")) for email in admin_emails(db)]
     _deliver(messages)
 
 
-def iso_edit_rejected(db, row, revision, reason=""):
-    """Avisa quem enviou que a alteração da ISO foi recusada (a ISO continua como estava)."""
-    if not row or not row["requester_email"]:
+def iso_edit_rejected(db, row, revision, reason="", by_id=None):
+    """A alteração da ISO foi recusada (a ISO continua como estava): avisa quem a
+    fez e os outros responsáveis. by_id: o responsável que recusou; sem ele, foi
+    a administração."""
+    if not row:
         return
     why = f"\nMotivo: {reason.strip()[:300]}" if reason and reason.strip() else ""
-    _deliver([(row["requester_email"], f"Sua alteração na ISO {row['name']} não foi aprovada", (
-        f"Olá, {row['requester_name']}!\n\nA administração do WE Camp não aprovou a alteração que você pediu na ISO "
-        f"\"{row['name']}\" (o nome pedido era \"{revision['name']}\"). A ISO continua como estava.{why}\n"))])
+    refuser = _player(db, by_id)
+    author_id = revision["requested_by"]
+    author = _player(db, author_id)
+    author_name = author["username"] if author else "um responsável"
+    messages = []
+    for p in _iso_people(db, row, author_id):
+        if p["id"] == by_id:
+            continue
+        mine = p["id"] == author_id
+        whose = "a alteração que você pediu" if mine else f"a alteração que {author_name} pediu"
+        who = f"{refuser['username']} recusou" if refuser else "A administração do WE Camp não aprovou"
+        subject = (f"Sua alteração na ISO {row['name']} não foi aprovada" if mine
+                   else f"A alteração de {author_name} na ISO {row['name']} não foi aprovada")
+        messages.append((p["email"], subject, (
+            f"Olá, {p['username']}!\n\n{who} {whose} na ISO "
+            f"\"{row['name']}\" (o nome pedido era \"{revision['name']}\"). A ISO continua como estava.{why}\n")))
+    _deliver(messages)
+
+
+# --- Alteração do campeonato esperando confirmação (changes.py) ----------------
+
+def _tournament_people(db, tournament, *extra_ids):
+    from . import changes
+    people = {p["id"]: p for p in changes.responsible(db, tournament)}
+    for player_id in extra_ids:
+        player = _player(db, player_id) if player_id and player_id not in people else None
+        if player:
+            people[player["id"]] = player
+    return list(people.values())
+
+
+def tournament_change_request(db, tournament, change, items, effects=()):
+    """Um responsável alterou o campeonato: os outros recebem o antes e o depois
+    e o link para confirmar ou recusar (Gerenciar)."""
+    author = change["requester_name"] or "Um responsável"
+    link = external_url("tournaments.manage", slug=tournament["slug"]) + "#alteracao"
+    after = ("Ao confirmar:\n" + "\n".join(f"  - {effect}" for effect in effects)
+             + "\n  Quem sai é avisado por e-mail.\n\n") if effects else ""
+    _deliver([(p["email"], f"Confirme a alteração de {author} no campeonato {tournament['name']}", (
+        f"Olá, {p['username']}!\n\n{author} alterou o campeonato \"{tournament['name']}\", do qual você é um dos "
+        "responsáveis. A alteração só entra depois que outro responsável confirmar.\n\n"
+        f"O que muda (antes → depois):\n\n{change_lines(items)}\n\n{after}"
+        f"Confira e confirme (ou recuse) em:\n{link}\n"))
+        for p in _tournament_people(db, tournament) if p["id"] != change["requested_by"]])
+
+
+def tournament_change_done(db, tournament, change, items, outcome, by_id=None, reason=""):
+    """A alteração do campeonato foi confirmada, recusada ou cancelada por quem a
+    fez (outcome: "confirmed", "refused", "cancelled"): avisa quem a fez e os
+    outros responsáveis, menos quem agiu (by_id; None = a administração)."""
+    actor = _player(db, by_id)
+    who = actor["username"] if actor else "A administração do WE Camp"
+    author = change["requester_name"] or "um responsável"
+    did = {"confirmed": "confirmou", "refused": "recusou", "cancelled": "cancelou"}[outcome]
+    title = {"confirmed": "confirmada", "refused": "recusada", "cancelled": "cancelada"}[outcome]
+    link = external_url("tournaments.show", slug=tournament["slug"], aba="geral")
+    why = f"\nMotivo: {reason.strip()[:300]}\n" if reason and reason.strip() else ""
+    end = ("O campeonato já está atualizado:" if outcome == "confirmed" else "O campeonato continua como estava:")
+    messages = []
+    for p in _tournament_people(db, tournament, change["requested_by"]):
+        if p["id"] == by_id:
+            continue
+        whose = "a sua alteração" if p["id"] == change["requested_by"] else f"a alteração de {author}"
+        messages.append((p["email"], f"Alteração {title} no campeonato {tournament['name']}", (
+            f"Olá, {p['username']}!\n\n{who} {did} {whose} no campeonato \"{tournament['name']}\":\n\n"
+            f"{change_lines(items)}\n{why}\n{end}\n{link}\n")))
+    _deliver(messages)

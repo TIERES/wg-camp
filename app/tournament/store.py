@@ -145,6 +145,18 @@ def choose_team(db, tournament, entry, team_name="", team_id=None):
                (team_id, team_name, entry["id"]))
 
 
+def check_before_start(db, tournament, values):
+    """Os dados básicos ainda podem mudar para `values`? (update_before_start e a
+    alteração que espera confirmação - changes.propose_values.) Devolve os inscritos."""
+    if tournament["status"] != "registration":
+        raise TournamentError("O campeonato já começou: os dados básicos não mudam mais.")
+    entries = entries_of(db, tournament["id"])
+    if len(entries) > values["max_players"]:
+        raise TournamentError(f"Já há {len(entries)} inscritos: as vagas não podem ser menos que isso "
+                              "(remova inscrições antes).")
+    return entries
+
+
 def update_before_start(db, tournament, values, editor_id=None):
     """Os dados básicos do campeonato editados antes do início (values: o
     formulário validado, tournaments._tournament_form). Com inscritos:
@@ -155,12 +167,7 @@ def update_before_start(db, tournament, values, editor_id=None):
     Quem sai recebe de volta o que pagou. Devolve os avisos [(player_id,
     assunto, texto)] para os e-mails (notify.entry_notices, depois do commit),
     sem os de quem editou."""
-    if tournament["status"] != "registration":
-        raise TournamentError("O campeonato já começou: os dados básicos não mudam mais.")
-    entries = entries_of(db, tournament["id"])
-    if len(entries) > values["max_players"]:
-        raise TournamentError(f"Já há {len(entries)} inscritos: as vagas não podem ser menos que isso "
-                              "(remova inscrições antes).")
+    entries = check_before_start(db, tournament, values)
     name, old_fee, notices = values["name"], tournament["entry_fee_cents"], []
     refund = f" O valor pago ({format_cents(old_fee)}) voltou para a sua carteira W$." if old_fee else ""
 

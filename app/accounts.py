@@ -41,8 +41,13 @@ PASSWORD_MAX = 128
 
 VERIFY_TTL = timedelta(hours=48)
 RESET_TTL = timedelta(hours=1)
-# Um cadastro nunca confirmado deixa de reservar o nome/e-mail depois disso.
+# Um cadastro nunca confirmado deixa de reservar o nome/e-mail depois disso,
+# contado do último link de confirmação enviado (o do cadastro ou um reenvio).
 UNVERIFIED_TTL = timedelta(hours=48)
+# Cadastro pendente "vencido" (o p. da consulta; o parâmetro é o limite UNVERIFIED_TTL):
+# nunca confirmado, feito antes do limite e sem link de confirmação enviado depois dele.
+_STALE = ("p.email_verified_at IS NULL AND p.created_at < ? AND NOT EXISTS (SELECT 1 FROM player_tokens t "
+          "WHERE t.player_id = p.id AND t.kind = 'verify' AND t.created_at >= ?)")
 # Intervalo mínimo entre dois e-mails do mesmo tipo para a mesma conta.
 MAIL_COOLDOWN = timedelta(minutes=2)
 
@@ -252,24 +257,26 @@ def recently_sent(db, player_id, kind):
 
 
 def purge_stale_unverified(db, username, email):
-    """Libera nome/e-mail presos por um cadastro antigo nunca confirmado."""
+    """Libera nome/e-mail presos por um cadastro nunca confirmado e sem link de
+    confirmação enviado nas últimas UNVERIFIED_TTL."""
     limit = iso(utcnow() - UNVERIFIED_TTL)
     db.execute(
-        "DELETE FROM players WHERE email_verified_at IS NULL AND created_at < ? "
-        "AND (username = ? COLLATE NOCASE OR email = ? COLLATE NOCASE)",
-        (limit, username, email),
+        f"DELETE FROM players WHERE id IN (SELECT p.id FROM players p WHERE {_STALE} "
+        "AND (p.username = ? COLLATE NOCASE OR p.email = ? COLLATE NOCASE))",
+        (limit, limit, username, email),
     )
 
 
-def already_registered(db, field, value):
+def already_registered(db, field, value, except_id=None):
     """Já existe conta com esse usuário/e-mail (sem diferenciar maiúsculas)? Um
-    cadastro nunca confirmado e mais velho que UNVERIFIED_TTL não conta - o
-    novo cadastro o apaga (purge_stale_unverified)."""
+    cadastro nunca confirmado e sem link enviado há mais que UNVERIFIED_TTL não
+    conta - o novo cadastro o apaga (purge_stale_unverified). except_id: a
+    própria conta (a administração corrigindo o e-mail dela)."""
     column = {"username": "username", "email": "email"}[field]
     limit = iso(utcnow() - UNVERIFIED_TTL)
     return db.execute(
-        f"SELECT 1 FROM players WHERE {column} = ? COLLATE NOCASE "
-        "AND NOT (email_verified_at IS NULL AND created_at < ?)", ((value or "").strip(), limit)).fetchone() is not None
+        f"SELECT 1 FROM players p WHERE p.{column} = ? COLLATE NOCASE AND p.id != ? AND NOT ({_STALE})",
+        ((value or "").strip(), except_id or 0, limit, limit)).fetchone() is not None
 
 
 def revoke_api_tokens(db, player_id):
