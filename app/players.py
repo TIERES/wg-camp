@@ -15,7 +15,7 @@ from flask import (Blueprint, abort, current_app, flash, jsonify, redirect, rend
                    session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from .accounts import (email_error, external_url, find_token, issue_token, password_error,
+from .accounts import (email_error, external_url, find_token, issue_token, normalize_email, password_error,
                        purge_stale_unverified, recently_sent, revoke_api_tokens, username_error, USERNAME_ALLOWED,
                        USERNAME_RE, already_registered)
 from . import images
@@ -85,6 +85,7 @@ def register_check():
         if not error and already_registered(get_db(), "username", value):
             error = "Este usuário já está cadastrado. Se a conta é sua, entre ou use \"Esqueci minha senha\"."
     elif field == "email":
+        value = normalize_email(value)
         error = email_error(value)
         if not error and already_registered(get_db(), "email", value):
             error = "Este e-mail já está cadastrado. Use \"Esqueci minha senha\" para recuperar o acesso."
@@ -99,7 +100,7 @@ def register():
     if request.method == "POST":
         validate_csrf()
         username = request.form.get("username", "").strip()
-        email = request.form.get("email", "").strip()
+        email = normalize_email(request.form.get("email"))  # sempre em minúsculas
         password = request.form.get("password", "")
         form = {"username": username, "email": email}
         error = (username_error(username) or email_error(email)
@@ -155,7 +156,7 @@ def confirm(token):
 def resend():
     if request.method == "POST":
         validate_csrf()
-        email = request.form.get("email", "").strip()
+        email = normalize_email(request.form.get("email"))
         db = get_db()
         player = db.execute(
             "SELECT * FROM players WHERE email = ? COLLATE NOCASE AND email_verified_at IS NULL", (email,)
@@ -229,7 +230,7 @@ def logout():
 def forgot():
     if request.method == "POST":
         validate_csrf()
-        email = request.form.get("email", "").strip()
+        email = normalize_email(request.form.get("email"))
         db = get_db()
         player = db.execute(
             "SELECT * FROM players WHERE email = ? COLLATE NOCASE AND email_verified_at IS NOT NULL", (email,)
