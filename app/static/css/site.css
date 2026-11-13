@@ -866,3 +866,66 @@ button.trophy-tile:disabled { cursor:default; opacity:.45 }
 .table-top { display:flex; justify-content:flex-end; align-items:center; flex-wrap:wrap; gap:.35rem; margin:0 0 .45rem; font-size:.85rem; color:#9ca3af }
 .table-top .per-page-form { margin:0; display:inline-flex }
 .table-top .per-page-form select { width:auto; min-width:0; max-width:5.5rem; padding:.1rem .2rem .1rem .4rem; font-size:.85rem; border-radius:4px; color:var(--text) }
+/* Ajudantes: os amigos que ajudam a editar uma ISO ou um campeonato (templates/_helpers_picker.html,
+   static/js/helpers-picker.js): a busca pelo nick e uma etiqueta para cada escolhido. */
+.helpers-picker { display:grid; gap:.45rem; min-width:0 }
+.helpers-empty { margin:0 } .helpers-hint { display:block }
+.helper-chips { display:flex; flex-wrap:wrap; gap:.4rem; margin:0; padding:0; list-style:none } .helper-chips[hidden] { display:none }
+.helper-chip { display:inline-flex; align-items:center; gap:.3rem; padding:.2rem .3rem .2rem .7rem; background:#064e3b; color:#a7f3d0; border-radius:999px; font-size:.9rem; font-weight:700; max-width:100% }
+.helper-chip > span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.helper-remove { display:inline-grid; place-items:center; flex:none; width:1.4rem; height:1.4rem; padding:0; border-radius:50%; background:transparent; color:inherit; font-size:1.05rem; line-height:1 }
+.helper-remove:hover, .helper-remove:focus-visible { background:#065f46; color:#fff }
+.plain-fieldset { border:0; padding:0; margin:0; min-width:0 } .plain-fieldset[hidden] { display:none }
+.people-line { overflow-wrap:anywhere }
+.badge.iso-helper { background:#3b0764; color:#e9d5ff }
+/* Enviar/Editar ISO: a imagem ao lado do campo dela. */
+.iso-image-field { align-items:center } .iso-image-field .t-image-thumb { width:96px; height:120px }
+.iso-people { flex-direction:column; gap:.15rem }
+.iso-revision-actions { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; margin-top:.15rem; font-size:.85rem }
+.iso-revision-actions form { margin:0 } .iso-revision-actions button { padding:.4rem .75rem; font-size:.85rem }
+.my-iso-actions { align-items:center } .my-iso-actions .share-button { margin:0 }
+/* O antes e o depois de uma alteração (templates/tournaments/_changes.html). */
+.change-list { display:grid; grid-template-columns:minmax(0,1fr); gap:.45rem; margin:0; padding:0; list-style:none; min-width:0 }
+.change-item { display:grid; grid-template-columns:minmax(0,1fr); gap:.05rem; min-width:0 }
+.change-label { color:#9ca3af; font-size:.75rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em }
+.change-values { min-width:0; overflow-wrap:anywhere }
+.change-before { color:#9ca3af }
+.change-arrow { color:var(--accent); font-weight:700 }
+.change-images { display:flex; align-items:center; gap:.6rem } .change-images a { display:block; flex:none }
+.change-thumb { display:block; width:56px; height:70px; border-radius:4px; border:1px solid #374151 }
+.change-long { display:grid; grid-template-columns:minmax(0,1fr); gap:.4rem }
+.change-block { display:grid; grid-template-columns:minmax(0,1fr); gap:.15rem }
+.change-text { white-space:pre-wrap; font-weight:400; padding:.4rem .55rem; background:#0b1220; border-radius:5px; max-height:12rem; overflow:auto }
+.change-block strong.change-text { border-left:3px solid var(--accent) }
+.t-card .change-list { font-size:.85rem } .t-card .change-thumb { width:40px; height:50px }
+/* A alteração esperando a confirmação de outro responsável (página da ISO e Gerenciar). */
+.change-box { display:grid; grid-template-columns:minmax(0,1fr); gap:.6rem; margin:1rem 0; padding:1rem 1.25rem; background:#172554; border:1px solid #1e40af; border-radius:8px; scroll-margin-top:1rem }
+.change-box h2 { display:flex; align-items:center; gap:.5rem; margin:0; font-size:1.15rem } .change-box h2 .ico { color:#93c5fd }
+.change-box p { margin:0 } .change-box p.muted, .change-box small.muted { color:#cbd5e1 }
+.change-box .change-list { padding:.75rem .9rem; background:#0f1a3d; border-radius:6px }
+.change-actions { flex-wrap:wrap } .change-effects { margin:0; padding-left:1.2rem }
+.change-box .notice.error { margin:0 }
+/* Página da ISO dos amistosos (templates/tournaments/iso.html): a imagem da ISO no maior tamanho que couber. */
+.iso-page { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:1.5rem; align-items:start; margin:1rem 0 }
+.iso-page.no-image { grid-template-columns:minmax(0,300px) minmax(0,1fr) }
+.iso-page-image { display:block } .iso-page-image img { display:block; width:100%; height:auto; max-height:88vh; border-radius:10px; border:1px solid #374151 }
+.iso-page-cover-big { display:block; width:100%; height:auto; border-radius:10px; border:1px solid #374151 }
+.iso-page-info { display:grid; grid-template-columns:minmax(0,1fr); gap:1rem; min-width:0 }
+.iso-page-head { display:flex; gap:1rem; align-items:flex-start; min-width:0 } .iso-page-head > div { min-width:0 }
+.iso-page-head h1 { margin:.35rem 0; overflow-wrap:anywhere } .iso-page-head p { margin:0 }
+.iso-page-cover { flex:none; width:96px; height:120px; object-fit:cover; border-radius:6px; border:1px solid #374151 }
+.iso-download { display:grid; grid-template-columns:minmax(0,1fr); gap:.45rem; justify-items:start; padding:1rem 1.25rem; background:var(--card); border:1px solid #374151; border-radius:8px }
+.iso-download p { margin:0 } .iso-download small { overflow-wrap:anywhere }
+.iso-download-button { display:inline-flex; align-items:center; gap:.5rem; padding:.8rem 1.2rem; font-size:1.1rem; max-width:100%; width:auto }
+.iso-download-button .ico { width:1.25rem; height:1.25rem }
+.iso-page-data { background:var(--card); border-radius:8px; padding:1rem 1.25rem } .iso-page-data dd { margin:0; min-width:0; overflow-wrap:anywhere }
+.iso-page-helpers { display:flex; flex-wrap:wrap; gap:.4rem 1rem }
+.iso-page .t-actions { margin:0 }
+@media (max-width:760px) { .iso-page, .iso-page.no-image { grid-template-columns:minmax(0,1fr) } .iso-page.no-image .iso-page-media { max-width:200px } .iso-page-cover { width:72px; height:90px } }
+/* Gerenciar: os responsáveis pelo campeonato e o aviso para o ajudante. */
+.helpers-form { display:grid; gap:.8rem } .helper-note { margin:.5rem 0 }
+/* Administração > Jogadores: Editar / Reenviar confirmação / Excluir no rodapé do card. */
+.player-actions { align-items:center } .player-actions .ico { width:1rem; height:1rem }
+.player-reserve { color:#fbbf24 !important }
+/* Selo que leva a outro lugar (a alteração da ISO, na página dela). */
+a.badge-link { text-decoration:none; position:relative; z-index:1 } a.badge-link:hover, a.badge-link:focus-visible { box-shadow:0 0 0 2px #60a5fa }

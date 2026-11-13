@@ -8,21 +8,28 @@ Um jogador que não encontra a ISO pode enviá-la (request_upload): ela vai
 para o archive.org e fica inativa até a administração liberar (approve),
 confirmando nome, jogo base e a imagem.
 
-Quem enviou pode editar a ISO depois (request_edit): nome, jogo base e um
-arquivo novo. Enquanto ela aguarda a liberação, a alteração entra direto (a
-administração confere tudo ao liberar). Já liberada, vira uma alteração
-pendente (catalog_iso_revisions): os amistosos continuam com a versão atual
-até a administração aprovar ou, sem resposta, AUTO_APPROVE_HOURS depois
-(apply_due, chamada pelas páginas de torneio).
+Quem enviou escolhe amigos para ajudar a editar (editors.py): ele e os
+ajudantes são os responsáveis pela ISO. Um responsável pode editá-la depois
+(request_edit): nome, jogo base, imagem e um arquivo novo. Enquanto ela aguarda
+a liberação, a alteração entra direto (a administração confere tudo ao
+liberar). Já liberada, vira uma alteração pendente (catalog_iso_revisions): os
+amistosos continuam com a versão atual até OUTRO responsável confirmar
+(confirm_edit - o e-mail leva o antes e o depois), a administração aprovar ou,
+sem resposta, AUTO_APPROVE_HOURS depois (apply_due, chamada pelas páginas de
+torneio).
+
+Cada ISO liberada tem a sua página (tournaments.iso_page), para compartilhar:
+imagens, informações e o download para quem está logado.
 
 No convite do amistoso a escolha é opcional e vira o valor "t:<torneio>" ou
 "c:<cadastro>"; o jogo do amistoso (Ranking por jogo) é o da ISO.
 """
 from datetime import datetime, timedelta, timezone
 
+from .. import images
 from ..db import now
 from ..storage import delete_stored_file, human_size, store_upload
-from . import iso
+from . import editors, iso
 from .store import TournamentError, are_friends
 
 ARCHIVE_FOLDER = "isos"
@@ -34,16 +41,26 @@ _REVISION_COLUMNS = (
     "r.id AS rev_id, r.name AS rev_name, r.game_title_id AS rev_game_id, rg.name AS rev_game_name, "
     "r.original_filename AS rev_filename, r.file_size AS rev_file_size, r.stored_name AS rev_stored_name, "
     "r.archive_status AS rev_archive_status, r.local_removed_at AS rev_local_removed_at, "
-    "r.approved_at AS rev_approved_at, r.submitted_at AS rev_submitted_at")
+    "r.approved_at AS rev_approved_at, r.submitted_at AS rev_submitted_at, "
+    "r.image_change AS rev_image_change, r.image AS rev_image, r.requested_by AS rev_requested_by, "
+    "rvp.username AS rev_requester_name, r.confirmed_by AS rev_confirmed_by")
 _REVISION_JOIN = ("LEFT JOIN catalog_iso_revisions r ON r.catalog_iso_id = c.id "
-                  "LEFT JOIN game_titles rg ON rg.id = r.game_title_id")
+                  "LEFT JOIN game_titles rg ON rg.id = r.game_title_id "
+                  "LEFT JOIN players rvp ON rvp.id = r.requested_by")
+# "A imagem não muda" nas contas do que mudou (None = sem imagem).
+_KEEP = object()
+
+
+class NothingChanged(TournamentError):
+    """Editar sem mudar nada (quem chama pode ter mudado só os ajudantes)."""
 
 
 def get(db, catalog_id):
     return db.execute(
         "SELECT c.*, g.name AS game_name, g.code AS game_code, f.original_filename AS file_filename, "
         "f.display_name AS file_display_name, f.stored_name AS file_stored_name, f.archive_url AS file_archive_url, "
-        "f.local_removed_at AS file_local_removed_at, rp.username AS requester_name, rp.email AS requester_email, "
+        "f.local_removed_at AS file_local_removed_at, f.file_size AS file_file_size, "
+        "rp.username AS requester_name, rp.email AS requester_email, "
         f"{_REVISION_COLUMNS} "
         "FROM catalog_isos c JOIN game_titles g ON g.id = c.game_title_id LEFT JOIN files f ON f.id = c.file_id "
         f"LEFT JOIN players rp ON rp.id = c.requested_by {_REVISION_JOIN} WHERE c.id = ?",
@@ -59,20 +76,42 @@ def all_rows(db):
         "ORDER BY c.approved_at IS NOT NULL, c.is_active DESC, c.name COLLATE NOCASE").fetchall()
 
 
-def requested_by(db, player_id):
-    """ISOs que o jogador enviou (as aguardando liberação primeiro)."""
+def mine(db, player_id):
+    """ISOs de que o jogador é responsável: as que enviou e as que ajuda a
+    editar (as aguardando liberação primeiro)."""
     return db.execute(
-        f"SELECT c.*, g.name AS game_name, g.code AS game_code, {_REVISION_COLUMNS} FROM catalog_isos c "
-        f"JOIN game_titles g ON g.id = c.game_title_id {_REVISION_JOIN} WHERE c.requested_by = ? "
-        "ORDER BY c.approved_at IS NOT NULL, c.id DESC", (player_id,)).fetchall()
+        f"SELECT c.*, g.name AS game_name, g.code AS game_code, rp.username AS requester_name, {_REVISION_COLUMNS} "
+        "FROM catalog_isos c JOIN game_titles g ON g.id = c.game_title_id "
+        f"LEFT JOIN players rp ON rp.id = c.requested_by {_REVISION_JOIN} WHERE c.requested_by = ? "
+        "OR c.id IN (SELECT catalog_iso_id FROM catalog_iso_editors WHERE player_id = ?) "
+        "ORDER BY c.approved_at IS NOT NULL, c.id DESC", (player_id, player_id)).fetchall()
 
 
 def revision(db, catalog_id):
     """A alteração pendente da ISO (None se não houver)."""
     return db.execute(
-        "SELECT r.*, g.name AS game_name, p.username AS requester_name FROM catalog_iso_revisions r "
+        "SELECT r.*, g.name AS game_name, p.username AS requester_name, p.email AS requester_email, "
+        "cp.username AS confirmer_name FROM catalog_iso_revisions r "
         "JOIN game_titles g ON g.id = r.game_title_id LEFT JOIN players p ON p.id = r.requested_by "
-        "WHERE r.catalog_iso_id = ?", (catalog_id,)).fetchone()
+        "LEFT JOIN players cp ON cp.id = r.confirmed_by WHERE r.catalog_iso_id = ?", (catalog_id,)).fetchone()
+
+
+def responsible(db, row):
+    """Os responsáveis pela ISO: quem enviou e os ajudantes (id, username, email)."""
+    return editors.responsible(db, "iso", row["id"], row["requested_by"])
+
+
+def can_edit(db, row, player_id):
+    """Quem enviou a ISO ou um ajudante dela."""
+    return bool(player_id) and (row["requested_by"] == player_id or editors.is_helper(db, "iso", row["id"], player_id))
+
+
+def can_confirm(db, row, player_id):
+    """O jogador pode confirmar (ou recusar) a alteração pendente? Só outro
+    responsável - nunca quem a fez (editors.can_confirm)."""
+    if not row["rev_id"] or row["rev_approved_at"]:
+        return False
+    return editors.can_confirm([p["id"] for p in responsible(db, row)], row["rev_requested_by"], player_id)
 
 
 def pending_count(db):
@@ -199,13 +238,15 @@ def _archive_name(db, stored):
     return name
 
 
-def request_upload(db, player_id, name, game_id, upload):
+def request_upload(db, player_id, name, game_id, upload, image=None):
     """ISO enviada por um jogador: entra inativa, esperando a administração
-    liberar. Devolve o id (commit e envio para o archive.org com quem chama)."""
+    liberar. `image`: a imagem já gravada (images.save), opcional. Devolve o id
+    (commit e envio para o archive.org com quem chama)."""
     if upload is None:
         raise TournamentError("Escolha o arquivo da ISO.")
     catalog_id = save(db, None, name, game_id, upload=upload, active=False)
-    db.execute("UPDATE catalog_isos SET requested_by = ?, approved_at = NULL WHERE id = ?", (player_id, catalog_id))
+    db.execute("UPDATE catalog_isos SET requested_by = ?, approved_at = NULL, image = ? WHERE id = ?",
+               (player_id, image, catalog_id))
     return catalog_id
 
 
@@ -229,51 +270,92 @@ def reject(db, catalog_id):
     return row
 
 
-# --- Edição pelo jogador que enviou a ISO ---------------------------------------
+# --- Edição pelos responsáveis (quem enviou a ISO e os ajudantes) ----------------
 
-def _changes(row, name, game_id, game_name, new_file):
-    """O que muda em relação à versão atual (linhas do e-mail da administração)."""
+def _changes(row, name, game_id, game_name, new_file, image=_KEEP):
+    """O que muda em relação à versão atual: [{"field", "label", "before",
+    "after"}] - o "antes e depois" dos e-mails (notify.change_lines) e das
+    páginas. Na imagem, before/after são os nomes dos arquivos ("" = sem imagem)."""
     changes = []
     if name != row["name"]:
-        changes.append(f"Nome: {row['name']} → {name}")
+        changes.append({"field": "name", "label": "Nome", "before": row["name"], "after": name})
     if game_id != row["game_title_id"]:
-        changes.append(f"Jogo base: {row['game_name']} → {game_name}")
+        changes.append({"field": "game", "label": "Jogo base", "before": row["game_name"], "after": game_name})
     if new_file is not None:
         size = f" ({human_size(new_file['file_size'])})" if new_file["file_size"] else ""
-        changes.append(f"Arquivo: {filename(row) or '-'} → {new_file['original_filename']}{size}")
+        changes.append({"field": "file", "label": "Arquivo", "before": filename(row) or "-",
+                        "after": f"{new_file['original_filename']}{size}"})
+    if image is not _KEEP and (image or "") != (row["image"] or ""):
+        changes.append({"field": "image", "label": "Imagem", "before": row["image"] or "", "after": image or ""})
     return changes
 
 
-def request_edit(db, player_id, catalog_id, name, game_id, upload=None):
-    """Quem enviou a ISO altera o nome, o jogo base e/ou envia um arquivo novo.
+def pending_changes(row):
+    """As mudanças da alteração pendente de uma ISO (linha com as colunas rev_*)."""
+    if not row["rev_id"]:
+        return []
+    new_file = ({"original_filename": row["rev_filename"], "file_size": row["rev_file_size"]}
+                if row["rev_stored_name"] else None)
+    return _changes(row, row["rev_name"], row["rev_game_id"], row["rev_game_name"], new_file,
+                    row["rev_image"] if row["rev_image_change"] else _KEEP)
+
+
+def _drop_image(name):
+    """Apaga uma imagem (ou o cartão do link compartilhado) que saiu de uso."""
+    if name:
+        images.delete("torneio", name)
+
+
+def request_edit(db, player_id, catalog_id, name, game_id, upload=None, image=None, remove_image=False):
+    """Um responsável (quem enviou ou um ajudante) altera o nome, o jogo base, a
+    imagem e/ou envia um arquivo novo. `image`: a imagem nova já gravada
+    (images.save); `remove_image`: fica sem imagem.
 
     Aguardando liberação: altera direto (mode "direct"). Já liberada: grava a
     alteração pendente (mode "revision"), que substitui uma anterior e reinicia
     o prazo da aprovação automática; um arquivo igual ao atual não conta como
-    mudança. Voltando tudo ao que já é a versão atual, a pendente é descartada
-    (mode "cancelled"). Devolve {"mode", "changes", "uploaded"} - o commit e o
-    envio do arquivo para o archive.org ficam com quem chama."""
+    mudança, e sem imagem nova a da pendente continua valendo. Voltando tudo ao
+    que já é a versão atual, a pendente é descartada (mode "cancelled").
+    Devolve {"mode", "changes", "uploaded"} - o commit e o envio do arquivo para
+    o archive.org ficam com quem chama, que também apaga `image` se der erro."""
     row = get(db, catalog_id)
-    if row is None or row["requested_by"] != player_id:
+    if row is None or not can_edit(db, row, player_id):
         raise TournamentError("ISO não encontrada.")
     name = (name or "").strip()
     if not name:
         raise TournamentError("Informe o nome da ISO.")
     _check_game(db, game_id)
     game_name = db.execute("SELECT name FROM game_titles WHERE id = ?", (game_id,)).fetchone()[0]
+    nothing = "Nada foi alterado: mude o nome, o jogo base, a imagem ou envie um arquivo novo."
 
     if not row["approved_at"]:
-        if upload is None and not _changes(row, name, game_id, game_name, None):
-            raise TournamentError("Nada foi alterado: mude o nome, o jogo base ou envie um arquivo novo.")
+        target = image if image else (None if remove_image and row["image"] else _KEEP)
+        changes = _changes(row, name, game_id, game_name, None, target)
+        if upload is None and not changes:
+            raise NothingChanged(nothing)
         save(db, catalog_id, name, game_id, upload=upload, active=False)
+        if target is not _KEEP:
+            db.execute("UPDATE catalog_isos SET image = ?, share_image = NULL WHERE id = ?", (target, catalog_id))
         new_file = _current_file(db, catalog_id) if upload is not None else None
-        return {"mode": "direct", "changes": _changes(row, name, game_id, game_name, new_file),
+        if target is not _KEEP:
+            _drop_image(row["image"])
+            _drop_image(row["share_image"])
+        return {"mode": "direct", "changes": _changes(row, name, game_id, game_name, new_file, target),
                 "uploaded": upload is not None}
 
     rev = revision(db, catalog_id)
     if upload is not None and rev is not None and iso.uploading(rev):
-        raise TournamentError("O arquivo novo que você enviou antes ainda está indo para o archive.org. Tente de novo "
-                              "em alguns minutos.")
+        raise TournamentError("O arquivo novo enviado antes ainda está indo para o archive.org. Tente de novo em alguns "
+                              "minutos.")
+    # A imagem da alteração: a nova, tirar a atual, ou a que a pendente já tinha.
+    if image:
+        image_change, new_image = 1, image
+    elif remove_image:
+        image_change, new_image = (1 if row["image"] else 0), None
+    elif rev is not None:
+        image_change, new_image = rev["image_change"], rev["image"]
+    else:
+        image_change, new_image = 0, None
     stored = _store(upload) if upload is not None else None
     try:
         # file: "new" (o enviado agora), "keep" (o da pendente, se houver) ou "drop" (volta ao atual).
@@ -287,22 +369,23 @@ def request_edit(db, player_id, catalog_id, name, game_id, upload=None):
                 _drop_local(stored)
         new_file = stored if file == "new" else (rev if file == "keep" and rev is not None and rev["stored_name"]
                                                  else None)
-        changes = _changes(row, name, game_id, game_name, new_file)
+        changes = _changes(row, name, game_id, game_name, new_file, new_image if image_change else _KEEP)
         if not changes:
             if rev is None:
-                raise TournamentError("Nada foi alterado: mude o nome, o jogo base ou envie um arquivo novo.")
+                raise NothingChanged(nothing)
             _delete_revision(db, rev)
             return {"mode": "cancelled", "changes": [], "uploaded": False}
         stamp = now()
         if rev is None:
             db.execute(
-                "INSERT INTO catalog_iso_revisions (catalog_iso_id, requested_by, name, game_title_id, submitted_at, "
-                "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (catalog_id, player_id, name, game_id, stamp, stamp, stamp))
+                "INSERT INTO catalog_iso_revisions (catalog_iso_id, requested_by, name, game_title_id, image_change, "
+                "image, submitted_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (catalog_id, player_id, name, game_id, image_change, new_image, stamp, stamp, stamp))
         else:
             db.execute("UPDATE catalog_iso_revisions SET requested_by = ?, name = ?, game_title_id = ?, "
-                       "approved_at = NULL, submitted_at = ?, updated_at = ? WHERE id = ?",
-                       (player_id, name, game_id, stamp, stamp, rev["id"]))
+                       "image_change = ?, image = ?, approved_at = NULL, confirmed_by = NULL, submitted_at = ?, "
+                       "updated_at = ? WHERE id = ?",
+                       (player_id, name, game_id, image_change, new_image, stamp, stamp, rev["id"]))
         if file == "new":
             db.execute(
                 "UPDATE catalog_iso_revisions SET stored_name = ?, original_filename = ?, file_size = ?, md5 = ?, "
@@ -323,6 +406,8 @@ def request_edit(db, player_id, catalog_id, name, game_id, upload=None):
         raise
     if rev is not None and rev["stored_name"] and file in ("new", "drop"):
         _drop_local(rev)
+    if rev is not None and rev["image_change"] and rev["image"] != new_image:
+        _drop_image(rev["image"])  # a imagem da pendente anterior saiu
     return {"mode": "revision", "changes": changes, "uploaded": file == "new"}
 
 
@@ -333,36 +418,75 @@ def _current_file(db, catalog_id):
 def _delete_revision(db, rev):
     db.execute("DELETE FROM catalog_iso_revisions WHERE id = ?", (rev["id"],))
     _drop_local(rev)
+    if rev["image_change"]:
+        _drop_image(rev["image"])
 
 
 def cancel_edit(db, player_id, catalog_id):
-    """Quem enviou desiste da alteração pendente."""
+    """Quem fez a alteração pendente desiste dela."""
     rev = revision(db, catalog_id)
     if rev is None or rev["requested_by"] != player_id:
-        raise TournamentError("Esta ISO não tem alteração esperando aprovação.")
+        raise TournamentError("Esta ISO não tem alteração sua esperando aprovação.")
     if iso.uploading(rev):
         raise TournamentError("O arquivo novo ainda está indo para o archive.org. Tente de novo quando terminar.")
     _delete_revision(db, rev)
 
 
+def _pending_for(db, player_id, catalog_id):
+    """(ISO, alteração) se o jogador pode confirmar ou recusar a pendente."""
+    row = get(db, catalog_id)
+    if row is None or not can_edit(db, row, player_id):
+        raise TournamentError("ISO não encontrada.")
+    rev = revision(db, catalog_id)
+    if rev is None or rev["approved_at"]:
+        raise TournamentError("Esta ISO não tem alteração esperando confirmação.")
+    if not can_confirm(db, row, player_id):
+        raise TournamentError("A alteração precisa ser confirmada por outro responsável pela ISO, não por quem a fez.")
+    return row, rev
+
+
+def confirm_edit(db, player_id, catalog_id):
+    """Outro responsável confirma a alteração pendente: vale como a aprovação da
+    administração - aplica agora ou, se o arquivo novo ainda está indo para o
+    archive.org, assim que terminar (apply_due). Devolve (aplicou?, alteração)."""
+    _, rev = _pending_for(db, player_id, catalog_id)
+    db.execute("UPDATE catalog_iso_revisions SET approved_at = ?, confirmed_by = ?, updated_at = ? WHERE id = ?",
+               (now(), player_id, now(), rev["id"]))
+    rev = revision(db, catalog_id)
+    if busy(rev):
+        return False, rev
+    _apply(db, rev)
+    return True, rev
+
+
+def refuse_edit(db, player_id, catalog_id):
+    """Outro responsável recusa a alteração pendente: a ISO continua como está.
+    Devolve a alteração (para o e-mail de quem a fez)."""
+    _, rev = _pending_for(db, player_id, catalog_id)
+    if iso.uploading(rev):
+        raise TournamentError("O arquivo novo ainda está indo para o archive.org. Tente de novo quando terminar.")
+    _delete_revision(db, rev)
+    return rev
+
+
 def approve_edit(db, catalog_id):
     """A administração aprova a alteração pendente: aplica agora ou, se o arquivo
     novo ainda está indo para o archive.org, assim que terminar (apply_due).
-    Devolve True se já aplicou."""
+    Devolve (aplicou?, alteração)."""
     rev = revision(db, catalog_id)
     if rev is None:
         raise TournamentError("Esta ISO não tem alteração esperando aprovação.")
     db.execute("UPDATE catalog_iso_revisions SET approved_at = ?, updated_at = ? WHERE id = ?",
                (now(), now(), rev["id"]))
     if busy(rev):
-        return False
+        return False, rev
     _apply(db, rev)
-    return True
+    return True, rev
 
 
 def reject_edit(db, catalog_id):
     """A administração recusa a alteração pendente: a ISO continua como está.
-    Devolve a alteração (para o e-mail de quem enviou)."""
+    Devolve a alteração (para o e-mail de quem a fez)."""
     rev = revision(db, catalog_id)
     if rev is None:
         raise TournamentError("Esta ISO não tem alteração esperando aprovação.")
@@ -377,6 +501,10 @@ def _apply(db, rev):
     row = get(db, rev["catalog_iso_id"])
     db.execute("UPDATE catalog_isos SET name = ?, game_title_id = ?, updated_at = ? WHERE id = ?",
                (rev["name"], rev["game_title_id"], now(), rev["catalog_iso_id"]))
+    if rev["image_change"]:
+        # O cartão do link compartilhado era da imagem antiga (a página da ISO monta o novo).
+        db.execute("UPDATE catalog_isos SET image = ?, share_image = NULL WHERE id = ?",
+                   (rev["image"], rev["catalog_iso_id"]))
     if rev["stored_name"]:
         db.execute(
             "UPDATE catalog_isos SET file_id = NULL, stored_name = ?, original_filename = ?, file_size = ?, md5 = ?, "
@@ -388,24 +516,29 @@ def _apply(db, rev):
     db.execute("DELETE FROM catalog_iso_revisions WHERE id = ?", (rev["id"],))
     if rev["stored_name"]:
         _drop_local(row)
+    if rev["image_change"]:
+        _drop_image(row["image"])
+        _drop_image(row["share_image"])
 
 
 def apply_due(db, app, at=None):
-    """Aplica as alterações aprovadas pela administração e as sem resposta há
-    AUTO_APPROVE_HOURS - as com arquivo novo, só depois que ele terminou de ir
-    para o archive.org (um envio parado é recomeçado: iso.heal). Faz o commit de
-    cada uma e devolve [(ISO como ficou, aprovada sozinha?)] para os e-mails."""
+    """Aplica as alterações confirmadas por outro responsável ou aprovadas pela
+    administração e as sem resposta há AUTO_APPROVE_HOURS - as com arquivo novo,
+    só depois que ele terminou de ir para o archive.org (um envio parado é
+    recomeçado: iso.heal). Faz o commit de cada uma e devolve [(ISO como ficou,
+    aprovada sozinha?, a alteração)] para os e-mails."""
     at = at or datetime.now(timezone.utc)
     limit = (at - timedelta(hours=AUTO_APPROVE_HOURS)).replace(microsecond=0).isoformat()
     applied = []
-    for rev in db.execute("SELECT * FROM catalog_iso_revisions WHERE approved_at IS NOT NULL OR submitted_at <= ? "
+    for due in db.execute("SELECT * FROM catalog_iso_revisions WHERE approved_at IS NOT NULL OR submitted_at <= ? "
                           "ORDER BY id", (limit,)).fetchall():
-        rev = iso.heal(app, REVISIONS, rev)
-        if rev is None or busy(rev):
+        healed = iso.heal(app, REVISIONS, due)
+        if healed is None or busy(healed):
             continue
+        rev = revision(db, due["catalog_iso_id"])  # com os nomes de quem fez e de quem confirmou
         _apply(db, rev)
         db.commit()
-        applied.append((get(db, rev["catalog_iso_id"]), rev["approved_at"] is None))
+        applied.append((get(db, rev["catalog_iso_id"]), rev["approved_at"] is None, rev))
     return applied
 
 

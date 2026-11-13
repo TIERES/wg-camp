@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% block title %}Criar campeonato · WE Camp{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% from '_helpers_picker.html' import helpers_picker %}{% block title %}Criar campeonato · WE Camp{% endblock %}{% block content %}
 <h1>Criar campeonato</h1>
 {% if not games %}<p class="notice error">Nenhum jogo cadastrado para campeonatos ainda. Peça à administração do WE Camp.</p>{% else %}
 <form method="post" class="form t-form" id="new-tournament" enctype="multipart/form-data">
@@ -9,6 +9,11 @@
     <legend>Convidar jogadores <small class="muted">(opcional)</small></legend>
     <p class="muted">Os marcados recebem um e-mail com o convite e o aviso em "Meus campeonatos". Dá para convidar mais depois, em Gerenciar.</p>
     {{ invite_picker(candidates, selected=invite_selected) }}
+  </fieldset>
+  <fieldset id="ajudantes">
+    <legend>Ajudantes <small class="muted">(opcional)</small></legend>
+    <p class="muted">Amigos que ajudam a editar os dados, a imagem e a ISO do campeonato. Com ajudantes, o que um responsável alterar só entra depois que outro responsável confirmar: ele recebe um e-mail com o antes e o depois. Dá para escolher ou trocar depois, em Gerenciar.</p>
+    {{ helpers_picker(friends, friends|selectattr('id', 'in', helper_selected)|list, field_id='t-ajudantes', max=max_helpers, label='Amigos que ajudam a editar') }}
   </fieldset>
   <script>
   (function () {

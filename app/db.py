@@ -221,6 +221,42 @@ CREATE TABLE IF NOT EXISTS tournament_isos (
     updated_at TEXT NOT NULL
 );
 
+-- Ajudantes do campeonato (app/tournament/editors.py): amigos que o organizador
+-- escolhe para ajudar a editar os dados, a imagem e a ISO. Com ajudantes, uma
+-- alteração feita por um responsável (organizador ou ajudante) só entra depois
+-- que outro responsável confirma (tournament_changes).
+CREATE TABLE IF NOT EXISTS tournament_editors (
+    tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+    player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    added_by INTEGER REFERENCES players(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (tournament_id, player_id)
+);
+CREATE INDEX IF NOT EXISTS tournament_editors_player_idx ON tournament_editors(player_id);
+
+-- Alteração do campeonato esperando a confirmação de outro responsável
+-- (app/tournament/changes.py). Uma por campeonato; cada parte é opcional:
+--   values_json: o formulário "Dados do campeonato" validado;
+--   image_change = 1: a imagem nova (image; NULL = tirar a imagem);
+--   stored_name...: a ISO nova, guardada só neste servidor até a confirmação
+--   (só então substitui a atual e vai para o archive.org).
+CREATE TABLE IF NOT EXISTS tournament_changes (
+    id INTEGER PRIMARY KEY,
+    tournament_id INTEGER NOT NULL UNIQUE REFERENCES tournaments(id) ON DELETE CASCADE,
+    requested_by INTEGER REFERENCES players(id) ON DELETE SET NULL,
+    values_json TEXT,
+    image_change INTEGER NOT NULL DEFAULT 0 CHECK (image_change IN (0, 1)),
+    image TEXT,
+    stored_name TEXT,
+    original_filename TEXT,
+    file_size INTEGER,
+    md5 TEXT,
+    content_id TEXT,
+    submitted_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS tournament_entries (
     id INTEGER PRIMARY KEY,
     tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
@@ -421,6 +457,9 @@ CREATE TABLE IF NOT EXISTS catalog_isos (
     name TEXT NOT NULL,
     game_title_id INTEGER NOT NULL REFERENCES game_titles(id) ON DELETE RESTRICT,
     image TEXT,
+    -- A imagem como aparece no link compartilhado da página da ISO (JPEG 1200 x 630 montado
+    -- no navegador de um responsável - static/js/share-image.js), como a do campeonato.
+    share_image TEXT,
     file_id INTEGER REFERENCES files(id) ON DELETE SET NULL,
     stored_name TEXT,
     original_filename TEXT,
@@ -442,18 +481,36 @@ CREATE TABLE IF NOT EXISTS catalog_isos (
     updated_at TEXT NOT NULL
 );
 
--- Alteração de uma ISO já liberada, pedida por quem a enviou (iso_catalog.request_edit):
--- nome, jogo base e, opcionalmente, um arquivo novo (mesmas colunas do archive.org de
--- catalog_isos - vai para lá na hora). Até ser aplicada, os amistosos continuam com a
--- versão atual. Aplica quando a administração aprova (approved_at) ou sozinha depois de
--- 24 h do envio (submitted_at) - em ambos os casos, só depois de o arquivo novo terminar
--- de ir para o archive.org. Uma por ISO: editar de novo substitui a anterior.
+-- Ajudantes da ISO (app/tournament/editors.py): amigos que quem enviou escolhe para
+-- ajudar a editar o nome, o jogo base, a imagem e o arquivo. Quem enviou e os
+-- ajudantes são os responsáveis: a alteração feita por um deles numa ISO já liberada
+-- entra assim que outro responsável confirma (ou pela administração / pelo prazo).
+CREATE TABLE IF NOT EXISTS catalog_iso_editors (
+    catalog_iso_id INTEGER NOT NULL REFERENCES catalog_isos(id) ON DELETE CASCADE,
+    player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    added_by INTEGER REFERENCES players(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (catalog_iso_id, player_id)
+);
+CREATE INDEX IF NOT EXISTS catalog_iso_editors_player_idx ON catalog_iso_editors(player_id);
+
+-- Alteração de uma ISO já liberada, pedida por um responsável (iso_catalog.request_edit):
+-- nome, jogo base, imagem e, opcionalmente, um arquivo novo (mesmas colunas do archive.org
+-- de catalog_isos - vai para lá na hora). Até ser aplicada, os amistosos continuam com a
+-- versão atual. Aplica quando outro responsável confirma (confirmed_by) ou a administração
+-- aprova (approved_at nos dois casos), ou sozinha depois de 24 h do envio (submitted_at) -
+-- sempre só depois de o arquivo novo terminar de ir para o archive.org. Uma por ISO:
+-- editar de novo substitui a anterior. image_change = 1: troca a imagem pela de `image`
+-- (NULL = tira a imagem).
 CREATE TABLE IF NOT EXISTS catalog_iso_revisions (
     id INTEGER PRIMARY KEY,
     catalog_iso_id INTEGER NOT NULL UNIQUE REFERENCES catalog_isos(id) ON DELETE CASCADE,
     requested_by INTEGER REFERENCES players(id) ON DELETE SET NULL,
     name TEXT NOT NULL,
     game_title_id INTEGER NOT NULL REFERENCES game_titles(id) ON DELETE RESTRICT,
+    image_change INTEGER NOT NULL DEFAULT 0 CHECK (image_change IN (0, 1)),
+    image TEXT,
+    confirmed_by INTEGER REFERENCES players(id) ON DELETE SET NULL,
     stored_name TEXT,
     original_filename TEXT,
     file_size INTEGER,
@@ -612,9 +669,15 @@ def ensure_tournament_columns(database):
             database.execute(f"ALTER TABLE {table} ADD COLUMN archive_progress INTEGER")
     catalog_columns = {column["name"] for column in database.execute("PRAGMA table_info(catalog_isos)")}
     for column, kind in (("requested_by", "INTEGER REFERENCES players(id) ON DELETE SET NULL"),
-                         ("approved_at", "TEXT")):
+                         ("approved_at", "TEXT"), ("share_image", "TEXT")):
         if catalog_columns and column not in catalog_columns:
             database.execute(f"ALTER TABLE catalog_isos ADD COLUMN {column} {kind}")
+    # Imagem na alteração pendente da ISO e quem (outro responsável) a confirmou.
+    revision_columns = {column["name"] for column in database.execute("PRAGMA table_info(catalog_iso_revisions)")}
+    for column, kind in (("image_change", "INTEGER NOT NULL DEFAULT 0"), ("image", "TEXT"),
+                         ("confirmed_by", "INTEGER REFERENCES players(id) ON DELETE SET NULL")):
+        if revision_columns and column not in revision_columns:
+            database.execute(f"ALTER TABLE catalog_iso_revisions ADD COLUMN {column} {kind}")
 
 
 def allow_tournament_formats(database):

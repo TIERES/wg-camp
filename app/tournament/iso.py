@@ -45,10 +45,11 @@ def check_upload(upload):
         raise TournamentError("A ISO precisa ser " + ", ".join(f".{e}" for e in sorted(EXTENSIONS)) + ".")
 
 
-def check_size(request, max_bytes):
+def check_size(request, max_bytes, extra=0):
     """O tamanho vem do Content-Length do formulário inteiro: dá para
-    recusar antes de ler o corpo (o navegador já confere antes de enviar)."""
-    if request.content_length and request.content_length > max_bytes + 1024 ** 2:
+    recusar antes de ler o corpo (o navegador já confere antes de enviar).
+    extra: o que mais vai no mesmo formulário (a imagem da ISO dos amistosos)."""
+    if request.content_length and request.content_length > max_bytes + extra + 1024 ** 2:
         raise TournamentError(f"A ISO pode ter no máximo {max_bytes // 1024 ** 2} MB.")
 
 

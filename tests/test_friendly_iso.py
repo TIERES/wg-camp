@@ -185,7 +185,7 @@ class FriendlyIsoTest(unittest.TestCase):
         self.assertNotIn("Remover ISO", page)
         self.assertEqual(page.count("data-iso-upload"), 3)  # 2 botões + o seletor no script
         self.assertIn('id="iso-upload"', page)
-        self.assertIn("A ISO vai para a administração conferir o nome e o jogo base", page)
+        self.assertIn("A ISO vai para a administração do WE Camp conferir o nome, o jogo base e a imagem", page)
         self.assertNotIn('<details class="iso-request"', page)
 
     def test_friendly_without_iso(self):
@@ -364,7 +364,11 @@ class PlayerIsoEditTest(unittest.TestCase):
         self.assertIn("a alteração é aprovada automaticamente", body)
         page = self.client(p0).get("/torneios/amistosos").get_data(as_text=True)
         self.assertIn("Alteração em análise", page)
-        self.assertIn(f'data-dialog="cancelar-alteracao-{row["id"]}"', page)
+        self.assertIn(f'href="/torneios/isos/{row["id"]}#alteracao"', page)  # o selo leva à página da ISO
+        self.assertNotIn("Arquivo: Copa 2026.bin", page)  # o antes e o depois ficam na página da ISO
+        iso_page = self.client(p0).get(f"/torneios/isos/{row['id']}").get_data(as_text=True)
+        self.assertIn('data-dialog="cancelar-alteracao"', iso_page)
+        self.assertIn("Copa 2026 v2.bin", iso_page)
 
         # Administração: selo no menu (nome e "ISOs para amistosos") e a alteração na página da ISO.
         admin = self.client(admin=True)
@@ -414,7 +418,7 @@ class PlayerIsoEditTest(unittest.TestCase):
             db.execute("UPDATE catalog_iso_revisions SET archive_status = 'done', local_removed_at = ?, "
                        "archive_url = 'https://archive.org/v3'", (now(),))
             db.commit()
-            (applied, auto), = iso_catalog.apply_due(db, self.app)
+            (applied, auto, _rev), = iso_catalog.apply_due(db, self.app)
             self.assertFalse(auto)
         after = self.query("SELECT name, archive_url, archive_status FROM catalog_isos")[0]
         self.assertEqual(tuple(after), ("Copa 2026 v3", "https://archive.org/v3", "done"))
@@ -430,9 +434,9 @@ class PlayerIsoEditTest(unittest.TestCase):
             db = get_db()
             self.assertEqual(iso_catalog.apply_due(db, self.app), [])  # ainda no prazo
             later = datetime.now(timezone.utc) + timedelta(hours=iso_catalog.AUTO_APPROVE_HOURS, minutes=1)
-            (applied, auto), = iso_catalog.apply_due(db, self.app, at=later)
+            (applied, auto, rev), = iso_catalog.apply_due(db, self.app, at=later)
             self.assertTrue(auto)
-            notify.iso_edit_approved(db, applied, auto=auto)
+            notify.iso_edit_approved(db, applied, auto=auto, rev=rev)
         after = self.query("SELECT name, game_title_id FROM catalog_isos")[0]
         self.assertEqual(tuple(after), ("Copa 2026 Renomeada", self.game2))
         sent = self.mails()

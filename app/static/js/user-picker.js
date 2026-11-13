@@ -7,6 +7,7 @@
 // - "free": o texto é o que vai no formulário (filtros: um trecho do nick vale);
 //   a lista só sugere, e Enter sem escolher nada na lista envia o que foi digitado.
 // - data-exclude="<id de outro campo>": o nick escolhido lá sai desta lista.
+// - opção com data-taken (já escolhida nos ajudantes - helpers-picker.js) também sai.
 (function () {
   function plain(s) { return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
 
@@ -46,7 +47,7 @@
       var query = plain(input.value.trim()), taken = other ? plain(other.value.trim()) : '';
       options.forEach(function (o) {
         var nick = plain(o.dataset.nick), at = nick.indexOf(query);
-        o.hidden = at < 0 || (taken && nick === taken);
+        o.hidden = at < 0 || (taken && nick === taken) || o.hasAttribute('data-taken');
         o.dataset.rank = at === 0 ? 0 : 1;
         label(o, query);
       });

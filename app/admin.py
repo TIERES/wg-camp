@@ -847,10 +847,12 @@ def replays_cleanup_discard(label):
 @bp.get("/jogadores")
 @login_required
 def players_list():
+    from .accounts import UNVERIFIED_TTL
     from .listing import cap, like
     filters = {"name": request.args.get("nome", "").strip(), "status": request.args.get("confirmado", "")}
-    sql, params = ("SELECT p.*, (SELECT COUNT(*) FROM memcards m WHERE m.player_id = p.id) AS cards "
-                   "FROM players p WHERE 1 = 1"), []
+    sql, params = ("SELECT p.*, (SELECT COUNT(*) FROM memcards m WHERE m.player_id = p.id) AS cards, "
+                   "(SELECT MAX(t.created_at) FROM player_tokens t WHERE t.player_id = p.id AND t.kind = 'verify') "
+                   "AS last_verify FROM players p WHERE 1 = 1"), []
     if filters["name"]:
         sql += " AND (p.username LIKE ? ESCAPE '\\' OR p.email LIKE ? ESCAPE '\\')"
         params += [like(filters["name"])] * 2
@@ -859,8 +861,166 @@ def players_list():
     elif filters["status"] == "nao":
         sql += " AND p.email_verified_at IS NULL"
     players, total = cap(get_db().execute(sql + " ORDER BY p.username COLLATE NOCASE", params).fetchall())
+    # Cadastro não confirmado: até quando o nick e o e-mail ficam reservados (48 h depois do
+    # cadastro ou do último link de confirmação - accounts.already_registered); None = já livres.
+    reserved = {}
+    for player in players:
+        if player["email_verified_at"]:
+            continue
+        last = max(filter(None, (player["created_at"], player["last_verify"])))
+        until = datetime.fromisoformat(last) + UNVERIFIED_TTL
+        reserved[player["id"]] = until.isoformat() if until > datetime.now(timezone.utc) else None
     return render_template("admin/players.html", players=players, total=total, filters=filters,
-                           filtered=any(filters.values()))
+                           filtered=any(filters.values()), reserved=reserved,
+                           reserve_hours=int(UNVERIFIED_TTL.total_seconds() // 3600))
+
+
+def _player_back():
+    """Volta para a lista de jogadores como estava (filtros e quantos mostrar)."""
+    target = request.form.get("voltar", "")
+    return redirect(target if target.startswith("/admin/jogadores") else url_for("admin.players_list"))
+
+
+def _player_or_404(db, player_id):
+    player = db.execute("SELECT * FROM players WHERE id = ?", (player_id,)).fetchone()
+    if player is None:
+        abort(404)
+    return player
+
+
+@bp.post("/jogadores/<int:player_id>/editar")
+@login_required
+def player_edit(player_id):
+    """Corrige o e-mail de um jogador (digitado errado no cadastro) e/ou define uma
+    nova senha para ele.
+      - e-mail novo, ainda não confirmado: o link de confirmação vai para o e-mail novo;
+      - já confirmado: ele recebe um aviso no e-mail (o novo, se mudou) dizendo o que
+        a administração trocou - nunca a senha, que a administração passa para ele;
+      - senha nova: as conexões do RetroArch TIERES (tokens da API) caem, como na troca
+        de senha pelo próprio jogador, e os links de "Esqueci minha senha" deixam de valer."""
+    from werkzeug.security import generate_password_hash
+    from .accounts import (already_registered, email_error, normalize_email, password_error,
+                           purge_stale_unverified, revoke_api_tokens)
+    from .mailer import MailError, send_mail
+    from .players import _send_verification
+    validate_csrf()
+    db = get_db()
+    player = _player_or_404(db, player_id)
+    email = normalize_email(request.form.get("email")) or player["email"]
+    password = request.form.get("password", "")
+    new_email = email != (player["email"] or "").lower()  # contas antigas podem ter maiúsculas no e-mail
+    error = None
+    if not new_email and not password:
+        error = "Nada foi alterado: mude o e-mail ou digite uma nova senha."
+    if not error and new_email:
+        error = email_error(email)
+        if not error and already_registered(db, "email", email, except_id=player_id):
+            error = "Este e-mail já é de outra conta."
+    if not error and password:
+        error = password_error(password)
+    if error:
+        flash(f"{player['username']}: {error}", "error")
+        return _player_back()
+    stamp = now()
+    if new_email:
+        purge_stale_unverified(db, "", email)  # um cadastro pendente vencido com esse e-mail sai, como no cadastro
+        db.execute("UPDATE players SET email = ?, updated_at = ? WHERE id = ?", (email, stamp, player_id))
+        # Os links de confirmação e de nova senha que foram para o e-mail antigo deixam de valer.
+        db.execute("UPDATE player_tokens SET used_at = ? WHERE player_id = ? AND kind IN ('verify', 'reset') "
+                   "AND used_at IS NULL", (stamp, player_id))
+    if password:
+        db.execute("UPDATE players SET password_hash = ?, updated_at = ? WHERE id = ?",
+                   (generate_password_hash(password), stamp, player_id))
+        db.execute("UPDATE player_tokens SET used_at = ? WHERE player_id = ? AND kind = 'reset' AND used_at IS NULL",
+                   (stamp, player_id))
+        revoke_api_tokens(db, player_id)
+    db.commit()
+    player = _player_or_404(db, player_id)
+    done = ([f"e-mail corrigido para {email}"] if new_email else []) + (["nova senha definida"] if password else [])
+    summary = f"{player['username']}: {' e '.join(done)}."
+    if password and player["email_verified_at"]:
+        summary += " Os PCs conectados precisam entrar de novo no Kaillera; passe a senha nova para o jogador."
+    if not player["email_verified_at"]:
+        if new_email:
+            try:
+                _send_verification(db, player)
+            except MailError:
+                flash(summary + " Não foi possível enviar a confirmação agora: use \"Reenviar confirmação\" em "
+                                "alguns minutos.", "error")
+                return _player_back()
+            summary += " O link de confirmação foi enviado para o e-mail novo."
+        flash(summary, "success")
+        return _player_back()
+    changed = []
+    if new_email:
+        changed.append("o e-mail da sua conta passou a ser este endereço. É por ele que você recupera o acesso "
+                       "(\"Esqueci minha senha\") e recebe os avisos dos campeonatos e amistosos")
+    if password:
+        changed.append("a sua senha foi trocada. Use a senha nova que a administração passou para você, no site e "
+                       "no Kaillera (os PCs que estavam conectados precisam entrar de novo)")
+    try:
+        send_mail(player["email"], "Sua conta no WE Camp foi atualizada", (
+            f"Olá, {player['username']}!\n\nA administração do WE Camp atualizou a sua conta:\n\n"
+            + "\n".join(f"  - {item[0].upper()}{item[1:]}." for item in changed)
+            + "\n\nSe você não pediu essa mudança, fale com a administração do WE Camp.\n"))
+    except MailError:
+        pass  # send_mail já registrou no log; a mudança já vale
+    flash(summary, "success")
+    return _player_back()
+
+
+@bp.post("/jogadores/<int:player_id>/reenviar-confirmacao")
+@login_required
+def player_resend(player_id):
+    """Reenvia o link de confirmação de um cadastro ainda não confirmado. O nick e
+    o e-mail ficam reservados por mais 48 h a partir daqui (accounts._STALE)."""
+    from .accounts import recently_sent
+    from .mailer import MailError
+    from .players import _send_verification
+    validate_csrf()
+    db = get_db()
+    player = _player_or_404(db, player_id)
+    if player["email_verified_at"]:
+        flash(f"{player['username']} já confirmou o cadastro.", "error")
+    elif recently_sent(db, player_id, "verify"):
+        flash(f"Uma confirmação foi enviada para {player['username']} há menos de 2 minutos. Espere um pouco antes "
+              "de reenviar.", "error")
+    else:
+        try:
+            _send_verification(db, player)
+        except MailError:
+            flash("Não foi possível enviar o e-mail agora. Tente novamente em alguns minutos.", "error")
+        else:
+            flash(f"Confirmação reenviada para {player['email']}. O link vale por 48 horas, e o nick "
+                  f"{player['username']} fica reservado até lá.", "success")
+    return _player_back()
+
+
+@bp.post("/jogadores/<int:player_id>/excluir")
+@login_required
+def player_delete(player_id):
+    """Exclui um cadastro que nunca foi confirmado, para liberar o nick e o e-mail
+    na hora (sem esperar as 48 h). Conta confirmada não é excluída por aqui. Quem
+    não confirmou nunca entrou no site: não há campeonato, carteira nem Memory
+    Card dele (o que houver de cadastro sai junto - ON DELETE CASCADE)."""
+    from . import images
+    validate_csrf()
+    db = get_db()
+    player = _player_or_404(db, player_id)
+    if player["email_verified_at"]:
+        flash(f"{player['username']} já confirmou o cadastro: só dá para excluir cadastro não confirmado.", "error")
+        return _player_back()
+    try:
+        db.execute("DELETE FROM players WHERE id = ? AND email_verified_at IS NULL", (player_id,))
+        db.commit()
+    except sqlite3.IntegrityError:
+        db.rollback()
+        flash(f"O cadastro de {player['username']} tem registros ligados a ele e não pode ser excluído.", "error")
+        return _player_back()
+    images.delete("avatar", player["avatar"])
+    flash(f"Cadastro de {player['username']} excluído: o nick e o e-mail {player['email']} estão livres para um "
+          "novo cadastro.", "success")
+    return _player_back()
 
 
 @bp.route("/jogos", methods=("GET", "POST"))

@@ -1,0 +1,31 @@
+{# Ajudantes (app/tournament/editors.py): os amigos que ajudam a editar uma ISO dos
+   amistosos ou um campeonato. A busca é a escolha de usuário padrão (_user_picker.html);
+   cada escolhido vira uma etiqueta com o × para tirar, e o id vai em `helper_ids`
+   (static/js/helpers-picker.js, carregado no base.html). `helpers_sent` diz ao servidor
+   que a lista veio neste formulário (nenhum helper_ids = tirar todos).
+   - friends: quem pode ser escolhido (linhas com id e username);
+   - chosen: os já escolhidos (id e username);
+   - field_id: o id do campo de busca (um por formulário da página).
+   Numa janela reaproveitada (Editar ISO), o JavaScript troca os escolhidos com
+   elemento.helpersSet([{id, username}]). #}
+{% from '_user_picker.html' import user_picker %}
+{% macro helpers_picker(friends, chosen=(), field_id='ajudantes', max=10, label='Amigos que ajudam a editar (opcional)', hint='') -%}
+<div class="helpers-picker" data-helpers-picker data-max="{{ max }}">
+  <input type="hidden" name="helpers_sent" value="1">
+  {% if friends %}
+  {{ user_picker('', label, friends, placeholder='Digite o nick do amigo...', field_id=field_id, empty='Nenhum amigo com esse nick.') }}
+  {% else %}
+  <span class="helpers-label">{{ label }}</span>
+  <p class="muted helpers-empty">Você ainda não tem amigos para escolher. <a href="{{ url_for('tournaments.friends_page') }}">Adicione amigos</a>.</p>
+  {% endif %}
+  <ul class="helper-chips" data-helper-chips aria-label="Ajudantes escolhidos"{% if not chosen %} hidden{% endif %}>
+    {% for p in chosen %}<li class="helper-chip" data-id="{{ p.id }}"><span>{{ p.username }}</span><input type="hidden" name="helper_ids" value="{{ p.id }}"><button type="button" class="helper-remove" aria-label="Tirar {{ p.username }}" title="Tirar {{ p.username }}">&times;</button></li>{% endfor %}
+  </ul>
+  {% if hint %}<small class="muted helpers-hint">{{ hint }}</small>{% endif %}
+</div>
+{%- endmacro %}
+
+{# Os responsáveis, só para ler: quem enviou/criou e os ajudantes. #}
+{% macro people_line(owner_name, helpers, owner_label='enviou') -%}
+<span class="people-line"><strong>{{ owner_name or 'Administração do WE Camp' }}</strong> <span class="muted">({{ owner_label }})</span>{% for p in helpers %}, <strong>{{ p.username }}</strong>{% endfor %}</span>
+{%- endmacro %}

@@ -68,10 +68,11 @@
         <a class="button" href="{{ url_for('players.login', next=request.path) }}">Entre para se inscrever</a>
       {% endif %}
     {% endif %}
-    {% if can_manage %}<a class="button secondary" href="{{ url_for('tournaments.manage', slug=t.slug) }}">Gerenciar</a>{% endif %}
+    {% if can_manage %}<a class="button secondary" href="{{ url_for('tournaments.manage', slug=t.slug) }}">Gerenciar</a>
+    {% elif can_edit %}<a class="button secondary" href="{{ url_for('tournaments.manage', slug=t.slug) }}" title="Você ajuda a editar este campeonato">Editar dados e ISO</a>{% endif %}
   </div>
 </section>
-{% if can_manage %}{% include 'tournaments/_share_image.html' %}{% endif %}
+{% if can_edit %}{% include 'tournaments/_share_image.html' %}{% endif %}
 
 {# Os jogos ao vivo não têm card aqui: a aba Tabela mostra "Ao vivo" e os placares
    nas próprias tabelas, e a aba Jogos um link "Ao vivo" no jogo rolando (app/live.py). #}

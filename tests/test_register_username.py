@@ -76,10 +76,12 @@ class RegisterFormTest(unittest.TestCase):
         self.assertIn("e-mail já está cadastrado", self.check("email", "Novo@Example.com")["message"])
         self.assertIn("espaços", self.check("usuario", "Joao Silva")["message"])
         self.assertIn("e-mail válido", self.check("email", "novo@")["message"])
-        # Cadastro nunca confirmado e antigo não reserva o nome nem o e-mail.
+        # Cadastro nunca confirmado e antigo (o cadastro e o último link de confirmação) não
+        # reserva o nome nem o e-mail.
         with self.app.app_context():
             db = get_db()
             db.execute("UPDATE players SET created_at = '2020-01-01T00:00:00+00:00'")
+            db.execute("UPDATE player_tokens SET created_at = '2020-01-01T00:00:00+00:00'")
             db.commit()
         self.assertTrue(self.check("usuario", "Joao_Silva")["ok"])
         self.assertTrue(self.check("email", "novo@example.com")["ok"])

@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'tournaments/_friendly.html' import friendly_carousel %}{% from '_carousel.html' import carousel, carousel_arrow, carousel_count %}{% from '_dialog.html' import info_button, info_dialog, form_dialog %}{% from '_icons.html' import icon %}{% from '_user_picker.html' import user_picker %}{% block title %}Amistosos · WE Camp{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from 'tournaments/_friendly.html' import friendly_carousel %}{% from '_carousel.html' import carousel, carousel_arrow, carousel_count %}{% from '_dialog.html' import info_button, info_dialog %}{% from '_icons.html' import icon %}{% from '_user_picker.html' import user_picker %}{% from '_helpers_picker.html' import helpers_picker %}{% from '_share.html' import share_button %}{% block title %}Amistosos · WE Camp{% endblock %}{% block content %}
 <h1 class="title-info">Amistosos {{ info_button('amistoso-regras', 'Quando o amistoso vale para o Ranking e o XP') }}</h1>
 <p class="muted">Jogos com seus amigos, fora dos campeonatos. Quem é chamado aceita o convite. Depois do jogo, um informa o placar e o outro confirma.</p>
 {% call info_dialog('amistoso-regras', 'Quando o amistoso vale para o Ranking e o XP') %}
@@ -109,7 +109,7 @@
       <h2 id="iso-upload-title">Enviar ISO</h2>
       <form method="dialog"><button class="secondary" aria-label="Fechar">&times;</button></form>
     </div>
-    <p class="muted">A ISO vai para a administração conferir o nome e o jogo base, coloca a imagem e libera. Você recebe um e-mail quando ela estiver liberada. Até {{ iso_max_bytes|filesize }} ({{ iso_accept.replace(',', ', ') }}).</p>
+    <p class="muted">A ISO vai para a administração do WE Camp conferir o nome, o jogo base e a imagem e liberar. Você recebe um e-mail quando ela estiver liberada. Até {{ iso_max_bytes|filesize }} ({{ iso_accept.replace(',', ', ') }}).</p>
     <form method="post" action="{{ url_for('tournaments.friendly_iso_upload') }}" class="form" enctype="multipart/form-data" data-upload="{{ iso_max_bytes }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="form-row">
@@ -120,6 +120,14 @@
         </select></label>
       </div>
       <label>Arquivo da ISO<input type="file" name="iso" accept="{{ iso_accept }}" required></label>
+      <div class="t-image-edit iso-image-field">
+        <img class="t-image-thumb" id="iso-upload-preview" alt="" hidden>
+        <div>
+          <label>Imagem da ISO (opcional)<input type="file" name="image" accept="image/png,image/jpeg,image/webp" data-resize="max:1200" data-preview="iso-upload-preview"></label>
+          <small class="muted">Logo ou arte da ISO: aparece nos cards e, em tamanho grande, na página da ISO. Em pé (proporção 4:5) fica melhor. PNG, JPG ou WebP. Sem imagem, vale a capa do jogo base.</small>
+        </div>
+      </div>
+      {{ helpers_picker(friends, field_id='iso-upload-ajudantes', max=max_helpers, hint='Eles também editam o nome, o jogo base e a imagem e enviam um arquivo novo. O que um de vocês alterar, outro confirma pelo e-mail, que leva o antes e o depois.') }}
       {% include 'tournaments/_upload_progress.html' %}
       <div class="card-actions"><button>Enviar ISO</button></div>
     </form>
@@ -196,6 +204,10 @@
         dialog.close();
       });
     });
+    // ?iso=c:12 (o "Chamar um amigo" da página da ISO): o convite já abre com ela escolhida.
+    var wanted = new URLSearchParams(location.search).get('iso');
+    var preset = wanted ? options.filter(function (o) { return o.dataset.value === wanted; })[0] : null;
+    if (preset) show(preset);
     // "Enviar ISO" (no convite e na janela de escolha): a janela com o formulário.
     document.querySelectorAll('[data-iso-upload]').forEach(function (button) {
       button.addEventListener('click', function () {
@@ -214,13 +226,23 @@
 </section>
 
 {% if my_isos %}
-{# As ISOs que o jogador enviou: cards como os da escolha da ISO, em carrossel,
-   com a liberação no selo, a alteração pendente (se houver) e, no rodapé, o
-   envio para o archive.org e o "Editar" (janela #iso-edit, preenchida pelo botão). #}
+{# As ISOs de que o jogador é responsável (as que enviou e as que ajuda a editar - iso_info):
+   cards como os da escolha da ISO, em carrossel, com a liberação e a alteração pendente nos
+   selos (o selo da alteração leva à página da ISO, que mostra o antes e o depois e os botões
+   de confirmar, recusar e cancelar) e, no rodapé, o envio para o archive.org, a página da ISO
+   (o link para compartilhar) e o "Editar" (janela #iso-edit, preenchida pelo botão). #}
 <section id="minhas-isos">
-  <h2>Minhas ISOs enviadas</h2>
+  <h2 class="title-info">Minhas ISOs {{ info_button('isos-regras', 'Como funcionam as ISOs, os ajudantes e as alterações') }}</h2>
+  {% call info_dialog('isos-regras', 'ISOs dos amistosos') %}
+  <ul class="xp-rules-list">
+    <li>A ISO enviada espera a <strong>liberação da administração</strong> do WE Camp, que confere o nome, o jogo base e a imagem. Liberada, ela aparece para todos escolherem no convite e ganha uma <strong>página com o link para compartilhar</strong>, onde quem está logado baixa a ISO.</li>
+    <li>Quem enviou pode escolher <strong>amigos para ajudar a editar</strong>. Quem enviou e os ajudantes são os responsáveis pela ISO: todos editam o nome, o jogo base e a imagem e enviam um arquivo novo.</li>
+    <li>Numa ISO já liberada, a alteração de um responsável entra assim que <strong>outro responsável confirma</strong>: ele recebe um e-mail com o antes e o depois. Sem confirmação, vale a aprovação da administração ou, sem resposta em {{ auto_approve_hours }} h, a automática. Até lá, os amistosos usam a versão atual.</li>
+  </ul>
+  {% endcall %}
   {% call carousel('ISOs anteriores', 'Próximas ISOs', 'per-3 my-isos', fit=false) %}
-    {% for i in my_isos %}
+    {% for i in my_isos %}{% set info = iso_info[i.id] %}{% set public = i.approved_at and i.is_active %}
+    {% set shown_image = i.rev_image if i.rev_image_change else i.image %}
     <div class="t-card my-iso-card">
       <span class="t-side"><span class="t-side-images">
         {% if i.image %}<img class="t-cover t-image" src="{{ image_url('torneio', i.image) }}" alt="" loading="lazy">{% endif %}
@@ -229,42 +251,36 @@
       <span class="t-body">
         <span class="t-badges">
           <span class="badge {{ 'iso-catalog' if i.approved_at else 'iso-pending' }}">{{ 'Liberada' if i.approved_at else 'Aguardando liberação' }}</span>
-          {% if i.rev_id %}<span class="badge iso-revision">{{ 'Alteração aprovada' if i.rev_approved_at else 'Alteração em análise' }}</span>{% endif %}
+          {% if not info.owner %}<span class="badge iso-helper">Você ajuda a editar</span>{% endif %}
+          {% if i.rev_id %}<a class="badge iso-revision badge-link" href="{{ url_for('tournaments.iso_page', catalog_id=i.id, _anchor='alteracao') }}" title="Ver o antes e o depois da alteração">{{ 'Alteração aprovada' if i.rev_approved_at else ('Confirme a alteração' if info.can_confirm else 'Alteração em análise') }}</a>{% endif %}
         </span>
         <strong class="t-name">{{ i.name }}</strong>
         <span class="muted">{{ i.game_name }}</span>
         {% if i.original_filename %}<small class="muted iso-file">{{ i.original_filename|fit }}</small>{% endif %}
+        {% if not info.owner or info.helpers %}
+        <span class="t-meta iso-people">
+          {% if not info.owner %}<span>{{ icon('user') }}enviada por {{ i.requester_name or 'administração' }}</span>{% endif %}
+          {% if info.helpers %}<span>{{ icon('users') }}{{ 'Ajudante' if info.helpers|length == 1 else 'Ajudantes' }}: {{ info.helpers|map(attribute='username')|join(', ') }}</span>{% endif %}
+        </span>
+        {% endif %}
       </span>
-      {% if i.rev_id %}
-      <div class="iso-revision-box">
-        <strong class="iso-revision-title">{{ icon('edit') }}Alteração enviada</strong>
-        <ul class="iso-revision-list">
-          {% if i.rev_name != i.name %}<li>Nome: <strong>{{ i.rev_name }}</strong></li>{% endif %}
-          {% if i.rev_game_id != i.game_title_id %}<li>Jogo base: <strong>{{ i.rev_game_name }}</strong></li>{% endif %}
-          {% if i.rev_filename %}<li class="iso-revision-file">Arquivo: <span class="iso-file">{{ i.rev_filename|fit }}</span></li>{% endif %}
-        </ul>
-        <small class="muted">{% if i.rev_approved_at %}Aprovada pela administração: entra no lugar da atual assim que o arquivo novo terminar de ir para o archive.org.{% else %}Até a aprovação, os amistosos usam a versão atual. Sem resposta da administração, é aprovada automaticamente em {{ auto_approve_at(i.rev_submitted_at)|localtime('%d/%m às %H:%M') }}.{% endif %}</small>
-        {% if i.rev_stored_name %}<div class="archive-progress" data-archive-status="{{ url_for('tournaments.catalog_iso_revision_status', catalog_id=i.id) }}"></div>{% endif %}
-      </div>
-      {% endif %}
       <div class="t-foot">
         {% if i.stored_name %}<div class="archive-progress" data-archive-status="{{ url_for('tournaments.catalog_iso_status', catalog_id=i.id) }}"></div>{% endif %}
         <div class="my-iso-actions">
-          {% if i.rev_id and not i.rev_approved_at %}<button type="button" class="secondary" data-dialog="cancelar-alteracao-{{ i.id }}" aria-haspopup="dialog">Cancelar alteração</button>{% endif %}
+          {% if public %}{{ share_button(info.page, 'Compartilhar a ISO (copia o link da página)', 'Link da página da ISO copiado, você pode compartilhar utilizando o CTRL + V!') }}{% endif %}
+          <a class="button secondary" href="{{ url_for('tournaments.iso_page', catalog_id=i.id) }}">Página</a>
           <button type="button" class="icon-button" aria-haspopup="dialog" data-iso-edit="{{ url_for('tournaments.friendly_iso_edit', catalog_id=i.id) }}"
                   data-name="{{ i.rev_name or i.name }}" data-game="{{ i.rev_game_id or i.game_title_id }}"
                   data-file="{{ i.rev_filename or i.original_filename or '' }}" data-approved="{{ '1' if i.approved_at else '' }}"
-                  data-revision="{{ '1' if i.rev_id else '' }}">{{ icon('edit') }}Editar</button>
+                  data-revision="{{ '1' if i.rev_id else '' }}" data-image="{{ image_url('torneio', shown_image) or '' }}"
+                  data-owner="{{ '1' if info.owner else '' }}" data-others="{{ '1' if info.others else '' }}"
+                  data-helpers="{{ info.helpers|tojson|forceescape }}"
+                  data-people="{{ i.requester_name or 'administração' }} (enviou){% for p in info.helpers %}, {{ p.username }}{% endfor %}">{{ icon('edit') }}Editar</button>
         </div>
       </div>
     </div>
     {% endfor %}
   {% endcall %}
-  {% for i in my_isos if i.rev_id and not i.rev_approved_at %}
-  {% call form_dialog('cancelar-alteracao-%d' % i.id, url_for('tournaments.friendly_iso_edit_cancel', catalog_id=i.id), 'Cancelar a alteração?', 'Cancelar alteração') %}
-    <p>A ISO <strong>{{ i.name }}</strong> continua como está{% if i.rev_filename %} e o arquivo novo enviado ({{ i.rev_filename }}) é apagado{% endif %}.</p>
-  {% endcall %}
-  {% endfor %}
 
   <dialog class="iso-picker iso-upload" id="iso-edit" aria-labelledby="iso-edit-title">
     <div class="iso-picker-head">
@@ -283,6 +299,19 @@
       </div>
       <label>Arquivo novo (opcional)<input type="file" name="iso" accept="{{ iso_accept }}"></label>
       <p class="muted iso-edit-file" id="iso-edit-file"></p>
+      <div class="t-image-edit iso-image-field">
+        <img class="t-image-thumb" id="iso-edit-preview" alt="" hidden>
+        <div>
+          <label>Imagem da ISO (opcional)<input type="file" name="image" accept="image/png,image/jpeg,image/webp" data-resize="max:1200" data-preview="iso-edit-preview"></label>
+          <label class="check" id="iso-edit-remove" hidden><input type="checkbox" name="remove_image"> Tirar a imagem (fica a capa do jogo base)</label>
+          <small class="muted">Para manter a imagem, deixe em branco. Em pé (proporção 4:5) fica melhor. PNG, JPG ou WebP.</small>
+        </div>
+      </div>
+      {# Só quem enviou escolhe os ajudantes: para os outros o campo fica desligado (não vai no formulário). #}
+      <fieldset class="plain-fieldset" id="iso-edit-helpers">
+        {{ helpers_picker(friends, field_id='iso-edit-ajudantes', max=max_helpers, hint='Eles também editam o nome, o jogo base e a imagem e enviam um arquivo novo. O que um de vocês alterar, outro confirma pelo e-mail, que leva o antes e o depois.') }}
+      </fieldset>
+      <p class="muted" id="iso-edit-people" hidden></p>
       {% include 'tournaments/_upload_progress.html' %}
       <div class="card-actions"><button>Salvar alteração</button></div>
     </form>
@@ -292,20 +321,37 @@
     // "Editar" de cada card: a mesma janela, preenchida com a ISO (ou a alteração pendente).
     var dialog = document.getElementById('iso-edit'), form = document.getElementById('iso-edit-form');
     var note = document.getElementById('iso-edit-note'), fileNote = document.getElementById('iso-edit-file');
+    var preview = document.getElementById('iso-edit-preview'), removeBox = document.getElementById('iso-edit-remove');
+    var helpersBox = document.getElementById('iso-edit-helpers'), people = document.getElementById('iso-edit-people');
+    var picker = helpersBox.querySelector('[data-helpers-picker]');
     var HOURS = {{ auto_approve_hours }};
     document.querySelectorAll('[data-iso-edit]').forEach(function (button) {
       button.addEventListener('click', function () {
-        form.action = button.dataset.isoEdit;
+        var data = button.dataset, owner = !!data.owner;
+        form.action = data.isoEdit;
         form.reset();
-        form.elements.name.value = button.dataset.name;
-        form.elements.game_title_id.value = button.dataset.game;
-        note.textContent = button.dataset.approved
-          ? 'A ISO já está liberada: a alteração vai para a administração do WE Camp aprovar. Até lá, os amistosos usam a versão atual. Sem resposta em ' + HOURS + ' h, ela é aprovada automaticamente.'
-            + (button.dataset.revision ? ' Esta edição substitui a alteração que já está esperando (e o prazo recomeça).' : '')
-          : 'A ISO ainda aguarda a liberação: a alteração entra na hora e a administração confere tudo antes de liberar.';
-        fileNote.textContent = button.dataset.file
-          ? 'Para manter o arquivo ' + button.dataset.file + ', deixe em branco. Até {{ iso_max_bytes|filesize }} ({{ iso_accept.replace(",", ", ") }}).'
+        form.elements.name.value = data.name;
+        form.elements.game_title_id.value = data.game;
+        if (!data.approved) {
+          note.textContent = 'A ISO ainda aguarda a liberação: a alteração entra na hora e a administração confere tudo antes de liberar.';
+        } else {
+          note.textContent = (data.others
+            ? 'A ISO já está liberada: a alteração entra assim que outro responsável confirmar (eles recebem o e-mail com o antes e o depois). Sem confirmação, vale a aprovação da administração do WE Camp ou, sem resposta em ' + HOURS + ' h, a automática. Até lá, os amistosos usam a versão atual.'
+            : 'A ISO já está liberada: a alteração vai para a administração do WE Camp aprovar. Até lá, os amistosos usam a versão atual. Sem resposta em ' + HOURS + ' h, ela é aprovada automaticamente.')
+            + (data.revision ? ' Esta edição substitui a alteração que já está esperando (e o prazo recomeça).' : '');
+        }
+        fileNote.textContent = data.file
+          ? 'Para manter o arquivo ' + data.file + ', deixe em branco. Até {{ iso_max_bytes|filesize }} ({{ iso_accept.replace(",", ", ") }}).'
           : 'Até {{ iso_max_bytes|filesize }} ({{ iso_accept.replace(",", ", ") }}).';
+        // A imagem atual (ou a da alteração pendente) e o "Tirar a imagem".
+        preview.hidden = !data.image;
+        if (data.image) preview.src = data.image; else preview.removeAttribute('src');
+        removeBox.hidden = !data.image;
+        // Ajudantes: só quem enviou escolhe; os outros veem quem são os responsáveis.
+        helpersBox.hidden = helpersBox.disabled = !owner;
+        if (owner && picker && picker.helpersSet) picker.helpersSet(JSON.parse(data.helpers || '[]'));
+        people.hidden = owner;
+        people.textContent = owner ? '' : 'Responsáveis pela ISO: ' + data.people + '. Só quem enviou escolhe os ajudantes.';
         dialog.showModal();
         form.elements.name.focus();
       });
@@ -328,6 +374,11 @@
   {% if done_total > done|length %}<p class="muted">Mostrando os {{ done|length }} mais recentes de {{ done_total }}: use os filtros para achar os outros.</p>{% endif %}
 {% endcall %}
 {% endif %}
-<script src="{{ url_for('static', filename='js/upload-progress.js') }}"></script>
+<script src="{{ url_for('static', filename='js/upload-progress.js', v='20261113a') }}"></script>
 <script src="{{ url_for('static', filename='js/archive-progress.js') }}"></script>
+<script src="{{ url_for('static', filename='js/image-resize.js') }}" defer></script>
+{# ISO minha com imagem e ainda sem o cartão do link compartilhado: o navegador monta e envia
+   (static/js/share-image.js, tournaments.iso_share_image), como no campeonato. #}
+{% for i in my_isos if i.image and not i.share_image %}<script src="{{ url_for('static', filename='js/share-image.js', v='20261112a') }}" data-image="{{ image_url('torneio', i.image) }}" data-origin="{{ i.image }}" data-post="{{ url_for('tournaments.iso_share_image', catalog_id=i.id) }}" data-csrf="{{ csrf_token() }}" defer></script>
+{% endfor %}
 {% endblock %}
