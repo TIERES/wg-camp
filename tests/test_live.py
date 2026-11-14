@@ -805,7 +805,11 @@ class LiveMatchesTest(unittest.TestCase):
         client.post("/torneios/amistosos/%d/confirmar" % fid, data={"csrf_token": CSRF})
         row = self.rows("SELECT * FROM friendly_matches WHERE id = ?", fid)[0]
         self.assertEqual((row["status"], row["first_confirmed_by"]), ("reported", self.tieres))
-        self.assertIn("Você confirmou o placar lido do jogo", client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True))
+        # Sem "Placar agregado": o botão de antes (o placar inteiro) conta como todos os jogos confirmados.
+        page = client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True)
+        self.assertIn("Você confirmou o jogo. Aguardando ANDERSHOW confirmar", page)
+        self.assertNotIn("Confirmar jogo 1", page)
+        self.assertIn('title="Você confirmou; falta ANDERSHOW">✓</span>', page)
         with self.app.app_context():
             db = get_db()
             friendly.confirm(db, fid, self.anders)
@@ -1157,6 +1161,100 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertEqual(self.rows("SELECT status FROM tournament_matches WHERE status != 'confirmed'")[0]["status"],
                          "scheduled")
 
+    def test_friendly_without_aggregate_confirms_each_game(self):
+        """Sem "Placar agregado" não há placar para informar: cada jogador
+        confirma cada jogo lido do Ao vivo (durante a sessão ou depois); com
+        todos confirmados pelos dois, o amistoso fecha quando a sessão acaba."""
+        from unittest import mock
+        from app.tournament import friendly
+        with self.app.app_context():
+            db = get_db()
+            fid = db.execute("INSERT INTO friendly_matches (home_id, away_id, status, created_at, updated_at) "
+                             "VALUES (?, ?, 'accepted', ?, ?)", (self.tieres, self.anders, now(), now())).lastrowid
+            db.commit()
+        clients = {}
+        for pid in (self.tieres, self.anders):
+            clients[pid] = self.app.test_client()
+            with clients[pid].session_transaction() as sess:
+                sess["player_id"] = pid
+                sess["csrf_token"] = CSRF
+        tieres, anders = clients[self.tieres], clients[self.anders]
+        url = "/torneios/amistosos/%d" % fid
+        confirm = lambda client, live_id: client.post(url + "/confirmar-jogo", data={"csrf_token": CSRF, "jogo": live_id},
+                                                      follow_redirects=True).get_data(as_text=True)
+        # Sem jogos lidos ainda: o placar à mão continua como reserva.
+        self.assertIn('form="placar-%d"' % fid, tieres.get(url).get_data(as_text=True))
+        self.play(1000, (2, 1))
+        self.post(state(kickoff=40000, goals=(0, 1)))  # o 2º ainda rolando
+        self.cards()
+        live = [r["id"] for r in self.rows("SELECT id FROM live_matches WHERE friendly_id = ? ORDER BY id", fid)]
+        page = tieres.get(url).get_data(as_text=True)
+        self.assertNotIn('form="placar-%d"' % fid, page)  # nada de "Enviar placar"
+        self.assertNotIn("Enviar placar", page)
+        self.assertIn("Cada jogo vale o placar com que terminou", page)
+        self.assertEqual(page.count("Confirmar jogo "), 1)  # o que está rolando ainda não
+        self.assertIn("ainda está rolando", confirm(tieres, live[1]))
+        self.assertIn("Jogo confirmado.", confirm(tieres, live[0]))
+        page = tieres.get(url).get_data(as_text=True)
+        self.assertNotIn("Confirmar jogo 1", page)
+        self.assertIn('title="Você confirmou; falta ANDERSHOW">✓</span>', page)
+        confirm(anders, live[0])
+        page = anders.get(url).get_data(as_text=True)
+        self.assertIn('title="Confirmado pelos dois">✓✓</span>', page)
+        # O 2º termina; o TIERES confirma, o ANDERSHOW ainda não: a sessão acaba, o amistoso espera ele.
+        self.play(40000, (0, 1))
+        self.cards()
+        confirm(tieres, live[1])
+        page = anders.get(url).get_data(as_text=True)
+        self.assertIn("TIERES já confirmou", page)
+        self.end_session()
+        self.cards()
+        row = self.rows("SELECT * FROM friendly_matches WHERE id = ?", fid)[0]
+        self.assertEqual((row["status"], row["first_confirmed_by"]), ("reported", self.tieres))
+        page = tieres.get(url).get_data(as_text=True)
+        self.assertIn("Você confirmou todos os jogos. Aguardando ANDERSHOW confirmar", page)
+        self.assertIn("Não aceitar o placar", anders.get(url).get_data(as_text=True))
+        with mock.patch.object(friendly, "MIN_XP", 0):
+            self.assertIn("Todos os jogos confirmados pelos dois: amistoso fechado!", confirm(anders, live[1]))
+        row = self.rows("SELECT status, ranked FROM friendly_matches WHERE id = ?", fid)[0]
+        self.assertEqual(row["status"], "confirmed")
+        self.assertEqual(tieres.get(url).get_data(as_text=True).count("Confirmar jogo "), 0)
+        # Já confirmados todos durante a sessão: fecha sozinho quando ela acaba.
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE live_sessions SET ended_at = ?",
+                       ((datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(timespec="seconds"),))
+            fid2 = db.execute("INSERT INTO friendly_matches (home_id, away_id, status, created_at, updated_at) "
+                              "VALUES (?, ?, 'accepted', ?, ?)", (self.tieres, self.anders, now(), now())).lastrowid
+            db.commit()
+        url = "/torneios/amistosos/%d" % fid2
+        self.play(120000, (3, 3))
+        self.cards()
+        game = self.rows("SELECT id FROM live_matches WHERE friendly_id = ?", fid2)[0]["id"]
+        confirm(tieres, game)
+        confirm(anders, game)
+        self.assertEqual(self.rows("SELECT status FROM friendly_matches WHERE id = ?", fid2)[0]["status"], "accepted")
+        self.end_session()
+        self.cards()
+        self.assertEqual(self.rows("SELECT status FROM friendly_matches WHERE id = ?", fid2)[0]["status"], "confirmed")
+        # Com "Placar agregado": o placar do amistoso, como antes (sem confirmar jogo a jogo).
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE live_sessions SET ended_at = ?",
+                       ((datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(timespec="seconds"),))
+            fid3 = db.execute("INSERT INTO friendly_matches (home_id, away_id, status, aggregate, created_at, updated_at) "
+                              "VALUES (?, ?, 'accepted', 1, ?, ?)", (self.tieres, self.anders, now(), now())).lastrowid
+            db.commit()
+        self.play(160000, (1, 0))
+        self.cards()
+        page = tieres.get("/torneios/amistosos/%d" % fid3).get_data(as_text=True)
+        self.assertIn('form="placar-%d"' % fid3, page)
+        self.assertNotIn("Confirmar jogo ", page)
+        game = self.rows("SELECT id FROM live_matches WHERE friendly_id = ?", fid3)[0]["id"]
+        self.assertIn("placar agregado", tieres.post("/torneios/amistosos/%d/confirmar-jogo" % fid3,
+                                                     data={"csrf_token": CSRF, "jogo": game},
+                                                     follow_redirects=True).get_data(as_text=True))
+
     def test_friendly_each_game_counts_for_xp_and_the_total_only_with_aggregate(self):
         """Cada jogo do amistoso vale sozinho no XP e no V/E/D, com o (i) do XP
         de cada um; a soma (placar agregado) só aparece com a opção do convite."""
@@ -1185,7 +1283,8 @@ class LiveMatchesTest(unittest.TestCase):
         # Sem "Placar agregado": na linha, só os jogadores; os placares, na lista de jogos.
         self.assertIn('<strong class="friendly-score-text">x</strong>', page)
         self.assertNotIn("3 x 7", page)
-        self.assertIn("Os 3 jogos terminaram: confira os placares na lista", page)
+        self.assertIn("Os 3 jogos terminaram: confirme cada jogo na lista", page)
+        self.assertEqual(page.count("Confirmar jogo "), 3)  # sem "Placar agregado": cada jogo, não o placar
         self.assertIn("<li>Jogo 2: 0 x 3</li>", page)  # na janela "Não aceitar o placar"
         # Cada jogo só com o (i): a situação na janela dele; o XP só depois de confirmado.
         self.assertEqual(page.count('data-dialog="jogo-%d-' % fid), 3)
@@ -1312,10 +1411,13 @@ class LiveMatchesTest(unittest.TestCase):
         with client.session_transaction() as sess:
             sess["player_id"] = self.anders
         page = client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True)
-        # O adversário decide, ao confirmar, se quem saiu perde o triplo de XP (caixa marcada).
-        self.assertIn('name="penalizar" value="1" form="confirmar-%d" checked' % fid, page)
-        self.assertIn('<input type="hidden" name="quem_saiu" value="%d">' % self.tieres, page)
-        self.assertIn("TIERES saiu da partida no meio de um jogo (o placar até ali conta) e perde o triplo de XP.", page)
+        # O adversário decide, ao confirmar o jogo de que ele saiu, se quem saiu perde o triplo de XP (caixa marcada).
+        self.assertEqual(page.count('name="penalizar" value="1" checked'), 1)
+        self.assertEqual(page.count('<input type="hidden" name="quem_saiu" value="%d">' % self.tieres), 1)
+        self.assertIn("TIERES saiu da partida no meio deste jogo (o placar até ali conta) e perde o triplo de XP.", page)
+        quit_form = page[page.index('name="quem_saiu"') - 400:page.index('name="quem_saiu"')]
+        quit_game = self.rows("SELECT live_match_id FROM friendly_games WHERE friendly_id = ? AND quit = 1", fid)[0][0]
+        self.assertIn('name="jogo" value="%d"' % quit_game, quit_form)
         self.assertIn("voltem em até 20 minutos e terminem outra partida", page)
         with client.session_transaction() as sess:
             sess["player_id"] = self.tieres
@@ -1343,6 +1445,17 @@ class LiveMatchesTest(unittest.TestCase):
         deltas = xp.replay(rows, {self.tieres: 300, self.anders: 300}, tripled=tripled)[1]
         self.assertEqual(deltas["a%d-2" % fid], {self.tieres: -60, self.anders: 20})
         self.assertEqual(tripled, {"a%d-2" % fid})
+        # Desmarcando a caixa ao confirmar o jogo de que ele saiu: sem o triplo.
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE friendly_matches SET status = 'reported', ranked = 0, confirmed_at = NULL WHERE id = ?", (fid,))
+            db.commit()
+        with client.session_transaction() as sess:
+            sess["player_id"] = self.anders
+            sess["csrf_token"] = CSRF
+        client.post("/torneios/amistosos/%d/confirmar-jogo" % fid,
+                    data={"csrf_token": CSRF, "jogo": quit_game, "quem_saiu": self.tieres})
+        self.assertIsNone(self.rows("SELECT quitter_id FROM friendly_matches WHERE id = ?", fid)[0]["quitter_id"])
 
     def test_friendly_game_score_confirms_by_itself_in_24h(self):
         from app.tournament import friendly

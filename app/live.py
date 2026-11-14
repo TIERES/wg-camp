@@ -1091,6 +1091,8 @@ def _report_friendlies(db):
             try:
                 friendly.report_from_game(db, f["id"], total[0], total[1], last, quitter_id)
                 _store_friendly_games(db, f["id"], games, scores, games[-1]["id"] if quitter_id else None)
+                # Sem "Placar agregado": os jogos já confirmados pelos dois durante a sessão fecham o amistoso.
+                friendly.settle_games(db, f["id"])
                 outcome = "reportado (soma de %d jogo%s)" % (counted, "s" if counted > 1 else "")
                 if quitter:
                     outcome += "; %s saiu no meio do último jogo" % quitter
@@ -1130,8 +1132,10 @@ def friendly_games(db, friendly_row):
     do XP (xp_key, 'a<id>-<nº>') e se foi a de que quem saiu no meio saiu
     (quit) - para os jogadores conferirem. Devolve (jogos, soma)."""
     from .timeutil import format_local
+    from .tournament.friendly import game_confirms
     nicks = {"home_nick": friendly_row["home_name"], "away_nick": friendly_row["away_name"]}
     games, total = [], [0, 0]
+    confirms = game_confirms(db, friendly_row["id"])
     rows = db.execute("SELECT * FROM live_matches WHERE friendly_id = ? AND is_test = 0 AND verified = 1 "
                       "ORDER BY started_at, id", (friendly_row["id"],)).fetchall()
     # O placar informado pelos jogadores (game_report = 0) vale como um jogo só: os jogos não têm XP próprio.
@@ -1153,7 +1157,14 @@ def friendly_games(db, friendly_row):
                 "time": format_local(match["started_at"], "%H:%M"),
                 "status": {"finished": "Encerrado", "abandoned": "Interrompido"}.get(match["status"], "Ao vivo"),
                 "summed": summed, "note": note if note.startswith(_NOT_SUMMED) else "",
-                "xp_key": None, "quit": False}
+                "xp_key": None, "quit": False,
+                # Sem "Placar agregado": quem já confirmou este jogo (friendly.confirm_game) - e,
+                # depois do fim da sessão, quem já confirmou todos (first_confirmed_by; também
+                # quem confirmou o placar inteiro pelo botão de antes).
+                "confirmed_by": confirms.get(match["id"], set()) | (
+                    {friendly_row["first_confirmed_by"]} if friendly_row["status"] == "reported"
+                    and friendly_row["first_confirmed_by"] and summed else set()),
+                "live": match["status"] == "live"}
         if match["id"] in stored:
             game.update(xp_key="a%d-%d" % (friendly_row["id"], stored[match["id"]]["number"]),
                         quit=bool(stored[match["id"]]["quit"]))

@@ -303,7 +303,7 @@ class FriendlyTest(unittest.TestCase):
         self.assertEqual(page.count(f'form="placar-{accepted}"'), 2)
         self.assertIn(f'id="placar-{accepted}"', page)
         self.assertIn(f'data-dialog="amistoso-info-{accepted}"', page)
-        self.assertIn("Depois do jogo, informe o placar. p1 vai precisar confirmar.", page)
+        self.assertIn("Cada jogo vale o placar com que terminou: com os dois logados no WE Camp", page)
         # Filtro dos em aberto: só o do adversário; o filtro dos anteriores continua no formulário.
         filtered = c0.get("/torneios/amistosos?aberto_adversario=P2&adversario=x").data.decode()
         self.assertIn("Em aberto (1 de 2)", filtered)

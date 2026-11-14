@@ -510,6 +510,13 @@ header nav { align-items:center }
 /* Só o (i) do jogo: a situação (Encerrado...) e o XP ficam na janela dele. */
 .fg-status { display:grid; justify-items:end }
 .fg-dialog-status { color:#d1d5db } .friendly-warn-text { color:#fca5a5 }
+/* Amistoso sem placar agregado: o "Confirmar jogo N" numa linha embaixo do jogo e o ✓ de quem já confirmou. */
+.fg-list.per-game .fg-row { grid-template-columns:5rem minmax(0, 1fr) 5.8rem minmax(0, 1fr) 2.6rem }
+.fg-list.per-game .fg-status { display:flex; align-items:center; justify-content:flex-end; gap:.25rem }
+.fg-ok { position:relative; z-index:1; color:#4ade80; font-weight:700; font-size:.8rem; letter-spacing:-.12em; cursor:default }
+.fg-confirm { grid-column:1 / -1; position:relative; z-index:1; display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:.35rem .6rem; margin:0 }
+.fg-confirm button { margin:0 } .fg-confirm .friendly-penalty { flex:1 1 100%; margin:0 } .fg-row.fg-pending { box-shadow:inset 3px 0 0 #f59e0b }
+@media (max-width:560px) { .fg-list.per-game .fg-row { grid-template-columns:1.4rem minmax(0, 1fr) 6rem minmax(0, 1fr) 2.6rem } }
 /* Celular: sem a data (está no (i) e no card do Ao vivo). */
 @media (max-width:560px) { .fg-row { grid-template-columns:1.4rem minmax(0, 1fr) 6rem minmax(0, 1fr) 1.4rem } .fg-when { display:none } .fg-meta,.fg-status { justify-content:center; justify-items:center } }
 /* A bola do título troca o conteúdo do card do amistoso (card-flip.js): os jogos sobem
@@ -862,6 +869,10 @@ input[type=email] { text-transform:lowercase }
    ouro, prata e bronze como no pódio do campeonato. */
 .trophy-1 { --trophy:#fbbf24 } .trophy-2 { --trophy:#d1d5db } .trophy-3 { --trophy:#d97706 }
 .trophy { display:block; width:100%; height:100% }
+/* O troféu ao lado do time na final e na disputa de 3º (campeonato encerrado - _macros.html trophy_badge). */
+.trophy-badge { display:inline-block; flex:none; width:1.5rem; height:1.5rem; vertical-align:middle }
+.match-line .home .trophy-badge { margin-right:.45rem } .match-line .away .trophy-badge { margin-left:.45rem }
+.tie-slot .trophy-badge { margin-left:.4rem }
 .trophy .trophy-cup { fill:var(--trophy) }
 .trophy .trophy-handles { fill:none; stroke:var(--trophy); stroke-width:4; stroke-linecap:round }
 .trophy .trophy-number { fill:#1f2937; font:800 15px system-ui,sans-serif }

@@ -175,6 +175,76 @@ def set_games(db, friendly_id, games):
           game.get("home_pens"), game.get("away_pens"), int(bool(game.get("quit")))) for game in games])
 
 
+def per_game(row):
+    """Sem "Placar agregado", cada jogo vale o placar com que terminou: os
+    jogadores confirmam cada jogo lido do Ao vivo, sem informar placar."""
+    return not row["aggregate"]
+
+
+def game_confirms(db, friendly_id):
+    """{partida do Ao vivo: {jogadores que confirmaram o jogo}}."""
+    confirms = {}
+    for row in db.execute("SELECT live_match_id, player_id FROM friendly_game_confirms WHERE friendly_id = ?",
+                          (friendly_id,)):
+        confirms.setdefault(row["live_match_id"], set()).add(row["player_id"])
+    return confirms
+
+
+def confirm_game(db, friendly_id, me, live_match_id, penalize=None, quitter_seen=None):
+    """Um jogador confirma um jogo do amistoso lido do Ao vivo (sem "Placar
+    agregado"): durante a sessão ou depois dela. O jogo de que alguém saiu
+    no meio (friendly_games.quit) leva a caixa "perde o triplo de XP" para o
+    adversário de quem saiu, como em confirm()."""
+    row = _mine(db, friendly_id, me)
+    if not per_game(row):
+        raise TournamentError("Neste amistoso (placar agregado) confirme o placar do amistoso.")
+    if row["status"] not in ("accepted", "reported") or (row["status"] == "reported" and not row["game_report"]):
+        raise TournamentError("Este amistoso não está esperando a confirmação dos jogos.")
+    match = db.execute("SELECT id, status FROM live_matches WHERE id = ? AND friendly_id = ? AND is_test = 0 "
+                       "AND verified = 1", (live_match_id, friendly_id)).fetchone()
+    if match is None:
+        raise TournamentError("Jogo não encontrado neste amistoso.")
+    if match["status"] == "live":
+        raise TournamentError("Esse jogo ainda está rolando: confirme quando ele terminar.")
+    game = None
+    if row["status"] == "reported":
+        game = db.execute("SELECT * FROM friendly_games WHERE friendly_id = ? AND live_match_id = ?",
+                          (friendly_id, live_match_id)).fetchone()
+        if game is None:
+            raise TournamentError("Esse jogo não entra no amistoso.")
+    if (penalize is False and game is not None and game["quit"] and row["quitter_id"]
+            and row["quitter_id"] != me and quitter_seen == row["quitter_id"]):
+        _set(db, friendly_id, quitter_id=None)
+    db.execute("INSERT OR IGNORE INTO friendly_game_confirms (friendly_id, live_match_id, player_id, confirmed_at) "
+               "VALUES (?, ?, ?, ?)", (friendly_id, live_match_id, me, now()))
+    return settle_games(db, friendly_id)
+
+
+def settle_games(db, friendly_id, at=None):
+    """Depois do fim da sessão (placar lido do jogo reportado), sem "Placar
+    agregado": quem já confirmou todos os jogos fica em first_confirmed_by;
+    com os dois, o amistoso fecha (como na confirmação do placar). Também
+    chamado quando a sessão acaba (live._report_friendlies) - os jogos podem
+    ter sido confirmados durante ela."""
+    row = get(db, friendly_id)
+    if row is None or row["status"] != "reported" or not row["game_report"] or not per_game(row):
+        return row
+    games = [r["live_match_id"] for r in db.execute(
+        "SELECT live_match_id FROM friendly_games WHERE friendly_id = ? AND live_match_id IS NOT NULL",
+        (friendly_id,))]
+    if not games:
+        return row
+    confirms = game_confirms(db, friendly_id)
+    # first_confirmed_by: já confirmou tudo (também quem confirmou o placar inteiro, pelo botão de antes).
+    done = [pid for pid in (row["home_id"], row["away_id"])
+            if pid == row["first_confirmed_by"] or all(pid in confirms.get(g, ()) for g in games)]
+    if len(done) == 2:
+        _confirm(db, row, at)
+    elif done and row["first_confirmed_by"] is None:
+        _set(db, friendly_id, first_confirmed_by=done[0])
+    return get(db, friendly_id)
+
+
 def shows_total(row):
     """O card mostra o placar do amistoso (a soma)? Com "Placar agregado", ou
     quando o placar foi informado pelos jogadores (vale como um jogo só);

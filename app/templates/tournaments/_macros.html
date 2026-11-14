@@ -12,14 +12,21 @@
 {% if m.status == 'reported' %}<span class="chip chip-reported">aguardando confirmação</span>{% elif m.status == 'disputed' %}<span class="chip chip-disputed">contestado</span>{% endif %}
 {%- endmacro %}
 
+{# Troféu do 1º, 2º ou 3º lugar (o mesmo da Galeria de troféus) ao lado do time. #}
+{% from 'tournaments/_stats_macros.html' import trophy_icon %}
+{% macro trophy_badge(place) -%}
+<span class="trophy-badge trophy-{{ place }}" title="{{ 'Campeão' if place == 1 else 'Vice-campeão' if place == 2 else '3º lugar' }}" role="img" aria-label="{{ place }}º lugar">{{ trophy_icon(place) }}</span>
+{%- endmacro %}
+
 {# live_url: o jogo está rolando agora (app/live.py tournament_live) - "Ao vivo"
-   embaixo do placar, link para a partida no Ao vivo (fora do link do jogo). #}
-{% macro match_line(m, names, slug=none, live_url=none, live_score=none) -%}
+   embaixo do placar, link para a partida no Ao vivo (fora do link do jogo).
+   trophies: {inscrição: colocação} - campeonato encerrado, na final e na disputa de 3º. #}
+{% macro match_line(m, names, slug=none, live_url=none, live_score=none, trophies=none) -%}
 {% if live_url %}<div class="match-line-live">{% endif %}
 <{{ 'a' if slug else 'div' }} class="match-line{% if m.status == 'confirmed' %} done{% endif %}" id="jogo-{{ m.id }}" data-entries="{{ m.home_entry_id }} {{ m.away_entry_id }}"{% if slug %} href="{{ url_for('tournaments.match', slug=slug, match_id=m.id) }}"{% endif %}>
-  <span class="home">{{ names[m.home_entry_id] }}</span>
+  <span class="home">{% if trophies and trophies.get(m.home_entry_id) %}{{ trophy_badge(trophies[m.home_entry_id]) }}{% endif %}{{ names[m.home_entry_id] }}</span>
   <span class="score">{{ score(m, live_score) }}</span>
-  <span class="away">{{ names[m.away_entry_id] }}</span>
+  <span class="away">{{ names[m.away_entry_id] }}{% if trophies and trophies.get(m.away_entry_id) %}{{ trophy_badge(trophies[m.away_entry_id]) }}{% endif %}</span>
 </{{ 'a' if slug else 'div' }}>
 {% if live_url %}<a class="match-live standings-live" href="{{ live_url }}" title="Ver a partida no Ao vivo">Ao vivo</a></div>{% endif %}
 {%- endmacro %}
@@ -112,7 +119,7 @@
             {# O mandante do jogo fica em cima: time 1 na ida, time 2 na volta. #}
             {% for s in (slots if slots[0].entry == m.home_entry_id or slots[1].entry != m.home_entry_id else slots|reverse) %}{% set g = s.legs[leg] if s.legs|length > leg else none %}
             <div class="tie-slot{% if tie.winner_entry_id and tie.winner_entry_id == s.entry %} winner{% endif %}">
-              <span class="tie-team">{% if s.entry %}{{ names[s.entry] }}{% elif item.waits_for and s.slot == 'b' %}<em class="muted">aguarda o {{ item.waits_for }}</em>{% else %}<em class="muted">a definir</em>{% endif %}</span>
+              <span class="tie-team">{% if s.entry %}{{ names[s.entry] }}{% set place = (view.tie_trophies or {}).get(tie.id, {}).get(s.entry) %}{% if place %}{{ trophy_badge(place) }}{% endif %}{% elif item.waits_for and s.slot == 'b' %}<em class="muted">aguarda o {{ item.waits_for }}</em>{% else %}<em class="muted">a definir</em>{% endif %}</span>
               <span class="leg-score">{% if g %}<span class="score-val score-{{ g.status }}" title="{{ score_tips[g.status] }}"><strong>{{ g.goals }}</strong>{% if g.pens is not none %} <small>({{ g.pens }} pên.)</small>{% endif %}</span>{% elif s.entry %}<span class="muted" title="{{ score_tips.scheduled }}">–</span>{% endif %}</span>
               {% if s.goals %}<span class="tie-score score-val score-{{ s.agg }}" title="{{ score_tips[s.agg] }}"><small>Agregado:</small> <strong>{{ s.goals|sum }}</strong></span>{% endif %}
             </div>
@@ -127,7 +134,7 @@
       {% if item.label %}<div class="tie-label">{{ item.label }}</div>{% endif %}
       {% for s in slots %}
       <div class="tie-slot{% if tie.winner_entry_id and tie.winner_entry_id == s.entry %} winner{% endif %}">
-        <span>{% if s.entry %}{{ names[s.entry] }}{% elif tie.is_bye and s.slot == 'b' %}<em class="muted">passa direto</em>{% elif item.waits_for and s.slot == 'b' %}<em class="muted">aguarda o {{ item.waits_for }}</em>{% else %}<em class="muted">a definir</em>{% endif %}</span>
+        <span>{% if s.entry %}{{ names[s.entry] }}{% set place = (view.tie_trophies or {}).get(tie.id, {}).get(s.entry) %}{% if place %}{{ trophy_badge(place) }}{% endif %}{% elif tie.is_bye and s.slot == 'b' %}<em class="muted">passa direto</em>{% elif item.waits_for and s.slot == 'b' %}<em class="muted">aguarda o {{ item.waits_for }}</em>{% else %}<em class="muted">a definir</em>{% endif %}</span>
         {% if s.goals %}<span class="tie-score score-val score-{{ s.status }}" title="{{ score_tips[s.status] }}">{% if tie.legs == 2 %}<small>Agregado:</small> {% endif %}<strong>{{ s.goals|sum }}</strong>{% if s.pens is not none %} <small>({{ s.pens }} pên.)</small>{% endif %}</span>{% endif %}
       </div>
       {% endfor %}
@@ -166,8 +173,9 @@
 {% for rnd in view.rounds %}
 <div class="round-legs">
   {% if rnd.name != 'Turno e returno' %}<h4 class="round-title">{{ rnd.name }}</h4>{% endif %}
-  {% if rnd.legs %}{% call(leg) leg_flip(rnd.legs[0], rnd.legs[1]) %}<div class="round-card">{% for m in rnd.legs[leg] %}{{ match_line(m, names, slug, urls.get(m.id), scores.get(m.id)) }}{% endfor %}</div>{% endcall %}
-  {% else %}<div class="round-card">{% for m in rnd.matches %}{{ match_line(m, names, slug, urls.get(m.id), scores.get(m.id)) }}{% endfor %}</div>{% endif %}
+  {% set trophies = view.match_trophies or {} %}
+  {% if rnd.legs %}{% call(leg) leg_flip(rnd.legs[0], rnd.legs[1]) %}<div class="round-card">{% for m in rnd.legs[leg] %}{{ match_line(m, names, slug, urls.get(m.id), scores.get(m.id), trophies.get(m.id)) }}{% endfor %}</div>{% endcall %}
+  {% else %}<div class="round-card">{% for m in rnd.matches %}{{ match_line(m, names, slug, urls.get(m.id), scores.get(m.id), trophies.get(m.id)) }}{% endfor %}</div>{% endif %}
 </div>
 {% else %}<p class="muted">Sem jogos.</p>{% endfor %}
 {% if view.pending or (view.match_ids and scores.keys()|select('in', view.match_ids)|list) %}{{ pending_legend(confirm_hours) }}{% endif %}

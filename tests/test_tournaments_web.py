@@ -208,8 +208,22 @@ class TournamentsWebTest(unittest.TestCase):
         bracket = anon.get(f"/torneios/{slug}?aba=tabela").data.decode()
         self.assertIn("Final", bracket)
         self.assertIn("Disputa de 3º lugar", bracket)
+        # Aba Jogos: a disputa de 3º lugar num bloco próprio, antes da final; o bloco "Final" só com a final.
+        games = anon.get(f"/torneios/{slug}?aba=jogos").data.decode()
+        third = games.index('<h4 class="round-title">Disputa de 3º lugar</h4>')
+        final = games.index('<h4 class="round-title">Final</h4>')
+        self.assertLess(third, final)
+        self.assertEqual(games[third:final].count('class="match-line'), 1)
+        self.assertEqual(games[final:].count('class="match-line'), 1)
+        self.assertNotIn("trophy-badge", games)  # só com o campeonato encerrado
         owner.post(f"/torneios/{slug}/encerrar", data={"csrf_token": CSRF})
         self.assertEqual(self.query("SELECT status FROM tournaments")[0][0], "finished")
+        # Encerrado: os troféus ao lado dos times - na final (1º e 2º) e na disputa de 3º (3º).
+        for tab in ("jogos", "tabela"):
+            page = anon.get(f"/torneios/{slug}?aba={tab}").data.decode()
+            self.assertEqual([page.count(f'class="trophy-badge trophy-{n}"') for n in (1, 2, 3)], [1, 1, 1], tab)
+        games = anon.get(f"/torneios/{slug}?aba=jogos").data.decode()
+        self.assertIn('title="Campeão"', games[games.index('<h4 class="round-title">Final</h4>'):])
         prizes = [r[0] for r in self.query("SELECT amount_cents FROM wallet_entries WHERE kind = 'premio' ORDER BY ref_key")]
         self.assertEqual(prizes, [2400, 1200, 400])
         self.assertIn("1º".encode(), anon.get(f"/torneios/{slug}?aba=geral").data)

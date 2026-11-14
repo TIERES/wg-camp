@@ -26,17 +26,38 @@
 <span class="xp-delta {{ 'up' if delta > 0 else 'down' if delta < 0 }}">{{ '%+d'|format(delta) }} XP</span>
 {%- endmacro %}
 
-{% macro games_table(f, games) -%}
+{# per_game: amistoso sem "Placar agregado" esperando os jogadores - cada jogo
+   lido do Ao vivo tem o seu "Confirmar" (friendly.confirm_game); o ✓ diz quem
+   já confirmou (✓ você, ✓✓ os dois). O jogo de que alguém saiu no meio leva,
+   para o adversário dele, a caixa "perde o triplo de XP". #}
+{% macro games_table(f, games, per_game=false, back='') -%}
 {% set confirmed = f.status == 'confirmed' %}
+{% set me = session.player_id %}
+{% set mine = me in (f.home_id, f.away_id) %}
+{% set other_id = (f.away_id if f.home_id == me else f.home_id) if mine else none %}
+{% set other = (f.away_name if f.home_id == me else f.home_name) if mine else '' %}
 <div class="friendly-games">
-  <div class="fg-list">
+  <div class="fg-list{% if per_game %} per-game{% endif %}">
   {% for g in games %}
-    <div class="fg-row{% if not g.summed %} not-summed{% endif %}">
+    {% set both = f.home_id in g.confirmed_by and f.away_id in g.confirmed_by %}
+    {% set can_confirm = per_game and mine and g.summed and not g.live and me not in g.confirmed_by %}
+    <div class="fg-row{% if not g.summed %} not-summed{% endif %}{% if can_confirm %} fg-pending{% endif %}">
       <span class="fg-meta"><a class="fg-num fg-link" href="{{ g.url }}" title="Ver o card no Ao vivo (quem fez os gols)" aria-label="Jogo {{ g.number }}: ver o card no Ao vivo">{{ g.number }}</a><span class="fg-when"><span>{{ g.date }}</span><span>{{ g.time }}</span></span></span>
       <span class="fg-team home"><span class="fg-name">{{ g.home_team }}</span><img class="fg-crest" src="{{ g.home_image }}" alt="" loading="lazy"></span>
       <span class="fg-score"><strong>{{ g.home_goals }} x {{ g.away_goals }}</strong>{% if g.pens %}<small title="Pênaltis">({{ g.pens[0] }}x{{ g.pens[1] }})</small>{% endif %}</span>
       <span class="fg-team away"><img class="fg-crest" src="{{ g.away_image }}" alt="" loading="lazy"><span class="fg-name">{{ g.away_team }}</span></span>
-      <span class="fg-status">{{ info_button('jogo-%d-%d' % (f.id, g.number), 'Jogo %d: situação%s' % (g.number, ' e XP' if confirmed and g.xp_key else '')) }}</span>
+      <span class="fg-status">{% if per_game and g.summed and not g.live %}{% if both %}<span class="fg-ok both" title="Confirmado pelos dois">✓✓</span>{% elif me in g.confirmed_by %}<span class="fg-ok" title="Você confirmou; falta {{ other }}">✓</span>{% endif %}{% endif %}{{ info_button('jogo-%d-%d' % (f.id, g.number), 'Jogo %d: situação%s' % (g.number, ' e XP' if confirmed and g.xp_key else '')) }}</span>
+      {% if can_confirm %}
+      {% set decide_penalty = g.quit and f.quitter_id and f.quitter_id != me %}
+      <form method="post" class="fg-confirm" action="{{ url_for('tournaments.friendly_action', friendly_id=f.id, acao='confirmar-jogo') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="jogo" value="{{ g.id }}">{% if back %}<input type="hidden" name="voltar" value="{{ back }}">{% endif %}
+        {% if decide_penalty %}<input type="hidden" name="quem_saiu" value="{{ f.quitter_id }}">
+        <label class="check friendly-penalty"><input type="checkbox" name="penalizar" value="1" checked>
+          <span>{{ f.home_name if f.quitter_id == f.home_id else f.away_name }} saiu da partida no meio deste jogo (o placar até ali conta) e perde o triplo de XP. <small class="muted">Desmarque para não perder.</small></span></label>{% endif %}
+        {% if other_id in g.confirmed_by %}<small class="muted">{{ other }} já confirmou</small>{% endif %}
+        <button class="small">Confirmar jogo {{ g.number }}</button>
+      </form>
+      {% endif %}
     </div>
   {% endfor %}
   </div>
@@ -46,6 +67,7 @@
   {% call info_dialog('jogo-%d-%d' % (f.id, g.number), 'Jogo %d' % g.number) %}
     <p><strong>{{ f.home_name }} {{ g.home_goals }} x {{ g.away_goals }} {{ f.away_name }}</strong>{% if g.pens %} <small class="muted">(pênaltis {{ g.pens[0] }}x{{ g.pens[1] }})</small>{% endif %}</p>
     <p class="fg-dialog-status">{{ g.status }} em {{ g.when }}{% if not g.summed %} · <span class="friendly-warn-text">{{ 'não conta: ' ~ g.note if g.note else 'ainda não conta' }}</span>{% endif %}</p>
+    {% if per_game and g.summed and not g.live %}{% set names = ([f.home_name] if f.home_id in g.confirmed_by else []) + ([f.away_name] if f.away_id in g.confirmed_by else []) %}<p class="muted">Confirmado por: {{ names|join(' e ') if names else 'ninguém ainda' }}.</p>{% endif %}
     {% if not (confirmed and g.xp_key) %}
     {% elif f.ranked %}
     {% set tripled = match_tripled(g.xp_key) %}
@@ -64,14 +86,32 @@
 </div>
 {%- endmacro %}
 
+{# "Não aceitar o placar" (o placar do amistoso ou os placares dos jogos que contam). #}
+{% macro reject_dialog(f, back, shows_total, counted) -%}
+{% call form_dialog('rejeitar-%d' % f.id, url_for('tournaments.friendly_action', friendly_id=f.id, acao='rejeitar'), 'Não aceitar o placar', 'Não aceitar o placar', back) %}
+  {% if shows_total or not counted %}
+  <p><strong>{{ f.home_name }} {{ f.home_goals }} x {{ f.away_goals }} {{ f.away_name }}</strong></p>
+  {% else %}
+  <p><strong>{{ f.home_name }} x {{ f.away_name }}</strong></p>
+  <ul class="fg-reject-list">{% for g in counted %}<li>Jogo {{ g.number }}: {{ g.home_goals }} x {{ g.away_goals }}</li>{% endfor %}</ul>
+  {% endif %}
+  <p class="muted">O amistoso fica suspenso até vocês chegarem a um placar que os dois aceitem.</p>
+  <label>Motivo<textarea name="motivo" rows="3" minlength="3" maxlength="300" required placeholder="{{ 'Ex.: o placar foi 2 x 1' if shows_total or not counted else 'Ex.: o jogo 2 foi 2 x 1' }}"></textarea></label>
+{% endcall %}
+{%- endmacro %}
+
 {% macro friendly_card(f, labels, needs_me, back='', games=none) -%}
 {% set me = session.player_id %}
 {% set mine = me in (f.home_id, f.away_id) %}
 {% set other = (f.away_name if f.home_id == me else f.home_name) if mine else '' %}
 {% set has_games = games and games[0] %}
 {% set counted = (games[0]|selectattr('summed')|list) if has_games else [] %}
-{# Placar digitado na própria linha dos jogadores: amistoso aceito ou suspenso. #}
-{% set score_entry = mine and f.status in ('accepted', 'suspended') %}
+{# Sem "Placar agregado" e com jogos lidos do Ao vivo: cada jogo vale o placar com
+   que terminou - os jogadores só confirmam cada jogo (friendly.confirm_game), sem
+   placar para informar (sem jogos lidos, o placar à mão continua como reserva). #}
+{% set per_game = not f.aggregate and has_games and (f.status == 'accepted' or (f.status == 'reported' and f.game_report)) %}
+{# Placar digitado na própria linha dos jogadores: amistoso aceito (sem a confirmação por jogo) ou suspenso. #}
+{% set score_entry = mine and (f.status == 'suspended' or (f.status == 'accepted' and not per_game)) %}
 {# A soma dos gols na linha dos jogadores: só com "Placar agregado" (ou o placar
    informado pelos jogadores, que vale como um jogo só - friendly.shows_total,
    ou sem a lista de jogos para mostrar). #}
@@ -94,7 +134,8 @@
   </div>
   {% if has_info and not scorers %}{% call info_dialog('amistoso-info-%d' % f.id, title) %}
     {% if accepted_info %}
-    <p>Depois do jogo, informe o placar. {{ other }} vai precisar confirmar.</p>
+    {% if f.aggregate %}<p>Depois do jogo, informe o placar. {{ other }} vai precisar confirmar.</p>
+    {% else %}<p>Cada jogo vale o placar com que terminou: com os dois logados no WE Camp, cada jogo entra sozinho na lista (lido do Ao vivo) e vocês só confirmam cada um; quando a sessão acaba e os dois confirmaram todos, o amistoso fecha sozinho. Se nenhum jogo for lido, informe o placar à mão.</p>{% endif %}
     <p>Com os dois logados no WE Camp, o RetroArch TIERES manda o placar sozinho. Joguem até o fim, mesmo faltando pouco tempo: quem sai no meio de um jogo (até por queda de conexão) perde o triplo de XP se o placar for confirmado. Se a conexão cair, voltem em até 20 minutos e terminem outra partida antes de sair.</p>
     <p>Cada jogo vale sozinho no XP e no V/E/D, pelo placar dele. {% if f.aggregate %}Placar agregado: no fim, os gols de todos os jogos são somados e o resultado aparece no amistoso.{% else %}No fim, o amistoso mostra só os jogadores, e o placar de cada jogo fica na lista de jogos.{% endif %}</p>
     {% endif %}
@@ -113,7 +154,7 @@
   </div>
   {% if has_games or f.iso_title %}
   <div class="friendly-split">
-  {% if has_games %}{{ games_table(f, games[0]) }}{% endif %}
+  {% if has_games %}{{ games_table(f, games[0], per_game, back) }}{% endif %}
   {% if f.iso_title %}
   <div class="friendly-iso">
     <div class="friendly-iso-media">
@@ -144,8 +185,20 @@
     <p class="muted">Aguardando {{ f.away_name }} aceitar o convite.</p>
     <div class="card-actions">{{ friendly_form(f, 'cancelar', 'Cancelar convite', 'secondary', '', back) }}</div>
     {% endif %}
+  {% elif f.status == 'accepted' and mine and per_game %}
+    <p class="muted friendly-per-game">Cada jogo vale o placar com que terminou: confirme cada jogo na lista. Quando a sessão acabar e vocês dois tiverem confirmado todos, o amistoso fecha sozinho.</p>
   {% elif f.status == 'accepted' and mine %}
     {{ score_form(f, 'Enviar placar', back) }}
+  {% elif f.status == 'reported' and mine and per_game %}
+    {% if f.quitter_id == me %}<p class="muted">Você saiu da partida no meio de um jogo (o placar até ali conta): ao confirmar esse jogo, {{ other }} decide se você perde o triplo de XP.</p>{% endif %}
+    {% set n_games = counted|length or 1 %}
+    {% if f.first_confirmed_by == me %}
+    <p class="muted">Você confirmou {{ 'todos os jogos' if n_games > 1 else 'o jogo' }}. Aguardando {{ other }} confirmar{% if friendly_deadline(f) %} (ou {{ 'eles valem sozinhos' if n_games > 1 else 'ele vale sozinho' }} em {{ friendly_deadline(f)|localtime }}){% endif %}.</p>
+    {% else %}
+    <p>{{ 'Os %d jogos terminaram' % n_games if n_games > 1 else 'O jogo terminou' }}: confirme {{ 'cada jogo' if n_games > 1 else 'o jogo' }} na lista (placar lido do Ao vivo pelo RetroArch TIERES){% if f.first_confirmed_by %} - {{ other }} já confirmou todos{% endif %}. Sem resposta, {{ 'eles valem sozinhos' if n_games > 1 else 'ele vale sozinho' }}{% if friendly_deadline(f) %} em {{ friendly_deadline(f)|localtime }}{% endif %}.</p>
+    {% endif %}
+    <div class="card-actions"><button type="button" class="secondary" data-dialog="rejeitar-{{ f.id }}">Não aceitar o placar</button></div>
+    {{ reject_dialog(f, back, shows_total, counted) }}
   {% elif f.status == 'reported' and mine %}
     {% if f.quitter_id == me %}<p class="muted">Você saiu da partida no meio de um jogo (o placar até ali conta): ao confirmar o placar, {{ other }} decide se você perde o triplo de XP.</p>{% endif %}
     {% if f.reported_by == me %}
@@ -171,16 +224,7 @@
     {% endif %}
     <div class="card-actions"><button type="button" class="secondary" data-dialog="rejeitar-{{ f.id }}">Não aceitar o placar</button>
       <form method="post" id="confirmar-{{ f.id }}" action="{{ url_for('tournaments.friendly_action', friendly_id=f.id, acao='confirmar') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% if back %}<input type="hidden" name="voltar" value="{{ back }}">{% endif %}{% if decide_penalty %}<input type="hidden" name="quem_saiu" value="{{ f.quitter_id }}">{% endif %}<button>Confirmar placar</button></form></div>
-    {% call form_dialog('rejeitar-%d' % f.id, url_for('tournaments.friendly_action', friendly_id=f.id, acao='rejeitar'), 'Não aceitar o placar', 'Não aceitar o placar', back) %}
-      {% if shows_total or not counted %}
-      <p><strong>{{ f.home_name }} {{ f.home_goals }} x {{ f.away_goals }} {{ f.away_name }}</strong></p>
-      {% else %}
-      <p><strong>{{ f.home_name }} x {{ f.away_name }}</strong></p>
-      <ul class="fg-reject-list">{% for g in counted %}<li>Jogo {{ g.number }}: {{ g.home_goals }} x {{ g.away_goals }}</li>{% endfor %}</ul>
-      {% endif %}
-      <p class="muted">O amistoso fica suspenso até vocês chegarem a um placar que os dois aceitem.</p>
-      <label>Motivo<textarea name="motivo" rows="3" minlength="3" maxlength="300" required placeholder="{{ 'Ex.: o placar foi 2 x 1' if shows_total or not counted else 'Ex.: o jogo 2 foi 2 x 1' }}"></textarea></label>
-    {% endcall %}
+    {{ reject_dialog(f, back, shows_total, counted) }}
     {% endif %}
   {% elif f.status == 'suspended' %}
     <p class="friendly-warn">Suspenso: {{ f.rejected_name }} não aceitou {{ 'o placar %s x %s' % (f.home_goals, f.away_goals) if shows_total else 'os placares dos jogos' }}{% if f.rejected_note %} <small class="muted">("{{ f.rejected_note }}")</small>{% endif %}. Fica parado até um de vocês propor um placar que o outro aceite.</p>

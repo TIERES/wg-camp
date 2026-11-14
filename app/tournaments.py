@@ -324,6 +324,7 @@ def _stage_views(db, tournament, provisional=None):
                              (stage["id"],)).fetchall()
         view = {"stage": stage, "settings": store.settings_of(stage), "rounds": [], "groups": [], "bracket": [],
                 "highlight": 0, "playoff": 0, "match_ids": [m["id"] for m in matches],
+                "tie_trophies": {}, "match_trophies": {},
                 "pending": any(m["status"] in ("reported", "disputed") for m in matches)}
         rounds = {}
         for match in matches:
@@ -332,6 +333,18 @@ def _stage_views(db, tournament, provisional=None):
             ties = db.execute("SELECT * FROM tournament_ties WHERE stage_id = ? ORDER BY round, is_third_place, "
                               "position", (stage["id"],)).fetchall()
             last = max(t["round"] for t in ties)
+            # Campeonato encerrado: os troféus (1º, 2º e 3º lugar) ao lado dos times na final e
+            # na disputa de 3º lugar - na chave (por confronto) e na aba Jogos (por jogo).
+            if tournament["status"] == "finished":
+                places = {row["id"]: row["final_position"] for row in store.entries_of(db, tournament["id"])
+                          if row["final_position"]}
+                for tie in ties:
+                    won = {e: places[e] for e in (tie["entry_a"], tie["entry_b"]) if e and places.get(e)}
+                    if tie["round"] == last and won:
+                        view["tie_trophies"][tie["id"]] = won
+                        for match in matches:
+                            if match["tie_id"] == tie["id"]:
+                                view["match_trophies"][match["id"]] = won
             # Repescagem: confronto que recebe o perdedor de outro (fora a disputa de 3º).
             feeders = {t["loser_next_tie_id"]: t for t in ties if t["loser_next_tie_id"]}
             per_round = {}
@@ -365,6 +378,16 @@ def _stage_views(db, tournament, provisional=None):
                     rounds[round_no] = [m for m in rounds[round_no] if m["tie_id"] not in repechage]
                     rounds[round_no + 0.5] = waiting
                     names[round_no + 0.5] = "Repescagem"
+                    if not rounds[round_no]:
+                        del rounds[round_no]
+            # A disputa de 3º lugar num bloco próprio, logo antes da final: o bloco "Final" só com a final.
+            third = {t["id"] for t in ties if t["is_third_place"]}
+            for round_no in list(rounds):
+                playoff = [m for m in rounds[round_no] if m["tie_id"] in third]
+                if playoff:
+                    rounds[round_no] = [m for m in rounds[round_no] if m["tie_id"] not in third]
+                    rounds[round_no - 0.25] = playoff
+                    names[round_no - 0.25] = "Disputa de 3º lugar"
                     if not rounds[round_no]:
                         del rounds[round_no]
         else:
@@ -1125,6 +1148,12 @@ def friendly_action(friendly_id, acao):
                                    quitter_seen=int(seen) if seen.isdigit() else None)
         elif acao == "rejeitar":
             row = friendly.reject(db, friendly_id, me, form.get("motivo"))
+        elif acao == "confirmar-jogo":
+            # Sem "Placar agregado": um jogo lido do Ao vivo (com a caixa de quem saiu, no jogo dele).
+            seen = form.get("quem_saiu", "")
+            row = friendly.confirm_game(db, friendly_id, me, form.get("jogo", type=int),
+                                        penalize=(form.get("penalizar") == "1") if seen else None,
+                                        quitter_seen=int(seen) if seen.isdigit() else None)
         else:
             abort(404)
         db.commit()
@@ -1137,8 +1166,10 @@ def friendly_action(friendly_id, acao):
     my_name = row["home_name"] if row["home_id"] == me else row["away_name"]
     score = friendly.score_text(row)
     mails = {
-        "aceitar": (f"{my_name} aceitou o amistoso", f"{my_name} aceitou o amistoso de {row['game_name']}. "
-                    "Depois do jogo, informe o placar em:"),
+        "aceitar": (f"{my_name} aceitou o amistoso", f"{my_name} aceitou o amistoso de {row['game_name']}. " + (
+                    "Joguem logados na Conta WE Camp: cada jogo entra sozinho, lido do Ao vivo, e vale o placar com "
+                    "que terminou - vocês só confirmam cada jogo em:" if friendly.per_game(row)
+                    else "Depois do jogo, informe o placar em:")),
         "placar": (f"{my_name} informou o placar do amistoso", f"{my_name} informou o placar do amistoso: "
                    f"{score}.\n\nConfirme ou não aceite em:"),
         "rejeitar": (f"{my_name} não aceitou o placar do amistoso",
@@ -1148,12 +1179,22 @@ def friendly_action(friendly_id, acao):
     }
     if acao in mails:
         notify.friendly_event(db, row, other, *mails[acao])
-    if acao == "confirmar" and row["status"] != "confirmed":
+    if acao == "confirmar-jogo":
+        if row["status"] == "confirmed":
+            flash("Todos os jogos confirmados pelos dois: amistoso fechado! " + (
+                "Ele vale para o Ranking e o XP." if row["ranked"] else f"Não vale para o Ranking: {row['unranked_reason']}."),
+                "success" if row["ranked"] else "info")
+        else:
+            flash("Jogo confirmado.", "success")
+    elif acao == "confirmar" and row["status"] != "confirmed":
         flash("Confirmação registrada: falta o adversário confirmar (ou o prazo acabar).", "success")
     elif acao == "confirmar":
         flash("Placar confirmado! " + ("O amistoso vale para o Ranking e o XP." if row["ranked"]
                                        else f"Não vale para o Ranking: {row['unranked_reason']}."),
               "success" if row["ranked"] else "info")
+    elif acao == "aceitar" and friendly.per_game(row):
+        flash("Amistoso aceito! Joguem logados na Conta WE Camp: cada jogo entra sozinho, lido do Ao vivo, e vocês "
+              "só confirmam cada jogo.", "success")
     else:
         flash(_FRIENDLY_MESSAGES[acao], "success")
     return _back(url_for("tournaments.friendly_show", friendly_id=friendly_id))

@@ -593,6 +593,17 @@ CREATE TABLE IF NOT EXISTS friendly_games (
     quit INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (friendly_id, number)
 );
+
+-- Amistoso sem "Placar agregado": cada jogador confirma cada jogo lido do Ao
+-- vivo (friendly.confirm_game) - não há placar para informar. Depois do fim
+-- da sessão, com todos os jogos confirmados pelos dois, o amistoso fecha.
+CREATE TABLE IF NOT EXISTS friendly_game_confirms (
+    friendly_id INTEGER NOT NULL REFERENCES friendly_matches(id) ON DELETE CASCADE,
+    live_match_id INTEGER NOT NULL REFERENCES live_matches(id) ON DELETE CASCADE,
+    player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    confirmed_at TEXT NOT NULL,
+    PRIMARY KEY (live_match_id, player_id)
+);
 """
 
 
