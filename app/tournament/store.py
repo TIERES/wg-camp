@@ -547,7 +547,11 @@ def group_tables(db, stage_id, provisional=None):
     """[(grupo, classificação)] de uma fase de liga/grupos/suíça. provisional
     = {jogo: (gols do mandante, do visitante)} de jogos ainda não confirmados
     que entram na conta (depois dos confirmados); cada linha diz em
-    "provisional" quantos deles somou."""
+    "provisional" quantos deles somou. Os cartões dos jogos confirmados da
+    fase (live.stage_cards) desempatam e vão em "yellow"/"red" de cada linha."""
+    from ..live import stage_cards
+    cards = stage_cards(db, stage_id)
+    discipline = {entry: total["points"] for entry, total in cards.items()}
     tables = []
     for group in db.execute("SELECT * FROM tournament_groups WHERE stage_id = ? ORDER BY seq", (stage_id,)):
         members = [row["entry_id"] for row in db.execute(
@@ -561,9 +565,11 @@ def group_tables(db, stage_id, provisional=None):
                 if match["id"] in provisional:
                     home_goals, away_goals = provisional[match["id"]]
                     extra.append(engine.Result(match["home_entry_id"], match["away_entry_id"], home_goals, away_goals))
-        table = engine.standings(members, _results(played) + extra)
+        table = engine.standings(members, _results(played) + extra, discipline)
         for row in table:
             row["provisional"] = sum(row["entry_id"] in (r.home, r.away) for r in extra)
+            total = cards.get(row["entry_id"], {})
+            row["yellow"], row["red"] = total.get("yellow", 0), total.get("red", 0)
         tables.append((group, table))
     return tables
 
@@ -608,9 +614,10 @@ def advance(db, tournament):
             pairs = engine.cross_pairs([[row["entry_id"] for row in table] for _, table in tables])
         else:
             # Classificados ordenados por colocação no grupo e depois campanha
-            # (estilo Libertadores: 1ºs contra 2ºs, melhor campanha decide em casa).
-            ranked = [(row["position"], -row["points"], -row["goal_diff"], -row["goals_for"], -row["won"], index,
-                       row["entry_id"])
+            # (estilo Libertadores: 1ºs contra 2ºs, melhor campanha decide em casa;
+            # depois os cartões, como na tabela).
+            ranked = [(row["position"], -row["points"], -row["goal_diff"], -row["goals_for"], -row["won"],
+                       row["discipline"], index, row["entry_id"])
                       for index, (_, table) in enumerate(tables) for row in table[:qualifiers]]
             pairs = engine.seeded_pairs([item[-1] for item in sorted(ranked)])
         first_round_name = None

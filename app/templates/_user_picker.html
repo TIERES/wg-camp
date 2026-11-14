@@ -26,3 +26,28 @@
   </ul>
 </div>
 {%- endmacro %}
+
+{# Escolha de um inscrito do campeonato pelo jogador OU pelo time (o mesmo user-picker.js,
+   strict): cada sugestão com a foto do jogador e o escudo/bandeira, time e nick
+   (`names`, tournaments._names). O id da inscrição vai no campo escondido `name`;
+   a busca vale para o nick e para o nome do time, sem acento/maiúscula. #}
+{% macro entry_picker(name, entries, names, label='', chosen_id='', placeholder='Jogador ou time', field_id='',
+                      cls='', aria_label='') -%}
+{% set fid = field_id or ('ep-' ~ name) %}
+{% set chosen = entries|selectattr('id', 'equalto', chosen_id)|first if chosen_id else none %}
+<div class="user-picker entry-picker{% if cls %} {{ cls }}{% endif %}" data-user-picker="strict">
+  {% if label %}<label for="{{ fid }}">{{ label }}</label>{% endif %}
+  <input type="hidden" name="{{ name }}" value="{{ chosen.id if chosen else '' }}" data-user-id>
+  <input type="search" id="{{ fid }}" value="{{ (chosen.team_name ~ ' · ' ~ chosen.username if chosen.team_name else chosen.username) if chosen else '' }}"
+         role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="{{ fid }}-lista"{% if not label %} aria-label="{{ aria_label or placeholder }}"{% endif %}
+         autocomplete="off" spellcheck="false" maxlength="60" placeholder="{{ placeholder }}">
+  <ul class="user-options" id="{{ fid }}-lista" role="listbox" aria-label="{{ label or aria_label or 'Jogadores e times' }}" hidden>
+    {% for e in entries|sort(attribute='team_name') %}
+    <li role="option" id="{{ fid }}-op-{{ e.id }}" aria-selected="false" data-id="{{ e.id }}" data-nick="{{ e.username }}"
+        data-value="{{ e.team_name ~ ' · ' ~ e.username if e.team_name else e.username }}" data-search="{{ e.team_name }} {{ e.username }}"
+        data-order="{{ loop.index0 }}">{{ avatar(e.player_id, e.username) }}{{ names[e.id] }}</li>
+    {% endfor %}
+    <li class="user-options-empty muted" hidden>Nenhum jogador ou time com esse nome.</li>
+  </ul>
+</div>
+{%- endmacro %}

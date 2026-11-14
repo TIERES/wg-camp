@@ -147,12 +147,25 @@
   {{ scorer_boards(scorers, 'do campeonato') }}
 
 {% else %}
+  {% if stages and entries %}{% from '_user_picker.html' import entry_picker %}
+  {# Filtro por jogador ou time (static/js/match-filter.js): só os jogos dele, sem recarregar;
+     ?jogador=<inscrição> no link guarda a escolha. #}
+  <div class="match-filter" data-match-filter>
+    {{ entry_picker('jogador', entries, names, chosen_id=(request.args.get('jogador') or '')|int, field_id='filtro-jogador',
+                    aria_label='Filtrar os jogos por jogador ou time') }}
+    <button type="button" class="secondary" data-match-filter-clear hidden>Limpar filtro</button>
+  </div>
+  <p class="muted match-filter-empty" data-match-filter-empty hidden>Nenhum jogo desse jogador.</p>
+  {% endif %}
+  <div data-match-filter-list>
   {% for view in stages %}
   <section class="stage">
     <h2>{{ view.stage.name }}</h2>
     {{ stage_rounds(view, names, t.slug, live_table, confirm_hours) }}
   </section>
   {% endfor %}
+  </div>
+  <script src="{{ url_for('static', filename='js/match-filter.js') }}" defer></script>
 {% endif %}
 {% include 'tournaments/_credits.html' %}
 <script src="{{ url_for('static', filename='js/leg-flip.js') }}" defer></script>

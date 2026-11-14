@@ -8,6 +8,8 @@
 //   a lista só sugere, e Enter sem escolher nada na lista envia o que foi digitado.
 // - data-exclude="<id de outro campo>": o nick escolhido lá sai desta lista.
 // - opção com data-taken (já escolhida nos ajudantes - helpers-picker.js) também sai.
+// - data-search na opção: o texto em que a busca procura (padrão: o nick); data-value:
+//   o que vai no campo ao escolher (padrão: o nick) - o entry_picker (jogador ou time).
 (function () {
   function plain(s) { return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
 
@@ -37,6 +39,7 @@
     function label(option, query) {
       var nick = option.dataset.nick, at = query ? plain(nick).indexOf(query) : -1;
       var span = option.querySelector('.user-option-name');
+      if (!span) return;
       span.textContent = '';
       if (at < 0) { span.textContent = nick; return; }
       var mark = document.createElement('mark');
@@ -47,8 +50,10 @@
       var query = plain(input.value.trim()), taken = other ? plain(other.value.trim()) : '';
       options.forEach(function (o) {
         var nick = plain(o.dataset.nick), at = nick.indexOf(query);
-        o.hidden = at < 0 || (taken && nick === taken) || o.hasAttribute('data-taken');
-        o.dataset.rank = at === 0 ? 0 : 1;
+        var text = plain(o.dataset.search || o.dataset.nick), found = text.indexOf(query);
+        var starts = at === 0 || (' ' + text).indexOf(' ' + query) >= 0;
+        o.hidden = found < 0 || (taken && nick === taken) || o.hasAttribute('data-taken');
+        o.dataset.rank = starts ? 0 : 1;
         label(o, query);
       });
       ordered = options.slice().sort(function (a, b) {
@@ -62,13 +67,15 @@
     function sync() {
       if (!strict) return;
       var typed = input.value.trim().toLowerCase();
-      var exact = options.filter(function (o) { return o.dataset.nick.toLowerCase() === typed; })[0];
+      var exact = options.filter(function (o) {
+        return o.dataset.nick.toLowerCase() === typed || (o.dataset.value || '').toLowerCase() === typed;
+      })[0];
       hidden.value = exact ? exact.dataset.id : '';
-      if (exact) input.value = exact.dataset.nick;
+      if (exact) input.value = exact.dataset.value || exact.dataset.nick;
       input.setCustomValidity(hidden.value || !typed ? '' : 'Escolha um jogador da lista.');
     }
     function choose(option) {
-      input.value = option.dataset.nick;
+      input.value = option.dataset.value || option.dataset.nick;
       if (hidden) hidden.value = option.dataset.id;
       input.setCustomValidity('');
       close();

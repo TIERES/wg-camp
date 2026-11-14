@@ -1275,6 +1275,41 @@ def tournament_scorers(db, tournament_id):
     return board
 
 
+def stage_cards(db, stage_id):
+    """Cartões de cada inscrição nos jogos confirmados de uma fase - o
+    desempate da classificação (engine.standings). Como na artilharia, vale a
+    partida lida do jogo (a mais recente, se jogaram de novo) com o placar
+    oficial; jogo sem ela (placar lançado à mão, PC sem o RetroArch TIERES que
+    manda os cartões) não soma. Simulações nunca.
+    Devolve {inscrição: {"yellow": amarelos, "red": expulsões, "points": pontos}}."""
+    from .tournament.engine import card_points
+    rows = db.execute(
+        "SELECT m.*, tm.home_entry_id, tm.away_entry_id, tm.home_goals AS official_home, "
+        "tm.away_goals AS official_away, hp.username AS home_nick, ap.username AS away_nick FROM live_matches m "
+        "JOIN tournament_matches tm ON tm.id = m.tournament_match_id "
+        "JOIN tournament_entries he ON he.id = tm.home_entry_id JOIN players hp ON hp.id = he.player_id "
+        "JOIN tournament_entries ae ON ae.id = tm.away_entry_id JOIN players ap ON ap.id = ae.player_id "
+        "WHERE tm.stage_id = ? AND tm.status = 'confirmed' AND m.is_test = 0 AND m.verified = 1 "
+        "AND m.status != 'live' ORDER BY m.started_at DESC, m.id DESC", (stage_id,)).fetchall()
+    seen, totals = set(), {}
+    for row in rows:
+        if row["tournament_match_id"] in seen:
+            continue
+        sides = _home_side(row)
+        if not sides or _home_away(row, (row["local_goals"] or 0, row["visita_goals"] or 0)) != (
+                row["official_home"], row["official_away"]):
+            continue
+        seen.add(row["tournament_match_id"])
+        teams = _match_state(row).get("teams") or []
+        for entry, side in ((row["home_entry_id"], sides[0]), (row["away_entry_id"], sides[1])):
+            kinds = [item[2] for item in (teams[side].get("cards") or []) if len(item) > 2] if side < len(teams) else []
+            total = totals.setdefault(entry, {"yellow": 0, "red": 0, "points": 0})
+            total["yellow"] += sum(kind in ("y", "y2") for kind in kinds)
+            total["red"] += sum(kind in ("y2", "r") for kind in kinds)
+            total["points"] += card_points(kinds)
+    return totals
+
+
 def match_goals(db, match, score, live_id=None):
     """A partida do Ao vivo do jogo de campeonato (página do jogo), do ponto de
     vista dele: {"home": [gols], "away": [gols], "url": card no Ao vivo,

@@ -389,6 +389,64 @@ class LiveMatchesTest(unittest.TestCase):
             db.commit()
         self.cards()  # reap -> report_finished
 
+    def test_games_tab_filter_by_player_or_team(self):
+        t, group, (tieres, anders, third) = self.make_league()
+        client = self.app.test_client()
+        games = client.get("/torneios/liga-1?aba=jogos").get_data(as_text=True)
+        # Um inscrito por opção: foto, escudo, time e nick; a busca vale para o time e o nick.
+        self.assertIn('data-match-filter', games)
+        self.assertEqual(games.count('id="filtro-jogador-op-'), 3)
+        self.assertIn('data-value="Grécia · TIERES" data-search="Grécia TIERES"', games)
+        self.assertIn('id="filtro-jogador" value=""', games)
+        # Cada linha de jogo diz quem joga (static/js/match-filter.js esconde as outras).
+        self.assertIn('data-entries="%d %d"' % (anders, tieres), games)
+        # ?jogador=<inscrição> no link: já vem escolhido; valor inválido é ignorado.
+        chosen = client.get("/torneios/liga-1?aba=jogos&jogador=%d" % anders).get_data(as_text=True)
+        self.assertIn('id="filtro-jogador" value="Croácia · ANDERSHOW"', chosen)
+        self.assertIn('name="jogador" value="%d" data-user-id' % anders, chosen)
+        self.assertIn('id="filtro-jogador" value=""',
+                      client.get("/torneios/liga-1?aba=jogos&jogador=abc").get_data(as_text=True))
+
+    def test_cards_from_the_game_break_a_tie_in_the_table(self):
+        from app.tournament import reports, store
+        t, group, (tieres, anders, third) = self.make_league()
+
+        def with_cards(st):
+            data = json.loads(st)
+            data["teams"][0]["cards"] = [["Karagounis", 30, "y"], ["Karagounis", 60, "y2"]]  # TIERES (LOCAL)
+            data["teams"][1]["cards"] = [["J.Leko", 70, "y"]]
+            return json.dumps(data)
+        self.post(with_cards(state(goals=(1, 1))))
+        for reporter in ("TIERES", "ANDERSHOW"):
+            self.post(with_cards(state(goals=(1, 1), period=1, clock=0, final=True, frame=90000)), reporter=reporter)
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE live_matches SET finished_at = ?",
+                       ((datetime.now(timezone.utc) - timedelta(minutes=2)).replace(microsecond=0).isoformat(),))
+            db.commit()
+        self.cards()  # reap -> report_finished
+        with self.app.app_context():
+            db = get_db()
+            stage = db.execute("SELECT stage_id FROM tournament_groups WHERE id = ?", (group,)).fetchone()[0]
+            # Reportado, ainda sem confirmar: os cartões não contam (empate na ordem do sorteio).
+            self.assertEqual([row["entry_id"] for row in store.group_tables(db, stage)[0][1]], [tieres, anders, third])
+            reports.auto_confirm(db, at=datetime.now(timezone.utc) + timedelta(hours=25))
+            db.commit()
+            table = store.group_tables(db, stage)[0][1]
+        # 1 x 1, tudo igual: TIERES tem 3 pontos de cartão (expulso por 2 amarelos), ANDERSHOW 1.
+        self.assertEqual([row["entry_id"] for row in table], [anders, tieres, third])
+        self.assertEqual([(row["yellow"], row["red"], row["discipline"]) for row in table], [(1, 0, 1), (2, 1, 3), (0, 0, 0)])
+        html = self.app.test_client().get("/torneios/liga-1?aba=tabela").get_data(as_text=True)
+        self.assertIn('<span class="card-chip card-r" title="1 vermelho(s)">1</span>', html)
+        self.assertIn("Desempate: vitórias, saldo, gols pró, confronto direto, cartões", html)
+        # Placar corrigido à mão (outro que o lido do jogo): os cartões lidos não valem.
+        with self.app.app_context():
+            db = get_db()
+            match_id = db.execute("SELECT id FROM tournament_matches").fetchone()[0]
+            reports.resolve(db, store.get_tournament(db, t), match_id, (2, 1, None, None))
+            db.commit()
+            self.assertEqual(store.group_tables(db, stage)[0][1][0]["discipline"], 0)
+
     def test_finished_match_becomes_the_report_and_confirms_in_24h(self):
         from app.tournament import reports, store
         t, group, (tieres, anders, third) = self.make_league()

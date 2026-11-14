@@ -82,12 +82,26 @@ def _base_key(row):
     return (-row["points"], -row["won"], -row["goal_diff"], -row["goals_for"])
 
 
-def standings(entry_ids, results):
+# Amarelo 1, 2º amarelo mais 2 (expulsão por 2 amarelos = 3), vermelho direto 4.
+CARD_POINTS = {"y": 1, "y2": 2, "r": 4}
+
+
+def card_points(kinds):
+    """Pontos de cartão (o fair play da Copa do Mundo) dos cartões de um time
+    como o RetroArch TIERES manda ("y" amarelo, "y2" o 2º amarelo, "r"
+    vermelho direto). O 2º amarelo vem depois do 1º, então expulso por dois
+    amarelos = 1 + 2 = 3 e amarelo seguido de vermelho direto = 1 + 4 = 5."""
+    return sum(CARD_POINTS.get(kind, 0) for kind in kinds)
+
+
+def standings(entry_ids, results, discipline=None):
     """Classificação. Desempate: pontos, vitórias, saldo, gols pró, confronto
-    direto (pontos, saldo e gols só entre os empatados) e, por fim, a ordem do
-    sorteio (a ordem de entry_ids). `results` em ordem cronológica (a coluna
-    "últimos jogos" usa essa ordem)."""
+    direto (pontos, saldo e gols só entre os empatados), cartões (menos pontos
+    de cartão fica à frente - `discipline` = {inscrição: pontos}, card_points)
+    e, por fim, a ordem do sorteio (a ordem de entry_ids). `results` em ordem
+    cronológica (a coluna "últimos jogos" usa essa ordem)."""
     entry_ids = list(entry_ids)
+    discipline = discipline or {}
     draw_order = {entry_id: index for index, entry_id in enumerate(entry_ids)}
     results = list(results)
     rows = _table(entry_ids, results)
@@ -103,11 +117,13 @@ def standings(entry_ids, results):
             ids = {row["entry_id"] for row in tied}
             mini = _table(ids, [r for r in results if r.home in ids and r.away in ids])
             tied.sort(key=lambda row: (-mini[row["entry_id"]]["points"], -mini[row["entry_id"]]["goal_diff"],
-                                       -mini[row["entry_id"]]["goals_for"], draw_order[row["entry_id"]]))
+                                       -mini[row["entry_id"]]["goals_for"], discipline.get(row["entry_id"], 0),
+                                       draw_order[row["entry_id"]]))
         table.extend(tied)
         i = j
     for position, row in enumerate(table, 1):
         row["position"] = position
+        row["discipline"] = discipline.get(row["entry_id"], 0)
     return table
 
 

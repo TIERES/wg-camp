@@ -50,6 +50,26 @@ class StandingsTest(unittest.TestCase):
         self.assertEqual(table[0]["points"], table[1]["points"])
         self.assertEqual([table[0]["entry_id"], table[1]["entry_id"]], [2, 1])
 
+    def test_cards_break_the_tie_after_head_to_head(self):
+        # 1 e 2 empatam em tudo, inclusive no confronto direto (1 x 1): menos pontos de cartão fica à frente.
+        results = [Result(1, 2, 1, 1), Result(1, 3, 1, 0), Result(2, 3, 1, 0)]
+        self.assertEqual([row["entry_id"] for row in engine.standings([1, 2, 3], results)], [1, 2, 3])
+        table = engine.standings([1, 2, 3], results, {1: engine.card_points(["y", "y2"]), 2: engine.card_points(["y", "y"])})
+        self.assertEqual([row["entry_id"] for row in table], [2, 1, 3])
+        self.assertEqual([row["discipline"] for row in table], [2, 3, 0])
+        # O confronto direto vem antes dos cartões (1 e 2 empatam em tudo, 2 venceu o confronto).
+        results = [Result(2, 1, 1, 0), Result(1, 3, 2, 0), Result(1, 4, 1, 0), Result(3, 2, 1, 0),
+                   Result(2, 4, 2, 0), Result(3, 4, 0, 0)]
+        table = engine.standings([1, 2, 3, 4], results, {1: 0, 2: 9})
+        self.assertEqual([table[0]["entry_id"], table[1]["entry_id"]], [2, 1])
+
+    def test_card_points(self):
+        self.assertEqual(engine.card_points([]), 0)
+        self.assertEqual(engine.card_points(["y"]), 1)
+        self.assertEqual(engine.card_points(["y", "y2"]), 3)  # expulso por 2 amarelos
+        self.assertEqual(engine.card_points(["r"]), 4)
+        self.assertEqual(engine.card_points(["y", "r", "?"]), 5)
+
     def test_draw_order_last(self):
         self.assertEqual([row["entry_id"] for row in engine.standings([7, 3, 5], [])], [7, 3, 5])
 
