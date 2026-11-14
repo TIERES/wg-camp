@@ -68,7 +68,7 @@
 {% elif name or organizer or status or game %}<p>Nenhum campeonato encontrado com esses filtros.</p>
 {% else %}{% block empty %}<p>Nenhum campeonato por aqui ainda.{% if session.player_id %} Que tal <a href="{{ url_for('tournaments.new') }}">criar o primeiro</a>?{% endif %}</p>{% endblock %}{% endif %}
 </div>
-<script src="{{ url_for('static', filename='js/ac.js', v='20261112a') }}"></script>
+<script src="{{ url_for('static', filename='js/ac.js', v='20261113a') }}"></script>
 <script>
 (function () {
   // Filtros: o status e as escolhas do autocompletar filtram na hora; digitando,

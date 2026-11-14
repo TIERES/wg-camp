@@ -566,6 +566,11 @@ CREATE TABLE IF NOT EXISTS friendly_matches (
     -- "Placar agregado" (escolhido no convite): no fim mostra a soma dos gols
     -- dos jogos; sem ele, só os jogadores. O XP é sempre jogo a jogo (friendly_games).
     aggregate INTEGER NOT NULL DEFAULT 0,
+    -- "Rankeado" (escolhido no convite, liberado só quando os dois já chegaram
+    -- ao Rank E em campeonatos): só com ele o amistoso pode valer para o
+    -- Ranking/XP (ranked, decidido na confirmação). Sem ele, conta só no card
+    -- "Amistosos" do perfil (stats.py).
+    ranked_requested INTEGER NOT NULL DEFAULT 1,
     CHECK (home_id != away_id)
 );
 CREATE INDEX IF NOT EXISTS friendly_matches_home_idx ON friendly_matches(home_id, status);
@@ -632,6 +637,11 @@ def ensure_live_columns(database):
         database.execute("ALTER TABLE friendly_matches ADD COLUMN aggregate INTEGER NOT NULL DEFAULT 0")
         # Os de antes da opção sempre mostraram a soma dos jogos: continuam assim.
         database.execute("UPDATE friendly_matches SET aggregate = 1")
+    if columns and "ranked_requested" not in columns:
+        database.execute("ALTER TABLE friendly_matches ADD COLUMN ranked_requested INTEGER NOT NULL DEFAULT 1")
+        # Os de antes da opção: rankeado = o que já valeu; os em aberto e os que
+        # não valeram ficam sem (quem quiser que valha marca no próximo convite).
+        database.execute("UPDATE friendly_matches SET ranked_requested = ranked")
     columns = {column["name"] for column in database.execute("PRAGMA table_info(tournament_matches)")}
     if columns and "quitter_id" not in columns:
         database.execute("ALTER TABLE tournament_matches ADD COLUMN quitter_id INTEGER "
@@ -807,6 +817,23 @@ CREATE TABLE IF NOT EXISTS live_matches (
 );
 CREATE INDEX IF NOT EXISTS live_matches_status_idx ON live_matches(status, updated_at);
 CREATE INDEX IF NOT EXISTS live_matches_tournament_match_idx ON live_matches(tournament_match_id);
+
+-- Placar final combinado de uma partida livre interrompida (app/tournament/free.py):
+-- um dos dois informa (reported), o outro confirma (confirmed) ou não aceita
+-- (suspended, com o motivo: qualquer um propõe outro). Só confirmada ela conta
+-- no card "Partidas livres" do perfil.
+CREATE TABLE IF NOT EXISTS free_match_scores (
+    live_match_id INTEGER PRIMARY KEY REFERENCES live_matches(id) ON DELETE CASCADE,
+    status TEXT NOT NULL CHECK (status IN ('reported', 'suspended', 'confirmed')),
+    local_goals INTEGER NOT NULL,
+    visita_goals INTEGER NOT NULL,
+    reported_by INTEGER REFERENCES players(id) ON DELETE SET NULL,
+    reported_at TEXT NOT NULL,
+    rejected_by INTEGER REFERENCES players(id) ON DELETE SET NULL,
+    rejected_note TEXT NOT NULL DEFAULT '',
+    confirmed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS free_match_scores_status_idx ON free_match_scores(status, reported_by);
 
 CREATE TABLE IF NOT EXISTS live_match_reports (
     live_match_id INTEGER NOT NULL REFERENCES live_matches(id) ON DELETE CASCADE,

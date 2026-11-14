@@ -348,6 +348,15 @@ def friendly_event(db, friendly, to_id, subject, text):
     _deliver([(to["email"], subject, f"Olá, {to['username']}!\n\n{text}\n{link}\n")])
 
 
+def free_score_event(db, live_id, to_id, subject, text):
+    """Aviso do placar final de uma partida livre interrompida (free.py), com o link dela."""
+    to = db.execute("SELECT username, email FROM players WHERE id = ?", (to_id,)).fetchone()
+    if not to:
+        return
+    link = external_url("tournaments.free_match", live_id=live_id)
+    _deliver([(to["email"], subject, f"Olá, {to['username']}!\n\n{text}\n{link}\n")])
+
+
 def _image_text(name):
     return external_url("images.serve", kind="torneio", name=name) if name else "sem imagem"
 

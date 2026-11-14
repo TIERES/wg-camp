@@ -17,13 +17,16 @@ lidos) vale como um jogo só. "Placar agregado" (aggregate, escolhido no
 convite) só muda o que aparece: com ele, a soma dos gols dos jogos; sem ele,
 só os jogadores (os placares ficam na lista de jogos).
 
-Proteção contra contas fake ("farm" de XP): na confirmação o amistoso é
-marcado como `ranked` (vale para Ranking, V/E/D e XP - stats.py e xp.py)
-só se os dois jogadores já tiverem chegado alguma vez a MIN_XP contando só
-os jogos de torneio (xp.tournament_peaks: XP de amistoso não libera, e quem
-chegou lá continua liberado mesmo perdendo XP depois) e a dupla não
-tiver passado de PAIR_DAILY_LIMIT amistosos valendo nas últimas 24 h.
-Os que não valem continuam registrados como amistoso, com o motivo.
+"Rankeado" (ranked_requested, escolhido no convite): a opção só fica
+liberada quando os dois jogadores já chegaram alguma vez a MIN_XP (Rank E)
+contando só os jogos de torneio (xp.tournament_peaks: XP de amistoso não
+libera, e quem chegou lá continua liberado mesmo perdendo XP depois) -
+proteção contra contas fake ("farm" de XP). Na confirmação o amistoso é
+marcado como `ranked` (vale para Ranking, V/E/D e XP - stats.py e xp.py) só
+com a opção, os dois ainda liberados e a dupla sem passar de
+PAIR_DAILY_LIMIT amistosos valendo nas últimas 24 h. Os que não valem
+continuam registrados como amistoso, com o motivo, e contam no card
+"Amistosos" do perfil (stats.SCOPES).
 """
 from datetime import datetime, timedelta, timezone
 
@@ -76,10 +79,17 @@ def _set(db, friendly_id, **values):
                (*values.values(), friendly_id))
 
 
-def invite(db, me, other_id, iso_choice=None, message="", aggregate=False):
+def unlocked(db, *player_ids):
+    """Os jogadores já chegaram a MIN_XP em campeonatos (liberam o "Rankeado")?"""
+    peaks = xp.tournament_peaks(db)
+    return all(peaks.get(pid, 0) >= MIN_XP for pid in player_ids)
+
+
+def invite(db, me, other_id, iso_choice=None, message="", aggregate=False, ranked=True):
     """Convida um amigo, com a ISO escolhida (opcional - "t:<torneio>" ou
-    "c:<cadastro>", iso_catalog.py) e se no fim mostra o placar agregado
-    (a soma dos jogos); devolve o id do amistoso."""
+    "c:<cadastro>", iso_catalog.py), se no fim mostra o placar agregado
+    (a soma dos jogos) e se é "Rankeado" (vale para o Ranking - só fica
+    marcado com os dois liberados, unlocked); devolve o id do amistoso."""
     if other_id == me:
         raise TournamentError("Escolha um amigo para o amistoso.")
     if not other_id or not are_friends(db, me, other_id):
@@ -90,11 +100,12 @@ def invite(db, me, other_id, iso_choice=None, message="", aggregate=False):
                   (*OPEN, me, other_id, other_id, me)).fetchone():
         raise TournamentError("Vocês já têm um amistoso em aberto. Termine (ou cancele) esse antes de marcar outro.")
     stamp = now()
+    ranked = bool(ranked) and unlocked(db, me, other_id)
     return db.execute(
         "INSERT INTO friendly_matches (iso_tournament_id, iso_catalog_id, game_title_id, home_id, away_id, message, "
-        "aggregate, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "aggregate, ranked_requested, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (iso_tournament_id, iso_catalog_id, game_id, me, other_id, (message or "").strip()[:300], int(bool(aggregate)),
-         stamp, stamp)).lastrowid
+         int(ranked), stamp, stamp)).lastrowid
 
 
 def respond(db, friendly_id, me, accept):
@@ -258,6 +269,8 @@ def eligibility(db, row, at=None):
         return False, (f"{who} ainda não {'chegaram' if len(low) > 1 else 'chegou'} a {MIN_XP} XP em campeonatos "
                        f"(Rank {xp.RANKS[xp.level(MIN_XP)]}): amistoso só vale para o Ranking entre jogadores "
                        "que já pontuaram em campeonatos")
+    if "ranked_requested" in row.keys() and not row["ranked_requested"]:
+        return False, "o convite foi feito sem a opção Rankeado (conta só no card Amistosos do perfil)"
     since = ((at or datetime.now(timezone.utc)) - timedelta(hours=24)).replace(microsecond=0).isoformat()
     count = db.execute(
         "SELECT COUNT(*) FROM friendly_matches WHERE status = 'confirmed' AND ranked = 1 AND confirmed_at > ? "

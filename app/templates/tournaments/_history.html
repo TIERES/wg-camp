@@ -1,0 +1,36 @@
+{# Histórico de partidas (tournaments._history_context): os filtros (adversário,
+   datas e campeonato - Rankeado, Amistoso, Partida livre ou o nome) e o gráfico
+   da evolução do aproveitamento. Na página do jogador e em Meus jogos; o
+   formulário volta para a própria página (request.path). #}
+{% from '_user_picker.html' import user_picker %}{% from 'tournaments/_stats_macros.html' import evolution_chart %}
+<section id="historico">
+  <h2>Histórico de partidas</h2>
+  {% if has_history and logged %}
+  {# Filtros (só para quem está logado): adversário (escolha com foto - _user_picker.html), datas e campeonato (autocompletar - static/js/ac.js). #}
+  {% set f = history_filters %}
+  <form method="get" action="{{ request.path }}#historico" class="live-filters history-filters">
+    {% if game %}<input type="hidden" name="jogo" value="{{ game }}">{% endif %}
+    {{ user_picker('adversario', 'Adversário', opponent_options, f.opponent, field_id='historico-adversario') }}
+    <label>De<input type="date" name="de" value="{{ f.date_from }}"></label>
+    <label>Até<input type="date" name="ate" value="{{ f.date_to }}"></label>
+    {# Campeonato: Rankeado, Amistoso e Partida livre (os três cards) fixos no topo; os campeonatos abaixo. #}
+    <div class="ac-field"><label for="historico-campeonato">Campeonato</label><div class="ac">
+      <input type="search" name="campeonato" id="historico-campeonato" value="{{ f.tournament }}" placeholder="Todos"
+             role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="historico-campeonato-lista" autocomplete="off"
+             data-fixed="{{ kind_options|tojson|forceescape }}" data-options="{{ tournament_options|tojson|forceescape }}">
+      <ul class="ac-list" id="historico-campeonato-lista" role="listbox" hidden></ul>
+    </div></div>
+    <div class="live-filter-actions"><a class="button secondary" href="{{ request.path }}{{ ('?jogo=%d' % game) if game else '' }}#historico">Limpar filtro</a><button>Filtrar</button></div>
+  </form>
+  {% endif %}
+  {% if evolution %}
+  {# O Histórico é o gráfico da evolução do aproveitamento, com os filtros acima
+     (tournaments._evolution): cada bolinha abre a partida. Sem login: as últimas
+     HISTORY_PUBLIC_LIMIT, sem filtros. #}
+  {% if evolution|length > 1 %}{{ evolution_chart(evolution, evolution_total) }}
+  {% else %}<p class="muted">O gráfico aparece a partir da segunda partida{% if history_filtered %} com esses filtros{% endif %}.</p>{% endif %}
+  {% if not logged %}<p class="muted list-note"><a href="{{ url_for('players.login', next=request.full_path.rstrip('?') ~ '#historico') }}">Entre</a> para ver o histórico completo e filtrar por adversário, data e campeonato.</p>{% endif %}
+  {% elif history_filtered %}<p class="muted">Nenhum jogo com esses filtros.</p>
+  {% else %}<p class="muted">Nenhum jogo confirmado ainda{% if game %} neste jogo{% endif %}.</p>{% endif %}
+</section>
+<script src="{{ url_for('static', filename='js/ac.js', v='20261113a') }}"></script>

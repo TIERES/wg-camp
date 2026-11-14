@@ -275,6 +275,8 @@ details.dispute { margin-top:1rem } details.dispute summary { cursor:pointer; co
 .ac-list { position:absolute; z-index:20; left:0; right:0; top:calc(100% + 2px); margin:0; padding:.25rem 0; list-style:none; max-height:16rem; overflow-y:auto; background:var(--card); border:1px solid #374151; border-radius:6px; box-shadow:0 6px 18px rgb(0 0 0 / .45) }
 .ac-list li { padding:.4rem .75rem; cursor:pointer }
 .ac-list li:hover, .ac-list li[aria-selected="true"] { background:#374151; color:var(--accent) }
+/* Opções fixas no topo (data-fixed - ac.js), separadas dos campeonatos filtrados. */
+.ac-list li.ac-fixed { font-weight:600 } .ac-list li.ac-first { border-top:1px solid #374151; margin-top:.2rem; padding-top:.5rem }
 .my-last-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(18rem, 1fr)); gap:1rem; margin-top:1.5rem }
 .my-last { padding:1rem 1.25rem; background:var(--card); border:1px solid #374151; border-radius:8px }
 .my-last h2 { font-size:1.15rem; margin:0 0 .5rem } .my-last p { margin:.25rem 0 0 }
@@ -360,7 +362,16 @@ header nav { align-items:center }
 .evo-cross { stroke:#6b7280; stroke-width:1; stroke-dasharray:3 3 }
 .evo-pt circle { stroke:var(--card); stroke-width:2 } .evo-hit { fill:transparent; cursor:crosshair }
 .evo-tip { position:absolute; display:grid; gap:.1rem; padding:.4rem .6rem; background:#111827; border:1px solid #4b5563; border-radius:6px; font-size:.85rem; white-space:nowrap; pointer-events:none }
-.evo-tip strong { font-size:1rem }
+.evo-tip strong { font-size:1rem } .evo-tip small { color:#9ca3af; font-size:.75rem }
+/* Gráfico do Histórico: o balão tem uma seta apontando para a bolinha (em cima dela ou,
+   sem espaço, embaixo - .below); --arrow-x = onde fica a bolinha dentro do balão. */
+.evo-tip-arrow { z-index:3; box-shadow:0 6px 16px rgb(0 0 0 / .45) }
+.evo-tip-arrow::before, .evo-tip-arrow::after { content:""; position:absolute; left:var(--arrow-x, 50%); transform:translateX(-50%); border:7px solid transparent }
+.evo-tip-arrow::before { top:100%; border-top-color:#4b5563 }
+.evo-tip-arrow::after { top:calc(100% - 1.5px); border-top-color:#111827 }
+.evo-tip-arrow.below::before { top:auto; bottom:100%; border-top-color:transparent; border-bottom-color:#4b5563 }
+.evo-tip-arrow.below::after { top:auto; bottom:calc(100% - 1.5px); border-top-color:transparent; border-bottom-color:#111827 }
+.evo-pt { cursor:pointer }
 .evo-zero { stroke:#6b7280 }
 .wcash-pos { color:#34d399 } .wcash-neg { color:#f87171 }  /* valores por resultado no texto da Carteira W$ */
 .wallet-dot { display:inline-block; width:.6rem; height:.6rem; border-radius:50%; vertical-align:middle } .wallet-dot.pos { background:#34d399 } .wallet-dot.neg { background:#f87171 }
@@ -511,8 +522,8 @@ header nav { align-items:center }
 .fg-reject-list { margin:0; padding-left:1.2rem }
 /* "Placar agregado" no título do card e no convite. */
 .friendly-tag { display:inline-block; margin-left:.45rem; padding:.05rem .45rem; border-radius:999px; border:1px solid #4b5563; color:#d1d5db; font-size:.66rem; font-weight:700; text-transform:uppercase; letter-spacing:.03em; vertical-align:middle }
-.friendly-aggregate { cursor:pointer }
-.friendly-aggregate small { display:block }
+.friendly-aggregate,.friendly-rank-choice { cursor:pointer }
+.friendly-aggregate small,.friendly-rank-choice small { display:block }
 .friendly-games-note { margin:.3rem 0 0; font-size:.8rem }
 .friendly-games-table tr.not-summed td { opacity:.6 }
 .friendly-warn { color:#fca5a5 }
@@ -860,7 +871,7 @@ button.trophy-tile[aria-pressed="true"] { border-color:var(--trophy); box-shadow
 button.trophy-tile:disabled { cursor:default; opacity:.45 }
 /* Filtros do Histórico de partidas (página do jogador): adversário, datas e campeonato (autocompletar). */
 .ac-field { display:grid; gap:.35rem; min-width:0 } .ac-field > label { font-size:.875rem; color:#9ca3af }
-.history-filters .ac { position:relative; display:flex; min-width:0 } .history-filters .ac input { width:100%; min-width:0 }
+.history-filters .ac, .live-filters .ac { position:relative; display:flex; min-width:0 } .history-filters .ac input, .live-filters .ac input { width:100%; min-width:0 }
 @media(max-width:859px){ .live-filters > .ac-field { grid-column:1 / -1 } }
 /* "Mostrar [20 ▾] de N jogos" acima de uma tabela grande (Histórico de partidas do jogador). */
 .table-top { display:flex; justify-content:flex-end; align-items:center; flex-wrap:wrap; gap:.35rem; margin:0 0 .45rem; font-size:.85rem; color:#9ca3af }
@@ -929,3 +940,65 @@ button.trophy-tile:disabled { cursor:default; opacity:.45 }
 .player-reserve { color:#fbbf24 !important }
 /* Selo que leva a outro lugar (a alteração da ISO, na página dela). */
 a.badge-link { text-decoration:none; position:relative; z-index:1 } a.badge-link:hover, a.badge-link:focus-visible { box-shadow:0 0 0 2px #60a5fa }
+/* Perfil e popup do jogador: os três cards (stats.summary) - campeonatos e amistosos
+   rankeados, amistosos e partidas livres. No perfil ficam lado a lado (3 quadros por
+   linha em cada um); no popup, um embaixo do outro (os 6 quadros numa linha). */
+.record-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,19rem),1fr)); gap:1rem; margin:1rem 0 }
+.record-card { min-width:0; padding:.75rem; border:1px solid #374151; border-top:3px solid #4b5563; border-radius:8px; background:#151e2d }
+.record-card h3 { margin:0 0 .55rem; font-size:.95rem; line-height:1.25 }
+.record-card.record-ranked { border-top-color:var(--accent) } .record-card.record-friendly { border-top-color:#60a5fa } .record-card.record-free { border-top-color:#a78bfa }
+/* O card é um link para o Ao vivo (jogador + tipo filtrados): a borda inteira na cor dele ao passar o mouse. */
+a.record-card { display:block; color:inherit; text-decoration:none; transition:border-color .12s, box-shadow .12s }
+a.record-card.record-ranked:hover, a.record-card.record-ranked:focus-visible { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) }
+a.record-card.record-friendly:hover, a.record-card.record-friendly:focus-visible { border-color:#60a5fa; box-shadow:0 0 0 1px #60a5fa }
+a.record-card.record-free:hover, a.record-card.record-free:focus-visible { border-color:#a78bfa; box-shadow:0 0 0 1px #a78bfa }
+a.record-card:focus-visible { outline:none }
+.record-cards:not(.compact) .stat-tiles.compact { grid-template-columns:repeat(3,minmax(0,1fr)) }
+.record-cards.compact { grid-template-columns:1fr; gap:.6rem; margin:0 } .record-cards.compact .record-card { padding:.55rem .6rem .6rem }
+.player-card .record-card h3 { margin-bottom:.4rem; font-size:.9rem }
+/* Partida livre interrompida ainda sem placar final (free.py): laranja, com o (i). */
+.recent .f-pending { background:#fb923c; box-shadow:inset 0 0 0 2px #fed7aa }
+/* Últimos resultados como os V/E/D clicáveis (result_badges): links com o balão (title). */
+.recent a.f-btn { display:inline-flex; align-items:center; justify-content:center; width:2.2rem; height:2.2rem; margin:0; border-radius:5px; font-size:.95rem; font-weight:700; line-height:1; color:#111827; text-decoration:none }
+.recent a.f-btn:hover,.recent a.f-btn:focus-visible { outline:2px solid var(--text); outline-offset:2px }
+.player-card .result-badges { margin:0 } .result-badges-note { font-size:.85rem } .pending-legend { color:#fdba74 }
+.recent-results .result-badges { margin:.25rem 0 }
+/* Página da partida livre: o card do Ao vivo e o placar final que os dois combinam. */
+.free-match { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr)); gap:1rem; align-items:start }
+.free-match-card { display:block } .free-match-card .live-card { margin:0 }
+.free-final { padding:1rem 1.1rem; border-radius:8px; background:var(--card); border:1px solid #374151 }
+.free-final.pending { border-color:#ea580c88 } .free-final h2 { margin-top:0 }
+.free-final .score-inputs { margin:.25rem 0 } .free-final-done { color:var(--accent) } .free-final-rejected { color:#fca5a5 }
+.free-final .card-actions form { display:inline }
+.live-final { display:block } .live-final.pending, .live-final.pending a { color:#fdba74 }
+/* Amistosos: partidas livres com o placar final do adversário para eu responder. */
+.free-waiting { margin:1rem 0 1.5rem; padding:.2rem 1rem .6rem; border-radius:12px; background:#0b1220; border:1px solid #ea580c66 }
+.free-waiting h2 { color:#fdba74 }
+.free-waiting-list { list-style:none; margin:0; padding:0 }
+.free-waiting-list li { display:flex; flex-wrap:wrap; align-items:center; gap:.3rem .8rem; padding:.55rem 0; border-top:1px solid #374151 }
+.free-waiting-list li .button { margin-left:auto }
+.friendly-tag.ranked { border-color:#34d39988; color:#6ee7b7 }
+/* Últimos resultados (até 10 - tournaments.PLAYER_CARD_RESULTS) sempre numa linha só:
+   as colunas têm até 2.2rem e encolhem juntas nas telas pequenas (quadradas). */
+.recent.result-badges { display:grid; grid-template-columns:repeat(10, minmax(0, 2.2rem)); gap:.3rem }
+.recent.result-badges a.f-btn { width:100%; height:auto; aspect-ratio:1; font-size:clamp(.68rem, 2.6vw, .95rem) }
+/* "←" padrão do topo das páginas (base.html): o Voltar do navegador. */
+.back-button { display:inline-flex; align-items:center; justify-content:center; width:2.25rem; height:2.25rem; margin:0 0 .25rem; border:1px solid #374151; border-radius:50%; color:var(--text); background:var(--card); text-decoration:none }
+.back-button[hidden] { display:none }
+.back-button svg { width:1.2rem; height:1.2rem; fill:none; stroke:currentColor; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round }
+.back-button:hover, .back-button:focus-visible { border-color:var(--accent); color:var(--accent) }
+/* Card do Ao vivo: quem controla cada lado, com a foto e o rank (live._people). */
+.live-players { display:flex; flex-wrap:wrap; justify-content:center; gap:.3rem .7rem; min-width:0 }
+.live-player { display:inline-flex; align-items:center; gap:.35rem; min-width:0 }
+.live-player .avatar-btn { flex:none }
+.live-player small a { color:#cbd5e1; text-decoration:none } .live-player small a:hover, .live-player small a:focus-visible { color:var(--accent); text-decoration:underline }
+/* Card do Ao vivo com a ISO identificada: logos, nome e arquivo levam ao campeonato ou à ISO. */
+.live-logos > a { display:inline-flex; align-items:center; gap:inherit; border-radius:4px }
+.live-logos > a:hover img, .live-logos > a:focus-visible img { outline:2px solid var(--accent); outline-offset:1px }
+.live-card-file a { color:inherit; text-decoration:none; min-width:0; overflow:hidden; display:inline-flex } .live-card-file a:hover { color:var(--accent); text-decoration:underline }
+/* Meus jogos: "Esperando você" (os jogos de campeonato com uma ação minha). */
+.mm-pending { margin:1rem 0 1.5rem; padding:.2rem 1rem .8rem; border-radius:12px; background:#0b1220; border:1px solid #fbbf2466 }
+.mm-pending h2 { color:#fbbf24 }
+.mm-pending .my-match { display:grid; gap:.35rem; margin-top:.6rem }
+.my-match-actions a.button { background:#f97316; color:#1c0d02; height:20px; padding:0 .6rem; line-height:20px; font-size:.75rem }
+.mm-where { color:#9ca3af } .mm-where a { color:inherit } .mm-what { color:#fbbf24 }

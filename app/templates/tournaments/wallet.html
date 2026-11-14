@@ -33,7 +33,7 @@
       <text class="evo-axis" x="{{ L }}" y="{{ H - 8 }}">{{ pts[0].date[:10] }}</text>
       <text class="evo-axis" x="{{ W - R }}" y="{{ H - 8 }}" text-anchor="end">Hoje</text>
     </svg>
-    <div class="evo-tip" id="wallet-tip" hidden></div>
+    <div class="evo-tip evo-tip-arrow" id="wallet-tip" hidden></div>
   </div>
   <p class="muted">Saldo depois de cada movimento. Bolinhas: <span class="wallet-dot pos"></span> entrada · <span class="wallet-dot neg"></span> saída{% if entries|length >= 200 %} · últimos 200 movimentos{% endif %}.</p>
   {% else %}<p class="muted">O gráfico aparece a partir do segundo movimento.</p>{% endif %}
@@ -48,6 +48,7 @@
     {% endfor %}</tbody>
   </table></div>
   </details>
+  <script src="{{ url_for('static', filename='js/chart-tip.js', v='20261113a') }}"></script>
   <script>
   (function () {
     var data = {{ pts|tojson }};
@@ -60,10 +61,7 @@
       var parts = [['strong', p.balance_label], ['span', p.description], ['span', p.amount_label + ' · ' + p.date]];
       parts.forEach(function (part) { var el = document.createElement(part[0]); el.textContent = part[1]; tip.appendChild(el); });
       tip.hidden = false;
-      var b = box.getBoundingClientRect(), r = c.getBoundingClientRect();
-      var x = r.left - b.left + r.width / 2, left = Math.min(Math.max(x - tip.offsetWidth / 2, 0), b.width - tip.offsetWidth);
-      tip.style.left = left + 'px';
-      tip.style.top = Math.max(r.top - b.top - tip.offsetHeight - 10, 0) + 'px';
+      window.placeChartTip(box, tip, c);  // seta na bolinha, em cima ou embaixo (static/js/chart-tip.js)
     }
     function hide() { tip.hidden = true; cross.setAttribute('visibility', 'hidden'); }
     box.querySelectorAll('.evo-pt').forEach(function (g) {

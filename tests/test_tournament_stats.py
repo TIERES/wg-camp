@@ -2,6 +2,7 @@ import json
 import random
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from app.db import get_db, init_db, now
@@ -208,7 +209,7 @@ class StatsTest(unittest.TestCase):
         client = self.app.test_client()
         with client.session_transaction() as session:
             session["player_id"] = home
-        for url in (f"/torneios/{t['slug']}?aba=jogos", f"/torneios/{t['slug']}/jogos/{match_id}", "/torneios/meus-jogos"):
+        for url in (f"/torneios/{t['slug']}?aba=jogos", f"/torneios/{t['slug']}/jogos/{match_id}"):
             page = client.get(url).get_data(as_text=True)
             self.assertIn('score-val score-reported', page, url)
             self.assertIn("<strong>4 x 2</strong>", page, url)
@@ -218,7 +219,9 @@ class StatsTest(unittest.TestCase):
         self.assertNotIn("Enviar placar", page)
         self.assertEqual(stats.player_record(self.db, home)["played"], 0)  # só conta depois de confirmado
 
-    def test_my_matches_lists_all_games(self):
+    def test_my_matches_shows_only_what_waits_for_me(self):
+        """Meus jogos: só os jogos de campeonato com uma ação minha ("Esperando
+        você") e o Histórico de partidas; o jogo confirmado fica no gráfico."""
         p0, p1, p2 = self.players[:3]
         tid = self.league([p0, p1, p2])
         self.play(tid, p0, p1, 2, 0)  # confirmado
@@ -226,12 +229,13 @@ class StatsTest(unittest.TestCase):
         with client.session_transaction() as session:
             session["player_id"] = p0
         page = client.get("/torneios/meus-jogos").get_data(as_text=True)
-        self.assertEqual(page.count('class="my-match mm-'), 2)  # o confirmado e o que falta
-        self.assertIn('my-match mm-ok', page)
+        self.assertEqual(page.count('class="my-match mm-'), 1)  # só o que falta reportar
         self.assertIn('my-match mm-none', page)
-        self.assertIn("Resultado confirmado entre os jogadores", page)  # legenda
-        self.assertIn("1 confirmado", page)
-        self.assertIn("1 para reportar", page)
+        self.assertIn("Esperando você (1)", page)
+        self.assertIn(">Informar placar</a>", page)
+        self.assertNotIn("mm-ok", page)
+        self.assertIn('<section id="historico">', page)
+        self.assertIn('class="todo-badge" title="Jogos esperando você">1<', page)  # o mesmo número do menu
 
     def test_home_and_away_league_shows_two_blocks(self):
         cfg = formats.normalize("league", {"legs": "2"})
@@ -308,7 +312,8 @@ class TrophyGalleryTest(unittest.TestCase):
 
         with client.session_transaction() as session:
             session["player_id"] = p0
-        status = client.get("/torneios/status").get_data(as_text=True)
+        self.assertEqual(client.get("/torneios/status").headers["Location"], "/torneios/jogadores/p0")
+        status = client.get("/torneios/status", follow_redirects=True).get_data(as_text=True)
         self.assertIn("Galeria de troféus", status)
         self.assertIn("<strong>1</strong><span>título</span>", status)
         self.assertIn("<strong>1</strong><span>vice</span>", status)
@@ -319,7 +324,7 @@ class TrophyGalleryTest(unittest.TestCase):
         self.assertIn('data-place="2"', status)
         with client.session_transaction() as session:
             session["player_id"] = p3
-        self.assertIn("Você ainda não tem troféus", client.get("/torneios/status").get_data(as_text=True))
+        self.assertIn("Nenhum troféu ainda", client.get("/torneios/status", follow_redirects=True).get_data(as_text=True))
 
     def test_player_history_filters_and_opponent_photos(self):
         from datetime import timedelta
@@ -340,21 +345,26 @@ class TrophyGalleryTest(unittest.TestCase):
             page = client.get("/torneios/jogadores/p0", query_string=args).get_data(as_text=True)
             return page[page.index('id="historico"'):]
 
+        # O Histórico é o gráfico da evolução: uma bolinha (evo-pt) por jogo filtrado.
+        points = lambda page: page.count('<g class="evo-pt"')  # noqa: E731
+        one = "O gráfico aparece a partir da segunda partida com esses filtros."
         page = history()
-        self.assertEqual(page.count('class="recent"><span class="f-'), 3)
-        self.assertIn('class="avatar-btn"', page)  # foto e rank do adversário
+        self.assertEqual(points(page), 3)
         self.assertIn('data-nick="p1"', page)  # adversários no autocompletar com foto
         self.assertIn("Copa Lend\\u00e1ria", page)  # campeonatos no autocompletar
+        self.assertIn('"url": "/torneios/', page)  # cada bolinha abre a partida
         # Adversário: o nick escolhido (exato) ou um trecho.
-        self.assertEqual(history(adversario="P1").count('class="recent"><span class="f-'), 2)
-        self.assertEqual(history(adversario="p").count('class="recent"><span class="f-'), 3)
-        # Campeonato: trecho do nome, sem acento.
-        self.assertEqual(history(campeonato="lendaria").count('class="recent"><span class="f-'), 1)
-        self.assertEqual(history(campeonato="liga", adversario="p2").count('class="recent"><span class="f-'), 1)
+        self.assertEqual(points(history(adversario="P1")), 2)
+        self.assertEqual(points(history(adversario="p")), 3)
+        # Campeonato: trecho do nome, sem acento (um jogo só: sem gráfico, com o aviso).
+        self.assertIn(one, history(campeonato="lendaria"))
+        self.assertIn(one, history(campeonato="liga", adversario="p2"))
+        self.assertEqual(points(history(campeonato="liga")), 2)
+        self.assertEqual(points(history(campeonato="Rankeado")), 3)
+        self.assertIn("Nenhum jogo com esses filtros.", history(campeonato="Partida livre"))
         # Datas (dia local do jogo).
         today = to_local(now()).date()
-        self.assertEqual(history(de=today.isoformat(), ate=today.isoformat()).count('class="recent"><span class="f-'),
-                         3)
+        self.assertEqual(points(history(de=today.isoformat(), ate=today.isoformat())), 3)
         self.assertIn("Nenhum jogo com esses filtros.", history(de=(today + timedelta(days=1)).isoformat()))
         self.assertIn("Nenhum jogo com esses filtros.", history(ate=(today - timedelta(days=1)).isoformat()))
         # Os cards de jogo mantêm os filtros do histórico.
@@ -365,42 +375,42 @@ class TrophyGalleryTest(unittest.TestCase):
         self.assertIn('class="avatar-btn"', top)
         self.assertNotIn("Confronto", top)
 
-    def test_player_history_page_size_and_top_ten_opponents(self):
-        """Histórico: os 20 mais recentes por padrão, com o "Mostrar" (20/50/100);
-        Adversários mais enfrentados: sempre os 10 primeiros."""
+    def test_player_history_chart_and_top_ten_opponents(self):
+        """Histórico (o gráfico): todos os jogos (até tournaments.EVOLUTION_POINTS);
+        sem login, só as últimas HISTORY_PUBLIC_LIMIT. Adversários mais
+        enfrentados: sempre os 10 primeiros."""
         p0 = self.players[0]
         others = self.players[1:] + [add_player(self.db, f"x{i:02d}") for i in range(18)]
         tid = self.league([p0] + others)
         for other in others:  # 21 jogos do p0
             self.play(tid, p0, other, 1, 0)
         client = self.app.test_client()
-        with client.session_transaction() as session:  # o "Mostrar" é só para quem está logado
+        with client.session_transaction() as session:
             session["player_id"] = p0
-        rows = 'class="recent"><span class="f-'
+        points = '<g class="evo-pt"'
 
         page = client.get("/torneios/jogadores/p0").get_data(as_text=True)
         history = page[page.index('id="historico"'):]
-        self.assertEqual(history.count(rows), 20)
-        self.assertIn('<form method="get" class="per-page-form" action="#historico">', history)
-        self.assertIn('<option value="50" >21</option>', history)
-        self.assertIn("Mostrando 20 de 21 jogos.", history)
+        self.assertEqual(history.count(points), 21)
+        self.assertIn(">1º jogo</text>", history)
+        self.assertIn(">21º jogo</text>", history)
+        self.assertNotIn("Ver em tabela", history)
+        self.assertNotIn("per-page-form", history)
+        self.assertIn('"xp": "+20 XP"', history)  # o XP de cada jogo no balão
         top = page[page.index("Adversários mais enfrentados"):page.index('id="historico"')]
         self.assertEqual(top.count("<tr><td class=\"name-col\">"), 10)
+        with mock.patch("app.tournaments.EVOLUTION_POINTS", 5):
+            history = client.get("/torneios/jogadores/p0").get_data(as_text=True).split('id="historico"')[1]
+        self.assertEqual(history.count(points), 5)
+        self.assertIn(">17º jogo</text>", history)  # o aproveitamento continua o acumulado desde o 1º
+        self.assertIn("últimas 5 de 21 partidas", history)
 
-        page = client.get("/torneios/jogadores/p0?mostrar=50").get_data(as_text=True)
+        # Sem login: só as 10 últimas partidas, sem filtros (os parâmetros são ignorados).
+        page = self.app.test_client().get("/torneios/jogadores/p0?adversario=x01").get_data(as_text=True)
         history = page[page.index('id="historico"'):]
-        self.assertEqual(history.count(rows), 21)
-        self.assertNotIn("Mostrando 20 de", history)
-        self.assertIn('<input type="hidden" name="mostrar" value="50">', history)  # o filtro mantém
-        self.assertIn(f"/torneios/jogadores/p0?jogo={self.game}&amp;mostrar=50", page)  # os cards de jogo também
-
-        # Sem login: só as 10 últimas partidas, sem filtros nem "Mostrar" (os parâmetros são ignorados).
-        page = self.app.test_client().get("/torneios/jogadores/p0?mostrar=50&adversario=x01").get_data(as_text=True)
-        history = page[page.index('id="historico"'):]
-        self.assertEqual(history.count(rows), 10)
+        self.assertEqual(history.count(points), 10)
         self.assertNotIn("history-filters", history)
-        self.assertNotIn("per-page-form", history)
-        self.assertIn("Mostrando as 10 últimas partidas de 21.", history)
+        self.assertIn("últimas 10 de 21 partidas", history)
         self.assertIn("para ver o histórico completo", history)
 
 
@@ -412,12 +422,13 @@ class EvolutionTest(unittest.TestCase):
     def test_cumulative_efficiency_oldest_first(self):
         from app.tournament.stats import evolution
         rows = [  # history(): mais recente primeiro
-            {"goals_for": 0, "goals_against": 1, "opponent_name": "c", "played_at": "3"},
-            {"goals_for": 1, "goals_against": 1, "opponent_name": "b", "played_at": "2"},
-            {"goals_for": 2, "goals_against": 0, "opponent_name": "a", "played_at": "1"},
+            {"goals_for": 0, "goals_against": 1, "opponent_name": "c", "played_at": "3", "kind": "t", "match_id": 3},
+            {"goals_for": 1, "goals_against": 1, "opponent_name": "b", "played_at": "2", "kind": "t", "match_id": 2},
+            {"goals_for": 2, "goals_against": 0, "opponent_name": "a", "played_at": "1", "kind": "t", "match_id": 1},
         ]
+        rows = [dict(row, game_number=None, match_key=row["match_id"]) for row in rows]
         points = evolution(rows)
         self.assertEqual([p["outcome"] for p in points], ["V", "E", "D"])
         self.assertEqual([p["efficiency"] for p in points], [100, 67, 44])
-        self.assertEqual(points[0]["opponent"], "a")
+        self.assertEqual((points[0]["opponent"], points[0]["key"]), ("a", "t1-0"))
         self.assertEqual(evolution([]), [])

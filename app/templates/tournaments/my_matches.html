@@ -1,140 +1,74 @@
 {% extends 'base.html' %}{% from 'tournaments/_macros.html' import score %}{% from '_dialog.html' import form_dialog %}{% block title %}Meus jogos · WE Camp{% endblock %}{% block content %}
 <h1>Meus jogos</h1>
-<p class="muted">Todos os seus jogos, dos campeonatos em andamento e encerrados. Clique no campeonato para ver os jogos.</p>
-{% set legend = {'ok': 'Resultado confirmado entre os jogadores', 'confirm': 'Resultado para você confirmar', 'none': 'Nenhum resultado informado', 'waiting': 'Você informou o resultado; aguardando o adversário', 'disputed': 'Resultado contestado'} %}
-{% macro kind_of(row) -%}
-  {%- set open = row.tournament_status == 'running' -%}
-  {%- set mine_reported = row.status == 'reported' and row.waiting_other -%}
-  {{- 'ok' if row.status == 'confirmed' else 'confirm' if (open and row.status == 'reported' and not mine_reported) else 'none' if row.status == 'scheduled' else 'disputed' if row.status == 'disputed' else 'waiting' -}}
-{%- endmacro %}
-{% if groups %}
-{% set organizers = groups|map('first')|map(attribute='organizer_name')|unique|sort|list %}
-<div class="mm-filters" id="mm-filters">
-  {% if groups|length > 1 %}<input type="search" id="mt-filter" placeholder="Buscar campeonato pelo nome..." autocomplete="off" aria-label="Buscar campeonato">{% endif %}
-  <select id="mm-organizer" aria-label="Criado por">
-    <option value="">Criado por: todos</option>
-    {% for o in organizers %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
-  </select>
-  <select id="mm-tstatus" aria-label="Status do campeonato">
-    <option value="">Campeonato: todos os status</option>
-    <option value="running">Em andamento</option>
-    <option value="finished">Encerrado</option>
-  </select>
-  <select id="mm-kind" aria-label="Status da partida">
-    <option value="">Partida: todos os status</option>
-    {% for kind in ['confirm', 'none', 'waiting', 'disputed', 'ok'] %}<option value="{{ kind }}">{{ legend[kind] }}</option>{% endfor %}
-  </select>
-</div>
-{% endif %}
-{% for ms in groups %}{% set first = ms[0] %}
-  {% set open = first.tournament_status == 'running' %}
-  {% set todo = ms|selectattr('status', 'equalto', 'scheduled')|selectattr('stage_status', 'equalto', 'running')|list|length if open else 0 %}
-  {% set done = ms|selectattr('status', 'equalto', 'confirmed')|list|length %}
-  {% set to_confirm = ms|selectattr('status', 'equalto', 'reported')|rejectattr('waiting_other')|list|length %}
-  {% set waiting = ms|selectattr('status', 'equalto', 'reported')|selectattr('waiting_other')|list|length %}
-  {% set disputed = ms|selectattr('status', 'equalto', 'disputed')|list|length %}
-  {% set ns = namespace(kinds=[]) %}
-  {% for row in ms %}{% set k = kind_of(row)|trim %}{% if k not in ns.kinds %}{% set ns.kinds = ns.kinds + [k] %}{% endif %}{% endfor %}
-  <details class="mt-card" data-name="{{ first.tournament_name }}" data-organizer="{{ first.organizer_name }}" data-status="{{ first.tournament_status }}" data-kinds="{{ ns.kinds|join(' ') }}" {% if groups|length == 1 or opened == first.tournament_id %}open{% endif %}>
-    <summary>
-      <span class="mt-title"><strong>{{ first.tournament_name }}</strong><small class="muted">{{ ms|length }} jogo{{ 's' if ms|length != 1 }}{% if not open %} · encerrado{% endif %} · criado por {{ first.organizer_name }}</small></span>
-      <span class="mt-counts">
-        {% if todo %}<span class="chip chip-todo">{{ todo }} para reportar</span>{% endif %}
-        {% if to_confirm %}<span class="chip chip-reported">{{ to_confirm }} para confirmar</span>{% endif %}
-        {% if waiting %}<span class="chip">{{ waiting }} aguardando adversário</span>{% endif %}
-        {% if disputed %}<span class="chip chip-disputed">{{ disputed }} contestado{{ 's' if disputed != 1 }}</span>{% endif %}
-        {% if done %}<span class="chip chip-done">{{ done }} confirmado{{ 's' if done != 1 }}</span>{% endif %}
-      </span>
-    </summary>
-    <div class="mt-body">
-      <ul class="mm-legend">
-        {% for kind in ['ok', 'confirm', 'none', 'waiting', 'disputed'] if kind in ns.kinds %}<li class="mm-{{ kind }}">{{ legend[kind] }}</li>{% endfor %}
-      </ul>
-      {% if ms|length > 1 %}<input type="search" class="mt-match-filter" placeholder="Filtrar por jogador ou time..." autocomplete="off" aria-label="Filtrar jogos por jogador ou time">{% endif %}
-      {% for row in ms %}
-      {% set kind = kind_of(row)|trim %}
-      <div class="my-match mm-{{ kind }}" id="jogo-{{ row.id }}" data-kind="{{ kind }}" data-search="{{ names[row.home_entry_id]|striptags }} {{ names[row.away_entry_id]|striptags }}" title="{{ legend[kind] }}">
-      <a class="my-match-link" href="{{ url_for('tournaments.match', slug=row.slug, match_id=row.id) }}">
-        <span class="match-line"><span class="home">{{ names[row.home_entry_id] }}</span><span class="score">{{ score(row) }}</span><span class="away">{{ names[row.away_entry_id] }}</span></span>
-      </a>
-      {% if kind == 'confirm' %}
-      <div class="my-match-actions">
-        <button type="button" class="secondary" data-dialog="contestar-{{ row.id }}">Não aceitar o placar</button>
-        <form method="post" action="{{ url_for('tournaments.match_confirm', slug=row.slug, match_id=row.id) }}">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="voltar" value="meus-jogos">
-          <button>Confirmar partida</button>
-        </form>
-      </div>
-      {% call form_dialog('contestar-%d' % row.id, url_for('tournaments.match_dispute', slug=row.slug, match_id=row.id), 'Não aceitar o placar', 'Contestar', 'meus-jogos') %}
-        <p class="match-line"><span class="home">{{ names[row.home_entry_id] }}</span><span class="score">{{ score(row) }}</span><span class="away">{{ names[row.away_entry_id] }}</span></p>
-        <p class="muted">A contestação vai para o organizador decidir. Se você informar o placar certo, o adversário pode aceitá-lo e o resultado é confirmado na hora.</p>
-        <p class="muted">Qual foi o placar certo? (opcional)</p>
-        <div class="score-inputs">
-          <span class="home">{{ names[row.home_entry_id] }}</span>
-          <span class="goals"><input type="number" name="home_goals" min="0" max="99" aria-label="Gols do mandante"> x <input type="number" name="away_goals" min="0" max="99" aria-label="Gols do visitante"></span>
-          <span class="away">{{ names[row.away_entry_id] }}</span>
-        </div>
-        <label>Motivo<textarea name="comment" rows="3" minlength="3" maxlength="500" required placeholder="Explique o que aconteceu; se tiver o replay, diga o horário da partida."></textarea></label>
-      {% endcall %}
-      {% endif %}
-      {% if row.status == 'reported' and open %}<span class="my-match-status">Confirmação automática em {{ deadlines[row.id]|localtime }}</span>{% endif %}
-      </div>
-      {% endfor %}
-      <p class="muted mt-empty" hidden>Nenhum jogo com esses filtros.</p>
-      <p class="mt-link"><a href="{{ url_for('tournaments.show', slug=first.slug, aba='jogos') }}">Ver o campeonato</a></p>
+{# Esperando você: os jogos de campeonato com uma ação minha - informar o placar,
+   confirmar o do adversário ou aceitar o placar de uma contestação (o mesmo que o
+   número do menu) -, os amistosos com placar para eu confirmar e as partidas
+   livres interrompidas com o placar final do adversário (tournaments.my_matches).
+   Some quando não há nada pendente. Embaixo, o Histórico de partidas (filtros +
+   gráfico), como na página do jogador. #}
+{% set waiting_total = pending|length + friendlies_pending|length + free_pending|length %}
+{% if waiting_total %}
+{% set labels = {'report': 'Informe o placar', 'confirm': 'Confirme o placar do adversário', 'accept': 'O adversário contestou com outro placar'} %}
+{% set kinds = {'report': 'none', 'confirm': 'confirm', 'accept': 'disputed'} %}
+<section class="mm-pending" id="esperando">
+  <h2>Esperando você ({{ waiting_total }})</h2>
+  <p class="muted">Jogos com uma ação sua: informar o placar, confirmar o do adversário ou responder a uma contestação.</p>
+  {% for row, action in pending %}
+  <div class="my-match mm-{{ kinds[action] }}" id="jogo-{{ row.id }}" title="{{ labels[action] }}">
+    <small class="mm-where"><a href="{{ url_for('tournaments.show', slug=row.slug, aba='jogos') }}">{{ row.tournament_name }}</a> · {{ row.stage_name }}{% if row.round %} · Rodada {{ row.round }}{% endif %} · <span class="mm-what">{{ labels[action] }}</span></small>
+    <a class="my-match-link" href="{{ url_for('tournaments.match', slug=row.slug, match_id=row.id) }}">
+      <span class="match-line"><span class="home">{{ names[row.home_entry_id] }}</span><span class="score">{{ score(row) }}</span><span class="away">{{ names[row.away_entry_id] }}</span></span>
+    </a>
+    <div class="my-match-actions">
+    {% if action == 'confirm' %}
+      <button type="button" class="secondary" data-dialog="contestar-{{ row.id }}">Não aceitar o placar</button>
+      <form method="post" action="{{ url_for('tournaments.match_confirm', slug=row.slug, match_id=row.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="voltar" value="meus-jogos">
+        <button>Confirmar partida</button>
+      </form>
+    {% elif action == 'report' %}
+      <a class="button" href="{{ url_for('tournaments.match', slug=row.slug, match_id=row.id) }}">Informar placar</a>
+    {% else %}
+      <a class="button" href="{{ url_for('tournaments.match', slug=row.slug, match_id=row.id) }}">Ver a contestação</a>
+    {% endif %}
     </div>
-  </details>
-{% else %}<p>Você ainda não tem jogos. <a href="{{ url_for('tournaments.index') }}">Veja os campeonatos</a> com inscrições abertas.</p>{% endfor %}
-<p class="muted" id="mt-none" hidden>Nenhum campeonato com esses filtros.</p>
+    {% if action == 'confirm' %}
+    {% call form_dialog('contestar-%d' % row.id, url_for('tournaments.match_dispute', slug=row.slug, match_id=row.id), 'Não aceitar o placar', 'Contestar', 'meus-jogos') %}
+      <p class="match-line"><span class="home">{{ names[row.home_entry_id] }}</span><span class="score">{{ score(row) }}</span><span class="away">{{ names[row.away_entry_id] }}</span></p>
+      <p class="muted">A contestação vai para o organizador decidir. Se você informar o placar certo, o adversário pode aceitá-lo e o resultado é confirmado na hora.</p>
+      <p class="muted">Qual foi o placar certo? (opcional)</p>
+      <div class="score-inputs">
+        <span class="home">{{ names[row.home_entry_id] }}</span>
+        <span class="goals"><input type="number" name="home_goals" min="0" max="99" aria-label="Gols do mandante"> x <input type="number" name="away_goals" min="0" max="99" aria-label="Gols do visitante"></span>
+        <span class="away">{{ names[row.away_entry_id] }}</span>
+      </div>
+      <label>Motivo<textarea name="comment" rows="3" minlength="3" maxlength="500" required placeholder="Explique o que aconteceu; se tiver o replay, diga o horário da partida."></textarea></label>
+    {% endcall %}
+    <span class="my-match-status">Confirmação automática em {{ deadlines[row.id]|localtime }}</span>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% for item in friendlies_pending %}{% set f = item.row %}
+  <div class="my-match mm-confirm" id="amistoso-{{ f.id }}" title="Confirme o placar do amistoso">
+    <small class="mm-where"><a href="{{ url_for('tournaments.friendly_show', friendly_id=f.id) }}">Amistoso{% if f.iso_title %} · {{ f.iso_title }}{% elif f.game_name %} · {{ f.game_name }}{% endif %}</a> · <span class="mm-what">Confirme o placar do amistoso</span></small>
+    <a class="my-match-link" href="{{ url_for('tournaments.friendly_show', friendly_id=f.id) }}">
+      <span class="match-line"><span class="home">{{ f.home_name }}</span><span class="score">{% if item.total %}<span class="score-val score-reported">{{ f.home_goals }} x {{ f.away_goals }}</span>{% else %}x{% endif %}</span><span class="away">{{ f.away_name }}</span></span>
+    </a>
+    <div class="my-match-actions"><a class="button" href="{{ url_for('tournaments.friendly_show', friendly_id=f.id) }}">Confirmar ou não aceitar</a></div>
+    {% if item.deadline %}<span class="my-match-status">Confirmação automática em {{ item.deadline|localtime }}</span>{% endif %}
+  </div>
+  {% endfor %}
+  {% for m in free_pending %}
+  <div class="my-match mm-confirm" id="partida-livre-{{ m.id }}" title="Confirme o placar final da partida interrompida">
+    <small class="mm-where"><a href="{{ url_for('tournaments.free_match', live_id=m.id) }}">Partida livre interrompida</a> · <span class="mm-what">Confirme o placar final</span></small>
+    <a class="my-match-link" href="{{ url_for('tournaments.free_match', live_id=m.id) }}">
+      <span class="match-line"><span class="home">{{ m.local_name }}</span><span class="score"><span class="score-val score-reported">{{ m.score[0] }} x {{ m.score[1] }}</span></span><span class="away">{{ m.visita_name }}</span></span>
+    </a>
+    <div class="my-match-actions"><a class="button" href="{{ url_for('tournaments.free_match', live_id=m.id) }}">Confirmar ou não aceitar</a></div>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
 
-<script>
-(function () {
-  // Busca sem diferenciar acentos/maiúsculas.
-  function plain(s) { return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
-  function noEnter(input) { input.addEventListener('keydown', function (e) { if (e.key === 'Enter') e.preventDefault(); }); }
-  function val(id) { var el = document.getElementById(id); return el ? el.value : ''; }
-
-  var cards = document.querySelectorAll('.mt-card');
-  var single = cards.length === 1, kindChanged = false;
-
-  // Jogos de um card: texto do filtro do próprio card + status da partida.
-  function filterMatches(card) {
-    var input = card.querySelector('.mt-match-filter');
-    var q = input ? plain(input.value.trim()) : '', kind = val('mm-kind'), any = false;
-    card.querySelectorAll('.my-match').forEach(function (m) {
-      var show = (!q || plain(m.dataset.search).indexOf(q) >= 0) && (!kind || m.dataset.kind === kind);
-      m.hidden = !show; any = any || show;
-    });
-    card.querySelector('.mt-empty').hidden = any;
-  }
-
-  function apply() {
-    var q = plain(val('mt-filter').trim()), organizer = val('mm-organizer'), status = val('mm-tstatus'), kind = val('mm-kind');
-    var any = false;
-    cards.forEach(function (card) {
-      var show = (!q || plain(card.dataset.name).indexOf(q) >= 0)
-        && (!organizer || card.dataset.organizer === organizer)
-        && (!status || card.dataset.status === status)
-        && (!kind || card.dataset.kinds.split(' ').indexOf(kind) >= 0);
-      card.hidden = !show; any = any || show;
-      filterMatches(card);
-      if (kindChanged && !single) card.open = !!(kind && show);  // filtrando pela partida, abre os cards com os jogos
-    });
-    kindChanged = false;
-    var none = document.getElementById('mt-none');
-    if (none) none.hidden = any;
-  }
-
-  var text = document.getElementById('mt-filter');
-  if (text) { noEnter(text); text.addEventListener('input', apply); }
-  ['mm-organizer', 'mm-tstatus', 'mm-kind'].forEach(function (id) {
-    var el = document.getElementById(id);
-    if (el) el.addEventListener('change', function () { kindChanged = id === 'mm-kind'; apply(); });
-  });
-  document.querySelectorAll('.mt-match-filter').forEach(function (input) {
-    noEnter(input);
-    input.addEventListener('input', function () { filterMatches(input.closest('.mt-card')); });
-  });
-})();
-</script>
+{% include 'tournaments/_history.html' %}
 {% endblock %}

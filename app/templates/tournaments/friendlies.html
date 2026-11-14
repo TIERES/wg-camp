@@ -6,7 +6,7 @@
     <li>Os dois jogadores precisam já ter chegado a <strong>{{ rules.min_xp }} XP em campeonatos</strong> (Rank {{ rules.rank }}). O XP de amistosos não conta para isso. Quem chegou lá uma vez continua liberado, mesmo se perder XP depois. Assim, contas novas ou fake não conseguem dar XP para ninguém.{% if rules.my_peak < rules.min_xp %} <span class="muted">Você ainda não chegou: seu maior XP em campeonatos é {{ rules.my_peak }}.</span>{% else %} <span class="muted">Você já está liberado.</span>{% endif %}</li>
     <li>Vale no máximo <strong>{{ rules.limit }} convites para amistosos por dia</strong> contra o mesmo adversário, mas vocês podem fazer quantos jogos quiserem dentro da mesma conexão. No fim, os dois confirmam os resultados.</li>
     <li><strong>Cada jogo vale sozinho</strong> no XP e no V/E/D, pelo placar dele. Com <strong>Placar agregado</strong> marcado no convite, o amistoso também mostra a soma dos gols de todos os jogos; sem ele, mostra só os jogadores. Depois de confirmado, o (i) de cada jogo mostra quanto XP ele deu.</li>
-    <li>Qualquer amigo pode ser convidado. Quando um dos dois ainda não está liberado, o amistoso fica registrado, mas não vale.</li>
+    <li>Qualquer amigo pode ser convidado. Para o amistoso valer para o Ranking e o XP, marque <strong>Rankeado</strong> no convite: a opção só fica liberada quando os dois já chegaram ao Rank {{ rules.rank }} em campeonatos. Sem ela, os jogos contam só no card <strong>Amistosos</strong> do perfil.</li>
     <li>Cada jogo do amistoso que vale entra no Ranking, no V/E/D e no XP como um jogo de campeonato, pelas mesmas regras. Ele não paga W$.</li>
     <li>Se um não aceitar o placar, o amistoso fica <strong>suspenso</strong> até um dos dois propor um placar que o outro aceite.</li>
   </ul>
@@ -20,6 +20,19 @@
 {# No topo, em destaque: o que espera uma resposta minha e os amistosos em aberto. #}
 {% if respond %}
 {{ friendly_carousel('esperando', 'Esperando você (%d)' % respond|length, respond, labels, needs_me, request.path, friendly_games, cls='friendly-respond') }}
+{% endif %}
+
+{# Partidas livres interrompidas com o placar final do adversário para eu responder (tournament/free.py). #}
+{% if free_waiting %}
+<section class="free-waiting" id="partidas-livres">
+  <h2>Partidas livres esperando você ({{ free_waiting|length }})</h2>
+  <p class="muted">Partidas interrompidas em que o adversário informou o placar final. Confirme ou não aceite: só com os dois de acordo ela conta nas Partidas livres do perfil.</p>
+  <ul class="free-waiting-list">{% for m in free_waiting %}
+    <li><span>{{ m.local_name }} <strong>{{ m.score[0] }} x {{ m.score[1] }}</strong> {{ m.visita_name }}</span>
+      <small class="muted">Interrompida em {{ m.played_at|localtime }} com {{ m.stop_goals[0] }} x {{ m.stop_goals[1] }}</small>
+      <a class="button" href="{{ url_for('tournaments.free_match', live_id=m.id) }}">Responder</a></li>
+  {% endfor %}</ul>
+</section>
 {% endif %}
 
 {% set open_filtered = open_filters.opponent or open_filters.date_from or open_filters.date_to %}
@@ -52,6 +65,12 @@
     {# Só o que aparece no fim: o XP é sempre jogo a jogo (friendly.py). #}
     <label class="check friendly-aggregate"><input type="checkbox" name="agregado" value="1">
       <span>Placar agregado <small class="muted">No fim, soma os gols de todos os jogos e mostra o resultado. Desmarcado, mostra só os jogadores. O XP é sempre jogo a jogo.</small></span></label>
+    {# "Rankeado": liberado só com os dois no Rank E em campeonatos (friendly.unlocked);
+       o amigo escolhido liga ou desliga a caixa (script no fim da página). #}
+    {% set ranked_on = me_unlocked and chosen_friend and chosen_friend.id in ranked_ids %}
+    <label class="check friendly-rank-choice"><input type="checkbox" name="rankeado" value="1" id="amistoso-rankeado"
+        data-ranked-ids="{{ ranked_ids|tojson|forceescape }}" data-me-unlocked="{{ 1 if me_unlocked else 0 }}"{% if ranked_on %} checked{% else %} disabled{% endif %}>
+      <span>Rankeado <small class="muted" id="amistoso-rankeado-nota">{% if not me_unlocked %}Liberado quando os dois jogadores chegarem ao Rank {{ rules.rank }} ({{ rules.min_xp }} XP) em campeonatos: você ainda não chegou. Sem ele, os jogos contam só no card Amistosos do perfil.{% elif ranked_on %}Vale para o Ranking e o XP. Desmarcado, os jogos contam só no card Amistosos do perfil.{% elif chosen_friend %}{{ chosen_friend.username }} ainda não chegou ao Rank {{ rules.rank }} em campeonatos: os jogos contam só no card Amistosos do perfil.{% else %}Escolha o amigo: fica liberado quando os dois já chegaram ao Rank {{ rules.rank }} ({{ rules.min_xp }} XP) em campeonatos.{% endif %}</small></span></label>
     <div class="iso-choice">
       <span class="iso-choice-label">ISO (opcional)</span>
       <input type="hidden" name="iso" id="iso-value" value="">
@@ -132,6 +151,36 @@
       <div class="card-actions"><button>Enviar ISO</button></div>
     </form>
   </dialog>
+  <script>
+  (function () {
+    // "Rankeado": liberado (e marcado) só quando o amigo escolhido também já chegou
+    // ao Rank E em campeonatos (data-ranked-ids - friendly.unlocked); senão, desmarcado e travado.
+    var box = document.getElementById('amistoso-rankeado');
+    if (!box) return;
+    var note = document.getElementById('amistoso-rankeado-nota');
+    var friend = box.form.querySelector('input[name="amigo"]'), typed = document.getElementById('amigo-busca');
+    var ids = JSON.parse(box.dataset.rankedIds || '[]').map(String), meOk = box.dataset.meUnlocked === '1';
+    var last = null;
+    function update() {
+      if (!meOk) return;  // eu ainda não cheguei: a nota já diz, a caixa fica travada
+      var id = friend.value, ok = !!id && ids.indexOf(id) >= 0;
+      if (id === last) return;
+      last = id;
+      box.disabled = !ok;
+      box.checked = ok;
+      note.textContent = ok ? 'Vale para o Ranking e o XP. Desmarcado, os jogos contam só no card Amistosos do perfil.'
+        : id ? typed.value + ' ainda não chegou ao Rank {{ rules.rank }} em campeonatos: os jogos contam só no card Amistosos do perfil.'
+        : 'Escolha o amigo: fica liberado quando os dois já chegaram ao Rank {{ rules.rank }} ({{ rules.min_xp }} XP) em campeonatos.';
+    }
+    last = friend.value;
+    // Escolher na lista dispara "change"; digitar o nick exato e sair do campo só
+    // preenche o id no blur do user-picker.js - daí o setTimeout (depois dele).
+    function later() { setTimeout(update, 0); }
+    typed.addEventListener('change', later);
+    typed.addEventListener('input', later);
+    typed.addEventListener('blur', later);
+  })();
+  </script>
   <script>
   (function () {
     // Escolha da ISO do convite: popup com os cards num carrossel (as 20 cadastradas

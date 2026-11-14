@@ -7,7 +7,7 @@
   {# Como o link aparece ao ser compartilhado (WhatsApp, Telegram...): _share.html. #}
   {% block share %}{% endblock %}
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/retroarch.svg') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css', v='20261113a') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css', v='20261113l') }}">
 </head>
 <body>
   <header>
@@ -20,7 +20,7 @@
       <a href="{{ url_for('tournaments.index') }}">Campeonatos</a>
       <a href="{{ url_for('replays.index') }}">Replays</a>
       <a href="{{ url_for('live.index') }}">Ao vivo</a>
-      {% if session.player_id %}{% if wallet_balance is not none %}<a class="wallet-chip" href="{{ url_for('tournaments.wallet') }}">{{ wallet_balance|wcash }}</a>{% endif %}<details class="user-menu"><summary>{% set my_avatar = player_avatar(session.player_id) %}{% if my_avatar %}<img class="avatar avatar-xs" src="{{ my_avatar }}" alt="">{% else %}<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>{% endif %}<span class="user-name">{{ player_name or 'Minha conta' }}</span>{% set menu_todo = (matches_todo or 0) + (friends_todo or 0) + (invites_todo or 0) + (friendlies_todo or 0) %}{% if menu_todo %}<span class="todo-badge" title="Jogos, amistosos, pedidos de amizade e convites esperando você">{{ menu_todo }}</span>{% endif %}<svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary><div class="user-menu-list"><a href="{{ url_for('tournaments.my_tournaments') }}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></svg>Meus campeonatos{% if invites_todo %}<span class="todo-badge" title="Convites para campeonatos">{{ invites_todo }}</span>{% endif %}</a><a href="{{ url_for('tournaments.my_matches') }}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="4"/><path d="M6 12h4M8 10v4"/><circle cx="15.5" cy="11" r=".8"/><circle cx="17.5" cy="13" r=".8"/></svg>Meus jogos{% if matches_todo %}<span class="todo-badge" title="Jogos esperando você">{{ matches_todo }}</span>{% endif %}</a><a href="{{ url_for('tournaments.friendlies') }}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m12 7 4 3-1.5 4.5h-5L8 10z"/><path d="M12 3v4M21 10l-5 0M3 10h5M7 20l2.5-5.5M17 20l-2.5-5.5"/></svg>Amistosos{% if friendlies_todo %}<span class="todo-badge" title="Amistosos esperando você">{{ friendlies_todo }}</span>{% endif %}</a><a href="{{ url_for('tournaments.friends_page') }}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.2a5 5 0 0 1 6 4.8"/></svg>Amigos{% if friends_todo %}<span class="todo-badge" title="Pedidos de amizade">{{ friends_todo }}</span>{% endif %}</a><a href="{{ url_for('tournaments.my_status') }}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 6-6"/></svg>Status</a><a href="{{ url_for('players.account') }}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Configurações</a><form method="post" action="{{ url_for('players.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>Sair</button></form></div></details>{% else %}<a href="{{ url_for('players.login') }}">Entrar</a> <a href="{{ url_for('players.register') }}">Cadastre-se</a>{% endif %}
+      {% if session.player_id %}{% if wallet_balance is not none %}<a class="wallet-chip" href="{{ url_for('tournaments.wallet') }}">{{ wallet_balance|wcash }}</a>{% endif %}<details class="user-menu"><summary>{% set my_avatar = player_avatar(session.player_id) %}{% if my_avatar %}<img class="avatar avatar-xs" src="{{ my_avatar }}" alt="">{% else %}<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>{% endif %}<span class="user-name">{{ player_name or 'Minha conta' }}</span>{% set menu_todo = (matches_todo or 0) + (friends_todo or 0) + (invites_todo or 0) + (friendlies_todo or 0) %}{% if menu_todo %}<span class="todo-badge" title="Jogos, amistosos, pedidos de amizade e convites esperando você">{{ menu_todo }}</span>{% endif %}<svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary><div class="user-menu-list"><a href="{{ url_for('tournaments.my_tournaments') }}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></svg>Meus campeonatos{% if invites_todo %}<span class="todo-badge" title="Convites para campeonatos">{{ invites_todo }}</span>{% endif %}</a><a href="{{ url_for('tournaments.my_matches') }}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="4"/><path d="M6 12h4M8 10v4"/><circle cx="15.5" cy="11" r=".8"/><circle cx="17.5" cy="13" r=".8"/></svg>Meus jogos{% if matches_todo %}<span class="todo-badge" title="Jogos esperando você">{{ matches_todo }}</span>{% endif %}</a><a href="{{ url_for('tournaments.friendlies') }}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m12 7 4 3-1.5 4.5h-5L8 10z"/><path d="M12 3v4M21 10l-5 0M3 10h5M7 20l2.5-5.5M17 20l-2.5-5.5"/></svg>Amistosos{% if friendlies_todo %}<span class="todo-badge" title="Amistosos esperando você">{{ friendlies_todo }}</span>{% endif %}</a><a href="{{ url_for('tournaments.friends_page') }}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.2a5 5 0 0 1 6 4.8"/></svg>Amigos{% if friends_todo %}<span class="todo-badge" title="Pedidos de amizade">{{ friends_todo }}</span>{% endif %}</a><a href="{{ url_for('tournaments.player', nome=player_name) if player_name else url_for('tournaments.my_status') }}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 6-6"/></svg>Status</a><a href="{{ url_for('players.account') }}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Configurações</a><form method="post" action="{{ url_for('players.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>Sair</button></form></div></details>{% else %}<a href="{{ url_for('players.login') }}">Entrar</a> <a href="{{ url_for('players.register') }}">Cadastre-se</a>{% endif %}
       {% endif %}
     </nav>
   </header>
@@ -36,6 +36,10 @@
     {% endfor %}
   </div>
   <main>
+    {# "←" padrão de todas as páginas: o Voltar do navegador - só aparece com uma
+       página anterior deste site que não seja a de login (script no fim). #}
+    <a class="back-button" id="back-button" href="#" hidden aria-label="Voltar" title="Voltar"
+       data-skip="{{ url_for('players.login') }} {{ url_for('admin.login') }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></a>
     {% block content %}{% endblock %}
   </main>
   <footer class="site-footer">
@@ -50,6 +54,21 @@
     if (!menu) return;
     document.addEventListener('click', function (e) { if (!menu.contains(e.target)) menu.open = false; });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && menu.open) { menu.open = false; menu.querySelector('summary').focus(); } });
+  })();
+  </script>
+  <script>
+  // Voltar (o "←" do topo): a página anterior da navegação, como o botão do
+  // navegador - escondido sem página anterior deste site, quando ela é a de
+  // login (ou de login do admin) e quando ela é esta mesma (formulário enviado).
+  (function () {
+    var back = document.getElementById('back-button');
+    var from = null;
+    try { from = document.referrer ? new URL(document.referrer) : null; } catch (e) { from = null; }
+    if (!back || !from || from.origin !== location.origin || history.length < 2) return;
+    if (back.dataset.skip.split(' ').indexOf(from.pathname) >= 0) return;
+    if (from.pathname + from.search === location.pathname + location.search) return;
+    back.hidden = false;
+    back.addEventListener('click', function (e) { e.preventDefault(); history.back(); });
   })();
   </script>
   <script src="{{ url_for('static', filename='js/toast.js', v='20261106a') }}"></script>

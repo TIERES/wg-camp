@@ -106,7 +106,7 @@ class ImagesTest(unittest.TestCase):
         self.assertEqual(card.status_code, 200)
         html = card.data.decode()
         self.assertIn("<h2>jog1</h2>", html)
-        self.assertIn("Últimos 5 resultados", html)
+        self.assertIn(">Últimos resultados</h3>", html)  # sem jogos ainda
         self.assertIn("Nenhum jogo confirmado ainda", html)
         self.assertIn('class="avatar avatar-lg" src="/imagens/avatar/', html)
         self.assertEqual(self.client().get("/torneios/jogadores/ninguem/resumo").status_code, 404)

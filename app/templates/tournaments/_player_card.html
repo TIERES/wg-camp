@@ -1,5 +1,5 @@
 {# Resumo do jogador no popup das listas (tournaments.player_card). #}
-{% from '_avatar.html' import avatar %}{% from 'tournaments/_stats_macros.html' import form_badges, xp_bar %}
+{% from '_avatar.html' import avatar %}{% from 'tournaments/_stats_macros.html' import xp_bar, record_cards, recent_results %}
 <div class="player-card">
   <form method="dialog" class="player-card-close"><button class="secondary" aria-label="Fechar">✕</button></form>
   <div class="player-card-head">
@@ -18,23 +18,10 @@
   </div>
   {% endif %}
   {{ xp_bar(player_rank(p.id), compact=true) }}
-  <div class="stat-tiles compact">
-    <div class="stat-tile"><span>Ranking</span><strong>{{ position ~ 'º' if position else '—' }}</strong></div>
-    <div class="stat-tile"><span>Jogos</span><strong>{{ record.played }}</strong></div>
-    <div class="stat-tile win"><span>V</span><strong>{{ record.wins }}</strong></div>
-    <div class="stat-tile draw"><span>E</span><strong>{{ record.draws }}</strong></div>
-    <div class="stat-tile loss"><span>D</span><strong>{{ record.losses }}</strong></div>
-    <div class="stat-tile"><span>Aproveit.</span><strong>{{ record.efficiency }}%</strong></div>
-  </div>
-  <h3>Últimos 5 resultados</h3>
-  {% if rows %}
-  <ul class="player-card-results">{% for r in rows %}{% set o = outcome(r) %}
-    <li><span class="recent"><span class="f-{{ o }}">{{ o }}</span></span>
-      <a href="{{ history_url(r) }}"><strong>{{ r.goals_for }} x {{ r.goals_against }}</strong>{% if r.pens_for is not none %} <small>({{ r.pens_for }} x {{ r.pens_against }} pên.)</small>{% endif %}</a>
-      <span>contra {{ r.opponent_name }}</span>
-      <small class="muted">{{ r.tournament_name }} · {{ r.played_at|localtime }}</small></li>
-  {% endfor %}</ul>
-  {% else %}<p class="muted">Nenhum jogo confirmado ainda.</p>{% endif %}
+  {{ record_cards(summary, p.username, compact=true) }}
+  {# Todos os jogos dos três cards (stats.all_history), só os V/E/D clicáveis;
+     a partida livre interrompida ainda sem placar final em laranja (free.py). #}
+  {{ recent_results(rows, outcome) }}
   <div class="card-actions">
     <a class="button" href="{{ url_for('tournaments.player', nome=p.username) }}">Ver perfil completo</a>
     {% if session.player_id and session.player_id != p.id and relation == 'friends' %}<a class="button secondary" href="{{ url_for('tournaments.compare', b=p.username) }}">Comparar comigo</a>{% endif %}

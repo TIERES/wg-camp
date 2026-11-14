@@ -127,9 +127,12 @@ class TournamentsWebTest(unittest.TestCase):
         self.assertNotIn('t-name">Copa Minha', player.get("/torneios/meus-campeonatos").data.decode())
         self.assertIn('t-name">Copa Minha', player.get("/torneios/meus-campeonatos?status=finished").data.decode())
         self.assertIn('t-name">Copa Minha', player.get("/torneios/meus-campeonatos?status=todos").data.decode())
+        # "Status" no menu = a página do jogador (/torneios/status só redireciona para ela).
+        self.assertIn('href="/torneios/jogadores/jog1"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/>',
+                      player.get("/torneios/meus-campeonatos").data.decode())
         status = player.get("/torneios/status")
-        self.assertEqual(status.status_code, 200)
-        self.assertIn("ainda não tem partidas confirmadas", status.data.decode())
+        self.assertEqual((status.status_code, status.headers["Location"]), (302, "/torneios/jogadores/jog1"))
+        self.assertIn("Nenhum jogo confirmado ainda", player.get("/torneios/status", follow_redirects=True).data.decode())
 
     def test_full_flow(self):
         admin = self.client(admin=True)

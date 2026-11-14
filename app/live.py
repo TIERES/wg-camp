@@ -609,7 +609,7 @@ def _profile(db, match):
     catalog = None
     if not (tournament and tournament["image"]):
         catalog_id = catalog_id or _catalog_iso(db, match)
-        catalog = db.execute("SELECT name, image FROM catalog_isos WHERE id = ?",
+        catalog = db.execute("SELECT id, name, image, approved_at, is_active FROM catalog_isos WHERE id = ?",
                              (catalog_id,)).fetchone() if catalog_id else None
     return game, tournament, catalog
 
@@ -624,12 +624,19 @@ def card(db, match):
     label, link = _context(db, match)
     stale = match["status"] == "live" and match["updated_at"] < _ago(STALE)
     game, tournament, catalog = _profile(db, match)
+    # Clicar nos logos, no nome ou na descrição da partida: a página do
+    # campeonato da ISO ou, sem ele, a página da ISO do cadastro (só a liberada).
+    tournament_url = url_for("tournaments.show", slug=tournament["slug"], aba="tabela") if tournament else None
+    iso_url = (url_for("tournaments.iso_page", catalog_id=catalog["id"])
+               if catalog and catalog["approved_at"] and catalog["is_active"] else None)
     views = [_team_view(db, match, i, teams[i] if i < len(teams) else {}, sides[i]) for i in (0, 1)]
     # Lado sem controle: a CPU (o outro lado tem jogador) ou, sem a tabela de controles, "Player N".
     nobody = not any(view["players"] for view in views)
     for number, view in enumerate(views, 1):
+        view["people"] = _people(db, view["players"])
         if not view["players"]:
             view["players"] = ["Player %d" % number] if nobody else ["CPU"]
+            view["people"] = [{"id": None, "name": view["players"][0]}]
     return {"id": match["id"], "status": match["status"], "stale": stale, "is_test": match["is_test"],
             "clock": "Sem sinal" if stale else _clock_label(match),
             "interval": _interval(match) or _period_over(match),  # sem o risco animado
@@ -638,11 +645,49 @@ def card(db, match):
             "when": format_local(match["started_at"], "%d/%m/%Y %H:%M"),
             "game": {"name": game["name"], "cover": cover_url(game["code"])} if game else None,
             "tournament": {"name": tournament["name"], "image": image_url("torneio", tournament["image"]),
-                           "url": url_for("tournaments.show", slug=tournament["slug"], aba="tabela")} if tournament else None,
+                           "url": tournament_url} if tournament else None,
             # Sem campeonato com imagem: a ISO do cadastro (a do amistoso ou a mesma ISO).
-            "iso": {"name": catalog["name"], "image": image_url("torneio", catalog["image"])} if catalog else None,
+            "iso": {"name": catalog["name"], "image": image_url("torneio", catalog["image"]), "url": iso_url}
+            if catalog else None,
+            "target": tournament_url or iso_url,
             "pens": state.get("pens"), "teams": views, "stats": _stats_view(match, teams),
-            "tie": _tie_view(db, match, sides, (views[0]["goals"], views[1]["goals"]))}
+            "tie": _tie_view(db, match, sides, (views[0]["goals"], views[1]["goals"])),
+            "final": _free_final(db, match)}
+
+
+def _people(db, nicks):
+    """Quem controla um lado do card: a conta de cada nick (id e o nome dela -
+    a foto com o rank, _avatar.html, e o link do perfil) ou só o nick."""
+    people = []
+    for nick in nicks:
+        row = db.execute("SELECT id, username FROM players WHERE username = ? COLLATE NOCASE", (nick,)).fetchone()
+        people.append({"id": row["id"], "name": row["username"]} if row else {"id": None, "name": nick})
+    return people
+
+
+def _free_final(db, match):
+    """Partida livre interrompida (tournament/free.py): o placar final que os
+    dois combinam - {"text", "url"} para o rodapé do card (o link, só para os
+    dois jogadores), ou None."""
+    if match["status"] != "abandoned" or match["tournament_match_id"] or match["friendly_id"] or match["is_test"]:
+        return None
+    from .tournament import free
+    found = free.get(db, match["id"])
+    if found is None:
+        return None
+    me = session.get("player_id")
+    mine = free.side_of(found, me) is not None
+    url = url_for("tournaments.free_match", live_id=match["id"]) if mine else None
+    if found["score_status"] == "confirmed":
+        return {"text": "Placar final combinado: %d x %d" % found["score"], "url": url, "pending": False}
+    if not mine:
+        return None
+    if found["score_status"] == "reported":
+        text = ("Placar final informado: falta o adversário confirmar" if found["reported_by"] == me
+                else "O adversário informou o placar final: confirme")
+    else:
+        text = "Registrar o placar final"
+    return {"text": text, "url": url, "pending": True}
 
 
 def _local_day(value, end=False):
@@ -656,12 +701,45 @@ def _local_day(value, end=False):
     return moment.astimezone(timezone.utc).isoformat(timespec="seconds")
 
 
-def list_cards(db, tournament_id=None, friendlies=False, only_live=False, recent_only=False, player="", date_from="",
-               date_to="", match_id=None, limit=CARDS_LIMIT, count=False):
+# Amistosos que valem para o Ranking: o "Rankeado" do convite enquanto em
+# aberto; depois de confirmado, o que valeu de fato (friendly.py).
+_RANKED_FRIENDLIES = ("SELECT id FROM friendly_matches "
+                      "WHERE (CASE WHEN status = 'confirmed' THEN ranked ELSE ranked_requested END) = 1")
+# O filtro "Campeonato" nas opções fixas (stats.KIND_FILTERS): os três cards do perfil.
+_KIND_WHERE = {
+    "ranked": f"(m.tournament_match_id IS NOT NULL OR m.friendly_id IN ({_RANKED_FRIENDLIES}))",
+    "friendly": ("(m.tournament_match_id IS NULL AND m.friendly_id IS NOT NULL "
+                 f"AND m.friendly_id NOT IN ({_RANKED_FRIENDLIES}))"),
+    "free": "(m.tournament_match_id IS NULL AND m.friendly_id IS NULL)",
+}
+# Campeonatos com partidas no Ao vivo (as sugestões do filtro "Campeonato").
+_LIVE_TOURNAMENTS = (
+    "SELECT t.id, t.name FROM tournaments t WHERE t.id IN ("
+    "SELECT s.tournament_id FROM live_matches m JOIN tournament_matches tm ON tm.id = m.tournament_match_id "
+    "JOIN tournament_stages s ON s.id = tm.stage_id) ORDER BY t.name COLLATE NOCASE")
+
+
+def _plain(value):
+    from unicodedata import normalize
+    return " ".join(normalize("NFKD", value or "").encode("ascii", "ignore").decode().casefold().split())
+
+
+def tournaments_named(db, text):
+    """Campeonatos com partidas no Ao vivo pelo nome digitado no filtro: o nome
+    exato (sem acento/maiúscula) ou, sem ele, os que contêm o texto."""
+    rows = db.execute(_LIVE_TOURNAMENTS).fetchall()
+    typed = _plain(text)
+    exact = [row["id"] for row in rows if _plain(row["name"]) == typed]
+    return exact or [row["id"] for row in rows if typed in _plain(row["name"])]
+
+
+def list_cards(db, tournament_id=None, kind=None, tournament_query="", only_live=False, recent_only=False, player="",
+               date_from="", date_to="", match_id=None, limit=CARDS_LIMIT, count=False):
     """As últimas partidas (ao vivo primeiro), com os filtros da página:
-    tournament_id = os jogos daquele campeonato; friendlies = o que não é jogo
-    de campeonato (amistosos cadastrados e partidas livres); match_id = só
-    aquela partida (o placar ao lado do time na tabela do campeonato)."""
+    tournament_id = os jogos daquele campeonato (o link "Ao vivo" da tabela);
+    kind = Rankeado, Amistoso ou Partida livre (_KIND_WHERE); tournament_query =
+    o nome digitado de um campeonato (tournaments_named); match_id = só aquela
+    partida (o placar ao lado do time na tabela do campeonato)."""
     reap(db)
     where, params = ["m.verified = 1"], []  # só com os dois jogadores logados (refresh)
     if only_live:
@@ -671,12 +749,14 @@ def list_cards(db, tournament_id=None, friendlies=False, only_live=False, recent
         params.append(_ago(RECENT))
     if not _is_admin():
         where.append("m.is_test = 0")
-    if tournament_id:
+    ids = [tournament_id] if tournament_id else (tournaments_named(db, tournament_query) if tournament_query else None)
+    if ids is not None:
+        marks = ",".join("?" * len(ids)) or "NULL"  # nenhum campeonato com esse nome: nada
         where.append("m.tournament_match_id IN (SELECT tm.id FROM tournament_matches tm JOIN tournament_stages ts "
-                     "ON ts.id = tm.stage_id WHERE ts.tournament_id = ?)")
-        params.append(tournament_id)
-    elif friendlies:
-        where.append("m.tournament_match_id IS NULL")
+                     f"ON ts.id = tm.stage_id WHERE ts.tournament_id IN ({marks}))")
+        params.extend(ids)
+    elif kind in _KIND_WHERE:
+        where.append(_KIND_WHERE[kind])
     if match_id:
         where.append("m.id = ?")
         params.append(match_id)
@@ -1238,14 +1318,17 @@ def friendly_scorers(db, friendly_row, games):
     return board
 
 
-FRIENDLIES = "amistosos"  # o valor de "Amistosos" no filtro de campeonato
-
-
 def _filters():
+    """Filtros da página. Campeonato (autocompletar): Rankeado, Amistoso ou
+    Partida livre (stats.kind_filter), o nome de um campeonato ou o id dele
+    (o link "Ao vivo" da tabela do campeonato)."""
+    from .tournament.stats import kind_filter
     args = request.args
-    championship = args.get("campeonato", "")
-    return {"player": args.get("jogador", "").strip()[:32], "friendlies": championship == FRIENDLIES,
+    championship = args.get("campeonato", "").strip()[:120]
+    kind = kind_filter(championship)
+    return {"player": args.get("jogador", "").strip()[:32], "kind": kind,
             "tournament_id": int(championship) if championship.isdigit() else None,
+            "tournament_query": championship if championship and not kind and not championship.isdigit() else "",
             "match_id": int(args["partida"]) if args.get("partida", "").isdigit() else None,
             "date_from": args.get("de", ""), "date_to": args.get("ate", "")}
 
@@ -1254,10 +1337,12 @@ def _filters():
 def index():
     db = get_db()
     filters = _filters()
-    tournaments = db.execute(
-        "SELECT t.id, t.name FROM tournaments t WHERE t.id IN ("
-        "SELECT s.tournament_id FROM live_matches m JOIN tournament_matches tm ON tm.id = m.tournament_match_id "
-        "JOIN tournament_stages s ON s.id = tm.stage_id) ORDER BY t.name COLLATE NOCASE").fetchall()
+    tournaments = db.execute(_LIVE_TOURNAMENTS).fetchall()
+    # O que aparece no campo Campeonato: o texto digitado ou, pelo id (link da tabela), o nome.
+    from .tournament.stats import KIND_FILTERS
+    championship = request.args.get("campeonato", "").strip()[:120]
+    if filters["tournament_id"]:
+        championship = next((t["name"] for t in tournaments if t["id"] == filters["tournament_id"]), championship)
     # Sugestões do filtro "Jogador": quem já mandou placar logado (aparece nos cards).
     players = db.execute("SELECT DISTINCT p.id, p.username FROM live_match_reports r JOIN players p ON p.id = r.player_id "
                          "ORDER BY p.username COLLATE NOCASE").fetchall()
@@ -1266,7 +1351,8 @@ def index():
     limit = page_size()
     return render_template("live/index.html", cards=list_cards(db, limit=limit, **filters),
                            total=list_cards(db, count=True, **filters), filters=filters, players=players,
-                           tournaments=tournaments, is_admin=_is_admin(), limit=limit,
+                           tournaments=tournaments, is_admin=_is_admin(), limit=limit, championship=championship,
+                           kind_options=[label for label, _ in KIND_FILTERS],
                            cards_url=url_for("live.cards_fragment", **dict(request.args.to_dict(), mostrar=limit)))
 
 

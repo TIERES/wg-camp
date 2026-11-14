@@ -1,4 +1,4 @@
-{% from '_carousel.html' import carousel %}{% from '_icons.html' import icon %}{% from '_avatar.html' import avatar_button %}
+{% from '_carousel.html' import carousel %}{% from '_icons.html' import icon %}
 {# Filtro por jogo base: cards com a capa (como na lista de Campeonatos), só os
    jogos liberados para campeonato (tournaments._game_filter). Cada card é um
    link para a mesma página com ?jogo= (e os outros parâmetros de `extra`). #}
@@ -76,22 +76,121 @@
 <span class="recent">{% for f in items %}<span class="f-{{ f }}">{{ f }}</span>{% endfor %}</span>
 {%- endmacro %}
 
-{# Jogos do histórico (stats.history), do ponto de vista do jogador. #}
-{% macro history_table(rows, outcome, game=none, show_opponent=true) -%}
-<div class="table-scroll">
-<table class="ledger match-history">
-  <thead><tr><th>Data</th><th></th><th>Placar</th>{% if show_opponent %}<th>Adversário</th>{% endif %}<th class="hide-sm">Campeonato</th></tr></thead>
-  <tbody>{% for r in rows %}{% set o = outcome(r) %}
-    <tr>
-      <td>{{ r.played_at|localtime }}</td>
-      <td class="recent"><span class="f-{{ o }}">{{ o }}</span></td>
-      <td><a href="{{ history_url(r) }}"><strong>{{ r.goals_for }} x {{ r.goals_against }}</strong>{% if r.pens_for is not none %} <small>({{ r.pens_for }} x {{ r.pens_against }} pên.)</small>{% endif %}</a></td>
-      {% if show_opponent %}<td><span class="with-avatar">{{ avatar_button(r.opponent_id, r.opponent_name) }}{{ player_link(r.opponent_name, game) }}</span></td>{% endif %}
-      <td class="hide-sm">{% if r.kind == 'a' %}<a href="{{ history_url(r) }}">Amistoso</a>{% if r.game_number %} <small class="muted">· jogo {{ r.game_number }}</small>{% endif %}{% else %}<a href="{{ url_for('tournaments.show', slug=r.slug) }}">{{ r.tournament_name }}</a> <small class="muted">· {{ r.stage_name }}</small>{% endif %}</td>
-    </tr>
-  {% endfor %}</tbody>
-</table>
+{# Os três cards do jogador (stats.summary): campeonatos e amistosos rankeados,
+   amistosos e partidas livres, cada um com a posição no ranking dele, jogos,
+   V/E/D e aproveitamento. compact = o popup do jogador (_player_card.html):
+   "Rank." e "Aprov." abreviados, com o nome inteiro no balão (title).
+   Cada card é um link para o Ao vivo com o jogador e o tipo de partida já
+   filtrados (Campeonato: Rankeado, Amistoso ou Partida livre - stats.KIND_FILTERS). #}
+{% macro record_cards(summary, username, compact=false) -%}
+<div class="record-cards{% if compact %} compact{% endif %}">
+  {% for s in summary %}
+  <a class="record-card record-{{ s.key }}" href="{{ url_for('live.index', jogador=username, campeonato=s.filter) }}" aria-label="{{ s.title }}: ver as partidas de {{ username }} no Ao vivo">
+    <h3>{{ s.title }}</h3>
+    <div class="stat-tiles compact">
+      <div class="stat-tile" title="Ranking"><span>{{ 'Rank.' if compact else 'Ranking' }}</span><strong>{{ s.position ~ 'º' if s.position else '—' }}</strong></div>
+      <div class="stat-tile" title="Jogos"><span>Jogos</span><strong>{{ s.record.played }}</strong></div>
+      <div class="stat-tile win" title="Vitórias"><span>V</span><strong>{{ s.record.wins }}</strong></div>
+      <div class="stat-tile draw" title="Empates"><span>E</span><strong>{{ s.record.draws }}</strong></div>
+      <div class="stat-tile loss" title="Derrotas"><span>D</span><strong>{{ s.record.losses }}</strong></div>
+      <div class="stat-tile" title="Aproveitamento"><span>{{ 'Aprov.' if compact else 'Aproveit.' }}</span><strong>{{ s.record.efficiency }}%</strong></div>
+    </div>
+  </a>
+  {% endfor %}
 </div>
+{%- endmacro %}
+
+{# De onde é o jogo de uma linha do histórico (stats.all_history), em texto. #}
+{% macro result_origin(r) -%}
+{% if r.kind == 'a' %}Amistoso{% if r.scope == 'ranked' %} rankeado{% endif %}{% if r.game_number %} · jogo {{ r.game_number }}{% endif %}
+{%- elif r.kind == 'l' %}Partida livre{% if r.pending %} · interrompida{% elif r.interrupted %} · placar final combinado{% endif %}
+{%- else %}{{ r.tournament_name }}{% endif %}
+{%- endmacro %}
+
+{# Últimos resultados como os V/E/D clicáveis (como em Status), do mais antigo
+   ao mais recente: o clique abre a partida (history_url) e o balão (title)
+   mostra placar, adversário, de onde é e a data. A partida livre interrompida
+   ainda sem placar final fica em laranja (f-pending), com a letra do placar
+   de quando parou e o pedido do placar final no balão (free.status_tip). #}
+{# O bloco "Últimos N resultados" (o popup do jogador e a página dele): o título,
+   os V/E/D clicáveis embaixo e a nota - com a legenda do laranja quando há
+   partida livre interrompida sem placar final. heading = h3 no popup, h2 na página. #}
+{% macro recent_results(rows, outcome, heading='h3') -%}
+<{{ heading }} class="recent-title">{{ ('Últimos %d resultados' % rows|length) if rows|length > 1 else 'Último resultado' if rows else 'Últimos resultados' }}</{{ heading }}>
+{% if rows %}
+{{ result_badges(rows, outcome) }}
+<p class="muted result-badges-note">Do mais antigo ao mais recente. Clique para ver a partida.{% if rows|selectattr('pending')|list %} <span class="pending-legend">Em laranja:</span> interrompida, falta o placar final.{% endif %}</p>
+{% else %}<p class="muted">Nenhum jogo confirmado ainda.</p>{% endif %}
+{%- endmacro %}
+
+{% macro result_badges(rows, outcome) -%}
+<div class="recent recent-lg result-badges">
+  {% for r in rows|reverse %}{% set o = outcome(r) %}
+  {% set info = '%s x %s%s contra %s · %s · %s' % (r.goals_for, r.goals_against, (' (pên. %s x %s)' % (r.pens_for, r.pens_against)) if r.pens_for is not none else '', r.opponent_name, result_origin(r), r.played_at|localtime) %}
+  <a class="f-btn f-{{ o }}{% if r.pending %} f-pending{% endif %}" href="{{ history_url(r) }}" title="{{ info }}{% if r.pending %} — {{ r.tip }}{% endif %}">{{ o }}</a>
+  {% endfor %}
+</div>
+{%- endmacro %}
+
+{# Gráfico da evolução do aproveitamento (tournaments._evolution): uma bolinha
+   por jogo (V/E/D), a linha do aproveitamento acumulado e, ao passar o mouse
+   (ou tocar), o balão com o jogo - placar, adversário, de onde é, data e XP.
+   Clicar na bolinha abre a partida (no toque: o 1º mostra o balão, o 2º abre). #}
+{% macro evolution_chart(evolution, total) -%}
+{% set W, H, L, R, T, B = 640, 220, 40, 12, 12, 28 %}
+{% set pw, ph = W - L - R, H - T - B %}
+{% set step = pw / (evolution|length - 1) %}
+{% set colors = {'V': '#34d399', 'E': '#9ca3af', 'D': '#f87171'} %}
+<div class="evo-chart" id="evo-chart">
+  <svg viewBox="0 0 {{ W }} {{ H }}" role="img" aria-label="Aproveitamento acumulado ao longo de {{ evolution|length }} partidas, terminando em {{ evolution[-1].efficiency }}%">
+    {% for v in (0, 25, 50, 75, 100) %}{% set y = T + (100 - v) / 100 * ph %}
+    <line class="evo-grid" x1="{{ L }}" x2="{{ W - R }}" y1="{{ y }}" y2="{{ y }}"></line>
+    <text class="evo-axis" x="{{ L - 6 }}" y="{{ y + 4 }}" text-anchor="end">{{ v }}%</text>
+    {% endfor %}
+    <polyline class="evo-line" points="{% for p in evolution %}{{ L + loop.index0 * step }},{{ T + (100 - p.efficiency) / 100 * ph }} {% endfor %}"></polyline>
+    <line class="evo-cross" id="evo-cross" x1="0" x2="0" y1="{{ T }}" y2="{{ T + ph }}" visibility="hidden"></line>
+    {% for p in evolution %}{% set x = L + loop.index0 * step %}
+    <g class="evo-pt" data-i="{{ loop.index0 }}">
+      <rect class="evo-hit" x="{{ x - step / 2 }}" y="{{ T }}" width="{{ step }}" height="{{ ph }}"></rect>
+      <circle cx="{{ x }}" cy="{{ T + (100 - p.efficiency) / 100 * ph }}" r="{{ 4 if evolution|length <= 40 else 3 }}" fill="{{ colors[p.outcome] }}"></circle>
+    </g>
+    {% endfor %}
+    <text class="evo-axis" x="{{ L }}" y="{{ H - 8 }}">{{ evolution[0].n }}º jogo</text>
+    <text class="evo-axis" x="{{ W - R }}" y="{{ H - 8 }}" text-anchor="end">{{ evolution[-1].n }}º jogo</text>
+  </svg>
+  <div class="evo-tip evo-tip-arrow" id="evo-tip" hidden></div>
+</div>
+<script src="{{ url_for('static', filename='js/chart-tip.js', v='20261113a') }}"></script>
+<p class="muted">Aproveitamento acumulado (pontos ganhos ÷ pontos disputados) depois de cada partida. Bolinhas: <span class="recent"><span class="f-V">V</span><span class="f-E">E</span><span class="f-D">D</span></span>{% if total > evolution|length %} · últimas {{ evolution|length }} de {{ total }} partidas{% endif %}.</p>
+<script>
+(function () {
+  var data = {{ evolution|tojson }};
+  var box = document.getElementById('evo-chart'), tip = document.getElementById('evo-tip'), cross = document.getElementById('evo-cross');
+  var names = { V: 'Vitória', E: 'Empate', D: 'Derrota' };
+  function show(g) {
+    var p = data[+g.dataset.i], c = g.querySelector('circle');
+    cross.setAttribute('x1', c.getAttribute('cx')); cross.setAttribute('x2', c.getAttribute('cx'));
+    cross.setAttribute('visibility', 'visible');
+    tip.innerHTML = '';
+    [['strong', p.efficiency + '%'], ['span', p.n + 'º jogo · ' + names[p.outcome] + ' ' + p.score], ['span', 'contra ' + p.opponent],
+     ['span', p.origin], ['span', p.when + (p.xp ? ' · ' + p.xp : '')], ['small', 'Clique para ver a partida']]
+      .forEach(function (part) { var el = document.createElement(part[0]); el.textContent = part[1]; tip.appendChild(el); });
+    tip.hidden = false;
+    window.placeChartTip(box, tip, c);  // seta na bolinha, em cima ou embaixo (static/js/chart-tip.js)
+  }
+  var shown = null;
+  function hide() { tip.hidden = true; cross.setAttribute('visibility', 'hidden'); shown = null; }
+  box.querySelectorAll('.evo-pt').forEach(function (g) {
+    g.addEventListener('mouseenter', function () { show(g); shown = g; });
+    g.addEventListener('click', function () {
+      var url = data[+g.dataset.i].url;
+      if (shown === g && url) { location.href = url; return; }
+      show(g); shown = g;
+    });
+  });
+  box.addEventListener('mouseleave', hide);
+})();
+</script>
 {%- endmacro %}
 
 {# Barra de experiência até o próximo rank (player_rank -> tournament/xp.py). #}

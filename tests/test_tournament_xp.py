@@ -97,10 +97,10 @@ class XpWebTest(unittest.TestCase):
         self.assertEqual(totals[p0], 20)
         self.assertEqual(deltas[match], {p0: 20, p1: 0})
 
-        status = self.client(p0).get("/torneios/status").data.decode()
+        status = self.client(p0).get("/torneios/status", follow_redirects=True).data.decode()  # = a página do jogador
         self.assertIn('class="rank-chip rank-F">Rank F', status)
         self.assertIn("Faltam <strong>80 XP</strong> para o Rank E", status)
-        self.assertIn("+20 XP", status)  # na janela da partida
+        self.assertIn('"xp": "+20 XP"', status)  # no balão do jogo, no gráfico do Histórico
         profile = self.client(p1).get("/torneios/jogadores/p0").data.decode()
         self.assertIn('class="rank-badge rank-F" title="Rank F · 20 XP"', profile)
         ranking = self.client(p1).get("/torneios/ranking").data.decode()

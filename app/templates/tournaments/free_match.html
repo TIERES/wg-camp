@@ -1,0 +1,58 @@
+{% extends 'base.html' %}{% from '_dialog.html' import form_dialog %}
+{% block title %}Partida livre · WE Camp{% endblock %}{% block content %}
+{# Partida livre (app/tournament/free.py): o card do Ao vivo e, se ela foi
+   interrompida, o placar final que os dois jogadores combinam - um informa,
+   o outro confirma ou não aceita. Só confirmada ela conta no card "Partidas
+   livres" do perfil. Espera: m (free.get), c (live.card), me, mine. #}
+{% set score = m.score %}
+{% set other_name = m.visita_name if me == m.local_id else m.local_name %}
+{% macro score_line(goals) -%}{{ m.local_name }} <strong>{{ goals[0] }} x {{ goals[1] }}</strong> {{ m.visita_name }}{%- endmacro %}
+<h1>Partida livre{% if m.interrupted %} interrompida{% endif %}</h1>
+<div class="free-match">
+  <div class="live-cards free-match-card">{% include 'live/_card.html' %}</div>
+  <section class="free-final{% if m.pending %} pending{% endif %}" aria-labelledby="placar-final">
+    <h2 id="placar-final">Placar final</h2>
+    {% if not m.interrupted %}
+    <p>A partida terminou normalmente: vale o placar lido do jogo, {{ score_line(m.goals) }}.</p>
+    {% else %}
+    <p>A partida foi interrompida com {{ score_line(m.stop_goals) }}. Para ela contar nas <strong>Partidas livres</strong> do perfil de vocês, registrem o placar final: um informa e o outro confirma.</p>
+    {% if m.score_status == 'confirmed' %}
+    <p class="free-final-done">Placar final combinado: {{ score_line(score) }}{% if m.confirmed_at %} <small class="muted">(confirmado em {{ m.confirmed_at|localtime }})</small>{% endif %}.</p>
+    {% elif m.score_status == 'reported' %}
+      {% if m.reported_by == me %}
+      <p>Você informou o placar final {{ score_line(score) }}. Falta {{ other_name }} confirmar.</p>
+      {% else %}
+      <p>{{ m.local_name if m.reported_by == m.local_id else m.visita_name }} informou o placar final {{ score_line(score) }}.</p>
+      {% if mine %}
+      <div class="card-actions">
+        <button type="button" class="secondary" data-dialog="nao-aceitar" aria-haspopup="dialog">Não aceitar</button>
+        <form method="post" action="{{ url_for('tournaments.free_match_action', live_id=m.id, acao='confirmar') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Confirmar placar</button></form>
+      </div>
+      {% call form_dialog('nao-aceitar', url_for('tournaments.free_match_action', live_id=m.id, acao='rejeitar'), 'Não aceitar o placar final', 'Não aceitar') %}
+        <p>O placar fica sem valer até um de vocês propor outro que o outro aceite.</p>
+        <label>Por que você não aceita?<textarea name="motivo" maxlength="300" required minlength="3" placeholder="Ex.: o jogo estava 2 x 1 quando caiu"></textarea></label>
+      {% endcall %}
+      {% endif %}
+      {% endif %}
+    {% else %}
+      {% if m.score_status == 'suspended' %}
+      <p class="free-final-rejected">{{ m.local_name if m.rejected_by == m.local_id else m.visita_name }} não aceitou o placar {{ score_line(score) }}{% if m.rejected_note %}: “{{ m.rejected_note }}”{% endif %}.</p>
+      {% endif %}
+      {% if mine %}
+      {% set values = score or m.stop_goals %}
+      <form method="post" action="{{ url_for('tournaments.free_match_action', live_id=m.id, acao='informar') }}" class="free-final-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="score-inputs">
+          <span class="home">{{ m.local_name }}</span>
+          <span class="goals"><input type="number" name="local_goals" min="0" max="99" required value="{{ values[0] }}" aria-label="Gols de {{ m.local_name }}"> x <input type="number" name="visita_goals" min="0" max="99" required value="{{ values[1] }}" aria-label="Gols de {{ m.visita_name }}"></span>
+          <span class="away">{{ m.visita_name }}</span>
+        </div>
+        <div class="card-actions"><button>Informar placar final</button></div>
+      </form>
+      {% endif %}
+    {% endif %}
+    {% endif %}
+  </section>
+</div>
+<script src="{{ url_for('static', filename='js/live-cards.js', v='20261111a') }}"></script>
+{% endblock %}

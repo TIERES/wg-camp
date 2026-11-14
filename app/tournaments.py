@@ -30,8 +30,8 @@ from .players import player_required
 from .security import login_required, validate_csrf
 from .storage import attachment_header
 from .timeutil import format_local
-from .tournament import (changes, editors, engine, formats, friendly, friends, games as game_catalog, iso, iso_catalog,
-                         notify, reports, stats, store, xp)
+from .tournament import (changes, editors, engine, formats, free, friendly, friends, games as game_catalog, iso,
+                         iso_catalog, notify, reports, stats, store, xp)
 from .tournament.store import TournamentError
 from .tournament.teams import KINDS as TEAM_KINDS, TEAM_MODES, generated_badge
 from .wallet import (KINDS, MONEY_SETTINGS, SETTING_LABELS, SIGNED_SETTINGS, InsufficientFunds, ensure_wallet,
@@ -126,9 +126,15 @@ def friendly_xp(friendly_id):
 
 @bp.app_template_global()
 def history_url(row):
-    """Link de uma linha do histórico (stats.history): o jogo do torneio ou o amistoso."""
+    """Link de uma linha do histórico (stats.history / all_history): o jogo do
+    torneio, o amistoso ou a partida livre - a página do placar final para os
+    dois jogadores de uma interrompida, o card do Ao vivo para os outros."""
     if row["kind"] == "a":
         return url_for("tournaments.friendly_show", friendly_id=row["match_id"])
+    if row["kind"] == free.KIND:
+        if row["interrupted"] and session.get("player_id") in (row["player_id"], row["opponent_id"]):
+            return url_for("tournaments.free_match", live_id=row["match_id"])
+        return url_for("live.index", partida=row["match_id"])
     return url_for("tournaments.match", slug=row["slug"], match_id=row["match_id"])
 
 
@@ -627,7 +633,12 @@ def friendlies():  # noqa: C901 - a lista, os filtros e as partidas de cada amis
             found.setdefault(other[0], {"id": other[0], "username": other[1]})
         return sorted(found.values(), key=lambda p: (p["username"] or "").casefold())
     my_isos, iso_info = _my_isos(db, me)
+    # "Rankeado" no convite: só com os dois já liberados (Rank E em campeonatos - friendly.unlocked).
+    peaks = xp.tournament_peaks(db)
+    me_unlocked = peaks.get(me, 0) >= friendly.MIN_XP
+    ranked_ids = [p["id"] for p in my_friends if peaks.get(p["id"], 0) >= friendly.MIN_XP] if me_unlocked else []
     return render_template("tournaments/friendlies.html", pending=pending, respond=respond, friendly_games=games,
+                           free_waiting=free.waiting_for(db, me), me_unlocked=me_unlocked, ranked_ids=ranked_ids,
                            open_total=len(open_all), open_filters=open_filters,
                            done=done[:FRIENDLIES_HISTORY_LIMIT], done_total=len(done), has_history=bool(history),
                            filters=filters,
@@ -653,7 +664,8 @@ def friendly_new():
     me = session["player_id"]
     try:
         friendly_id = friendly.invite(db, me, request.form.get("amigo", type=int), request.form.get("iso"),
-                                      request.form.get("mensagem"), aggregate=request.form.get("agregado") == "1")
+                                      request.form.get("mensagem"), aggregate=request.form.get("agregado") == "1",
+                                      ranked=request.form.get("rankeado") == "1")
         db.commit()
     except TournamentError as error:
         db.rollback()
@@ -667,6 +679,7 @@ def friendly_new():
                              "do amistoso." if row["iso_title"] else "")
                           + ("\nPlacar agregado: no fim, os gols de todos os jogos são somados." if row["aggregate"]
                              else "")
+                          + ("\nRankeado: vale para o Ranking e o XP." if row["ranked_requested"] else "")
                           + (f"\n\nRecado: {row['message']}" if row["message"] else "")
                           + "\n\nAceite ou recuse em:")
     flash(f"Convite de amistoso enviado para {row['away_name']}.", "success")
@@ -1144,6 +1157,68 @@ def friendly_action(friendly_id, acao):
     else:
         flash(_FRIENDLY_MESSAGES[acao], "success")
     return _back(url_for("tournaments.friendly_show", friendly_id=friendly_id))
+
+
+# --- Partidas livres interrompidas: o placar final (app/tournament/free.py) -----
+
+@bp.get("/partidas-livres/<int:live_id>")
+@player_required
+def free_match(live_id):
+    """A partida livre (o card do Ao vivo) e, se foi interrompida, o placar
+    final que os dois combinam. Só os dois jogadores (e o admin)."""
+    db = get_db()
+    match = free.get(db, live_id)
+    me = session["player_id"]
+    if match is None or (free.side_of(match, me) is None and not is_admin()):
+        abort(404)
+    from . import live
+    row = db.execute("SELECT * FROM live_matches WHERE id = ?", (live_id,)).fetchone()
+    return render_template("tournaments/free_match.html", m=match, c=live.card(db, row), me=me,
+                           mine=free.side_of(match, me) is not None)
+
+
+_FREE_MESSAGES = {"informar": "Placar final informado: falta o adversário confirmar.",
+                  "confirmar": "Placar final confirmado! A partida já conta nas Partidas livres do perfil.",
+                  "rejeitar": "Placar final não aceito: qualquer um de vocês pode propor outro."}
+
+
+@bp.post("/partidas-livres/<int:live_id>/<acao>")
+@player_required
+def free_match_action(live_id, acao):
+    validate_csrf()
+    if acao not in _FREE_MESSAGES:
+        abort(404)
+    db = get_db()
+    me = session["player_id"]
+    form = request.form
+    try:
+        if acao == "informar":
+            match = free.report(db, live_id, me, form.get("local_goals"), form.get("visita_goals"))
+        elif acao == "confirmar":
+            match = free.confirm(db, live_id, me)
+        else:
+            match = free.reject(db, live_id, me, form.get("motivo"))
+        db.commit()
+    except TournamentError as error:
+        db.rollback()
+        flash(str(error), "error")
+        return _back(url_for("tournaments.free_match", live_id=live_id))
+    other_id = free.opponent_of(match, me)[0]
+    my_name = match["local_name"] if other_id == match["visita_id"] else match["visita_name"]
+    score = f"{match['local_name']} {match['score'][0]} x {match['score'][1]} {match['visita_name']}"
+    mails = {
+        "informar": (f"{my_name} informou o placar final da partida interrompida",
+                     f"A partida livre entre vocês foi interrompida e {my_name} informou o placar final: {score}."
+                     "\n\nConfirme ou não aceite em:"),
+        "confirmar": (f"{my_name} confirmou o placar final", f"{my_name} confirmou o placar final {score}: "
+                      "a partida já conta nas Partidas livres do perfil de vocês."),
+        "rejeitar": (f"{my_name} não aceitou o placar final", f"{my_name} não aceitou o placar final {score}."
+                     + (f"\nMotivo: {match['rejected_note']}" if match["rejected_note"] else "")
+                     + "\n\nQualquer um de vocês pode propor outro placar em:"),
+    }
+    notify.free_score_event(db, live_id, other_id, *mails[acao])
+    flash(_FREE_MESSAGES[acao], "success")
+    return _back(url_for("tournaments.free_match", live_id=live_id))
 
 
 def _send_invites(db, tournament, player_ids):
@@ -2176,8 +2251,7 @@ def _player_action(slug, match_id, action, success, after=None):
             after(get_db(), tournament)
         notify.check_completion(get_db(), tournament)
     if request.form.get("voltar") == "meus-jogos":
-        # Volta com o card do torneio aberto, na altura do jogo.
-        return redirect(url_for("tournaments.my_matches", aberto=tournament["id"], _anchor=f"jogo-{match_id}"))
+        return redirect(url_for("tournaments.my_matches"))  # o "Esperando você" sem o jogo resolvido
     return redirect(url_for("tournaments.match", slug=slug, match_id=match_id))
 
 
@@ -2233,35 +2307,54 @@ def match_dispute(slug, match_id):
 @bp.get("/meus-jogos")
 @player_required
 def my_matches():
+    """Meus jogos: "Esperando você" - os jogos de campeonato (em andamento, na
+    fase em andamento) com uma ação minha: informar o placar ("report"),
+    confirmar o do adversário ("confirm") ou aceitar o placar de uma
+    contestação ("accept"), as mesmas regras do número do menu (inject_wallet);
+    os amistosos com placar para eu confirmar e as partidas livres
+    interrompidas com o placar final do adversário (free.py) - e, embaixo, o
+    Histórico de partidas (filtros + gráfico, _history.html)."""
     db = get_db()
-    rows = reports.matches_for_player(db, session["player_id"])
-    groups = {}  # tournament_id -> jogos, na ordem da consulta (em andamento primeiro)
-    for row in rows:
-        groups.setdefault(row["tournament_id"], []).append(row)
+    me = session["player_id"]
+    pending = []
+    for row in reports.matches_for_player(db, session["player_id"]):
+        if row["tournament_status"] != "running" or row["stage_status"] != "running":
+            continue
+        if row["status"] == "scheduled":
+            pending.append((row, "report"))
+        elif row["status"] == "reported" and not row["waiting_other"]:
+            pending.append((row, "confirm"))
+        elif row["status"] == "disputed":
+            dispute = reports.last_dispute(db, row["id"])
+            if dispute and (row["reported_by_entry_id"] == row["my_entry_id"] or (
+                    row["reported_by_entry_id"] is None and dispute["entry_id"] != row["my_entry_id"])):
+                pending.append((row, "accept"))
     names = {}
-    for tournament_id in groups:
+    for tournament_id in {row["tournament_id"] for row, _ in pending}:
         names.update(_names(db, store.get_tournament(db, tournament_id)))
-    counter = {r["id"] for r in rows if r["status"] == "disputed" and reports.last_dispute(db, r["id"])}
-    return render_template("tournaments/my_matches.html", groups=list(groups.values()), names=names, counter=counter,
-                           opened=request.args.get("aberto", type=int),
-                           deadlines={r["id"]: reports.deadline(db, r) for r in rows if r["status"] == "reported"})
+    # Amistosos com o placar esperando a minha confirmação (os outros pendentes -
+    # convite, placar a informar - ficam na página de Amistosos).
+    friendlies_pending = [{"row": row, "total": friendly.shows_total(row), "deadline": friendly.deadline(db, row)}
+                          for row in friendly.for_player(db, me)
+                          if row["status"] == "reported" and friendly.needs_me(row, me)]
+    history = _history_context(db, me)
+    history.pop("everything")
+    return render_template("tournaments/my_matches.html", pending=pending, names=names, game=None, **history,
+                           friendlies_pending=friendlies_pending, free_pending=free.waiting_for(db, me),
+                           deadlines={row["id"]: reports.deadline(db, row) for row, action in pending
+                                      if action == "confirm"})
 
 
 
 @bp.get("/status")
 @player_required
 def my_status():
-    """Resumo do jogador logado: galeria de troféus, últimas 10 partidas (com o
-    popup de cada uma), V/E/D no geral e a evolução do aproveitamento jogo a jogo."""
-    db = get_db()
-    me = session["player_id"]
-    rows = stats.history(db, me, limit=100)
-    last = rows[:10]
-    games_by_id, names = _match_popups(db, last)
-    return render_template("tournaments/status.html", record=stats.player_record(db, me),
-                           position=stats.position(db, me), last=last, outcome=stats.outcome,
-                           games_by_id=games_by_id, names=names, evolution=stats.evolution(rows),
-                           total=len(rows), trophies=_trophies(db, me))
+    """O antigo "Status": hoje tudo está na página do jogador (cards, troféus,
+    últimos jogos e o gráfico de evolução no Histórico) - links antigos vão para ela."""
+    row = get_db().execute("SELECT username FROM players WHERE id = ?", (session["player_id"],)).fetchone()
+    if row is None:
+        abort(404)
+    return redirect(url_for("tournaments.player", nome=row["username"]))
 
 # --- Ranking, histórico e comparação (app/tournament/stats.py) ----------------
 
@@ -2321,7 +2414,7 @@ def ranking():
                            my_record=stats.player_record(db, me, game) if me else None)
 
 
-# Histórico de partidas da página do jogador para quem não está logado: só as últimas.
+# Histórico de partidas (o gráfico) da página do jogador para quem não está logado: só as últimas.
 HISTORY_PUBLIC_LIMIT = 10
 # Filtros do Histórico de partidas da página do jogador: parâmetro -> chave.
 HISTORY_FILTERS = {"adversario": "opponent", "de": "date_from", "ate": "date_to", "campeonato": "tournament"}
@@ -2336,14 +2429,19 @@ def _history_filters():
 def _history_matches(row, filters, exact_opponent):
     """A partida passa nos filtros do Histórico? Adversário: o nick escolhido na
     lista (exato) ou um trecho dele; data do jogo (horário local) entre "de" e
-    "até"; campeonato: um trecho do nome ("Amistoso" para os amistosos) - sem
-    diferenciar acentos e maiúsculas."""
+    "até"; campeonato: uma das opções fixas - Rankeado, Amistoso ou Partida
+    livre, os três cards (stats.kind_filter) - ou um trecho do nome do
+    campeonato - sem diferenciar acentos e maiúsculas."""
     from .timeutil import to_local
     if filters["opponent"]:
         typed, name = _plain(filters["opponent"]), _plain(row["opponent_name"])
         if (typed != name) if exact_opponent else (typed not in name):
             return False
-    if filters["tournament"] and _plain(filters["tournament"]) not in _plain(row["tournament_name"]):
+    kind = stats.kind_filter(filters["tournament"])
+    if kind and row["scope"] != kind:
+        return False
+    if filters["tournament"] and not kind and (row["kind"] != "t" or
+                                               _plain(filters["tournament"]) not in _plain(row["tournament_name"])):
         return False
     played = to_local(row["played_at"])
     for key, after in (("date_from", True), ("date_to", False)):
@@ -2363,30 +2461,64 @@ def player(nome):
     if target is None:
         abort(404)
     game, games = _game_filter(db)
-    everything = stats.history(db, target["id"], game, limit=-1)
-    # Histórico: filtro por adversário, datas e campeonato; os mais recentes, quantos o
-    # jogador escolher no "Mostrar" (listing.page_size: 20, 50 ou 100). Sem login: só
-    # as últimas HISTORY_PUBLIC_LIMIT partidas, sem filtros nem "Mostrar".
-    from .listing import cap
-    logged = bool(session.get("player_id")) or is_admin()
-    filters = _history_filters() if logged else dict.fromkeys(HISTORY_FILTERS.values(), "")
-    faced = sorted(stats.opponents(db, target["id"], game, limit=-1), key=lambda o: _plain(o["username"]))
-    exact = any(_plain(o["username"]) == _plain(filters["opponent"]) for o in faced)
-    shown, total = cap((row for row in everything if _history_matches(row, filters, exact)),
-                       None if logged else HISTORY_PUBLIC_LIMIT)
-    history_args = {arg: filters[key] for arg, key in HISTORY_FILTERS.items() if filters[key]}
-    if logged and request.args.get("mostrar") in ("20", "50", "100"):
-        history_args["mostrar"] = request.args["mostrar"]  # os cards de jogo mantêm o "Mostrar"
+    history = _history_context(db, target["id"], game)
     return render_template("tournaments/player.html", p=target, games=games, game=game,
-                           record=stats.player_record(db, target["id"], game),
-                           position=stats.position(db, target["id"], game), rows=shown,
-                           rows_total=total, has_history=bool(everything), form=stats.form(everything),
-                           history_filters=filters, history_args=history_args, history_filtered=any(filters.values()), logged=logged,
-                           opponent_options=[{"id": o["player_id"], "username": o["username"]} for o in faced],
-                           tournament_options=sorted({row["tournament_name"] for row in everything}, key=_plain),
+                           summary=stats.summary(db, target["id"], game),
+                           recent=history.pop("everything")[:PLAYER_CARD_RESULTS], **history,
                            opponents=stats.opponents(db, target["id"], game), outcome=stats.outcome,
                            relation=friends.relation(db, session.get("player_id"), target["id"]),
                            trophies=_trophies(db, target["id"], game))
+
+
+def _history_context(db, player_id, game=None):
+    """O Histórico de partidas (tournaments/_history.html - a página do jogador
+    e Meus jogos): os jogos dos três cards juntos (stats.all_history), os
+    filtros da URL (adversário, datas, campeonato) e o gráfico da evolução com
+    os jogos filtrados. Sem login: só as últimas HISTORY_PUBLIC_LIMIT partidas,
+    sem filtros. "everything" = todos os jogos, do mais recente."""
+    everything = stats.all_history(db, player_id, game)
+    logged = bool(session.get("player_id")) or is_admin()
+    filters = _history_filters() if logged else dict.fromkeys(HISTORY_FILTERS.values(), "")
+    faced = sorted({row["opponent_id"]: {"player_id": row["opponent_id"], "username": row["opponent_name"]}
+                    for row in everything}.values(), key=lambda o: _plain(o["username"]))
+    exact = any(_plain(o["username"]) == _plain(filters["opponent"]) for o in faced)
+    filtered = [row for row in everything if _history_matches(row, filters, exact)]
+    evolution, evolution_total = _evolution(filtered, player_id, EVOLUTION_POINTS if logged else HISTORY_PUBLIC_LIMIT)
+    return {"everything": everything, "has_history": bool(everything), "logged": logged,
+            "evolution": evolution, "evolution_total": evolution_total,
+            "history_filters": filters, "history_filtered": any(filters.values()),
+            "history_args": {arg: filters[key] for arg, key in HISTORY_FILTERS.items() if filters[key]},
+            "opponent_options": [{"id": o["player_id"], "username": o["username"]} for o in faced],
+            "tournament_options": sorted({row["tournament_name"] for row in everything if row["kind"] == "t"},
+                                         key=_plain),
+            "kind_options": [label for label, _ in stats.KIND_FILTERS]}
+
+
+# Últimos resultados (V/E/D clicáveis) do popup do jogador e da página dele.
+PLAYER_CARD_RESULTS = 10
+# Pontos no gráfico de evolução do Histórico: as últimas partidas (o
+# aproveitamento é o acumulado desde a primeira, mesmo fora do gráfico).
+EVOLUTION_POINTS = 100
+
+
+def _evolution(rows, player_id, limit=EVOLUTION_POINTS):
+    """O gráfico de evolução do aproveitamento do Histórico de partidas, com os
+    filtros da página: os jogos filtrados que contam (sem as partidas livres
+    interrompidas ainda sem placar final), do mais antigo ao mais recente, os
+    últimos `limit` - cada ponto com a data, de onde é o jogo, o XP que ele
+    deu (rankeados) e o link da partida. Devolve (pontos, quantos jogos no total)."""
+    points = stats.evolution([row for row in rows if not row["pending"]])
+    origin = {stats.row_key(row): row for row in rows}
+    for point in points:
+        row = origin[point["key"]]
+        point["when"] = format_local(row["played_at"], "%d/%m/%Y %H:%M")
+        point["origin"] = (("Amistoso rankeado" if row["scope"] == "ranked" else "Amistoso")
+                           + (f" · jogo {row['game_number']}" if row["game_number"] else "")
+                           if row["kind"] == "a" else row["tournament_name"])
+        delta = xp.match_deltas(row["match_key"]).get(player_id) if row["scope"] == "ranked" else None
+        point["xp"] = "%+d XP" % delta if delta is not None else ""
+        point["url"] = history_url(row)
+    return points[-limit:], len(points)
 
 
 @bp.get("/jogadores/<nome>/resumo")
@@ -2401,8 +2533,8 @@ def player_card(nome):
     back = referrer.path + (f"?{referrer.query}" if referrer.query else "")
     if not back.startswith("/torneios"):
         back = url_for("tournaments.player", nome=target["username"])
-    return render_template("tournaments/_player_card.html", p=target, record=stats.player_record(db, target["id"]),
-                           position=stats.position(db, target["id"]), rows=stats.history(db, target["id"], limit=5),
+    return render_template("tournaments/_player_card.html", p=target, summary=stats.summary(db, target["id"]),
+                           rows=stats.all_history(db, target["id"], limit=PLAYER_CARD_RESULTS),
                            outcome=stats.outcome, relation=friends.relation(db, session.get("player_id"), target["id"]),
                            back=back)
 
@@ -2972,7 +3104,8 @@ def inject_wallet():
             (player_id,)).fetchone()[0]
         friends_todo = friends.pending_count(db, player_id)
         invites_todo = len(friends.my_invites(db, player_id))
-        friendlies_todo = friendly.todo_count(db, player_id)
+        # Amistosos e, junto, as partidas livres interrompidas com o placar final do adversário para confirmar.
+        friendlies_todo = friendly.todo_count(db, player_id) + free.todo_count(db, player_id)
     except sqlite3.OperationalError:
         return {}  # banco ainda sem as colunas da carteira
     return {"wallet_balance": row["wallet_cents"] if row else None, "matches_todo": todo,

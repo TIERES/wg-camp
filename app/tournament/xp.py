@@ -27,24 +27,31 @@ from flask import g
 
 from ..db import get_db
 
-# Resultados dos amistosos que valem (confirmados e ranked - friendly.py), do
-# ponto de vista do amistoso (mandante x visitante): um por jogo lido do jogo
-# pelo RetroArch TIERES (friendly_games, chave 'a<id>-<nº do jogo>') ou, sem
-# eles, o placar informado pelos jogadores, como um jogo só (chave 'a<id>').
-# Usado aqui e no V/E/D (stats.py).
-FRIENDLY_RESULTS = """
+def friendly_results(ranked=1):
+    """Resultados dos amistosos confirmados que valem (ranked=1 - friendly.py)
+    ou dos que não valem (ranked=0, o card "Amistosos" do perfil - stats.py),
+    do ponto de vista do amistoso (mandante x visitante): um por jogo lido do
+    jogo pelo RetroArch TIERES (friendly_games, chave 'a<id>-<nº do jogo>')
+    ou, sem eles, o placar informado pelos jogadores, como um jogo só (chave
+    'a<id>')."""
+    ranked = int(bool(ranked))
+    return f"""
 SELECT 'a' || f.id || '-' || fg.number AS match_key, f.id AS friendly_id, fg.number AS game_number,
        f.home_id, f.away_id, fg.home_goals, fg.away_goals, fg.home_pens, fg.away_pens,
        CASE WHEN fg.quit = 1 THEN f.quitter_id END AS quitter_id, f.confirmed_at, f.game_title_id
 FROM friendly_matches f JOIN friendly_games fg ON fg.friendly_id = f.id
-WHERE f.status = 'confirmed' AND f.ranked = 1 AND f.game_report = 1
+WHERE f.status = 'confirmed' AND f.ranked = {ranked} AND f.game_report = 1
 UNION ALL
 SELECT 'a' || f.id, f.id, NULL, f.home_id, f.away_id, f.home_goals, f.away_goals, NULL, NULL,
        f.quitter_id, f.confirmed_at, f.game_title_id
 FROM friendly_matches f
-WHERE f.status = 'confirmed' AND f.ranked = 1
+WHERE f.status = 'confirmed' AND f.ranked = {ranked}
   AND NOT (f.game_report = 1 AND EXISTS (SELECT 1 FROM friendly_games fg WHERE fg.friendly_id = f.id))
 """
+
+
+# Os que valem: usados aqui (XP) e no V/E/D/Ranking (stats.py).
+FRIENDLY_RESULTS = friendly_results(1)
 
 RANKS = ("F", "E", "D", "C", "B", "A")
 # XP mínimo de cada rank: cada degrau pede mais que o anterior (100, 150, 200, 250, 300).

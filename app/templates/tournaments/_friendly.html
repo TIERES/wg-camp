@@ -87,7 +87,7 @@
 {% set scorers = games[2] if games and games|length > 2 else none %}
 <article class="friendly-card friendly-{{ f.status }}{% if mine and needs_me(f, me) %} friendly-todo{% endif %}" id="amistoso-{{ f.id }}">
   <div class="friendly-head">
-    <span class="friendly-title"><a href="{{ url_for('tournaments.friendly_show', friendly_id=f.id) }}" class="friendly-game">{{ title }}</a>{% if f.aggregate %}<span class="friendly-tag" title="No fim, os gols de todos os jogos são somados">Placar agregado</span>{% endif %}
+    <span class="friendly-title"><a href="{{ url_for('tournaments.friendly_show', friendly_id=f.id) }}" class="friendly-game">{{ title }}</a>{% if f.aggregate %}<span class="friendly-tag" title="No fim, os gols de todos os jogos são somados">Placar agregado</span>{% endif %}{% if (f.ranked if f.status == 'confirmed' else f.ranked_requested) %}<span class="friendly-tag ranked" title="Vale para o Ranking e o XP">Rankeado</span>{% endif %}
       {%- if scorers %}<button type="button" class="flip-ball" data-card-flip aria-pressed="false" aria-label="Ver artilheiros e assistências" title="Artilheiros e assistências"><svg class="live-ball" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m12 7 4 3-1.5 4.5h-5L8 10z"/><path d="M12 3v4M21 10h-5M3 10h5M7 20l2.5-5.5M17 20l-2.5-5.5"/></svg></button>
       {%- elif has_info %}{{ info_button('amistoso-info-%d' % f.id, 'Sobre este amistoso') }}{% endif %}</span>
     <span class="friendly-status">{{ 'Convite para você' if f.status == 'invited' and f.away_id == me else labels[f.status] }}</span>

@@ -167,7 +167,7 @@ class FriendlyTest(unittest.TestCase):
         page = c0.get("/torneios/amistosos?com=P1").data.decode()  # sem diferenciar maiúscula
         self.assertIn('name="amigo" value="%d"' % p1, page)
         self.assertIn('name="amigo" value=""', c0.get("/torneios/amistosos?com=p3").data.decode())
-        r = c0.post("/torneios/amistosos/novo", data={"csrf_token": CSRF, "amigo": p1,
+        r = c0.post("/torneios/amistosos/novo", data={"csrf_token": CSRF, "amigo": p1, "rankeado": "1",
                                                        "mensagem": "bora"})
         fid = self.db.execute("SELECT id FROM friendly_matches").fetchone()[0]
         self.assertTrue(r.headers["Location"].endswith(f"/torneios/amistosos/{fid}"))
@@ -185,8 +185,8 @@ class FriendlyTest(unittest.TestCase):
         self.assertIn("+20 XP", shown)
         # Placar informado pelos jogadores: vale como um jogo só e aparece na linha, mesmo sem "Placar agregado".
         self.assertIn('<strong class="friendly-score-text">2 x 1</strong>', shown)
-        status = c0.get("/torneios/status").data.decode()
-        self.assertIn(f'id="partida-a{fid}"', status)
+        status = c0.get("/torneios/status", follow_redirects=True).data.decode()  # = a página do jogador
+        self.assertIn(f'href="/torneios/amistosos/{fid}" title="2 x 1 contra p1 · Amistoso rankeado', status)
         self.assertIn(f"/torneios/amistosos/{fid}", c1.get("/torneios/jogadores/p0").data.decode())
         self.assertEqual(c0.get("/torneios/comparar?a=p0&b=p1").status_code, 200)
         self.assertEqual(c0.get("/torneios/ranking").status_code, 200)
@@ -247,6 +247,40 @@ class FriendlyTest(unittest.TestCase):
         plain = self.client(p1).get("/torneios/amistosos").data.decode()
         self.assertIn("p0 chamou você para um amistoso.", plain)
         self.assertNotIn("Placar agregado</span>", plain)
+
+    def test_invite_ranked_option(self):
+        """"Rankeado" no convite: liberado só com os dois no Rank E em
+        campeonatos; sem ele o amistoso não vale para o Ranking/XP e conta só
+        no card "Amistosos" do perfil (stats scope "friendly")."""
+        p0, p1, p2, _ = self.players
+        self.give_xp(p0, p1)
+        def box(query=""):
+            """A caixa "Rankeado" (a tag do input) na página de amistosos do p0."""
+            page = self.client(p0).get("/torneios/amistosos" + query).data.decode()
+            return page.split('id="amistoso-rankeado"')[1].split(">")[0]
+        self.assertIn(f'data-ranked-ids="[{p1}]"', box())  # p2 ainda não chegou
+        self.assertIn("disabled", box())  # sem amigo escolhido
+        self.assertTrue(box("?com=p1").endswith(" checked"))  # os dois liberados: marcada
+        self.assertIn("disabled", box("?com=p2"))
+        c0 = self.client(p0)
+        c0.post("/torneios/amistosos/novo", data={"csrf_token": CSRF, "amigo": p1, "rankeado": "1"})
+        c0.post("/torneios/amistosos/novo", data={"csrf_token": CSRF, "amigo": p2, "rankeado": "1"})  # p2 não liberado
+        rows = {r["away_id"]: r["ranked_requested"] for r in
+                self.db.execute("SELECT away_id, ranked_requested FROM friendly_matches")}
+        self.assertEqual(rows, {p1: 1, p2: 0})
+        self.assertIn("Rankeado</span>", self.client(p1).get("/torneios/amistosos").data.decode())
+        self.db.execute("UPDATE friendly_matches SET status = 'cancelled'")
+        # Os dois liberados, mas o convite foi sem o "Rankeado".
+        fid = friendly.invite(self.db, p0, p1, ranked=False)
+        friendly.respond(self.db, fid, p1, True)
+        friendly.report(self.db, fid, p0, 2, 0)
+        row = friendly.confirm(self.db, fid, p1)
+        self.db.commit()
+        self.assertEqual(row["ranked"], 0)
+        self.assertIn("sem a opção Rankeado", row["unranked_reason"])
+        self.assertEqual(stats.player_record(self.db, p0)["played"], 1)  # só o jogo de torneio
+        self.assertEqual(stats.player_record(self.db, p0, scope="friendly")["wins"], 1)
+        self.assertEqual(xp.compute(self.db)[0][p0], 20)
 
     def test_list_layout_and_open_filter(self):
         """Lista de amistosos: os em aberto no topo (carrossel, com filtro quando

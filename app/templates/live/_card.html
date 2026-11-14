@@ -1,18 +1,24 @@
 {# Card de uma partida ao vivo (app/live.py card()): jogo base/campeonato, tempo, times com quem controla, placar e gols. #}
+{% from '_avatar.html' import avatar, avatar_button %}
 {% set a, b = c.teams %}
 <article class="live-card{% if c.status != 'live' %} ended{% endif %}">
   <div class="live-card-head">
-    {# Logos: o jogo base e a imagem do campeonato ou, sem ela, a da ISO do cadastro (live._profile). #}
+    {# Logos: o jogo base e a imagem do campeonato ou, sem ela, a da ISO do cadastro (live._profile).
+       Com a ISO identificada, os logos, o nome e a descrição levam à página do campeonato
+       dela ou, sem campeonato, à página da ISO (c.target). #}
     {% set t_image = c.tournament and c.tournament.image %}
     {% set iso_image = not t_image and c.iso and c.iso.image %}
+    {% set target_title = ('Ver o campeonato ' ~ c.tournament.name) if c.tournament else ('Ver a ISO ' ~ c.iso.name) if c.target else '' %}
     {% if c.game or t_image or iso_image %}<span class="live-logos">
-      {% if c.game %}<img class="live-game" src="{{ c.game.cover }}" alt="{{ c.game.name }}" title="{{ c.game.name }}" loading="lazy">{% endif %}
-      {% if t_image %}<a href="{{ c.tournament.url }}"><img class="live-tournament" src="{{ c.tournament.image }}" alt="{{ c.tournament.name }}" title="{{ c.tournament.name }}" loading="lazy"></a>
-      {% elif iso_image %}<img class="live-tournament" src="{{ c.iso.image }}" alt="{{ c.iso.name }}" title="{{ c.iso.name }}" loading="lazy">{% endif %}
+      {% if c.target %}<a href="{{ c.target }}" title="{{ target_title }}">{% endif %}
+      {% if c.game %}<img class="live-game" src="{{ c.game.cover }}" alt="{{ c.game.name }}"{% if not c.target %} title="{{ c.game.name }}"{% endif %} loading="lazy">{% endif %}
+      {% if t_image %}<img class="live-tournament" src="{{ c.tournament.image }}" alt="{{ c.tournament.name }}" loading="lazy">
+      {% elif iso_image %}<img class="live-tournament" src="{{ c.iso.image }}" alt="{{ c.iso.name }}" loading="lazy">{% endif %}
+      {% if c.target %}</a>{% endif %}
     </span>{% endif %}
-    <span class="live-context">{% if c.link %}<a href="{{ c.link }}">{{ c.context }}</a>{% else %}{{ c.context }}{% endif %}{% if c.is_test %} <span class="badge live-test">Teste</span>{% endif %}
+    <span class="live-context">{% if c.link %}<a href="{{ c.link }}">{{ c.context }}</a>{% elif c.target %}<a href="{{ c.target }}" title="{{ target_title }}">{{ c.context }}</a>{% else %}{{ c.context }}{% endif %}{% if c.is_test %} <span class="badge live-test">Teste</span>{% endif %}
       {# Sem o nome do jogo base: a capa dele já está nos logos. #}
-      {% if c.tournament and not c.link %}<small><a href="{{ c.tournament.url }}">{{ c.tournament.name }}</a></small>{% elif c.iso and not c.tournament %}<small>{{ c.iso.name }}</small>{% endif %}</span>
+      {% if c.tournament and not c.link %}<small><a href="{{ c.tournament.url }}">{{ c.tournament.name }}</a></small>{% elif c.iso and not c.tournament %}<small>{% if c.iso.url %}<a href="{{ c.iso.url }}">{{ c.iso.name }}</a>{% else %}{{ c.iso.name }}{% endif %}</small>{% endif %}</span>
     <span class="live-status">
       {% if c.status == 'live' and not c.stale %}<span class="live-badge">Ao vivo</span>{% endif %}
       <span class="live-clock{% if c.status == 'live' and not c.stale and not c.interval %} on{% endif %}">{{ c.clock }}</span>
@@ -23,7 +29,12 @@
     <div class="live-team{% if not t.known %} unknown{% endif %}">
       <img class="live-crest" src="{{ t.image }}" alt="" loading="lazy">
       <strong>{{ t.name }}</strong>
-      <small>{{ t.players|join(', ') }}</small>
+      {# Quem controla o lado: foto com o rank (_avatar.html) e o nick. Logado: a foto
+         abre o resumo (popup) e o nick, o perfil completo; sem login, só os dois. #}
+      <div class="live-players">{% for pl in t.people %}<span class="live-player">
+        {%- if pl.id and (session.player_id or session.user_id) %}{{ avatar_button(pl.id, pl.name) }}<small><a href="{{ url_for('tournaments.player', nome=pl.name) }}" title="Perfil de {{ pl.name }}">{{ pl.name }}</a></small>
+        {%- elif pl.id %}{{ avatar(pl.id, pl.name) }}<small>{{ pl.name }}</small>
+        {%- else %}<small>{{ pl.name }}</small>{% endif %}</span>{% endfor %}</div>
     </div>
     {% if loop.first %}<div class="live-mid"><div class="live-goals"><span>{{ a.goals }}</span><span class="live-x">×</span><span>{{ b.goals }}</span></div>
       {% if c.pens %}<div class="live-pens" title="Disputa de pênaltis">Pênaltis {{ c.pens[0] }} × {{ c.pens[1] }}</div>{% endif %}</div>{% endif %}
@@ -76,7 +87,9 @@
   </div>
   {% elif has_events %}{{ events }}{% endif %}
   <div class="live-card-foot">
-    <small class="live-card-file"><span>{{ c.when }} ·</span>{{ c.file|fit }}</small>
+    <small class="live-card-file"><span>{{ c.when }} ·</span>{% if c.target %}<a href="{{ c.target }}" title="{{ target_title }}">{{ c.file|fit }}</a>{% else %}{{ c.file|fit }}{% endif %}</small>
     {% if c.status == 'finished' and c.agreed %}<small class="live-agreed">Placar conferido nos {{ c.reporters }} PCs</small>{% endif %}
+    {# Partida livre interrompida: o placar final que os dois combinam (live._free_final). #}
+    {% if c.final %}<small class="live-final{% if c.final.pending %} pending{% endif %}">{% if c.final.url %}<a href="{{ c.final.url }}">{{ c.final.text }}</a>{% else %}{{ c.final.text }}{% endif %}</small>{% endif %}
   </div>
 </article>

@@ -281,14 +281,20 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertIn("Partida livre", html)
         self.assertIn("Euro 2004", html)
         self.assertIn("Euro WE Camp", html)
-        # Campeonato = só os jogos dele; Amistosos = o resto (cadastrados e partidas livres).
-        self.assertEqual(self.cards(campeonato=tournament_id).count('<article class="live-card'), 2)
-        self.assertEqual(self.cards(campeonato=tournament_id, recentes="1").count('<article class="live-card'), 2)
-        friendlies = self.cards(campeonato="amistosos")
-        self.assertEqual(friendlies.count('<article class="live-card'), 1)
-        self.assertIn("outro", friendlies)
-        page = self.app.test_client().get("/ao-vivo?campeonato=amistosos").get_data(as_text=True)
-        self.assertIn('<option value="amistosos" selected>Amistosos</option>', page)
+        # Campeonato = só os jogos dele (pelo id - link da tabela - ou pelo nome digitado);
+        # as opções fixas: Rankeado (campeonatos e amistosos rankeados), Amistoso e Partida livre.
+        count = lambda **params: self.cards(**params).count('<article class="live-card')  # noqa: E731
+        self.assertEqual(count(campeonato=tournament_id), 2)
+        self.assertEqual(count(campeonato=tournament_id, recentes="1"), 2)
+        self.assertEqual((count(campeonato="Euro WE Camp"), count(campeonato="we camp"), count(campeonato="Copa X")),
+                         (2, 2, 0))
+        self.assertEqual((count(campeonato="Rankeado"), count(campeonato="amistoso"), count(campeonato="Partida livre")),
+                         (2, 0, 1))
+        self.assertIn("outro", self.cards(campeonato="partidas livres"))
+        page = self.app.test_client().get("/ao-vivo?campeonato=%d" % tournament_id).get_data(as_text=True)
+        self.assertIn('id="live-campeonato" value="Euro WE Camp"', page)  # o id vira o nome no campo
+        self.assertIn('data-fixed="[&#34;Rankeado&#34;, &#34;Amistoso&#34;, &#34;Partida livre&#34;]"', page)
+        self.assertIn('data-options="[&#34;Euro WE Camp&#34;]"', page)
         self.assertIn("Limpar filtro", page)
 
     def make_league(self):
@@ -429,11 +435,12 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertIn("o adversário já confirmou", page)
         self.assertIn("Confirmar este placar", page)
         mine = other.get("/torneios/meus-jogos").get_data(as_text=True)
-        self.assertIn("1 para confirmar", mine)
+        self.assertIn("Esperando você (1)", mine)
+        self.assertIn("Confirme o placar do adversário", mine)
         self.assertIn('data-dialog="contestar-%d">Não aceitar o placar</button>' % match["id"], mine)
         self.assertIn('<input type="hidden" name="voltar" value="meus-jogos">', mine)
         waiting = client.get("/torneios/meus-jogos").get_data(as_text=True)
-        self.assertIn("1 aguardando adversário", waiting)
+        self.assertNotIn("Esperando você", waiting)  # já confirmou: falta o adversário, nada para ele fazer
         # Sem a 2ª confirmação: confirmado sozinho 24 h depois do fim do jogo.
         with self.app.app_context():
             db = get_db()
@@ -571,8 +578,11 @@ class LiveMatchesTest(unittest.TestCase):
         html = self.cards()
         self.assertRegex(html, r'<img class="live-tournament" src="[^"]*euro\.webp" alt="EUROCOPA 2004"')
         # Embaixo do "Amistoso", só a ISO: o jogo base já está na capa ao lado.
-        self.assertIn("<small>EUROCOPA 2004</small>", html)
+        self.assertIn('<small><a href="/torneios/isos/%d">EUROCOPA 2004</a></small>' % catalog, html)
         self.assertNotIn("Winning Eleven 2002 ·", html)
+        # ISO identificada: os logos, o nome e o arquivo levam à página da ISO.
+        self.assertIn('<a href="/torneios/isos/%d" title="Ver a ISO EUROCOPA 2004">' % catalog, html)
+        self.assertIn('·</span><a href="/torneios/isos/%d" title="Ver a ISO EUROCOPA 2004"><span class="fit"' % catalog, html)
 
     def test_card_shows_the_championship_image_or_else_the_catalog_iso(self):
         """Jogo de campeonato: a imagem do campeonato; sem ela, a da mesma ISO no cadastro."""
@@ -585,8 +595,11 @@ class LiveMatchesTest(unittest.TestCase):
             get_db().execute("UPDATE tournaments SET image = 'camp.webp'")
             get_db().commit()
         html = self.cards()
-        self.assertRegex(html, r'<a href="[^"]*/euro-1[^"]*"><img class="live-tournament" src="[^"]*camp\.webp" '
+        # Campeonato: os logos (a capa do jogo e a imagem dele) e o arquivo levam à página do campeonato.
+        self.assertRegex(html, r'(?s)<a href="[^"]*/euro-1\?aba=tabela" title="Ver o campeonato Euro WE Camp">\s*'
+                               r'<img class="live-game"[^>]*>\s*<img class="live-tournament" src="[^"]*camp\.webp" '
                                r'alt="Euro WE Camp"')
+        self.assertRegex(html, r'·</span><a href="[^"]*/euro-1\?aba=tabela" title="Ver o campeonato Euro WE Camp">')
         self.assertNotIn("euro.webp", html)
 
     def test_championship_iso_must_match(self):
@@ -1154,9 +1167,9 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertIn("TIERES 0 x 3 ANDERSHOW", dialog)
         self.assertIn(">-20 XP</span>", dialog)
         self.assertIn(">+20 XP</span>", dialog)
-        status = client.get("/torneios/status").get_data(as_text=True)
-        self.assertIn('id="partida-a%d-3"' % fid, status)
-        self.assertIn("· jogo 3", status)
+        status = client.get("/torneios/status", follow_redirects=True).get_data(as_text=True)  # = a página do jogador
+        self.assertIn("Amistoso rankeado · jogo 3", status)  # o 3º jogo nos últimos jogos
+        self.assertIn('"origin": "Amistoso rankeado \\u00b7 jogo 3"', status)  # e no gráfico do Histórico
         # Com "Placar agregado": a soma aparece; o XP continua jogo a jogo.
         with self.app.app_context():
             db = get_db()
