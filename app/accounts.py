@@ -286,6 +286,71 @@ def revoke_api_tokens(db, player_id):
     )
 
 
+# --------------------------------------------------------------------------
+# PCs conectados no Kaillera (tokens de API) - só no site
+# --------------------------------------------------------------------------
+#
+# Um PC (token de API do kailleraclient.dll) aparece em "PCs conectados" e
+# conta como conectado (para a janela "Conecte sua Conta WE Camp no Kaillera"
+# não aparecer) até PC_SITE_WINDOW depois do último uso do token - o DLL
+# (v.TIERES.0.24 em diante) chama /api/mc/whoami com ele toda vez que a janela
+# do Kaillera abre, e o ingresso da sala, o placar ao vivo e o Memory Card
+# online também usam o token (memcards._api_player grava last_used_at) - ou
+# de entrar na conta pelo Kaillera. Passado isso, o PC sai do site até o
+# Kaillera ser aberto nele de novo - o token continua valendo no DLL.
+PC_SITE_WINDOW = timedelta(hours=48)
+
+
+def pc_active_since(token):
+    """Desde quando o PC conta: o último uso do token ou a entrada (o que vier depois)."""
+    moments = [moment for moment in (parse_iso(token["created_at"]), parse_iso(token["last_used_at"])) if moment]
+    return max(moments) if moments else None
+
+
+def pc_active_until(token):
+    """Até quando o PC aparece no site (antes, se ele foi desconectado)."""
+    since = pc_active_since(token)
+    if since is None:
+        return None
+    until = since + PC_SITE_WINDOW
+    revoked = parse_iso(token["used_at"])
+    return min(until, revoked) if revoked else until
+
+
+def connected_pcs(db, player_id):
+    """Os PCs que aparecem em "PCs conectados" (os mais novos primeiro), cada
+    um com active_until - até quando fica sem o Kaillera ser aberto nele."""
+    moment = utcnow()
+    pcs = []
+    for token in db.execute(
+            "SELECT id, created_at, last_used_at, used_at FROM player_tokens "
+            "WHERE player_id = ? AND kind = 'api' AND used_at IS NULL ORDER BY id DESC", (player_id,)):
+        until = pc_active_until(token)
+        if until and until > moment:
+            pc = dict(token)
+            pc["active_until"] = iso(until)
+            pcs.append(pc)
+    return pcs
+
+
+def pc_popup_due(db, player_id, shown_at=None):
+    """Mostrar a janela "Conecte sua Conta WE Camp no Kaillera"? Só sem nenhum
+    PC conectado, e uma vez: `shown_at` (timestamp) é quando ela apareceu
+    neste navegador (a sessão do login - entrar de novo zera). Volta a
+    aparecer quando um PC que conectou depois disso sai do site."""
+    if connected_pcs(db, player_id):
+        return False
+    if shown_at is None:
+        return True
+    last = None
+    for token in db.execute("SELECT created_at, last_used_at, used_at FROM player_tokens "
+                            "WHERE player_id = ? AND kind = 'api'", (player_id,)):
+        until = pc_active_until(token)
+        if until and (last is None or until > last):
+            last = until
+    return last is not None and last.timestamp() > shown_at
+
+
 def absolute_url(path):
     """Caminho do site ("/torneios/copa") -> URL completa, para quem lê a página
     de fora (as tags og: do link compartilhado). Como em external_url, vale o

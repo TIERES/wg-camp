@@ -691,6 +691,13 @@ button.small,.button.small { padding:.4rem .7rem; font-size:.78rem }
 .title-info .info-badge { width:1.7rem; height:1.7rem; font-size:1.05rem; margin-left:.5rem; vertical-align:.12em }
 .info-dialog { width:min(40rem, calc(100vw - 2rem)) } .info-dialog .form-dialog-body { display:grid }
 .info-dialog .form-dialog-body p, .info-dialog ul { margin:0 } .info-dialog ul { padding-left:1.2rem; display:grid; gap:.55rem }
+/* "Conecte sua Conta WE Camp no Kaillera" (templates/_wecamp_login.html): larga como a animação (850 px). */
+.wecamp-login-dialog { width:min(54rem, calc(100vw - 2rem)) }
+.wecamp-login-dialog h2:focus { outline:none }
+.wecamp-login-gif { display:block; width:auto; height:auto; max-width:100%; max-height:60vh; margin:0 auto; border:1px solid #374151; border-radius:8px; background:#111 }
+.wecamp-login-steps { margin:0; padding-left:1.3rem; display:grid; gap:.4rem }
+.wecamp-login-dialog p.muted { font-size:.9rem }
+#pcs > button[data-dialog] { margin-top:.75rem }
 .friendly-title { display:inline-flex; align-items:center; min-width:0 }
 
 /* Carrossel (static/js/carousel.js): setas nas laterais dos cards, contador no alto à direita */

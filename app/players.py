@@ -17,7 +17,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from .accounts import (email_error, external_url, find_token, issue_token, normalize_email, password_error,
                        purge_stale_unverified, recently_sent, revoke_api_tokens, username_error, USERNAME_ALLOWED,
-                       USERNAME_RE, already_registered)
+                       USERNAME_RE, already_registered, connected_pcs, pc_popup_due, PC_SITE_WINDOW)
 from . import images
 from .db import get_db, now
 from .mailer import MailError, send_mail
@@ -322,12 +322,10 @@ def account():
     iso_ids = {iso["content_id"] for iso in isos}
     games = [game for game in db.execute("SELECT id, name, content_id FROM games ORDER BY name COLLATE NOCASE")
              if game["content_id"].upper() not in iso_ids]
-    tokens = db.execute(
-        "SELECT id, created_at, last_used_at FROM player_tokens "
-        "WHERE player_id = ? AND kind = 'api' AND used_at IS NULL ORDER BY id DESC",
-        (player["id"],),
-    ).fetchall()
-    return render_template("players/account.html", player=player, cards=cards, isos=isos, games=games, tokens=tokens)
+    # Só os PCs em que o Kaillera foi aberto (ou que entraram) nas últimas 48 h.
+    tokens = connected_pcs(db, player["id"])
+    return render_template("players/account.html", player=player, cards=cards, isos=isos, games=games, tokens=tokens,
+                           pc_window_hours=int(PC_SITE_WINDOW.total_seconds() // 3600))
 
 
 @bp.post("/foto")
@@ -532,5 +530,20 @@ def inject_player():
     if "player_id" in session:
         row = get_db().execute("SELECT username FROM players WHERE id = ?", (session["player_id"],)).fetchone()
         name = row["username"] if row else None
-    return {"player_logged_in": "player_id" in session, "player_name": name}
+    return {"player_logged_in": "player_id" in session, "player_name": name, "wecamp_pc_popup": wecamp_pc_popup,
+            "pc_window_hours": int(PC_SITE_WINDOW.total_seconds() // 3600)}
+
+
+def wecamp_pc_popup():
+    """Abrir agora a janela "Conecte sua Conta WE Camp no Kaillera"
+    (templates/_wecamp_login.html, chamada pelo base.html)? Para o jogador
+    logado no site sem nenhum PC conectado (accounts.pc_popup_due): depois de
+    entrar no site e, logado, uma vez - até um PC conectar e sair do site de
+    novo. Fica anotado na sessão quando ela aparece."""
+    if "player_id" not in session or session.get("user_id"):
+        return False  # visitante, ou administrador (o cabeçalho também é só o dele)
+    if not pc_popup_due(get_db(), session["player_id"], session.get("pc_popup_at")):
+        return False
+    session["pc_popup_at"] = int(time.time())
+    return True
 

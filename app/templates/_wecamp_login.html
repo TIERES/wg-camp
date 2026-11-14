@@ -1,0 +1,24 @@
+{# Janela "Conecte sua Conta WE Camp no Kaillera": a animação
+   (static/images/gif/contaWeCamp.gif) e o passo a passo. O base.html a abre
+   sozinha (auto_open) para o jogador sem nenhum PC conectado
+   (players.wecamp_pc_popup); a "Minha conta" a abre pelo botão
+   data-dialog="<id>" (static/js/dialogs.js). #}
+{% macro wecamp_login_dialog(id, auto_open=false) -%}
+<dialog class="form-dialog info-dialog wecamp-login-dialog" id="{{ id }}" aria-labelledby="{{ id }}-title"{% if auto_open %} data-auto-open{% endif %}>
+  <div class="form-dialog-body">
+    <h2 id="{{ id }}-title" tabindex="-1" autofocus>Conecte sua Conta WE Camp no Kaillera</h2>
+    <p>Com a conta conectada no Kaillera do RetroArch, você usa o Memory Card online e a chamada de voz no Discord, aparece no Ao vivo do WE Camp e o placar dos seus jogos vai sozinho para o campeonato ou para o amistoso.</p>
+    <img class="wecamp-login-gif" src="{{ url_for('static', filename='images/gif/contaWeCamp.gif') }}" width="850" height="638" decoding="async"
+         alt="No Menu principal do RetroArch, Kaillera Netplay; na janela do Kaillera, o botão Conta WE Camp; e-mail e senha e Entrar; o Nick vira o usuário da conta.">
+    <ol class="wecamp-login-steps">
+      <li>No RetroArch FFW TIERES, abra o <strong>Menu principal</strong> e escolha <strong>Kaillera Netplay</strong>.</li>
+      <li>Na janela do Kaillera, clique no botão <strong>Conta WE Camp</strong>, na linha de botões de baixo.</li>
+      <li>Digite o <strong>e-mail</strong> e a <strong>senha</strong> desta conta e clique em <strong>Entrar</strong>.</li>
+      <li>Pronto: o Nick passa a ser <strong>{{ player_name or 'o seu usuário' }}</strong> e o PC aparece em <a href="{{ url_for('players.account', _anchor='pcs') }}">PCs conectados no Kaillera</a>.</li>
+    </ol>
+    <p class="muted">Já entrou? O PC fica na lista por {{ pc_window_hours }} horas depois da última vez que você abriu o Kaillera nele. Sem abrir nesse prazo, ele sai da lista e esta janela volta a aparecer, mas a conta continua conectada no Kaillera: é só abrir o Kaillera Netplay de novo nesse PC.</p>
+    <p class="muted">Ainda não tem o RetroArch FFW TIERES? <a href="{{ url_for('public.index', _anchor='emulator-title') }}">Baixe na página inicial</a>.</p>
+    <div class="card-actions dialog-actions"><button type="button" data-dialog-close>Entendi</button></div>
+  </div>
+</dialog>
+{%- endmacro %}

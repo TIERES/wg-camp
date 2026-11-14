@@ -7,7 +7,7 @@
   {# Como o link aparece ao ser compartilhado (WhatsApp, Telegram...): _share.html. #}
   {% block share %}{% endblock %}
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/retroarch.svg') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css', v='20261113l') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css', v='20261113m') }}">
 </head>
 <body>
   <header>
@@ -47,6 +47,8 @@
     <div>Desenvolvido por <a href="https://www.wgs.dev.br" rel="noopener noreferrer" target="_blank">WGS Sistemas</a></div>
     <a class="wgs-logo" href="https://www.wgs.dev.br" rel="noopener noreferrer" target="_blank"><img src="https://www.wgs.dev.br/assets/images/logo/logo-text.svg" alt="WGS Sistemas"></a>
   </footer>
+  {# Jogador sem nenhum PC conectado no Kaillera: o passo a passo da Conta WE Camp, uma vez (players.wecamp_pc_popup). #}
+  {% if wecamp_pc_popup is defined and wecamp_pc_popup() %}{% from '_wecamp_login.html' import wecamp_login_dialog with context %}{{ wecamp_login_dialog('conta-wecamp-popup', auto_open=true) }}{% endif %}
   <script>
   // Menu do usuário: fecha ao clicar fora ou com Esc.
   (function () {
@@ -73,7 +75,7 @@
   </script>
   <script src="{{ url_for('static', filename='js/toast.js', v='20261106a') }}"></script>
   <script src="{{ url_for('static', filename='js/player-card.js') }}" defer></script>
-  <script src="{{ url_for('static', filename='js/dialogs.js', v='20261107a') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/dialogs.js', v='20261113a') }}" defer></script>
   <script src="{{ url_for('static', filename='js/card-flip.js', v='20261110c') }}" defer></script>
   <script src="{{ url_for('static', filename='js/password-toggle.js', v='20261109a') }}" defer></script>
   <script src="{{ url_for('static', filename='js/user-picker.js', v='20261113a') }}" defer></script>

@@ -102,8 +102,9 @@
   </form>
 </section>
 
-<section>
+<section id="pcs">
   <h2>PCs conectados no Kaillera</h2>
+  <p>Cada PC aparece aqui por {{ pc_window_hours }} horas depois da última vez que o <strong>Kaillera Netplay</strong> foi aberto nele com a conta conectada. Sem abrir o Kaillera nesse prazo, o PC sai desta lista, só do site: ele continua conectado no Kaillera e volta para cá na próxima vez que o Kaillera for aberto nele. Para desconectar todos os PCs, inclusive os que saíram da lista, troque a senha.</p>
   {% if tokens %}
   {% call carousel('PCs anteriores', 'Próximos PCs', 'per-3 token-cards', fit=false) %}
     {% for token in tokens %}
@@ -112,11 +113,15 @@
         <strong class="t-name icon-title-sm">{{ icon('monitor') }}PC {{ loop.index }}</strong>
         <span class="t-meta"><span>Conectado em {{ token.created_at|localtime }}</span></span>
         <span class="t-meta"><span>Último uso: {{ token.last_used_at|localtime if token.last_used_at else '—' }}</span></span>
+        <span class="t-meta"><span>Sai da lista em {{ token.active_until|localtime }}, se o Kaillera não for aberto nele</span></span>
       </span>
       <div class="t-foot"><form method="post" action="{{ url_for('players.revoke_token', token_id=token.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Desconectar</button></form></div>
     </div>
     {% endfor %}
   {% endcall %}
-  {% else %}<p>Nenhum PC conectado.</p>{% endif %}
+  {% else %}<p>Nenhum PC conectado nas últimas {{ pc_window_hours }} horas.</p>{% endif %}
+  {% from '_wecamp_login.html' import wecamp_login_dialog with context %}
+  <button type="button" class="secondary" data-dialog="conta-wecamp-tutorial" aria-haspopup="dialog">Como conectar um PC</button>
+  {{ wecamp_login_dialog('conta-wecamp-tutorial') }}
 </section>
 {% endblock %}

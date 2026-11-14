@@ -19,4 +19,8 @@
     }
     if (e.target.matches('dialog.form-dialog')) e.target.close();  // clique no fundo, fora da janela
   });
+  // data-auto-open: abre sozinha ao carregar a página (a "Conecte sua Conta
+  // WE Camp no Kaillera" do base.html - templates/_wecamp_login.html).
+  var auto = document.querySelector('dialog[data-auto-open]');
+  if (auto && !auto.open && auto.showModal) auto.showModal();
 })();
