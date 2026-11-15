@@ -31,7 +31,7 @@ from .security import login_required, validate_csrf
 from .storage import attachment_header
 from .timeutil import format_local
 from .tournament import (changes, editors, engine, formats, free, friendly, friends, games as game_catalog, iso,
-                         iso_catalog, notify, reports, stats, store, xp)
+                         iso_catalog, notify, reports, result_card, stats, store, xp)
 from .tournament.store import TournamentError
 from .tournament.teams import KINDS as TEAM_KINDS, TEAM_MODES, generated_badge
 from .wallet import (KINDS, MONEY_SETTINGS, SETTING_LABELS, SIGNED_SETTINGS, InsufficientFunds, ensure_wallet,
@@ -2399,20 +2399,6 @@ def my_status():
 
 # --- Ranking, histórico e comparação (app/tournament/stats.py) ----------------
 
-def _match_popups(db, rows):
-    """Jogos de torneio das linhas do histórico (para o popup de cada um) e os
-    nomes com escudo dos torneios deles. Amistosos não têm (kind 'a')."""
-    rows = [r for r in rows if r["kind"] == "t"]
-    games_by_id, names = {}, {}
-    if rows:
-        ids = [r["match_id"] for r in rows]
-        for row in db.execute(f"SELECT * FROM tournament_matches WHERE id IN ({','.join('?' * len(ids))})", ids):
-            games_by_id[row["id"]] = row
-        for tournament_id in {r["tournament_id"] for r in rows}:
-            names.update(_names(db, store.get_tournament(db, tournament_id)))
-    return games_by_id, names
-
-
 def _game_filter(db):
     """Jogo escolhido no filtro (?jogo=) e os jogos do filtro: só os liberados
     para campeonato (games.GAMES), na ordem de lançamento, com o código da capa
@@ -2605,15 +2591,23 @@ def comparable(db, me):
     return ([own] if own else []) + list(friends.friends(db, me))
 
 
+# A modalidade do Comparar (?modalidade=): os três cards do perfil (stats.SCOPES).
+COMPARE_SCOPES = {"ranked": "Campeonato/Amistoso Rankeado", "friendly": "Amistosos", "free": "Partidas livres"}
+
+
 @bp.get("/comparar")
 def compare():
     """Só para quem está logado, entre ele mesmo e os amigos (a escolha de
-    usuário padrão só com eles); nunca o mesmo jogador dos dois lados."""
+    usuário padrão só com eles); nunca o mesmo jogador dos dois lados. Os
+    números são de uma modalidade por vez (COMPARE_SCOPES, padrão a rankeada)."""
     if "player_id" not in session:
         return redirect(url_for("players.login", next=request.full_path.rstrip("?")))
     db = get_db()
     me_id = session["player_id"]
     game, games = _game_filter(db)
+    scope = request.args.get("modalidade")
+    if scope not in COMPARE_SCOPES:
+        scope = "ranked"
     players = comparable(db, me_id)
     allowed = {row["username"].casefold(): row for row in players}
     names = (request.args.get("a", "").strip(), request.args.get("b", "").strip())
@@ -2628,14 +2622,20 @@ def compare():
     elif a and b and a["id"] == b["id"]:
         flash("Escolha dois jogadores diferentes.", "error")
     elif a and b:
-        result = stats.compare(db, a["id"], b["id"], game)
-    # Os últimos jogos de quem está logado contra cada jogador escolhido
-    # (menos ele mesmo), com o jogo (para o popup) e os nomes com escudo.
-    mine = [{"opponent": other, "matches": stats.history(db, me_id, game, opponent_id=other["id"], limit=5)}
-            for other in (a, b) if result and other["id"] != me_id]
-    games_by_id, names = _match_popups(db, [r for card in mine for r in card["matches"]])
+        result = stats.compare(db, a["id"], b["id"], game, scope)
+    # Os últimos jogos de quem está logado contra cada jogador escolhido (menos
+    # ele mesmo), das três modalidades juntas - sem as partidas livres
+    # interrompidas ainda sem placar final -, com o popup de cada um
+    # (result_card: jogo base, campeonato/ISO, times, fotos e o XP).
+    mine = []
+    if result:
+        everything = [row for row in stats.all_history(db, me_id, game) if not row["pending"]]
+        mine = [{"opponent": other, "matches": [row for row in everything if row["opponent_id"] == other["id"]][:5]}
+                for other in (a, b) if other["id"] != me_id]
+    popups = {row["match_key"]: result_card.build(db, row) for card in mine for row in card["matches"]}
     return render_template("tournaments/compare.html", a=a, b=b, result=result, games=games, game=game,
-                           players=players, outcome=stats.outcome, mine=mine, games_by_id=games_by_id, names=names)
+                           players=players, outcome=stats.outcome, mine=mine, popups=popups,
+                           scope=scope, scopes=COMPARE_SCOPES)
 
 
 _last_auto_confirm = [0.0]

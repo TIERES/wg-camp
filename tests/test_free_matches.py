@@ -166,6 +166,90 @@ class FreeMatchesTest(unittest.TestCase):
         # O XP e o Ranking geral continuam só com os rankeados.
         self.assertEqual(stats.ranking(self.db)[0]["played"], 1)
 
+    def test_compare_by_modality(self):
+        """Comparar: os números de uma modalidade por vez (?modalidade=, padrão a
+        rankeada); "Seus últimos resultados" junta as três."""
+        from app.tournament import friends
+        for ranked, goals in ((1, (3, 0)), (0, (1, 1)), (0, (0, 2))):
+            self.db.execute(
+                "INSERT INTO friendly_matches (home_id, away_id, status, home_goals, away_goals, ranked, confirmed_at, "
+                "created_at, updated_at) VALUES (?, ?, 'confirmed', ?, ?, ?, ?, ?, ?)",
+                (self.a, self.b, goals[0], goals[1], ranked, now(), now(), now()))
+        first = self.live("TIERES", "ANDERSHOW", (2, 1))
+        second = self.live("ANDERSHOW", "TIERES", (4, 0))  # do ponto de vista do VISITA
+        self.live("TIERES", "RIVAL", (5, 0))  # outro adversário: só na campanha geral
+        self.live("TIERES", "ANDERSHOW", (1, 1), status="abandoned")  # sem placar final: não conta
+        friends.request(self.db, self.a, self.b)
+        friends.respond(self.db, self.b, self.a, True)
+        self.db.commit()
+
+        def numbers(record):
+            return record["played"], record["wins"], record["draws"], record["losses"]
+
+        # (confronto direto, campanha de TIERES, campanha de ANDERSHOW) em V/E/D
+        expected = {"ranked": ((1, 1, 0, 0), (1, 1, 0, 0), (1, 0, 0, 1)),
+                    "friendly": ((2, 0, 1, 1), (2, 0, 1, 1), (2, 1, 1, 0)),
+                    "free": ((2, 1, 0, 1), (3, 2, 0, 1), (2, 1, 0, 1))}
+        for scope, numbers_expected in expected.items():
+            self.fresh()
+            result = stats.compare(self.db, self.a, self.b, scope=scope)
+            self.assertEqual(tuple(numbers(result[key]) for key in ("head_to_head", "a", "b")), numbers_expected, scope)
+        self.fresh()
+        result = stats.compare(self.db, self.a, self.b, scope="free")
+        self.assertEqual((result["a_position"], result["b_position"]), (1, 2))
+        self.assertEqual(result["a_form"], ["V", "D", "V"])  # do mais antigo ao mais recente
+
+        page = self.get(self.a, "/torneios/comparar?b=ANDERSHOW&modalidade=free")
+        self.assertIn('<option value="free" selected>Partidas livres</option>', page)
+        self.assertIn('Confronto direto <small class="muted compare-scope">· Partidas livres</small>', page)
+        self.assertIn('Campanha geral <small class="muted compare-scope">· Partidas livres</small>', page)
+        self.assertEqual(page.count('class="h2h-wins">1<'), 2)  # 1 x 1 nas partidas livres
+        # Os últimos 5 contra ele, das três modalidades (a interrompida sem placar final fica de fora).
+        self.assertEqual(page.count('class="f-btn '), 5)
+        self.assertIn("· Amistoso rankeado", page)
+        self.assertIn("· Partida livre", page)
+        # Os popups (result_card): o XP só no amistoso rankeado; a partida livre com o arquivo
+        # da ISO e o time de cada lado como no card do Ao vivo (aqui, sem time identificado).
+        from app.tournament import xp
+        self.assertEqual(page.count('class="match-dialog result-dialog"'), 5)
+        self.assertEqual(page.count('class="xp-delta'), 2)
+        self.assertIn('title="TIERES ganhou XP nesta partida">+%d XP</span>' % xp.points(0, 0), page)
+        self.assertEqual(page.count("Não vale para o Ranking: sem XP."), 4)
+        self.assertEqual(page.count("<dt>Arquivo</dt><dd>Euro.bin</dd>"), 2)
+        self.assertEqual(page.count("<strong>Não identificado</strong>"), 4)
+        # Botões: o amistoso com o placar informado (sem partida no Ao vivo) só tem "Ver
+        # amistoso"; a partida livre, "Ver partida" com o card dela no Ao vivo.
+        self.assertEqual(page.count(">Ver amistoso</a>"), 3)
+        self.assertEqual(page.count(">Ver partida</a>"), 2)
+        for live_id in (first, second):
+            self.assertIn('<a class="button" href="/ao-vivo?partida=%d">Ver partida</a>' % live_id, page)
+        page = self.get(self.a, "/torneios/comparar?b=ANDERSHOW&modalidade=xyz")  # inválida: a rankeada
+        self.assertIn('<option value="ranked" selected>Campeonato/Amistoso Rankeado</option>', page)
+        self.assertEqual(page.count('class="h2h-wins">'), 2)
+        self.assertIn('class="h2h-wins">1<', page)
+
+    def test_compare_popup_of_a_friendly_game_read_live(self):
+        """Jogo de amistoso lido do Ao vivo: o popup tem "Ver amistoso" (a página do
+        amistoso) e "Ver partida" (o card da partida no Ao vivo), com o arquivo da ISO."""
+        from app.tournament import friends
+        fid = self.db.execute(
+            "INSERT INTO friendly_matches (home_id, away_id, status, home_goals, away_goals, ranked, game_report, "
+            "confirmed_at, created_at, updated_at) VALUES (?, ?, 'confirmed', 3, 1, 0, 1, ?, ?, ?)",
+            (self.a, self.b, now(), now(), now())).lastrowid
+        live_id = self.live("TIERES", "ANDERSHOW", (3, 1), friendly_id=fid)
+        self.db.execute("INSERT INTO friendly_games (friendly_id, number, live_match_id, home_goals, away_goals) "
+                        "VALUES (?, 1, ?, 3, 1)", (fid, live_id))
+        friends.request(self.db, self.a, self.b)
+        friends.respond(self.db, self.b, self.a, True)
+        self.db.commit()
+        page = self.get(self.a, "/torneios/comparar?b=ANDERSHOW&modalidade=friendly")
+        dialog = page[page.index('<dialog class="match-dialog result-dialog"'):page.index("</dialog>")]
+        self.assertIn('id="jogo-a%d-1"' % fid, dialog)
+        self.assertIn('<a class="button" href="/torneios/amistosos/%d">Ver amistoso</a>' % fid, dialog)
+        self.assertIn('<a class="button" href="/ao-vivo?partida=%d">Ver partida</a>' % live_id, dialog)
+        self.assertIn("<dt>Arquivo</dt><dd>Euro.bin</dd>", dialog)
+        self.assertIn("Não vale para o Ranking: sem XP.", dialog)
+
     def test_championship_filter_fixed_options(self):
         """Filtro "Campeonato" (Ao vivo e Histórico do perfil): Rankeado, Amistoso
         e Partida livre fixos no topo do autocompletar, os campeonatos abaixo."""

@@ -286,6 +286,7 @@ details.dispute { margin-top:1rem } details.dispute summary { cursor:pointer; co
 .my-last-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(18rem, 1fr)); gap:1rem; margin-top:1.5rem }
 .my-last { padding:1rem 1.25rem; background:var(--card); border:1px solid #374151; border-radius:8px }
 .my-last h2 { font-size:1.15rem; margin:0 0 .5rem } .my-last p { margin:.25rem 0 0 }
+.compare-scope { white-space:nowrap }
 .h2h-head { display:grid; grid-template-columns:1fr auto 1fr; gap:.75rem; align-items:end; text-align:center }
 .h2h-side,.h2h-mid,.h2h-score { display:grid; gap:.1rem; min-width:0; overflow-wrap:anywhere }
 /* Foto ao lado das vitórias: jogador 1 à esquerda do número, jogador 2 à direita (espelhado). */
@@ -293,7 +294,15 @@ details.dispute { margin-top:1rem } details.dispute summary { cursor:pointer; co
 @media (max-width:550px) { .h2h-side,.h2h-b { flex-direction:column; gap:.4rem } } .h2h-wins { font-size:2.4rem; line-height:1 } .h2h-mid strong { font-size:1.6rem; line-height:1 }
 .h2h-bar { display:flex; height:.6rem; border-radius:999px; overflow:hidden; margin:.75rem 0 .25rem; background:#374151 }
 .center { text-align:center }
-.compare-table th,.compare-table td { width:33% } .compare-table td.better { color:#6ee7b7; font-weight:700 }
+.compare-table th,.compare-table td { width:33% }
+/* O número vencedor de cada linha, como nos Stats do Ao vivo (.live-stat-v). */
+.cmp-v { display:inline-block; min-width:1.9rem; box-sizing:border-box; padding:.05rem .45rem; border-radius:999px; font-weight:600; line-height:1.4 }
+.cmp-v.best { background:var(--accent); color:#06281d }
+.cmp-trophy { display:inline-block; width:1.25rem; height:1.25rem; margin-right:.35rem; vertical-align:-.3rem } .cmp-trophy .trophy { width:100%; height:100% }
+/* Últimos jogos numa linha só (form_badges): só os mais recentes que cabem; os mais antigos vão para a 2ª linha, escondida. */
+.recent-fit { display:flex; flex-direction:row-reverse; flex-wrap:wrap; justify-content:center; height:1.3rem; overflow:hidden }
+/* Celular: os rótulos quebram linha em vez de a tabela passar da tela. */
+@media (max-width:600px) { .compare-table th,.compare-table td { padding:.45rem .2rem; white-space:normal } .compare-table .cmp-trophy { margin-right:.2rem } }
 /* Meus jogos: um card expansível por torneio */
 .mt-filter { width:100%; max-width:28rem; margin:.5rem 0 1rem }
 details.mt-card { background:var(--card); border:1px solid #374151; border-radius:8px; margin:.75rem 0 }
@@ -325,6 +334,11 @@ dialog.match-dialog .match-line { border-top:0; padding:.25rem 0 .75rem }
 dialog.match-dialog dl { display:grid; grid-template-columns:auto 1fr; gap:.35rem 1rem; margin:0 0 1rem }
 dialog.match-dialog dt { color:#9ca3af } dialog.match-dialog dd { margin:0 }
 dialog.match-dialog form { display:flex; justify-content:flex-end; margin:0; max-width:none }
+/* Popup de um resultado (Comparar - _result_dialog.html), com o visual do card do Ao vivo. */
+dialog.result-dialog[open] { display:grid; gap:.85rem } dialog.result-dialog dl { margin:0; padding-top:.75rem; border-top:1px solid #374151 }
+dialog.result-dialog form { gap:.5rem; flex-wrap:wrap }
+@media (max-width:420px) { dialog.result-dialog { padding:1rem } dialog.result-dialog form .button, dialog.result-dialog form button { padding-left:.6rem; padding-right:.6rem } } .result-note { margin:-.35rem 0 0; text-align:center; font-size:.85rem }
+.result-score .live-player { flex-direction:column; gap:.2rem } .result-score .xp-delta { font-size:.95rem }
 /* Formulários: ocupam a largura toda da página. .form-row põe campos lado a lado
    e quebra sozinho em telas menores; .wide marca o campo que fica mais largo. */
 :where(.form,.account-form,.t-form) :where(input:not([type=checkbox],[type=radio]),select,textarea) { width:100%; max-width:100% }

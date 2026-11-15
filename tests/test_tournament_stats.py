@@ -187,12 +187,26 @@ class StatsTest(unittest.TestCase):
         page = client.get("/torneios/comparar?a=p0&b=p1").get_data(as_text=True)
         self.assertEqual(page.count('class="my-last"'), 1)
         self.assertIn("Seus últimos resultados contra", page)
-        self.assertEqual(page.count('class="match-dialog"'), 1)
+        self.assertEqual(page.count('class="match-dialog result-dialog"'), 1)
         self.assertIn('class="f-btn f-V"', page)
+        # O popup (result_card): o campeonato e a fase, os times da inscrição, as fotos
+        # com o rank e o XP de cada um (p1 tinha 0 XP: perde 0, o XP nunca fica negativo).
+        from app.tournament import xp
+        dialog = page[page.index('<dialog class="match-dialog result-dialog"'):page.index("</dialog>")]
+        self.assertIn(">Liga</a>", dialog)
+        self.assertRegex(dialog, r"<small>Pontos corridos · Rodada \d</small>")
+        self.assertIn("<strong>Time 0</strong>", dialog)
+        self.assertIn("<strong>Time 1</strong>", dialog)
+        self.assertLess(dialog.index("Time 0"), dialog.index("Time 1"))  # quem está logado à esquerda
+        self.assertEqual(dialog.count('class="rank-badge'), 2)
+        self.assertIn('<span class="xp-delta up" title="p0 ganhou XP nesta partida">+%d XP</span>'
+                      % xp.points(0, 0), dialog)
+        self.assertIn('title="p1 não ganhou nem perdeu XP nesta partida">+0 XP</span>', dialog)
+        self.assertRegex(dialog, r'<a class="button" href="/torneios/liga-[^"]+/jogos/\d+">Ver partida</a>')
         # Comparando dois outros jogadores: um card para cada.
         page = client.get("/torneios/comparar?a=p1&b=p2").get_data(as_text=True)
         self.assertEqual(page.count('class="my-last"'), 2)
-        self.assertEqual(page.count('class="match-dialog"'), 2)
+        self.assertEqual(page.count('class="match-dialog result-dialog"'), 2)
         self.assertIn('class="f-btn f-D"', page)  # perdeu para p2
 
 
@@ -325,6 +339,50 @@ class TrophyGalleryTest(unittest.TestCase):
         with client.session_transaction() as session:
             session["player_id"] = p3
         self.assertIn("Nenhum troféu ainda", client.get("/torneios/status", follow_redirects=True).get_data(as_text=True))
+
+    def test_compare_titles_and_best_numbers(self):
+        """Comparar (rankeada): títulos, vices e 3º lugares dos dois, e o número
+        vencedor de cada linha destacado, como nos Stats do Ao vivo."""
+        import re
+        p0, p1, p2, _ = self.players
+        other = self.add_game("WE 4 Teste")
+        self.finished_league([p0, p1, p2])
+        self.finished_league([p0, p2, p1])
+        self.finished_league([p1, p0, p2], game=other)
+        result = stats.compare(self.db, p0, p1)
+        self.assertEqual((result["a_podium"], result["b_podium"]), ({1: 2, 2: 1, 3: 0}, {1: 1, 2: 1, 3: 1}))
+        self.assertEqual(stats.compare(self.db, p0, p1, other)["a_podium"], {1: 0, 2: 1, 3: 0})
+        self.assertIsNone(stats.compare(self.db, p0, p1, scope="friendly")["a_podium"])
+
+        friends.request(self.db, p0, p1)
+        friends.respond(self.db, p1, p0, True)
+        self.db.commit()
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["player_id"] = p0
+
+        def rows(url):
+            """{rótulo da linha: (célula do p0, célula do p1)} da Campanha geral."""
+            page = client.get(url).get_data(as_text=True)
+            found = re.findall(r"<tr><td>(.*?)</td><th>(.*?)</th>\s*<td>(.*?)</td></tr>", page, re.S)
+            return {re.sub(r"<[^>]+>", "", re.sub(r"<svg.*?</svg>", "", th, flags=re.S)): (a, b) for a, th, b in found}
+
+        table = rows("/torneios/comparar?b=p1")
+        best, plain = '<span class="cmp-v best">%s</span>', '<span class="cmp-v">%s</span>'
+        self.assertEqual(table["Títulos"], (best % 2, plain % 1))
+        self.assertEqual(table["Vices"], (plain % 1, plain % 1))  # empate: nenhum destacado
+        self.assertEqual(table["3º lugares"], (plain % 0, best % 1))
+        self.assertEqual(table["Jogos"], (plain % 6, plain % 6))  # sem vencedor
+        self.assertEqual(table["Vitórias"], (best % 5, plain % 3))
+        self.assertEqual(table["Derrotas"], (best % 1, plain % 3))  # menos é melhor
+        self.assertEqual(table["Ranking"], (best % "1º", plain % "2º"))
+        # Últimos jogos: no HTML do mais recente para o mais antigo (o CSS .recent-fit desenha na
+        # ordem certa e, sem espaço no celular, esconde os mais antigos em vez de quebrar a linha).
+        for cell, form in zip(table["Últimos jogos"], (result["a_form"], result["b_form"])):
+            self.assertIn('class="recent recent-fit"', cell)
+            self.assertEqual(re.findall(r'class="f-([VED])"', cell), form[::-1])
+        self.assertNotIn("Títulos", rows("/torneios/comparar?b=p1&modalidade=friendly"))  # só na rankeada
+        self.assertEqual(rows(f"/torneios/comparar?b=p1&jogo={other}")["Títulos"], (plain % 0, best % 1))
 
     def test_player_history_filters_and_opponent_photos(self):
         from datetime import timedelta

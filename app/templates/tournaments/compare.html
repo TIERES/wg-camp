@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from '_avatar.html' import avatar_button %}{% from '_user_picker.html' import user_picker %}{% from 'tournaments/_stats_macros.html' import player_link, form_badges %}{% from 'tournaments/_macros.html' import match_line %}
+{% extends 'base.html' %}{% from '_avatar.html' import avatar_button %}{% from '_user_picker.html' import user_picker %}{% from 'tournaments/_stats_macros.html' import player_link, form_badges, result_origin, trophy_icon %}{% from 'tournaments/_result_dialog.html' import result_dialog %}
 {% block title %}Comparar jogadores · WE Camp{% endblock %}{% block content %}
 <h1>Comparar jogadores</h1>
 <p class="muted">Compare você e os seus amigos: escolha dois jogadores diferentes.</p>
@@ -8,6 +8,9 @@
   {% if not loop.first %}<span class="vs">x</span>{% endif %}
   {{ user_picker(field, '', players, value, placeholder=label, required=true, field_id='cmp-' ~ field, exclude='cmp-' ~ other) }}
   {% endfor %}
+  <select name="modalidade" aria-label="Modalidade">
+    {% for key, label in scopes.items() %}<option value="{{ key }}" {% if key == scope %}selected{% endif %}>{{ label }}</option>{% endfor %}
+  </select>
   <select name="jogo" aria-label="Jogo">
     <option value="">Todos os jogos</option>
     {% for g in games %}<option value="{{ g.id }}" {% if g.id == game %}selected{% endif %}>{{ g.name }}</option>{% endfor %}
@@ -17,7 +20,7 @@
 
 {% if result %}{% set h = result.head_to_head %}
 <section class="h2h">
-  <h2>Confronto direto</h2>
+  <h2>Confronto direto <small class="muted compare-scope">· {{ scopes[scope] }}</small></h2>
   <div class="h2h-head">
     <div class="h2h-side">{{ avatar_button(a.id, a.username, 'md') }}<div class="h2h-score">{{ player_link(a.username, game) }}<strong class="h2h-wins">{{ h.wins }}</strong><small>vitórias</small></div></div>
     <div class="h2h-mid"><strong>{{ h.draws }}</strong><small>empates</small><span class="muted">{{ h.played }} jogo{{ 's' if h.played != 1 }}</span></div>
@@ -31,18 +34,30 @@
 </section>
 
 <section>
-  <h2>Campanha geral</h2>
+  <h2>Campanha geral <small class="muted compare-scope">· {{ scopes[scope] }}</small></h2>
   <div class="table-scroll">
   <table class="standings compare-table">
     <thead><tr><th>{{ a.username }}</th><th></th><th>{{ b.username }}</th></tr></thead>
     <tbody>
+    {# Uma linha: como nos Stats do Ao vivo, o número vencedor fica destacado
+       (higher: true = maior é melhor, false = menor é melhor, none = sem
+       vencedor). Sem número (None, como o Ranking de quem não jogou): "—". #}
+    {% macro row(label, va, vb, higher=none, suffix='', icon='') -%}
+    {% set best = none if higher is none or va is none or vb is none or va == vb else (0 if (va > vb) == higher else 1) %}
+      <tr><td><span class="cmp-v{{ ' best' if best == 0 }}">{{ '—' if va is none else va ~ suffix }}</span></td><th>{{ icon }}{{ label }}</th>
+          <td><span class="cmp-v{{ ' best' if best == 1 }}">{{ '—' if vb is none else vb ~ suffix }}</span></td></tr>
+    {%- endmacro %}
     {% set ra, rb = result.a, result.b %}
     {% for label, key, higher in (('Jogos', 'played', none), ('Vitórias', 'wins', true), ('Empates', 'draws', none), ('Derrotas', 'losses', false), ('Aproveitamento', 'efficiency', true)) %}
-      {% set va, vb = ra[key], rb[key] %}
-      <tr><td class="{{ 'better' if higher is not none and va != vb and ((va > vb) == higher) }}">{{ va }}{{ '%' if key == 'efficiency' }}</td><th>{{ label }}</th>
-          <td class="{{ 'better' if higher is not none and va != vb and ((vb > va) == higher) }}">{{ vb }}{{ '%' if key == 'efficiency' }}</td></tr>
+      {{ row(label, ra[key], rb[key], higher, '%' if key == 'efficiency' else '') }}
     {% endfor %}
-      <tr><td>{{ result.a_position ~ 'º' if result.a_position else '—' }}</td><th>Ranking</th><td>{{ result.b_position ~ 'º' if result.b_position else '—' }}</td></tr>
+      {{ row('Ranking', result.a_position, result.b_position, false, 'º') }}
+    {% if result.a_podium %}{# Só na rankeada: os campeonatos encerrados (Galeria de troféus do perfil). #}
+    {% for place, label in ((1, 'Títulos'), (2, 'Vices'), (3, '3º lugares')) %}
+      {% set icon %}<span class="cmp-trophy trophy-{{ place }}">{{ trophy_icon(place) }}</span>{% endset %}
+      {{ row(label, result.a_podium[place], result.b_podium[place], true, icon=icon) }}
+    {% endfor %}
+    {% endif %}
       <tr><td>{{ form_badges(result.a_form) }}</td><th>Últimos jogos</th><td>{{ form_badges(result.b_form) }}</td></tr>
     </tbody>
   </table>
@@ -56,20 +71,11 @@
   {% if card.matches %}
   <div class="recent recent-lg">
     {% for r in card.matches|reverse %}{% set o = outcome(r) %}
-    <button type="button" class="f-btn f-{{ o }}" data-dialog="jogo-{{ r.match_key }}" title="{{ r.goals_for }} x {{ r.goals_against }} · {{ r.tournament_name }}" aria-haspopup="dialog">{{ o }}</button>
+    <button type="button" class="f-btn f-{{ o }}" data-dialog="jogo-{{ r.match_key }}" title="{{ r.goals_for }} x {{ r.goals_against }} · {{ result_origin(r) }}" aria-haspopup="dialog">{{ o }}</button>
     {% endfor %}
   </div>
-  <p class="muted">Do mais antigo ao mais recente. Clique para ver o jogo.</p>
-  {% for r in card.matches %}{% set m = games_by_id.get(r.match_id) if r.kind == 't' %}
-  <dialog class="match-dialog" id="jogo-{{ r.match_key }}" aria-label="Jogo de {{ r.tournament_name }}">
-    {% if m %}{{ match_line(m, names, r.slug) }}{% endif %}
-    <dl>
-      {% if r.kind == 'a' %}<dt>Resultado</dt><dd>{{ r.goals_for }} x {{ r.goals_against }}</dd><dt>Partida</dt><dd><a href="{{ history_url(r) }}">Amistoso</a>{% if r.game_number %} <small class="muted">· jogo {{ r.game_number }}</small>{% endif %}</dd>{% else %}<dt>Campeonato</dt><dd><a href="{{ url_for('tournaments.show', slug=r.slug) }}">{{ r.tournament_name }}</a> <small class="muted">· {{ r.stage_name }}</small></dd>{% endif %}
-      <dt>Data e hora</dt><dd>{{ r.played_at|localtime }}</dd>
-    </dl>
-    <form method="dialog"><button class="secondary">Fechar</button></form>
-  </dialog>
-  {% endfor %}
+  <p class="muted">Campeonatos, amistosos e partidas livres, do mais antigo ao mais recente. Clique para ver o jogo.</p>
+  {% for r in card.matches %}{{ result_dialog(r, popups[r.match_key]) }}{% endfor %}
   {% else %}<p class="muted">Vocês ainda não se enfrentaram{% if game %} neste jogo{% endif %}.</p>{% endif %}
 </section>
 {% endfor %}

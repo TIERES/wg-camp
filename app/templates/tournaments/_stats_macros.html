@@ -72,8 +72,13 @@
 <a href="{{ url_for('tournaments.player', nome=username, jogo=game) }}">{{ username }}</a>
 {%- endmacro %}
 
+{# Últimos resultados (V/E/D) numa linha só, do mais antigo (esquerda) ao mais
+   recente (direita) - `items` nessa ordem (stats.form). Sem espaço para todos
+   (celular), os mais antigos somem em vez de quebrar a linha: no HTML eles vêm
+   do mais recente e o .recent-fit (row-reverse) os desenha na ordem certa,
+   mandando os que não cabem para uma 2ª linha escondida. #}
 {% macro form_badges(items) -%}
-<span class="recent">{% for f in items %}<span class="f-{{ f }}">{{ f }}</span>{% endfor %}</span>
+<span class="recent recent-fit">{% for f in items|reverse %}<span class="f-{{ f }}">{{ f }}</span>{% endfor %}</span>
 {%- endmacro %}
 
 {# Os três cards do jogador (stats.summary): campeonatos e amistosos rankeados,

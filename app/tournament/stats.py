@@ -144,6 +144,9 @@ def outcome(row):
 
 def player_record(db, player_id, game_id=None, opponent_id=None, scope="ranked"):
     if scope == "free":
+        if opponent_id:  # o confronto direto (compare): só as partidas livres entre os dois
+            return _record(_tally(row for row in free.sides(db, game_id)
+                                  if row["player_id"] == player_id and row["opponent_id"] == opponent_id))
         return _free_records(db, game_id).get(player_id) or _record(None)
     where, params = _filters(game_id, opponent_id)
     row = db.execute(f"{_SQL_SCOPES[scope]} SELECT {_TOTALS} FROM results WHERE player_id = ?{where}",
@@ -228,15 +231,33 @@ def players_with_matches(db, game_id=None):
         f"WHERE 1 = 1{where} ORDER BY p.username COLLATE NOCASE", params).fetchall()
 
 
-def compare(db, a, b, game_id=None):
-    """Dois jogadores lado a lado: campanha geral de cada um e o confronto
-    direto (do ponto de vista de `a`)."""
+def compare(db, a, b, game_id=None, scope="ranked"):
+    """Dois jogadores lado a lado: campanha geral de cada um, posição no
+    ranking, últimos jogos e o confronto direto (do ponto de vista de `a`),
+    numa das três modalidades (SCOPES - os cards do perfil). Na rankeada,
+    também os títulos, vices e 3º lugares de cada um (podium)."""
+    def recent(player_id):
+        if scope == "free":
+            return free.player_rows(db, player_id, game_id, pending=False)[:5]
+        return history(db, player_id, game_id, limit=5, scope=scope)
+
     return {
-        "a": player_record(db, a, game_id), "b": player_record(db, b, game_id),
-        "a_position": position(db, a, game_id), "b_position": position(db, b, game_id),
-        "head_to_head": player_record(db, a, game_id, opponent_id=b),
-        "a_form": form(history(db, a, game_id, limit=5)), "b_form": form(history(db, b, game_id, limit=5)),
+        "a": player_record(db, a, game_id, scope=scope), "b": player_record(db, b, game_id, scope=scope),
+        "a_position": position(db, a, game_id, scope=scope), "b_position": position(db, b, game_id, scope=scope),
+        "head_to_head": player_record(db, a, game_id, opponent_id=b, scope=scope),
+        "a_form": form(recent(a)), "b_form": form(recent(b)),
+        "a_podium": podium(db, a, game_id) if scope == "ranked" else None,
+        "b_podium": podium(db, b, game_id) if scope == "ranked" else None,
     }
+
+
+def podium(db, player_id, game_id=None):
+    """Quantos 1º, 2º e 3º lugares o jogador tem nos campeonatos encerrados
+    (trophies): {1: títulos, 2: vices, 3: terceiros lugares}."""
+    counts = {1: 0, 2: 0, 3: 0}
+    for row in trophies(db, player_id, game_id):
+        counts[row["final_position"]] += 1
+    return counts
 
 
 def trophies(db, player_id, game_id=None):
@@ -273,21 +294,27 @@ def _free_records(db, game_id=None):
     return cache[game_id]
 
 
-def _count_free(db, game_id):
-    totals = {}
-    for row in free.sides(db, game_id):
-        item = totals.setdefault(row["player_id"], {"played": 0, "wins": 0, "draws": 0, "losses": 0,
-                                                    "goals_for": 0, "goals_against": 0})
+def _tally(rows):
+    """Totais (as colunas de _TOTALS) de linhas já calculadas em Python (free.sides)."""
+    item = {"played": 0, "wins": 0, "draws": 0, "losses": 0, "goals_for": 0, "goals_against": 0}
+    for row in rows:
         item["played"] += 1
         item["wins"] += row["goals_for"] > row["goals_against"]
         item["draws"] += row["goals_for"] == row["goals_against"]
         item["losses"] += row["goals_for"] < row["goals_against"]
         item["goals_for"] += row["goals_for"]
         item["goals_against"] += row["goals_against"]
+    return item
+
+
+def _count_free(db, game_id):
+    by_player = {}
+    for row in free.sides(db, game_id):
+        by_player.setdefault(row["player_id"], []).append(row)
     names = {}
     for match in free.matches(db):
         names[match["local_id"]], names[match["visita_id"]] = match["local_name"], match["visita_name"]
-    return {pid: {"username": names.get(pid, ""), **_record(item)} for pid, item in totals.items()}
+    return {pid: {"username": names.get(pid, ""), **_record(_tally(rows))} for pid, rows in by_player.items()}
 
 
 def summary(db, player_id, game_id=None):

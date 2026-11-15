@@ -1,0 +1,46 @@
+{# O popup de um resultado do histórico (Comparar - "Seus últimos resultados";
+   tournament/result_card.py), com o visual do card do Ao vivo (live/_card.html):
+   o jogo base e o campeonato ou a ISO com a descrição, os dois lados (foto com
+   o rank, nick, time usado e gols) e, na partida rankeada, o XP de cada um.
+   r = a linha (stats.all_history), p = result_card.build(r). #}
+{% from '_avatar.html' import avatar %}
+{% from 'tournaments/_stats_macros.html' import result_origin %}
+{% macro result_dialog(r, p) -%}
+{% set title = r.tournament_name if r.kind == 't' else result_origin(r) %}
+<dialog class="match-dialog result-dialog" id="jogo-{{ r.match_key }}" aria-label="{{ title|striptags }}: {{ r.goals_for }} x {{ r.goals_against }}">
+  <div class="live-card-head">
+    {% set t_image = p.tournament and p.tournament.image %}
+    {% set iso_image = not t_image and p.iso and p.iso.image %}
+    {% if p.game or t_image or iso_image %}<span class="live-logos">
+      {% if p.target %}<a href="{{ p.target }}" title="{{ ('Ver o campeonato ' ~ p.tournament.name) if p.tournament else ('Ver a ISO ' ~ p.iso.name) }}">{% endif %}
+      {% if p.game %}<img class="live-game" src="{{ p.game.cover }}" alt="{{ p.game.name }}"{% if not p.target %} title="{{ p.game.name }}"{% endif %} loading="lazy">{% endif %}
+      {% if t_image %}<img class="live-tournament" src="{{ p.tournament.image }}" alt="{{ p.tournament.name }}" loading="lazy">
+      {% elif iso_image %}<img class="live-tournament" src="{{ p.iso.image }}" alt="{{ p.iso.name }}" loading="lazy">{% endif %}
+      {% if p.target %}</a>{% endif %}
+    </span>{% endif %}
+    <span class="live-context"><a href="{{ history_url(r) }}">{{ title }}</a>
+      {% if p.subtitle %}<small>{% if p.subtitle_url %}<a href="{{ p.subtitle_url }}">{{ p.subtitle }}</a>{% else %}{{ p.subtitle }}{% endif %}</small>{% endif %}</span>
+  </div>
+  <div class="live-score result-score">
+    {% for s in p.sides %}
+    <div class="live-team{% if s.team and not s.team.known %} unknown{% endif %}">
+      {% if s.team %}<img class="live-crest" src="{{ s.team.image }}" alt="" loading="lazy"><strong>{{ s.team.name }}</strong>{% endif %}
+      <span class="live-player">{{ avatar(s.id, s.name, 'md') }}<small><a href="{{ url_for('tournaments.player', nome=s.name) }}" title="Perfil de {{ s.name }}">{{ s.name }}</a></small></span>
+      {% if s.xp is not none %}<span class="xp-delta {{ 'up' if s.xp > 0 else 'down' if s.xp < 0 }}" title="{{ s.name }} {{ 'ganhou' if s.xp > 0 else 'perdeu' if s.xp < 0 else 'não ganhou nem perdeu' }} XP nesta partida">{{ '%+d'|format(s.xp) }} XP</span>{% endif %}
+    </div>
+    {% if loop.first %}<div class="live-mid"><div class="live-goals"><span>{{ r.goals_for }}</span><span class="live-x">×</span><span>{{ r.goals_against }}</span></div>
+      {% if p.pens %}<div class="live-pens" title="Disputa de pênaltis">Pênaltis {{ p.pens[0] }} × {{ p.pens[1] }}</div>{% endif %}</div>{% endif %}
+    {% endfor %}
+  </div>
+  {% if p.tripled %}<p class="muted result-note">Quem saiu no meio do jogo perdeu o triplo de XP.</p>
+  {% elif r.kind != 't' and not p.ranked %}<p class="muted result-note">Não vale para o Ranking: sem XP.</p>{% endif %}
+  <dl>
+    {% if p.game %}<dt>Jogo base</dt><dd>{{ p.game.name }}</dd>{% endif %}
+    {% if p.file %}<dt>Arquivo</dt><dd>{{ p.file }}</dd>{% endif %}
+    <dt>Data e hora</dt><dd>{{ r.played_at|localtime }}</dd>
+  </dl>
+  {# Ver amistoso = a página do amistoso; Ver partida = o card da partida no Ao vivo (result_card). #}
+  <form method="dialog">{% if p.friendly_url %}<a class="button" href="{{ p.friendly_url }}">Ver amistoso</a>{% endif %}
+    {%- if p.match_url %}<a class="button" href="{{ p.match_url }}">Ver partida</a>{% endif %}<button class="secondary">Fechar</button></form>
+</dialog>
+{%- endmacro %}
