@@ -1,0 +1,33 @@
+{# Aviso de campeonato liberado (tournament/announce.py): o base.html abre esta
+   janela sozinha (data-auto-open) em qualquer página para o inscrito, até ele
+   clicar em "Entendi" ou "Ver o campeonato" (os dois marcam como visto). O
+   mesmo texto vai por e-mail no sorteio (templates/email/tournament_started.html). #}
+{% macro tournament_notice_dialog(n) -%}
+<dialog class="form-dialog info-dialog tournament-notice" id="aviso-campeonato" aria-labelledby="aviso-campeonato-title" data-auto-open>
+  <div class="form-dialog-body">
+    {% if n.image %}<img class="notice-banner" src="{{ n.image }}" alt="" decoding="async">{% endif %}
+    <div class="notice-head">
+      <img class="notice-cover" src="{{ n.cover }}" alt="{{ n.game_name }}">
+      <div><h2 id="aviso-campeonato-title" tabindex="-1" autofocus>🏆 {{ n.name }}: está valendo!</h2>
+        <small class="muted">{{ n.game_name }}{% if n.organizer %} · organizado por {{ n.organizer }}{% endif %}</small></div>
+    </div>
+    <p>O sorteio foi feito e o campeonato começou. Agora é com você! 🔥</p>
+    {% if n.prize %}<p>💰 <strong>Prêmio: {{ n.prize }}</strong> — 1º {{ n.shares[0] }}{% if n.shares|length > 1 %} · 2º {{ n.shares[1] }}{% endif %}{% if n.shares|length > 2 %} · 3º {{ n.shares[2] }}{% endif %}</p>{% endif %}
+    <p>📈 Cada jogo vale XP{% if n.pays_per_game %} e W${% endif %}: vença, suba de rank{% if n.pays_per_game %} e encha a carteira{% endif %}.</p>
+    <p>🟨🟥 Os cartões entram no desempate: jogue limpo, porque cada amarelo e cada vermelho pode custar a vaga.</p>
+    <p class="notice-list-title"><strong>✅ Antes de cada jogo:</strong></p>
+    <ul class="notice-checklist">
+      <li>Use o RetroArch TIERES na versão mais recente.</li>
+      <li>Entre na <strong>Conta WE Camp</strong> pelo botão "Conta WE Camp" na janela do Kaillera: com os dois jogadores logados, o placar vai sozinho para o site.</li>
+      <li>Joguem até o fim: quem sai no meio de um jogo perde o triplo de XP.</li>
+      <li>No fim, confirme o resultado no site (sem resposta, ele vale sozinho em {{ n.confirm_hours }} h).</li>
+    </ul>
+    <p>📅 {% if n.starts_on and n.ends_on %}De {{ n.starts_on }} até {{ n.ends_on }}. {% elif n.ends_on %}Até {{ n.ends_on }}. {% endif %}{{ n.summary }}</p>
+    <form method="post" action="{{ url_for('announce.seen', slug=n.slug) }}" class="card-actions dialog-actions">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="secondary" name="voltar" value="{{ n.url }}">Ver o campeonato</button>
+      <button name="voltar" value="{{ request.full_path if request.query_string else request.path }}">Entendi</button>
+    </form>
+  </div>
+</dialog>
+{%- endmacro %}

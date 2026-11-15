@@ -1,0 +1,81 @@
+<!doctype html>
+{# E-mail do sorteio (notify.tournament_started): o aviso de campeonato liberado
+   em card (tournament/announce.py view, com os links e imagens do endereço
+   completo do site) e os jogos do inscrito na primeira fase. Estilos dentro de
+   cada elemento e layout em tabelas: é o que os leitores de e-mail entendem. #}
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ n.name }}: está valendo!</title></head>
+<body style="margin:0;padding:0;background:#111827;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#111827;">
+<tr><td align="center" style="padding:24px 12px;">
+  <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#1f2937;border-radius:12px;border-top:4px solid #34d399;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#e5e7eb;">
+    {% if n.image %}
+    <tr><td style="padding:0;"><a href="{{ n.url }}"><img src="{{ n.image }}" width="600" alt="{{ n.name }}" style="display:block;width:100%;max-width:600px;height:auto;border:0;"></a></td></tr>
+    {% endif %}
+    <tr><td style="padding:22px 24px 6px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+        <td width="64" valign="top"><img src="{{ n.cover }}" width="64" height="80" alt="{{ n.game_name }}" style="display:block;width:64px;height:80px;border:0;border-radius:6px;"></td>
+        <td valign="middle" style="padding-left:16px;">
+          <div style="font-size:23px;line-height:1.25;font-weight:800;color:#ffffff;">🏆 {{ n.name }}: está valendo!</div>
+          <div style="font-size:13px;color:#9ca3af;margin-top:5px;">{{ n.game_name }}{% if n.organizer %} · organizado por {{ n.organizer }}{% endif %}</div>
+        </td>
+      </tr></table>
+    </td></tr>
+    <tr><td style="padding:12px 24px 4px;font-size:15px;line-height:1.55;">
+      <p style="margin:0 0 14px;">Olá, <strong style="color:#ffffff;">{{ username }}</strong>! O sorteio foi feito e o campeonato começou. Agora é com você! 🔥</p>
+      {% if n.prize %}
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#111827;border-radius:8px;margin:0 0 14px;">
+        <tr><td style="padding:12px 16px;">
+          <div style="font-size:13px;color:#9ca3af;">💰 Prêmio</div>
+          <div style="font-size:22px;font-weight:800;color:#34d399;">{{ n.prize }}</div>
+          <div style="font-size:14px;color:#e5e7eb;margin-top:2px;">🥇 1º {{ n.shares[0] }}{% if n.shares|length > 1 %} &nbsp;·&nbsp; 🥈 2º {{ n.shares[1] }}{% endif %}{% if n.shares|length > 2 %} &nbsp;·&nbsp; 🥉 3º {{ n.shares[2] }}{% endif %}</div>
+        </td></tr>
+      </table>
+      {% endif %}
+      <p style="margin:0 0 10px;">📈 Cada jogo vale <strong style="color:#ffffff;">XP{% if n.pays_per_game %} e W${% endif %}</strong>: vença, suba de rank{% if n.pays_per_game %} e encha a carteira{% endif %}.</p>
+      <p style="margin:0 0 14px;">🟨🟥 Os cartões entram no desempate: jogue limpo, porque cada amarelo e cada vermelho pode custar a vaga.</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#111827;border-left:3px solid #34d399;border-radius:6px;margin:0 0 14px;">
+        <tr><td style="padding:12px 16px;font-size:14px;line-height:1.5;">
+          <div style="font-weight:700;color:#ffffff;margin-bottom:6px;">✅ Antes de cada jogo</div>
+          <div style="margin:0 0 4px;">• Use o RetroArch TIERES na versão mais recente.</div>
+          <div style="margin:0 0 4px;">• Entre na <strong style="color:#ffffff;">Conta WE Camp</strong> pelo botão "Conta WE Camp" na janela do Kaillera: com os dois jogadores logados, o placar vai sozinho para o site.</div>
+          <div style="margin:0 0 4px;">• Joguem até o fim: quem sai no meio de um jogo perde o triplo de XP.</div>
+          <div>• No fim, confirme o resultado no site (sem resposta, ele vale sozinho em {{ n.confirm_hours }} h).</div>
+        </td></tr>
+      </table>
+      <p style="margin:0 0 14px;">📅 {% if n.starts_on and n.ends_on %}De {{ n.starts_on }} até {{ n.ends_on }}. {% elif n.ends_on %}Até {{ n.ends_on }}. {% endif %}<span style="color:#9ca3af;">{{ n.summary }}</span></p>
+      {% if group %}
+      {# Fase de grupos: o grupo do jogador (bandeira/escudo, time e jogador), sem os jogos de cada rodada. #}
+      <div style="font-weight:700;color:#ffffff;margin:0 0 6px;">⚽ Seu grupo: {{ group.name }}</div>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 6px;">
+        {% for m in group.members %}
+        <tr><td style="padding:8px 12px;font-size:14px;background:{{ '#14382d' if m.me else ('#111827' if loop.index is odd else '#18212f') }};{% if m.me %}border-left:3px solid #34d399;{% endif %}">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+            <td width="32" valign="middle">{% if m.image %}<img src="{{ m.image }}" width="28" alt="" style="display:block;width:28px;max-width:28px;height:auto;border:0;">{% endif %}</td>
+            <td valign="middle" style="padding-left:8px;"><strong style="color:#ffffff;">{{ m.team }}</strong>{% if m.username %} <span style="color:#9ca3af;">{{ m.username }}</span>{% endif %}{% if m.me %} <span style="color:#34d399;font-size:12px;font-weight:700;">(você)</span>{% endif %}</td>
+          </tr></table>
+        </td></tr>
+        {% endfor %}
+      </table>
+      {% if group.note %}<div style="font-size:13px;color:#9ca3af;margin:0 0 6px;">{{ group.note }}</div>{% endif %}
+      {% else %}
+      <div style="font-weight:700;color:#ffffff;margin:0 0 6px;">⚽ Seus jogos na primeira fase</div>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 6px;">
+        {% for line in games %}
+        <tr><td style="padding:7px 12px;font-size:14px;background:{{ '#111827' if loop.index is odd else '#18212f' }};">{{ line }}</td></tr>
+        {% else %}
+        <tr><td style="padding:7px 12px;font-size:14px;background:#111827;color:#9ca3af;">Seu primeiro jogo depende dos resultados da rodada anterior.</td></tr>
+        {% endfor %}
+      </table>
+      {% endif %}
+    </td></tr>
+    <tr><td align="center" style="padding:16px 24px 26px;">
+      <a href="{{ n.my_matches_url }}" style="display:inline-block;background:#34d399;color:#062a1f;font-weight:700;font-size:15px;text-decoration:none;padding:12px 22px;border-radius:8px;margin:4px;">Ver meus jogos</a>
+      <a href="{{ n.url }}" style="display:inline-block;border:1px solid #34d399;color:#34d399;font-weight:700;font-size:15px;text-decoration:none;padding:11px 21px;border-radius:8px;margin:4px;">Ver o campeonato</a>
+    </td></tr>
+  </table>
+  <p style="max-width:600px;margin:14px auto 0;font-family:'Segoe UI',Roboto,Arial,sans-serif;font-size:12px;line-height:1.5;color:#6b7280;">Você recebeu este e-mail porque está inscrito no campeonato {{ n.name }} do WE Camp. Bora, que a taça está esperando um dono! 🏆</p>
+</td></tr>
+</table>
+</body>
+</html>

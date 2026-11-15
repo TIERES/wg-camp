@@ -23,32 +23,45 @@ class XpRulesTest(unittest.TestCase):
         self.assertEqual(len(set(steps)), len(steps))
 
     def test_same_rank_win_and_draw(self):
+        # Rank F: quem perde não perde XP (todo mundo sobe para o E o quanto antes).
         totals, deltas = xp.replay([game(1, 2, 2, 1)], {1: 30, 2: 30})
-        self.assertEqual(deltas[1], {1: 20, 2: -20})
-        self.assertEqual(totals, {1: 50, 2: 10})
+        self.assertEqual(deltas[1], {1: 20, 2: 0})
+        self.assertEqual(totals, {1: 50, 2: 30})
         totals, deltas = xp.replay([game(1, 2, 1, 1)], {1: 30, 2: 30})
         self.assertEqual(deltas[1], {1: 0, 2: 0})
+        # Rank E: vitória +20, a derrota tira pouco (1 logo depois de chegar ao E).
+        _, deltas = xp.replay([game(1, 2, 2, 1)], {1: 110, 2: 110})
+        self.assertEqual(deltas[1], {1: 20, 2: -1})
+
+    def test_loss_grows_with_the_rank(self):
+        """Antes do E não perde; no E de 1 (acabou de chegar) a 3 (perto do D); cada rank soma 2."""
+        self.assertEqual([xp.loss(v) for v in (0, 99, 100, 175, 249, 250, 449, 450, 700, 1000, 1300, 5000)],
+                         [0, 0, 1, 2, 3, 3, 5, 5, 7, 9, 11, 11])
 
     def test_rank_difference_changes_points(self):
         # 1 = Rank D (250), 2 = Rank F (0 + 50): 2 níveis de diferença.
         start = {1: 260, 2: 50}
-        _, upset = xp.replay([game(1, 2, 0, 1)], start)    # o mais fraco ganha: 20 + 2*5
-        self.assertEqual(upset[1], {1: -30, 2: 30})
-        _, favorite = xp.replay([game(1, 2, 1, 0)], start)  # o favorito ganha: 20 - 2*5
-        self.assertEqual(favorite[1], {1: 10, 2: -10})
-        _, draw = xp.replay([game(1, 2, 2, 2)], start)      # empate: o mais fraco ganha 2*5
-        self.assertEqual(draw[1], {1: -10, 2: 10})
-        # A x F (5 níveis): favorito ganha o mínimo; zebra vale 45.
+        _, upset = xp.replay([game(1, 2, 0, 1)], start)    # o mais fraco ganha: 20 + 2*5; o D perde 3
+        self.assertEqual(upset[1], {1: -3, 2: 30})
+        _, favorite = xp.replay([game(1, 2, 1, 0)], start)  # o favorito ganha: 20 - 2*5; o F não perde
+        self.assertEqual(favorite[1], {1: 10, 2: 0})
+        _, draw = xp.replay([game(1, 2, 2, 2)], start)      # empate: o mais fraco ganha 2*5, ninguém perde
+        self.assertEqual(draw[1], {1: 0, 2: 10})
+        # A x F (5 níveis): favorito ganha o mínimo; zebra vale 45 e o A perde 9.
         _, low = xp.replay([game(1, 2, 3, 0)], {1: 1000, 2: 50})
-        self.assertEqual(low[1], {1: xp.MIN_POINTS, 2: -xp.MIN_POINTS})
+        self.assertEqual(low[1], {1: xp.MIN_POINTS, 2: 0})
         _, high = xp.replay([game(1, 2, 0, 3)], {1: 1000, 2: 50})
-        self.assertEqual(high[1], {1: -45, 2: 45})
+        self.assertEqual(high[1], {1: -9, 2: 45})
 
     def test_xp_never_negative_and_can_drop_rank(self):
-        totals, deltas = xp.replay([game(1, 2, 0, 1)], {1: 5, 2: 0})
-        self.assertEqual(deltas[1], {1: -5, 2: 20})
+        # Quem saiu no meio perde o triplo, no mínimo 3 - também no Rank F; nunca abaixo de 0.
+        quit_game = dict(game(1, 2, 0, 1), quitter=1)
+        totals, deltas = xp.replay([quit_game], {1: 2, 2: 0})
+        self.assertEqual(deltas[1], {1: -2, 2: 20})
         self.assertEqual(totals[1], 0)
-        totals, _ = xp.replay([game(1, 2, 0, 1)], {1: 105, 2: 100})
+        _, deltas = xp.replay([dict(game(1, 2, 1, 1), quitter=1)], {1: 300, 2: 300})  # empate: também
+        self.assertEqual(deltas[1], {1: -3 * xp.loss(300), 2: 0})
+        totals, _ = xp.replay([game(1, 2, 0, 1)], {1: 100, 2: 100})
         self.assertEqual(xp.level(totals[1]), 0)  # caiu do E para o F
 
     def test_rank_used_is_the_one_before_each_match(self):

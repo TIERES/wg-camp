@@ -39,7 +39,8 @@ class TournamentNotifyTest(unittest.TestCase):
 
     def mails(self):
         box = self.app.extensions.setdefault("mail_outbox", [])
-        sent = [(m["To"], m["Subject"], m.get_content()) for m in box]
+        # O texto do e-mail (o do sorteio também tem a versão HTML, em card).
+        sent = [(m["To"], m["Subject"], (m.get_body(("plain",)) or m).get_content()) for m in box]
         box.clear()
         return sent
 
@@ -59,7 +60,8 @@ class TournamentNotifyTest(unittest.TestCase):
         owner.post(f"/torneios/{slug}/iniciar", data={"csrf_token": CSRF})
         started = self.mails()
         self.assertEqual(sorted(m[0] for m in started), ["jog1@x.com", "jog2@x.com"])
-        self.assertIn("começou", started[0][1])
+        self.assertEqual(started[0][1], "🏆 Copa Email: está valendo!")
+        self.assertIn("O sorteio foi feito e o campeonato começou", started[0][2])
         self.assertIn("/torneios/meus-jogos", started[0][2])
         self.assertIn("Time Um (jog1) x Time Dois (jog2)", started[0][2].replace("Time Dois (jog2) x Time Um (jog1)",
                                                                                  "Time Um (jog1) x Time Dois (jog2)"))

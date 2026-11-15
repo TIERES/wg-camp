@@ -6,9 +6,10 @@
   <summary>Como funciona o Rank (XP)</summary>
   <p>Todo jogador começa no <strong>Rank F</strong> e sobe até o <strong>A</strong> juntando experiência (XP) nas partidas confirmadas de qualquer campeonato. O rank aparece na foto de cada jogador.</p>
   <ul>
-    <li>Vitória contra alguém do mesmo rank: <strong>+{{ xp_rules.base }} XP</strong> para quem ganha e <strong>−{{ xp_rules.base }} XP</strong> para quem perde.</li>
-    <li>Ranks diferentes: cada nível de diferença muda {{ xp_rules.step }} XP. Ganhar de quem está acima vale mais (e ele perde mais); ganhar de quem está abaixo vale menos (no mínimo {{ xp_rules.min }} XP).</li>
-    <li>Empate no mesmo rank: ninguém ganha nem perde. Empate com rank diferente: o de rank menor ganha {{ xp_rules.step }} XP por nível de diferença e o outro perde o mesmo.</li>
+    <li>Vitória contra alguém do mesmo rank: <strong>+{{ xp_rules.base }} XP</strong>. Contra ranks diferentes, cada nível de diferença muda {{ xp_rules.step }} XP: ganhar de quem está acima vale mais; ganhar de quem está abaixo vale menos (no mínimo {{ xp_rules.min }} XP).</li>
+    <li>Derrota: <strong>até chegar ao Rank E, você não perde XP</strong>. Do E em diante a perda é pequena e cresce com o seu XP: <strong>1 XP</strong> logo que você chega ao E, até <strong>3 XP</strong> perto do D; cada rank acima soma 2 (D de 3 a 5, C de 5 a 7, B de 7 a 9, A de 9 a 11).</li>
+    <li>Empate: ninguém perde XP. Com ranks diferentes, o de rank menor ganha {{ xp_rules.step }} XP por nível de diferença.</li>
+    <li>Quem sai no meio de um jogo e não ganha perde o triplo da perda de uma derrota (no mínimo 3 XP, também antes do Rank E).</li>
     <li>Jogo decidido nos pênaltis conta como empate. O XP nunca fica negativo, e perder XP pode fazer o jogador cair de rank.</li>
   </ul>
   <div class="rank-steps">{% for s in xp_table %}<span><span class="rank-chip rank-{{ s.rank }}">Rank {{ s.rank }}</span> {{ s.min }} XP</span>{% endfor %}</div>

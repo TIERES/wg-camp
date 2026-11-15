@@ -294,7 +294,11 @@ def detect_context(db, match, local_nick, visita_nick):
         "AND (COALESCE(ti.content_id, ci.content_id) IS NULL OR COALESCE(ti.content_id, ci.content_id) = ? COLLATE NOCASE "
         "OR EXISTS (SELECT 1 FROM iso_profiles p WHERE p.content_id = ? COLLATE NOCASE "
         "AND (p.tournament_id = f.iso_tournament_id OR p.catalog_iso_id = f.iso_catalog_id))) "
-        "ORDER BY f.created_at LIMIT 1", (a, b, b, a, content, content)).fetchone()
+        # Mais de um amistoso aceito entre os dois (cada um com uma ISO - friendly.invite): o da
+        # ISO exata, depois o de uma ISO ligada a ela (iso_profiles), por último o sem ISO.
+        "ORDER BY CASE WHEN COALESCE(ti.content_id, ci.content_id) = ? COLLATE NOCASE THEN 0 "
+        "WHEN COALESCE(ti.content_id, ci.content_id) IS NULL THEN 2 ELSE 1 END, f.created_at LIMIT 1",
+        (a, b, b, a, content, content, content)).fetchone()
     if row:
         db.execute("UPDATE live_matches SET friendly_id = ? WHERE id = ?", (row["id"], match["id"]))
         return
@@ -641,6 +645,9 @@ def card(db, match):
             "clock": "Sem sinal" if stale else _clock_label(match),
             "interval": _interval(match) or _period_over(match),  # sem o risco animado
             "context": label, "link": link,
+            # Jogo de campeonato: o nome dele já está no título (_context); nos outros (amistoso com a
+            # ISO de um campeonato, partida livre) ele vai embaixo do título.
+            "championship": bool(match["tournament_match_id"]),
             "agreed": match["agreed"], "reporters": match["reporters"], "file": _file_name(match),
             "when": format_local(match["started_at"], "%d/%m/%Y %H:%M"),
             "game": {"name": game["name"], "cover": cover_url(game["code"])} if game else None,

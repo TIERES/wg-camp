@@ -668,6 +668,12 @@ button.small,.button.small { padding:.4rem .7rem; font-size:.78rem }
 .cards-cell { white-space:nowrap } .card-chip { display:inline-flex; align-items:center; gap:.2rem; margin-right:.4rem }
 .card-chip::before { content:""; display:inline-block; width:.5rem; height:.7rem; border-radius:2px; background:#facc15 } .card-r::before { background:#ef4444 }
 .tiebreak-legend { margin:.5rem 0 0 }
+/* Aviso de campeonato liberado (tournaments/_notice.html): a imagem do campeonato, a capa do jogo e o checklist. */
+.tournament-notice .notice-banner { display:block; width:100%; height:auto; border-radius:8px; margin:0 0 .85rem }
+.tournament-notice .notice-head { display:flex; align-items:center; gap:.85rem; margin:0 0 .6rem }
+.tournament-notice .notice-head h2 { margin:0 } .tournament-notice .notice-cover { width:3.6rem; height:auto; flex:none; border-radius:6px }
+.tournament-notice p { margin:.45rem 0 } .tournament-notice .notice-list-title { margin-bottom:.2rem }
+.tournament-notice .notice-checklist { margin:0 0 .5rem; padding-left:1.2rem } .tournament-notice .notice-checklist li { margin:.2rem 0 }
 .provisional-legend { margin:.35rem 0 0 } .provisional-dot { display:inline-block; width:.7rem; height:.7rem; border-radius:2px; background:#431407; border:1px solid #ea580c; vertical-align:middle }
 .match-head .provisional-legend { text-align:center } .match-live-big { font-size:.9rem }
 .live-score { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; gap:.75rem }

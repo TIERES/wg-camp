@@ -56,9 +56,9 @@ def _deliver(messages):
 
     def work():
         with app.app_context():
-            for to, subject, body in messages:
+            for to, subject, body, *html in messages:  # (para, assunto, texto[, html])
                 try:
-                    send_mail(to, subject, body + SIGNATURE)
+                    send_mail(to, subject, body + SIGNATURE, html[0] if html else None)
                 except MailError:
                     pass  # send_mail já registrou no log
 
@@ -91,18 +91,24 @@ def _match_context(db, tournament, match_id):
         "tournaments.match", slug=tournament["slug"], match_id=match_id)
 
 
+def _games_lines(db, stage, entry):
+    """Os jogos do inscrito na fase: "Rodada N: A x B"."""
+    lines = []
+    for match in db.execute("SELECT * FROM tournament_matches WHERE stage_id = ? AND "
+                            "(home_entry_id = ? OR away_entry_id = ?) ORDER BY round, leg, id",
+                            (stage["id"], entry["id"], entry["id"])):
+        home, away = _entry(db, match["home_entry_id"]), _entry(db, match["away_entry_id"])
+        lines.append(f"Rodada {match['round']}: {_label(home)} x {_label(away)}")
+    return lines
+
+
 def _games_messages(db, tournament, stage, entry_ids, subject, intro):
     link = external_url("tournaments.my_matches")
     page = external_url("tournaments.show", slug=tournament["slug"], aba="jogos")
     messages = []
     for entry_id in entry_ids:
         entry = _entry(db, entry_id)
-        lines = []
-        for match in db.execute("SELECT * FROM tournament_matches WHERE stage_id = ? AND "
-                                "(home_entry_id = ? OR away_entry_id = ?) ORDER BY round, leg, id",
-                                (stage["id"], entry["id"], entry["id"])):
-            home, away = _entry(db, match["home_entry_id"]), _entry(db, match["away_entry_id"])
-            lines.append(f"  Rodada {match['round']}: {_label(home)} x {_label(away)}")
+        lines = ["  " + line for line in _games_lines(db, stage, entry)]
         games = "\n".join(lines) if lines else "  Seu primeiro jogo depende dos resultados da rodada anterior."
         messages.append((entry["email"], subject, (
             f"Olá, {entry['username']}!\n\n{intro}\n\n"
@@ -112,11 +118,51 @@ def _games_messages(db, tournament, stage, entry_ids, subject, intro):
 
 
 def tournament_started(db, tournament):
-    """Para cada inscrito: os jogos dele na primeira fase e o link de Meus jogos."""
+    """Para cada inscrito, o aviso de campeonato liberado (tournament/announce.py,
+    o mesmo da janela do site) em card, com a imagem do campeonato e a capa do jogo
+    base, e os jogos dele na primeira fase - no texto puro, a mesma mensagem."""
+    from flask import render_template
+    from .announce import group_view, view
     stage = store.stages_of(db, tournament["id"])[0]
-    _deliver(_games_messages(db, tournament, stage, [e["id"] for e in store.entries_of(db, tournament["id"])],
-                             f"O campeonato {tournament['name']} começou!",
-                             f"O sorteio foi feito e o campeonato {tournament['name']} começou."))
+    notice = view(db, tournament, external=True)
+    prize = ""
+    if notice["prize"]:
+        places = " · ".join(f"{n}º {value}" for n, value in enumerate(notice["shares"], 1))
+        prize = f"Prêmio: {notice['prize']} - {places}\n"
+    dates = (f"De {notice['starts_on']} até {notice['ends_on']}. " if notice["starts_on"] and notice["ends_on"]
+             else f"Até {notice['ends_on']}. " if notice["ends_on"] else "")
+    gains = "Cada jogo vale XP" + (" e W$: vença, suba de rank e encha a carteira." if notice["pays_per_game"]
+                                   else ": vença e suba de rank.")
+    messages = []
+    for row in store.entries_of(db, tournament["id"]):
+        entry = _entry(db, row["id"])
+        # Fase de grupos: o grupo dele (times e jogadores), sem os jogos de cada rodada;
+        # nas outras, os jogos dele na primeira fase.
+        group = group_view(db, tournament, stage, entry["id"]) if stage["kind"] == "groups" else None
+        lines = [] if group else _games_lines(db, stage, entry)
+        if group:
+            members = "\n".join("  " + m["team"] + (f" - {m['username']}" if m["username"] else "")
+                                + (" (você)" if m["me"] else "") for m in group["members"])
+            games = f"Seu grupo: {group['name']}\n{members}" + (f"\n{group['note']}" if group["note"] else "")
+        else:
+            games = "Seus jogos na primeira fase:\n" + (
+                "\n".join("  " + line for line in lines) or "  Seu primeiro jogo depende dos resultados da rodada anterior.")
+        body = (f"Olá, {entry['username']}!\n\n{tournament['name']}: está valendo!\n"
+                "O sorteio foi feito e o campeonato começou. Agora é com você!\n\n"
+                f"{prize}{gains}\nOs cartões entram no desempate: jogue limpo.\n\n"
+                "Antes de cada jogo:\n"
+                "  - Use o RetroArch TIERES na versão mais recente.\n"
+                "  - Entre na Conta WE Camp pelo botão \"Conta WE Camp\" na janela do Kaillera: com os dois "
+                "jogadores logados, o placar vai sozinho para o site.\n"
+                "  - Joguem até o fim: quem sai no meio de um jogo perde o triplo de XP.\n"
+                f"  - No fim, confirme o resultado no site (sem resposta, ele vale sozinho em {notice['confirm_hours']} h).\n\n"
+                f"{dates}{notice['summary']}\n\n"
+                f"{games}\n\nVeja seus confrontos e reporte os placares em:\n"
+                f"{notice['my_matches_url']}\n\nTabela e todos os jogos do campeonato:\n{notice['games_url']}\n")
+        html = render_template("email/tournament_started.html", n=notice, username=entry["username"], games=lines,
+                               group=group)
+        messages.append((entry["email"], f"🏆 {tournament['name']}: está valendo!", body, html))
+    _deliver(messages)
 
 
 def stage_started(db, tournament):

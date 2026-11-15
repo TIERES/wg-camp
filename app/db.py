@@ -604,6 +604,15 @@ CREATE TABLE IF NOT EXISTS friendly_game_confirms (
     confirmed_at TEXT NOT NULL,
     PRIMARY KEY (live_match_id, player_id)
 );
+
+-- Aviso de campeonato liberado (tournament/announce.py): a janela no site
+-- some para o jogador depois do "Entendi".
+CREATE TABLE IF NOT EXISTS tournament_notices_seen (
+    player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+    seen_at TEXT NOT NULL,
+    PRIMARY KEY (player_id, tournament_id)
+);
 """
 
 

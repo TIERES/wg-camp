@@ -30,6 +30,13 @@ def state(kickoff=1000, frame=20000, period=0, clock=9000, goals=(1, 0), final=F
     })
 
 
+def dict_state(raw, **changes):
+    """O estado JSON de state() com alguns campos trocados."""
+    data = json.loads(raw)
+    data.update(changes)
+    return json.dumps(data)
+
+
 def krec(drops):
     """Replay KRC1 da transmissão: registros de controles vazios (0x12, um por
     quadro) e as saídas (0x14) nos quadros pedidos [(nick, quadro)]."""
@@ -659,6 +666,30 @@ class LiveMatchesTest(unittest.TestCase):
                                r'alt="Euro WE Camp"')
         self.assertRegex(html, r'·</span><a href="[^"]*/euro-1\?aba=tabela" title="Ver o campeonato Euro WE Camp">')
         self.assertNotIn("euro.webp", html)
+        # Jogo de campeonato: o nome já está no título - não se repete embaixo dele.
+        self.assertNotRegex(html, r'<small><a href="[^"]*/euro-1\?aba=tabela">Euro WE Camp</a></small>')
+
+    def test_friendly_card_shows_the_championship_of_its_iso(self):
+        """Amistoso com a ISO de um campeonato: o nome do campeonato embaixo de "Amistoso" -
+        também para os dois jogadores, que têm o link do amistoso no título."""
+        self.make_tournament()
+        with self.app.app_context():
+            db = get_db()
+            t = db.execute("SELECT id, game_title_id FROM tournaments").fetchone()
+            fid = db.execute("INSERT INTO friendly_matches (home_id, away_id, status, iso_tournament_id, game_title_id, "
+                             "created_at, updated_at) VALUES (?, ?, 'accepted', ?, ?, ?, ?)",
+                             (self.tieres, self.anders, t["id"], t["game_title_id"], now(), now())).lastrowid
+            db.commit()
+        self.post(state())
+        self.assertEqual(self.rows("SELECT friendly_id FROM live_matches")[0]["friendly_id"], fid)
+        name = r'<small><a href="[^"]*/euro-1\?aba=tabela">Euro WE Camp</a></small>'
+        client = self.app.test_client()
+        with client.session_transaction() as sess:
+            sess["player_id"] = self.tieres
+        html = self.cards(client)
+        self.assertRegex(html, r'<span class="live-context"><a href="[^"]*/amistosos/%d">Amistoso</a>' % fid)
+        self.assertRegex(html, name)
+        self.assertRegex(self.cards(), name)  # quem não joga: o título sem link, o nome embaixo
 
     def test_championship_iso_must_match(self):
         ida, volta = self.make_tournament()
@@ -688,6 +719,26 @@ class LiveMatchesTest(unittest.TestCase):
         self.post(state(kickoff=64000))
         second = self.rows("SELECT * FROM live_matches ORDER BY id")[1]
         self.assertEqual(second["tournament_match_id"], volta)
+
+    def test_two_open_friendlies_each_game_goes_to_its_iso(self):
+        """Dois amistosos aceitos entre os dois (um sem ISO, mais antigo, e um com a ISO da
+        partida): a partida vai para o da ISO exata."""
+        with self.app.app_context():
+            db = get_db()
+            game = db.execute("SELECT id FROM game_titles WHERE code = 'we2002'").fetchone()["id"]
+            loose = db.execute("INSERT INTO friendly_matches (home_id, away_id, status, created_at, updated_at) "
+                               "VALUES (?, ?, 'accepted', ?, ?)", (self.tieres, self.anders, now(), now())).lastrowid
+            catalog = db.execute("INSERT INTO catalog_isos (name, game_title_id, original_filename, content_id, is_active, "
+                                 "created_at, updated_at) VALUES ('Euro', ?, 'Euro.bin', 'ba9bde21:1c473f60', 1, ?, ?)",
+                                 (game, now(), now())).lastrowid
+            euro = db.execute("INSERT INTO friendly_matches (home_id, away_id, status, iso_catalog_id, game_title_id, "
+                              "created_at, updated_at) VALUES (?, ?, 'accepted', ?, ?, ?, ?)",
+                              (self.anders, self.tieres, catalog, game, now(), now())).lastrowid
+            db.commit()
+        self.post(state())  # BA9BDE21:1C473F60 = a ISO do amistoso "Euro"
+        self.assertEqual(self.rows("SELECT friendly_id FROM live_matches")[0]["friendly_id"], euro)
+        self.post(dict_state(state(kickoff=40000), content="11111111:10"))  # outra ISO: o sem ISO
+        self.assertEqual(self.rows("SELECT friendly_id FROM live_matches ORDER BY id")[1]["friendly_id"], loose)
 
     def test_friendly_iso_must_match(self):
         with self.app.app_context():
@@ -1307,12 +1358,12 @@ class LiveMatchesTest(unittest.TestCase):
         with self.app.app_context():
             db = get_db()
             totals, deltas = xp.compute(db)
-            # 1º: TIERES +20 (ANDERSHOW sem XP a perder); 2º: ANDERSHOW +20, TIERES -20; 3º: ANDERSHOW +20.
+            # 1º: TIERES +20; 2º e 3º: ANDERSHOW +20 - no Rank F a derrota não tira XP.
             self.assertEqual([deltas["a%d-%d" % (fid, n)] for n in (1, 2, 3)],
-                             [{self.tieres: 20, self.anders: 0}, {self.tieres: -20, self.anders: 20},
+                             [{self.tieres: 20, self.anders: 0}, {self.tieres: 0, self.anders: 20},
                               {self.tieres: 0, self.anders: 20}])
             self.assertNotIn("a%d" % fid, deltas)  # nada do agregado
-            self.assertEqual((totals[self.tieres], totals[self.anders]), (0, 40))
+            self.assertEqual((totals[self.tieres], totals[self.anders]), (20, 40))  # no Rank F a derrota não tira XP
             record = stats.player_record(db, self.tieres)
             self.assertEqual((record["played"], record["wins"], record["losses"]), (3, 1, 2))
         page = client.get("/torneios/amistosos/%d" % fid).get_data(as_text=True)
@@ -1322,7 +1373,7 @@ class LiveMatchesTest(unittest.TestCase):
         dialog = page[page.index('id="jogo-%d-2"' % fid):]
         dialog = dialog[:dialog.index("</dialog>")]
         self.assertIn("TIERES 0 x 3 ANDERSHOW", dialog)
-        self.assertIn(">-20 XP</span>", dialog)
+        self.assertIn(">+0 XP</span>", dialog)
         self.assertIn(">+20 XP</span>", dialog)
         status = client.get("/torneios/status", follow_redirects=True).get_data(as_text=True)  # = a página do jogador
         self.assertIn("Amistoso rankeado · jogo 3", status)  # o 3º jogo nos últimos jogos
@@ -1443,7 +1494,7 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertEqual({r["id"]: r["quitter"] for r in rows}, {"a%d-1" % fid: None, "a%d-2" % fid: self.tieres})
         tripled = set()
         deltas = xp.replay(rows, {self.tieres: 300, self.anders: 300}, tripled=tripled)[1]
-        self.assertEqual(deltas["a%d-2" % fid], {self.tieres: -60, self.anders: 20})
+        self.assertEqual(deltas["a%d-2" % fid], {self.tieres: -3 * xp.loss(300), self.anders: 20})
         self.assertEqual(tripled, {"a%d-2" % fid})
         # Desmarcando a caixa ao confirmar o jogo de que ele saiu: sem o triplo.
         with self.app.app_context():

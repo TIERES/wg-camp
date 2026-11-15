@@ -159,5 +159,7 @@ def create_app(test_config=None):
     from .wallet import format_cents
     app.register_blueprint(tournaments_bp)
     app.register_blueprint(tournaments_admin_bp)
+    from .tournament.announce import bp as announce_bp  # aviso de campeonato liberado
+    app.register_blueprint(announce_bp)
     app.jinja_env.filters["wcash"] = format_cents
     return app

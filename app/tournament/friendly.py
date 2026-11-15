@@ -85,6 +85,35 @@ def unlocked(db, *player_ids):
     return all(peaks.get(pid, 0) >= MIN_XP for pid in player_ids)
 
 
+def _iso_content(db, iso_tournament_id, iso_catalog_id):
+    """O arquivo da ISO escolhida no convite (CRC32:TAMANHO) ou None."""
+    if iso_tournament_id:
+        row = db.execute("SELECT content_id FROM tournament_isos WHERE tournament_id = ?",
+                         (iso_tournament_id,)).fetchone()
+    elif iso_catalog_id:
+        row = db.execute("SELECT content_id FROM catalog_isos WHERE id = ?", (iso_catalog_id,)).fetchone()
+    else:
+        return None
+    if row is None or not row["content_id"]:
+        return None
+    return row["content_id"].upper()
+
+
+def _same_iso(db, row, iso_tournament_id, iso_catalog_id):
+    """O amistoso `row` usa a mesma ISO do convite? A mesma escolha (o mesmo campeonato,
+    a mesma do cadastro, ou os dois sem ISO) ou o mesmo arquivo por caminhos diferentes."""
+    if (row["iso_tournament_id"], row["iso_catalog_id"]) == (iso_tournament_id, iso_catalog_id):
+        return True
+    mine = _iso_content(db, iso_tournament_id, iso_catalog_id)
+    return mine is not None and mine == _iso_content(db, row["iso_tournament_id"], row["iso_catalog_id"])
+
+
+def confirmed_by_one(row):
+    """Um dos dois já confirmou todos os jogos (o outro ou o prazo fecham o amistoso):
+    placar lido do jogo com first_confirmed_by, ou o placar informado por um jogador."""
+    return row["status"] == "reported" and bool(row["first_confirmed_by"] or row["reported_by"])
+
+
 def invite(db, me, other_id, iso_choice=None, message="", aggregate=False, ranked=True):
     """Convida um amigo, com a ISO escolhida (opcional - "t:<torneio>" ou
     "c:<cadastro>", iso_catalog.py), se no fim mostra o placar agregado
@@ -95,10 +124,15 @@ def invite(db, me, other_id, iso_choice=None, message="", aggregate=False, ranke
     if not other_id or not are_friends(db, me, other_id):
         raise TournamentError("Amistosos só podem ser marcados com amigos.")
     iso_tournament_id, iso_catalog_id, game_id = iso_catalog.resolve(db, me, iso_choice)
-    if db.execute(f"SELECT 1 FROM friendly_matches WHERE status IN ({','.join('?' * len(OPEN))}) AND "
-                  "((home_id = ? AND away_id = ?) OR (home_id = ? AND away_id = ?))",
-                  (*OPEN, me, other_id, other_id, me)).fetchone():
-        raise TournamentError("Vocês já têm um amistoso em aberto. Termine (ou cancele) esse antes de marcar outro.")
+    # Mais de um amistoso em aberto com o mesmo amigo, cada um com uma ISO (sem ISO conta como
+    # uma); com a mesma ISO, só depois que um dos dois já confirmou todos os jogos do anterior.
+    for row in db.execute(f"SELECT * FROM friendly_matches WHERE status IN ({','.join('?' * len(OPEN))}) AND "
+                          "((home_id = ? AND away_id = ?) OR (home_id = ? AND away_id = ?))",
+                          (*OPEN, me, other_id, other_id, me)).fetchall():
+        if _same_iso(db, row, iso_tournament_id, iso_catalog_id) and not confirmed_by_one(row):
+            raise TournamentError("Vocês já têm um amistoso em aberto com essa ISO. Escolha outra ISO, ou "
+                                  "termine (ou cancele) esse antes - com todos os jogos dele confirmados por um de "
+                                  "vocês, já dá para convidar de novo.")
     stamp = now()
     ranked = bool(ranked) and unlocked(db, me, other_id)
     return db.execute(

@@ -7,18 +7,21 @@ cancelado recalculam tudo sozinhos). O rank de cada jogador é o do XP que ele
 tinha antes de cada partida.
 
 Regras (fixas no sistema):
-- Vitória entre jogadores do mesmo rank: +BASE para quem ganha, -BASE para quem perde.
-- Ranks diferentes: diff = rank do perdedor - rank do vencedor (em níveis).
-  Ganha/perde BASE + STEP * diff, nunca menos que MIN_POINTS: zebra (o mais
-  fraco ganha) vale mais, o favorito vencendo vale menos.
-- Empate no mesmo rank: ninguém ganha nem perde. Ranks diferentes: o mais
-  fraco ganha STEP * diferença e o mais forte perde o mesmo.
+- Vitória: quem ganha leva BASE no mesmo rank; com ranks diferentes,
+  BASE + STEP * (rank do perdedor - rank do vencedor), nunca menos que
+  MIN_POINTS: zebra (o mais fraco ganha) vale mais, o favorito vencendo vale menos.
+- Derrota (loss): antes do Rank E ninguém perde XP - para todo mundo chegar
+  ao E o quanto antes. Do E em diante a perda é pequena e cresce com o XP:
+  1 logo que chega ao E, até 3 perto do D, e cada rank acima soma 2 (D 3-5,
+  C 5-7, B 7-9, A 9-11) - não depende do adversário.
+- Empate: ninguém perde. Com ranks diferentes, o mais fraco ganha
+  STEP * diferença.
 - O XP nunca fica negativo; perder XP pode fazer o jogador cair de rank.
 - Pênaltis contam como empate (vale o placar do jogo, como no W$ e no V/E/D).
 - Jogo de campeonato ou amistoso em que um jogador saiu da sessão no meio
-  de um jogo (quitter_id, live.py): o que ele perder é multiplicado por
-  QUIT_FACTOR; quem ganhou ganha o normal. No amistoso, só no jogo de que
-  ele saiu.
+  de um jogo (quitter_id, live.py) e não ganhou: ele perde QUIT_FACTOR vezes
+  a perda de uma derrota, no mínimo QUIT_FACTOR (também antes do Rank E e no
+  empate); quem ganhou ganha o normal. No amistoso, só no jogo de que ele saiu.
 - Amistoso: cada jogo lido do jogo vale sozinho, pelo placar dele
   (FRIENDLY_RESULTS), com ou sem "Placar agregado" - o placar agregado é
   só para mostrar.
@@ -94,8 +97,26 @@ def level(xp):
 
 
 def points(winner_level, loser_level):
-    """XP que o vencedor ganha (e o perdedor perde) numa vitória."""
+    """XP que o vencedor ganha numa vitória."""
     return max(MIN_POINTS, BASE + STEP * (loser_level - winner_level))
+
+
+# Derrota: a perda no começo de cada rank (E 1, D 3, C 5, B 7, A 9) e quanto ela sobe até o
+# rank seguinte (2: E vai de 1 a 3 perto do D). No A, sobe ao longo de A_SPAN XP e para.
+LOSS_START, LOSS_RISE, A_SPAN = 1, 2, 300
+
+
+def loss(xp):
+    """XP que o jogador perde numa derrota, pelo XP dele antes do jogo: 0 antes do
+    Rank E; do E em diante, de LOSS_START + LOSS_RISE * (rank - 1) no começo do rank
+    até LOSS_RISE a mais perto do próximo."""
+    index = level(xp)
+    if index == 0:
+        return 0
+    low = THRESHOLDS[index]
+    high = THRESHOLDS[index + 1] if index + 1 < len(THRESHOLDS) else low + A_SPAN
+    progress = min(1.0, (xp - low) / (high - low))
+    return round(LOSS_START + LOSS_RISE * (index - 1) + LOSS_RISE * progress)
 
 
 def compute(db):
@@ -125,25 +146,20 @@ def replay(matches, xp=None, peaks=None, tripled=None):
         a, b = xp.get(home, 0), xp.get(away, 0)
         la, lb = level(a), level(b)
         if m["home_goals"] > m["away_goals"]:
-            gain = points(la, lb)
-            d_home, d_away = gain, -min(gain, b)
+            d_home, d_away = points(la, lb), -min(loss(b), b)
         elif m["home_goals"] < m["away_goals"]:
-            gain = points(lb, la)
-            d_home, d_away = -min(gain, a), gain
-        elif la == lb:
-            d_home = d_away = 0
+            d_home, d_away = -min(loss(a), a), points(lb, la)
         else:
+            # Empate: ninguém perde; com ranks diferentes, o mais fraco ganha.
             gain = STEP * abs(la - lb)
-            if la < lb:  # mandante é o mais fraco
-                d_home, d_away = gain, -min(gain, b)
-            else:
-                d_home, d_away = -min(gain, a), gain
-        # Quem saiu no meio de um jogo perde o triplo (o XP nunca fica negativo).
+            d_home, d_away = (gain if la < lb else 0), (gain if lb < la else 0)
+        # Quem saiu no meio de um jogo e não ganhou perde o triplo da perda de uma derrota,
+        # no mínimo QUIT_FACTOR - também antes do Rank E e no empate (o XP nunca fica negativo).
         quitter = m["quitter"] if "quitter" in m.keys() else None
-        if quitter == home and d_home < 0:
-            d_home = -min(-d_home * QUIT_FACTOR, a)
-        elif quitter == away and d_away < 0:
-            d_away = -min(-d_away * QUIT_FACTOR, b)
+        if quitter == home and m["home_goals"] <= m["away_goals"]:
+            d_home = -min(QUIT_FACTOR * max(loss(a), 1), a)
+        elif quitter == away and m["away_goals"] <= m["home_goals"]:
+            d_away = -min(QUIT_FACTOR * max(loss(b), 1), b)
         if tripled is not None and quitter in (home, away) and (d_home if quitter == home else d_away) < 0:
             tripled.add(m["id"])
         xp[home], xp[away] = a + d_home, b + d_away

@@ -69,13 +69,40 @@ class FriendlyTest(unittest.TestCase):
         self.db.commit()
         return row
 
-    def test_only_friends_and_one_open_per_pair(self):
+    def test_only_friends_and_one_open_per_pair_and_iso(self):
+        """Mais de um amistoso em aberto com o mesmo amigo, cada um com uma ISO; com a
+        mesma ISO, só depois que um dos dois confirmou todos os jogos do anterior."""
         p0, p1, _, p3 = self.players
         with self.assertRaisesRegex(TournamentError, "amigos"):
             friendly.invite(self.db, p0, p3)
-        friendly.invite(self.db, p0, p1)
-        with self.assertRaisesRegex(TournamentError, "em aberto"):
+        first = friendly.invite(self.db, p0, p1)  # sem ISO
+        with self.assertRaisesRegex(TournamentError, "em aberto com essa ISO"):
+            friendly.invite(self.db, p1, p0)  # sem ISO de novo
+        stamp = datetime.now(timezone.utc).isoformat()
+        isos = [self.db.execute(
+            "INSERT INTO catalog_isos (name, game_title_id, stored_name, original_filename, content_id, is_active, "
+            "created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
+            (name, self.game, name + ".bin", name + ".bin", content, stamp, stamp)).lastrowid
+            for name, content in (("Euro", "AAAA0001:10"), ("Copa", "AAAA0002:20"), ("Copa v2", "aaaa0002:20"))]
+        second = friendly.invite(self.db, p1, p0, f"c:{isos[0]}")  # outra ISO: pode
+        friendly.invite(self.db, p0, p1, f"c:{isos[1]}")
+        with self.assertRaisesRegex(TournamentError, "essa ISO"):
+            friendly.invite(self.db, p0, p1, f"c:{isos[0]}")
+        with self.assertRaisesRegex(TournamentError, "essa ISO"):
+            friendly.invite(self.db, p0, p1, f"c:{isos[2]}")  # o mesmo arquivo cadastrado de novo
+        # O anterior com a mesma ISO e todos os jogos confirmados por um dos dois: pode de novo.
+        friendly.respond(self.db, second, p0, True)
+        friendly.report(self.db, second, p1, 2, 1)  # o placar informado por um (ele já confirmou)
+        third = friendly.invite(self.db, p0, p1, f"c:{isos[0]}")
+        self.assertNotIn(third, (first, second))
+        # Placar lido do jogo: depois que o primeiro dos dois confirmou todos os jogos.
+        friendly.respond(self.db, first, p1, True)
+        friendly.report_from_game(self.db, first, 1, 0, stamp)
+        with self.assertRaisesRegex(TournamentError, "essa ISO"):
             friendly.invite(self.db, p1, p0)
+        friendly.confirm(self.db, first, p0)  # o primeiro confirma: falta o outro
+        self.assertEqual(friendly.get(self.db, first)["status"], "reported")
+        friendly.invite(self.db, p1, p0)
 
     def test_flow_with_suspension_until_both_accept(self):
         p0, p1 = self.players[:2]
@@ -101,8 +128,8 @@ class FriendlyTest(unittest.TestCase):
         self.assertEqual((row["status"], row["ranked"], row["home_goals"]), ("confirmed", 1, 1))
         self.assertEqual(stats.player_record(self.db, p0)["wins"], 2)
         totals, deltas = xp.compute(self.db)
-        self.assertEqual(deltas[f"a{fid}"], {p0: 20, p1: -20})
-        self.assertEqual((totals[p0], totals[p1]), (40, 0))
+        self.assertEqual(deltas[f"a{fid}"], {p0: 20, p1: 0})  # p1 no Rank F: a derrota não tira XP
+        self.assertEqual((totals[p0], totals[p1]), (40, 20))
         self.assertIn(("a", f"a{fid}"), [(r["kind"], r["match_key"]) for r in stats.history(self.db, p1)])
 
     def test_new_accounts_do_not_count(self):
@@ -125,11 +152,14 @@ class FriendlyTest(unittest.TestCase):
             self.full(p1, p2, 1, 0)  # p1 ganha 20 XP de amistoso
         self.assertEqual(xp.compute(self.db)[0][p1], 20)
         self.assertEqual(self.full(p0, p1, 0, 0)["ranked"], 0)  # XP de amistoso não libera
-        # p0 chegou a 20 XP em torneio; perde tudo num jogo de torneio e continua liberado.
+        # p0 chegou a 20 XP em torneio; perde XP num jogo de torneio (saiu no meio: o triplo,
+        # também no Rank F) e continua liberado.
         tid = self.league([p0, p3])
-        self.play(tid, p0, p3, 0, 1)
+        match_id = self.play(tid, p0, p3, 0, 1)
+        self.db.execute("UPDATE tournament_matches SET quitter_id = ? WHERE id = ?", (p0, match_id))
+        self.db.commit()
         self.give_xp(p1)
-        self.assertEqual(xp.compute(self.db)[0][p0], 0)
+        self.assertEqual(xp.compute(self.db)[0][p0], 20 - xp.QUIT_FACTOR)
         self.assertEqual(self.full(p0, p1, 0, 0)["ranked"], 1)
 
     def test_daily_limit_per_pair(self):

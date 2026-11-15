@@ -23,7 +23,8 @@ def outbox():
     return current_app.extensions.setdefault("mail_outbox", [])
 
 
-def send_mail(to, subject, body):
+def send_mail(to, subject, body, html=None):
+    """html: a versão HTML (o e-mail vai com as duas - quem não mostra HTML lê o texto)."""
     config = current_app.config
     message = EmailMessage()
     sender = config.get("MAIL_FROM") or config.get("SMTP_USER") or "nao-responda@localhost"
@@ -33,6 +34,8 @@ def send_mail(to, subject, body):
     message["Date"] = formatdate(localtime=True)
     message["Message-ID"] = make_msgid()
     message.set_content(body)
+    if html:
+        message.add_alternative(html, subtype="html")
 
     if config.get("TESTING"):
         outbox().append(message)
