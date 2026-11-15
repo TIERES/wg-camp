@@ -37,7 +37,14 @@
         {%- else %}<small>{{ pl.name }}</small>{% endif %}</span>{% endfor %}</div>
     </div>
     {% if loop.first %}<div class="live-mid"><div class="live-goals"><span>{{ a.goals }}</span><span class="live-x">×</span><span>{{ b.goals }}</span></div>
-      {% if c.pens %}<div class="live-pens" title="Disputa de pênaltis">Pênaltis {{ c.pens[0] }} × {{ c.pens[1] }}</div>{% endif %}</div>{% endif %}
+      {% if c.pens %}<div class="live-pens" title="Disputa de pênaltis">Pênaltis {{ c.pens[0] }} × {{ c.pens[1] }}</div>{% endif %}
+    {# Quem joga a partida e ainda precisa responder (live._confirmation), embaixo do placar:
+       Contestar (📣, a página do jogo/amistoso com a janela de contestar aberta) e Confirmar
+       (🤝, static/js/live-confirm.js); depois, "Você confirmou" (✅). No celular, só o ícone. #}
+    {% if c.confirm %}<div class="live-confirm">{% if c.confirm.state == 'pending' %}
+      <a class="button secondary small" href="{{ c.confirm.dispute_url }}" title="Contestar o placar" aria-label="Contestar o placar"><span class="live-confirm-ico" aria-hidden="true">📣</span><span class="live-confirm-text">Contestar</span></a>
+      <button type="button" class="small" data-live-confirm="{{ c.confirm.confirm_url }}" data-csrf="{{ csrf_token() }}" title="Confirmar o placar" aria-label="Confirmar o placar"><span class="live-confirm-ico" aria-hidden="true">🤝</span><span class="live-confirm-text">Confirmar</span></button>
+    {% else %}<a class="button secondary small live-confirmed" href="{{ c.confirm.url }}" title="Você confirmou: ver {{ 'o jogo' if c.confirm.kind == 'tournament' else 'o amistoso' }}" aria-label="Você confirmou: ver {{ 'o jogo' if c.confirm.kind == 'tournament' else 'o amistoso' }}"><span class="live-confirm-ico" aria-hidden="true">✅</span><span class="live-confirm-text">Você confirmou</span></a>{% endif %}</div>{% endif %}</div>{% endif %}
     {% endfor %}
   </div>
   {% if c.tie %}

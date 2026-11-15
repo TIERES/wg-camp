@@ -23,4 +23,19 @@
   // WE Camp no Kaillera" do base.html - templates/_wecamp_login.html).
   var auto = document.querySelector('dialog[data-auto-open]');
   if (auto && !auto.open && auto.showModal) auto.showModal();
+  // #<id> no endereço (o "Contestar" do card do Ao vivo - live/_card.html): abre a janela
+  // de contestar da página - só se ela existe e o botão que a abre também (quem pode
+  // responder), e sem outra janela já aberta.
+  var wanted = decodeURIComponent(location.hash.slice(1));
+  if (wanted && !(auto && auto.open)) {
+    var target = document.getElementById(wanted);
+    var opener = Array.prototype.filter.call(document.querySelectorAll('[data-dialog]'), function (el) {
+      return el.getAttribute('data-dialog') === wanted;
+    })[0];
+    if (target && opener && target.matches('dialog.form-dialog') && !target.open && target.showModal) {
+      target.showModal();
+      var first = target.querySelector('textarea, input:not([type=hidden])');
+      if (first) first.focus();
+    }
+  }
 })();

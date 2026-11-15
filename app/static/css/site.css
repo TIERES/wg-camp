@@ -669,6 +669,13 @@ button.small,.button.small { padding:.4rem .7rem; font-size:.78rem }
 .card-chip::before { content:""; display:inline-block; width:.5rem; height:.7rem; border-radius:2px; background:#facc15 } .card-r::before { background:#ef4444 }
 .tiebreak-legend { margin:.5rem 0 0 }
 /* Aviso de campeonato liberado (tournaments/_notice.html): a imagem do campeonato, a capa do jogo e o checklist. */
+/* Contestar/Confirmar no card do Ao vivo (live/_card.html), embaixo do placar; no celular só o ícone. */
+.live-confirm { display:flex; justify-content:center; gap:.45rem; margin:.4rem 0 0 }
+.live-confirm .button, .live-confirm button { display:inline-flex; align-items:center; gap:.35rem; margin:0; white-space:nowrap }
+.live-confirm-ico { font-size:1.05em; line-height:1 }
+@media (max-width:560px) { .live-confirm .button, .live-confirm button { padding:.4rem .6rem }
+  .live-confirm-ico { font-size:1.3rem }
+  .live-confirm-text { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap } }
 .tournament-notice .notice-banner { display:block; width:100%; height:auto; border-radius:8px; margin:0 0 .85rem }
 .tournament-notice .notice-head { display:flex; align-items:center; gap:.85rem; margin:0 0 .6rem }
 .tournament-notice .notice-head h2 { margin:0 } .tournament-notice .notice-cover { width:3.6rem; height:auto; flex:none; border-radius:6px }

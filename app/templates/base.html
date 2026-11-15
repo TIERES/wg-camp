@@ -7,7 +7,7 @@
   {# Como o link aparece ao ser compartilhado (WhatsApp, Telegram...): _share.html. #}
   {% block share %}{% endblock %}
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/retroarch.svg') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css', v='20261115t') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css', v='20261115w') }}">
 </head>
 <body>
   <header>
@@ -79,12 +79,13 @@
   </script>
   <script src="{{ url_for('static', filename='js/toast.js', v='20261106a') }}"></script>
   <script src="{{ url_for('static', filename='js/player-card.js') }}" defer></script>
-  <script src="{{ url_for('static', filename='js/dialogs.js', v='20261113a') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/dialogs.js', v='20261115a') }}" defer></script>
   <script src="{{ url_for('static', filename='js/card-flip.js', v='20261110c') }}" defer></script>
   <script src="{{ url_for('static', filename='js/password-toggle.js', v='20261109a') }}" defer></script>
   <script src="{{ url_for('static', filename='js/user-picker.js', v='20261113a') }}" defer></script>
   <script src="{{ url_for('static', filename='js/helpers-picker.js', v='20261113a') }}" defer></script>
   <script src="{{ url_for('static', filename='js/carousel.js', v='20261109b') }}" defer></script>
   <script src="{{ url_for('static', filename='js/share.js', v='20261112a') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/live-confirm.js', v='20261115b') }}" defer></script>
 </body>
 </html>

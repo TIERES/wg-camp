@@ -28,7 +28,7 @@ import json
 import re
 from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, session, url_for
 from markupsafe import Markup
 
 from .db import get_db, now
@@ -618,6 +618,105 @@ def _profile(db, match):
     return game, tournament, catalog
 
 
+def _confirmation(db, match, views):
+    """"Confirmar" e "Contestar" no card para quem está logado e joga a partida
+    que espera a confirmação dele - o jogo de campeonato com o placar reportado
+    (só no card da partida que deu esse placar), o jogo do amistoso sem "Placar
+    agregado" (friendly.confirm_game) ou o amistoso com placar agregado já
+    reportado (friendly.confirm, o amistoso inteiro). state "pending" (os dois
+    botões) ou "done" (já confirmou: "Você confirmou", o link da página do jogo
+    ou do amistoso); None sem nada a mostrar."""
+    from .tournament import friendly, reports
+    me = session.get("player_id")
+    if not me or match["is_test"] or match["status"] == "live":
+        return None
+    label = "%s x %s" % (views[0]["name"], views[1]["name"])
+    info = {"label": label, "confirm_url": url_for("live.confirm", live_id=match["id"])}
+    if match["tournament_match_id"]:
+        row = db.execute(
+            "SELECT m.*, t.slug, t.id AS tournament_id, hp.username AS home_nick, ap.username AS away_nick, "
+            "he.player_id AS home_player, ae.player_id AS away_player FROM tournament_matches m "
+            "JOIN tournament_stages s ON s.id = m.stage_id JOIN tournaments t ON t.id = s.tournament_id "
+            "JOIN tournament_entries he ON he.id = m.home_entry_id JOIN players hp ON hp.id = he.player_id "
+            "JOIN tournament_entries ae ON ae.id = m.away_entry_id JOIN players ap ON ap.id = ae.player_id "
+            "WHERE m.id = ?", (match["tournament_match_id"],)).fetchone()
+        if row is None or row["status"] != "reported" or me not in (row["home_player"], row["away_player"]):
+            return None
+        reported = reports.last_report(db, row["id"])
+        sides = dict(match, home_nick=row["home_nick"], away_nick=row["away_nick"])
+        if reported is None or _home_away(sides, (match["local_goals"] or 0, match["visita_goals"] or 0)) != (
+                reported["home_goals"], reported["away_goals"]):
+            return None  # outra partida do mesmo jogo (jogaram de novo): o placar reportado é de outra
+        entry = row["home_entry_id"] if row["home_player"] == me else row["away_entry_id"]
+        done = row["reported_by_entry_id"] == entry or entry in reports.confirmed_by(db, row["id"])
+        url = url_for("tournaments.match", slug=row["slug"], match_id=row["id"])
+        info.update(kind="tournament", tournament_id=row["tournament_id"], match_id=row["id"], url=url,
+                    dispute_url=url + "#contestar", what="a partida " + label)
+    elif match["friendly_id"]:
+        row = friendly.get(db, match["friendly_id"])
+        if row is None or me not in (row["home_id"], row["away_id"]):
+            return None
+        url = url_for("tournaments.friendly_show", friendly_id=row["id"])
+        if friendly.per_game(row):
+            if row["status"] == "accepted":
+                if (match["game_report"] or "").startswith(_NOT_SUMMED):
+                    return None
+            elif row["status"] != "reported" or not row["game_report"] or db.execute(
+                    "SELECT 1 FROM friendly_games WHERE friendly_id = ? AND live_match_id = ?",
+                    (row["id"], match["id"])).fetchone() is None:
+                return None
+            done = me in friendly.game_confirms(db, row["id"]).get(match["id"], ()) or (
+                row["status"] == "reported" and row["first_confirmed_by"] == me)
+            what = "a partida " + label
+        else:
+            if row["status"] != "reported":
+                return None
+            done = row["reported_by"] == me or bool(row["game_report"] and row["first_confirmed_by"] == me)
+            what = "o amistoso %s x %s" % (row["home_name"], row["away_name"])
+        # "Não aceitar o placar" só existe depois do fim da sessão (amistoso reportado).
+        info.update(kind="friendly", friendly_id=row["id"], per_game=friendly.per_game(row), url=url,
+                    dispute_url=url + ("#rejeitar-%d" % row["id"] if row["status"] == "reported" else ""),
+                    what=what)
+    else:
+        return None
+    info["state"] = "done" if done else "pending"
+    return info
+
+
+@bp.post("/ao-vivo/<int:live_id>/confirmar")
+def confirm(live_id):
+    """O "Confirmar" do card (static/js/live-confirm.js): confirma por quem está
+    logado o jogo de campeonato, o jogo do amistoso ou o amistoso (_confirmation)
+    e responde em JSON {ok, message, url} - url = a página do jogo/amistoso."""
+    from .tournament import friendly, notify, reports, store
+    from .tournament.store import TournamentError
+    if "player_id" not in session:
+        return jsonify(ok=0, message="Entre na sua conta para confirmar."), 401
+    validate_csrf()
+    db = get_db()
+    match = db.execute("SELECT * FROM live_matches WHERE id = ?", (live_id,)).fetchone()
+    info = card(db, match)["confirm"] if match else None
+    if not info or info["state"] != "pending":
+        return jsonify(ok=0, message="Esta partida não está esperando a sua confirmação.",
+                       url=info["url"] if info else None), 400
+    me, tournament = session["player_id"], None
+    try:
+        if info["kind"] == "tournament":
+            tournament = store.get_tournament(db, info["tournament_id"])
+            reports.confirm(db, tournament, info["match_id"], me)
+        elif info["per_game"]:
+            friendly.confirm_game(db, info["friendly_id"], me, live_id)
+        else:
+            friendly.confirm(db, info["friendly_id"], me)
+        db.commit()
+    except TournamentError as error:
+        db.rollback()
+        return jsonify(ok=0, message=str(error), url=info["url"]), 400
+    if tournament is not None:
+        notify.check_completion(db, tournament)  # o aviso de fim do campeonato, como na página do jogo
+    return jsonify(ok=1, message="Obrigado por confirmar %s" % info["what"], url=info["url"])
+
+
 def card(db, match):
     from .images import url as image_url
     from .timeutil import format_local
@@ -645,6 +744,8 @@ def card(db, match):
             "clock": "Sem sinal" if stale else _clock_label(match),
             "interval": _interval(match) or _period_over(match),  # sem o risco animado
             "context": label, "link": link,
+            # Confirmar/Contestar no card, para quem joga a partida e ainda precisa responder.
+            "confirm": _confirmation(db, match, views),
             # Jogo de campeonato: o nome dele já está no título (_context); nos outros (amistoso com a
             # ISO de um campeonato, partida livre) ele vai embaixo do título.
             "championship": bool(match["tournament_match_id"]),

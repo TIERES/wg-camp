@@ -454,6 +454,90 @@ class LiveMatchesTest(unittest.TestCase):
             db.commit()
             self.assertEqual(store.group_tables(db, stage)[0][1][0]["discipline"], 0)
 
+    def player(self, player_id):
+        client = self.app.test_client()
+        with client.session_transaction() as sess:
+            sess["player_id"] = player_id
+            sess["csrf_token"] = CSRF
+        return client
+
+    def test_card_confirm_and_contest_buttons_for_a_championship_game(self):
+        """Card do Ao vivo de jogo de campeonato reportado: Confirmar/Contestar para quem
+        joga e ainda não respondeu; confirmar pelo card (JSON + toast) vira "Você confirmou"."""
+        t, group, (tieres, anders, third) = self.make_league()
+        self.finish_live(goals=(2, 1))
+        live_id = self.rows("SELECT id FROM live_matches")[0]["id"]
+        match_id = self.rows("SELECT id FROM tournament_matches")[0]["id"]
+        me = self.player(self.tieres)
+        # A página do jogo tem a janela que o "#contestar" do card abre (dialogs.js).
+        page = me.get("/torneios/liga-1/jogos/%d" % match_id).get_data(as_text=True)
+        self.assertIn('data-dialog="contestar"', page)
+        self.assertIn('id="contestar"', page)
+        html = self.cards(me)
+        self.assertIn('data-live-confirm="/ao-vivo/%d/confirmar"' % live_id, html)
+        self.assertIn('href="/torneios/liga-1/jogos/%d#contestar" title="Contestar o placar"' % match_id, html)
+        # Embaixo do placar (no meio do card), com os ícones 📣 e 🤝 (no celular, só eles).
+        mid = html[html.index('class="live-mid"'):html.index('class="live-tie"') if 'live-tie' in html else None]
+        self.assertIn('class="live-confirm"', mid)
+        self.assertIn('aria-hidden="true">📣</span><span class="live-confirm-text">Contestar</span>', html)
+        self.assertIn('aria-hidden="true">🤝</span><span class="live-confirm-text">Confirmar</span>', html)
+        self.assertNotIn("data-live-confirm", self.cards())  # quem não está logado
+        self.assertNotIn("data-live-confirm", self.cards(self.player(third)))  # quem não joga
+        reply = me.post("/ao-vivo/%d/confirmar" % live_id, data={"csrf_token": CSRF})
+        self.assertEqual(reply.status_code, 200)
+        self.assertEqual(reply.json["message"], "Obrigado por confirmar a partida Grécia x Croácia")
+        self.assertEqual(reply.json["url"], "/torneios/liga-1/jogos/%d" % match_id)
+        html = self.cards(me)
+        self.assertNotIn("data-live-confirm", html)
+        self.assertIn('href="/torneios/liga-1/jogos/%d" title="Você confirmou: ver o jogo"' % match_id, html)
+        self.assertIn('>✅</span><span class="live-confirm-text">Você confirmou</span>', html)
+        self.assertEqual(me.post("/ao-vivo/%d/confirmar" % live_id, data={"csrf_token": CSRF}).status_code, 400)
+        self.assertEqual(self.rows("SELECT status FROM tournament_matches")[0]["status"], "reported")
+        # O adversário confirma pelo card: o jogo fecha e os botões somem.
+        other = self.player(self.anders)
+        self.assertEqual(other.post("/ao-vivo/%d/confirmar" % live_id, data={"csrf_token": CSRF}).json["ok"], 1)
+        self.assertEqual(self.rows("SELECT status FROM tournament_matches")[0]["status"], "confirmed")
+        self.assertNotIn("live-confirm", self.cards(other))
+        # Sem o token do formulário: recusado.
+        self.assertEqual(self.player(self.tieres).post("/ao-vivo/%d/confirmar" % live_id).status_code, 400)
+
+    def test_card_confirm_for_friendly_games(self):
+        """Amistoso sem placar agregado: cada partida confirmada pelo card (friendly.confirm_game);
+        com placar agregado, depois de reportado, o card confirma o amistoso inteiro."""
+        with self.app.app_context():
+            db = get_db()
+            fid = db.execute("INSERT INTO friendly_matches (home_id, away_id, status, created_at, updated_at) "
+                             "VALUES (?, ?, 'accepted', ?, ?)", (self.tieres, self.anders, now(), now())).lastrowid
+            db.commit()
+        self.play(1000, (2, 1))
+        self.post(state(kickoff=40000, goals=(0, 0)))  # o 2º ainda rolando: sem botões nele
+        live = [r["id"] for r in self.rows("SELECT id FROM live_matches ORDER BY id")]
+        me = self.player(self.tieres)
+        html = self.cards(me)
+        self.assertEqual(html.count("data-live-confirm="), 1)
+        self.assertIn('href="/torneios/amistosos/%d" title="Contestar o placar"' % fid, html)  # sessão aberta: sem a janela
+        reply = me.post("/ao-vivo/%d/confirmar" % live[0], data={"csrf_token": CSRF})
+        self.assertEqual(reply.json["message"], "Obrigado por confirmar a partida Não identificado x Não identificado")
+        self.assertEqual(tuple(self.rows("SELECT live_match_id, player_id FROM friendly_game_confirms")[0]),
+                         (live[0], self.tieres))
+        self.assertIn('href="/torneios/amistosos/%d" title="Você confirmou: ver o amistoso"' % fid, self.cards(me))
+        # Placar agregado: depois de reportado, o card confirma o amistoso inteiro (o 1º dos dois).
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE friendly_matches SET aggregate = 1 WHERE id = ?", (fid,))
+            db.commit()
+        self.post(state(kickoff=40000, goals=(0, 0), period=1, clock=0, final=True, frame=90000))
+        self.play(40000, (0, 0))
+        self.end_session()
+        self.cards()
+        self.assertEqual(self.rows("SELECT status FROM friendly_matches WHERE id = ?", fid)[0]["status"], "reported")
+        html = self.cards(me)
+        self.assertIn('href="/torneios/amistosos/%d#rejeitar-%d" title="Contestar o placar"' % (fid, fid), html)
+        reply = me.post("/ao-vivo/%d/confirmar" % live[0], data={"csrf_token": CSRF})
+        self.assertEqual(reply.json["message"], "Obrigado por confirmar o amistoso TIERES x ANDERSHOW")
+        self.assertEqual(self.rows("SELECT first_confirmed_by FROM friendly_matches WHERE id = ?", fid)[0][0], self.tieres)
+        self.assertEqual(self.cards(me).count('live-confirm-text">Você confirmou'), 2)  # os dois cards do amistoso
+
     def test_finished_match_becomes_the_report_and_confirms_in_24h(self):
         from app.tournament import reports, store
         t, group, (tieres, anders, third) = self.make_league()
