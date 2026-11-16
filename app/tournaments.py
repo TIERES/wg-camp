@@ -27,6 +27,7 @@ from . import images
 from .accounts import absolute_url
 from .db import get_db, now
 from .players import player_required
+from .public import SHARE_IMAGE
 from .security import login_required, validate_csrf
 from .storage import attachment_header
 from .timeutil import format_local
@@ -1353,9 +1354,10 @@ def _share(tournament, enrolled):
         "title": tournament["name"],
         # O convite na frente: o WhatsApp corta o fim da descrição quando ela não cabe.
         "description": "Cadastre-se, participe, ganhe W$ e suba seu Rank! " + " · ".join(parts),
-        "image": absolute_url(images.url("torneio", image)) if image else None,
-        "image_alt": f"Imagem do campeonato {tournament['name']}",
-        "card": bool(tournament["share_image"]),
+        # Sem imagem do campeonato: o cartão da logo do WE Camp (a prévia padrão - public.site_share).
+        "image": absolute_url(images.url("torneio", image) if image else url_for("static", filename=SHARE_IMAGE)),
+        "image_alt": f"Imagem do campeonato {tournament['name']}" if image else "Logo do WE Camp - Winning Eleven",
+        "card": bool(tournament["share_image"]) or not image,
     }
 
 

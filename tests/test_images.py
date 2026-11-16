@@ -197,7 +197,9 @@ class ImagesTest(unittest.TestCase):
         owner.post("/torneios/copa/imagem", data={"csrf_token": CSRF, "acao": "remover"})
         self.assertIsNone(self.one("SELECT share_image FROM tournaments WHERE slug = 'copa'"))
         self.assertEqual(list(folder.iterdir()), [])
-        self.assertNotIn("og:image", self.client().get("/torneios/copa").data.decode())
+        # Sem imagem do campeonato: o cartão da logo do WE Camp (public.site_share).
+        self.assertIn('<meta property="og:image" content="http://localhost/static/images/logo/wecamp-share.jpg">',
+                      self.client().get("/torneios/copa").data.decode())
 
     def test_create_tournament_with_image(self):
         owner = self.client(self.players[2])

@@ -1,11 +1,12 @@
 {# Como o link de uma página aparece ao ser compartilhado (WhatsApp, Telegram, Discord,
    Facebook...): as tags Open Graph, no bloco `share` do base.html.
    share = url, title, description, image (URLs completas; image pode faltar), image_alt e
-   card (a imagem é o cartão JPEG 1200 x 630 - static/js/share-image.js).
+   card (a imagem é o cartão JPEG 1200 x 630 - static/js/share-image.js ou o da logo).
+   Sem o bloco preenchido, o base.html usa a prévia padrão (public.site_share).
    Os aplicativos guardam a prévia por um tempo: uma mudança aqui demora a aparecer. #}
 {% macro share_tags(share) %}
   <meta name="description" content="{{ share.description }}">
-  <meta property="og:site_name" content="Campeonatos WE Camp">
+  <meta property="og:site_name" content="WE Camp">
   <meta property="og:type" content="website">
   <meta property="og:locale" content="pt_BR">
   <meta property="og:url" content="{{ share.url }}">

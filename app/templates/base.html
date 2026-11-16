@@ -3,15 +3,20 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Campeonatos WE 2002{% endblock %}</title>
-  {# Como o link aparece ao ser compartilhado (WhatsApp, Telegram...): _share.html. #}
-  {% block share %}{% endblock %}
-  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/retroarch.svg') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css', v='20261115w') }}">
+  <title>{% block title %}WE Camp{% endblock %}</title>
+  {# Como o link aparece ao ser compartilhado (WhatsApp, Telegram...): _share.html. Sem o
+     bloco preenchido pela página, a prévia padrão com a logo (public.site_share). #}
+  {% from '_share.html' import share_tags %}
+  {% block share %}{{ share_tags(site_share(self.title())) }}{% endblock %}
+  {# A logo do WE Camp (static/images/logo/weCamp.png) em tamanhos pequenos. #}
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='images/logo/wecamp-32.png') }}">
+  <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='images/logo/wecamp-192.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/logo/wecamp-180.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css', v='20261116b') }}">
 </head>
 <body>
   <header>
-    <a href="{{ url_for('public.index') }}">Campeonatos · Winning Eleven</a>
+    <a class="brand" href="{{ url_for('public.index') }}"><img src="{{ url_for('static', filename='images/logo/wecamp-96.png') }}" alt="WE Camp" width="40" height="40"><span>Campeonatos · Winning Eleven</span></a>
     <nav>
       {% if session.user_id %}
       {# Administrador: só o menu dele (o login de admin encerra a sessão de jogador). #}

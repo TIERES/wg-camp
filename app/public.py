@@ -1,11 +1,54 @@
 from pathlib import Path
 
-from flask import Blueprint, Response, abort, current_app, redirect, render_template, send_from_directory
+from flask import Blueprint, Response, abort, current_app, redirect, render_template, request, send_from_directory, url_for
 
+from .accounts import absolute_url
 from .db import get_db, get_setting
 from .storage import attachment_header
 
 bp = Blueprint("public", __name__)
+
+# Prévia padrão dos links do portal (WhatsApp, Telegram, Discord...): toda página
+# que não monta a sua (campeonato, ISO) sai com o título da aba, a descrição da
+# página (ou a geral) e o cartão da logo do WE Camp (static/images/logo/wecamp-share.jpg,
+# 1200 x 630 - as variações menores da logo weCamp.png). O convite vem na frente:
+# o WhatsApp corta o fim da descrição quando ela não cabe.
+SHARE_IMAGE = "images/logo/wecamp-share.jpg"
+SHARE_DESCRIPTION = ("Campeonatos, amistosos, ranking e partidas ao vivo de Winning Eleven online. "
+                     "Cadastre-se e entre em campo!")
+SHARE_DESCRIPTIONS = {
+    "public.index": "Entre em campo! Campeonatos, amistosos, ranking, replays e partidas ao vivo de Winning Eleven "
+                    "online, com o RetroArch TIERES.",
+    "players.register": "Cadastre-se no WE Camp: dispute campeonatos, registre suas partidas, suba de rank e "
+                        "acompanhe as suas estatísticas.",
+    "players.login": "Entre na sua conta WE Camp: seus jogos, campeonatos, amistosos e carteira W$.",
+    "tournaments.index": "Inscreva-se nos campeonatos de Winning Eleven online: jogue pelo Kaillera e dispute W$, "
+                         "troféus e o topo do ranking.",
+    "tournaments.ranking": "Ranking dos jogadores do WE Camp: pontos, vitórias, aproveitamento e o rank por XP.",
+    "tournaments.player": "Perfil no WE Camp: rank, estatísticas, troféus e os últimos resultados.",
+    "tournaments.compare": "Compare jogadores do WE Camp: confronto direto, campanha e troféus.",
+    "tournaments.match": "Jogo de campeonato no WE Camp: placar, gols e histórico da partida.",
+    "tournaments.friendlies": "Amistosos no WE Camp: desafie os seus amigos, jogue pelo Kaillera e registre o placar.",
+    "tournaments.friendly_show": "Amistoso no WE Camp: placar, gols e histórico da partida.",
+    "live.index": "Winning Eleven ao vivo: placar, gols, cartões e estatísticas das partidas acontecendo agora "
+                  "no WE Camp.",
+    "replays.index": "Replays das partidas do WE Camp para assistir no RetroArch TIERES.",
+}
+
+
+@bp.app_template_global()
+def site_share(title):
+    """As tags og: padrão (templates/_share.html) da página atual - base.html usa
+    quando a página não preenche o bloco `share`. `title`: o título da aba."""
+    title = " ".join(str(title).split()) or "WE Camp"
+    return {
+        "url": absolute_url(request.full_path.rstrip("?")),
+        "title": title,
+        "description": SHARE_DESCRIPTIONS.get(request.endpoint, SHARE_DESCRIPTION),
+        "image": absolute_url(url_for("static", filename=SHARE_IMAGE)),
+        "image_alt": "Logo do WE Camp - Winning Eleven",
+        "card": True,
+    }
 
 # Ajuste da administração (painel): mostra os cards de atualização manual
 # ("Atualização light" e "kailleraclient.dll"). Ocultos por padrão desde

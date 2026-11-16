@@ -1075,3 +1075,6 @@ a.record-card:focus-visible { outline:none }
 .withdraw-help { display:flex; justify-content:space-between; gap:.75rem; font-size:.82rem } .withdraw-count { flex-shrink:0; font-variant-numeric:tabular-nums } .withdraw-count.short { color:#fca5a5 }
 .withdraw-word { text-transform:uppercase; letter-spacing:.08em; font-weight:700 } .withdraw-word::placeholder { letter-spacing:.08em; font-weight:400 }
 .withdraw-dialog button.danger:disabled { opacity:.45; cursor:not-allowed }
+/* Logo do WE Camp no cabeçalho (static/images/logo/wecamp-96.png), ao lado do nome do portal. */
+header a.brand { display:inline-flex; align-items:center; gap:.6rem; min-width:0 }
+header a.brand img { width:40px; height:40px; border-radius:9px; flex-shrink:0; box-shadow:0 0 0 1px #1f2a44 }
