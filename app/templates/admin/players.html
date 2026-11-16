@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from '_carousel.html' import carousel, list_note %}{% from '_icons.html' import icon %}{% from '_dialog.html' import info_button, info_dialog %}{% from '_password.html' import password_toggle %}{% block title %}Jogadores · Administração{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from '_carousel.html' import carousel, list_note %}{% from '_icons.html' import icon %}{% from '_avatar.html' import avatar %}{% from '_dialog.html' import info_button, info_dialog %}{% from '_password.html' import password_toggle %}{% block title %}Jogadores · Administração{% endblock %}{% block content %}
 <div class="page-title"><h1 class="title-info">Jogadores cadastrados {{ info_button('jogadores-regras', 'Jogadores cadastrados') }}</h1><a href="{{ url_for('admin.games_list') }}">Jogos do Memory Card</a></div>
 {% call info_dialog('jogadores-regras', 'Jogadores cadastrados') %}
   <ul>
@@ -20,8 +20,10 @@
 {% if players %}
 {% call carousel('Jogadores anteriores', 'Próximos jogadores', 't-cards per-3', fit=false, total=total) %}
   {% for player in players %}
-  <div class="t-card no-side">
+  <div class="t-card no-side player-admin-card">
     <span class="t-body">
+      {# A foto (ou a inicial) com o rank de XP no canto, como no resto do site (_avatar.html). #}
+      <span class="player-photo">{{ avatar(player.id, player.username, 'lg', rank=player.email_verified_at is not none) }}</span>
       <span class="badge {{ 'iso-catalog' if player.email_verified_at else 'iso-pending' }}">{{ 'Confirmado' if player.email_verified_at else 'Não confirmado' }}</span>
       <strong class="t-name">{{ player.username }}</strong>
       <span class="t-meta"><span>{{ icon('mail') }}{{ player.email }}</span></span>

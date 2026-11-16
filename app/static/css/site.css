@@ -1078,3 +1078,11 @@ a.record-card:focus-visible { outline:none }
 /* Logo do WE Camp no cabeçalho (static/images/logo/wecamp-96.png), ao lado do nome do portal. */
 header a.brand { display:inline-flex; align-items:center; gap:.6rem; min-width:0 }
 header a.brand img { width:40px; height:40px; border-radius:9px; flex-shrink:0; box-shadow:0 0 0 1px #1f2a44 }
+/* Administração > Jogadores (admin/players.html): a foto com o rank no canto de cima do card; o texto
+   corre ao lado dela e, abaixo, volta à largura toda (float - as linhas t-meta são flex e desviam). */
+.player-admin-card .t-body { display:block }
+.player-admin-card .t-body > * + * { margin-top:.35rem }
+.player-admin-card .t-body > .badge { display:inline-block; margin-top:0 }
+.player-admin-card .t-body > .t-name { display:block }
+.player-admin-card .player-photo { float:right; margin:0 0 .4rem .75rem; line-height:0 }
+@media (max-width:560px) { .player-admin-card .player-photo .avatar-lg { width:72px; height:72px } .player-admin-card .player-photo .avatar-lg.avatar-initial { font-size:1.8rem } }

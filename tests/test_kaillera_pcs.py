@@ -268,6 +268,10 @@ class AdminKailleraInviteTest(KaillerapcsTestBase):
         self.api_login("Pele")
         page = self.admin.get("/admin/jogadores").get_data(as_text=True)
         self.assertLess(page.index(">Garrincha</strong>"), page.index(">Pele</strong>"))  # cadastro mais novo primeiro
+        # A foto (sem foto: a inicial) com o rank no canto, em cada card.
+        self.assertEqual(page.count('class="player-photo"'), 2)
+        self.assertIn('<span class="avatar avatar-lg avatar-initial" aria-hidden="true">P</span>', page)
+        self.assertEqual(page.count('class="rank-badge rank-F"'), 2)
         pele, garrincha = self.card(page, "Pele"), self.card(page, "Garrincha")
         self.assertIn("Validação no Kaillera", pele)
         self.assertNotIn("PC conectado", pele)
