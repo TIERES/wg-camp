@@ -55,7 +55,7 @@ class AdminPlayersTest(unittest.TestCase):
 
     def mails(self):
         box = self.app.extensions.setdefault("mail_outbox", [])
-        sent = [(m["To"], m["Subject"], m.get_content()) for m in box]
+        sent = [(m["To"], m["Subject"], m.get_body(("plain",)).get_content()) for m in box]
         box.clear()
         return sent
 

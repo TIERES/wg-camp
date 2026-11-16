@@ -1,0 +1,42 @@
+<!doctype html>
+{# Card padrão dos e-mails do WE Camp (app/mailer.py): no alto a logo e
+   "Campeonatos / Winning Eleven" em duas linhas, centralizadas na altura da logo;
+   no fim da mensagem o aviso de que não é preciso responder; no rodapé a logo
+   menor e "WE Camp" com o link para o portal. mail = mailer.links() (endereços
+   completos). Estilos dentro de cada elemento e layout em tabelas: é o que os
+   leitores de e-mail entendem. Os e-mails estendem este e preenchem o bloco card
+   (linhas <tr> da tabela do card) e, se quiserem, o after_card (texto miúdo
+   embaixo do card, antes do rodapé). #}
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{% block title %}{{ subject }}{% endblock %}</title></head>
+<body style="margin:0;padding:0;background:#111827;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#111827;">
+<tr><td align="center" style="padding:24px 12px;">
+  <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#1f2937;border-radius:12px;border-top:4px solid #34d399;font-family:'Segoe UI',Roboto,Arial,sans-serif;color:#e5e7eb;">
+    <tr><td style="padding:18px 24px;border-bottom:1px solid #374151;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+        <td width="64" height="64" valign="middle" style="width:64px;height:64px;"><a href="{{ mail.portal }}"><img src="{{ mail.logo }}" width="64" height="64" alt="WE Camp" style="display:block;width:64px;height:64px;border:0;border-radius:12px;"></a></td>
+        <td valign="middle" style="padding-left:14px;font-family:'Segoe UI',Roboto,Arial,sans-serif;">
+          <a href="{{ mail.portal }}" style="text-decoration:none;">
+            <span style="display:block;font-size:20px;line-height:24px;font-weight:800;color:#ffffff;">Campeonatos</span>
+            <span style="display:block;font-size:20px;line-height:24px;font-weight:800;color:#34d399;">Winning Eleven</span>
+          </a>
+        </td>
+      </tr></table>
+    </td></tr>
+    {% block card %}{% endblock %}
+    <tr><td style="padding:4px 24px 22px;">
+      <div style="border-top:1px solid #374151;padding-top:14px;font-size:13px;line-height:1.5;color:#9ca3af;">✉️ Este é um e-mail automático: não é preciso responder.</div>
+    </td></tr>
+  </table>
+  {% block after_card %}{% endblock %}
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:18px auto 0;">
+    <tr>
+      <td valign="middle"><a href="{{ mail.portal }}"><img src="{{ mail.logo_small }}" width="28" height="28" alt="" style="display:block;width:28px;height:28px;border:0;border-radius:6px;"></a></td>
+      <td valign="middle" style="padding-left:8px;font-family:'Segoe UI',Roboto,Arial,sans-serif;font-size:14px;font-weight:700;"><a href="{{ mail.portal }}" style="color:#9ca3af;text-decoration:none;">WE Camp</a></td>
+    </tr>
+  </table>
+</td></tr>
+</table>
+</body>
+</html>

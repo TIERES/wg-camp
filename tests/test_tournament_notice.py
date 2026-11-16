@@ -58,6 +58,11 @@ class TournamentNoticeTest(unittest.TestCase):
             self.assertIn("Conta WE Camp", content)
             self.assertIn("W$40,00", content)  # 4 x W$10
             self.assertIn("Seus jogos na primeira fase", content)
+            self.assertIn("não é preciso responder", content)
+        # No card padrão (email/_base.html): logo + "Campeonatos / Winning Eleven" e o rodapé "WE Camp".
+        self.assertIn("images/logo/wecamp-192.png", html)
+        self.assertIn(">Winning Eleven</span>", html)
+        self.assertIn(">WE Camp</a>", html)
         # O card: a imagem de compartilhamento (JPEG) e a capa do jogo base em PNG, com o endereço do site.
         self.assertIn('src="https://we.example/imagens/torneio/camp.jpg"', html)
         self.assertIn('src="https://we.example/static/images/games/email/we2002.png"', html)

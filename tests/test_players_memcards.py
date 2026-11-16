@@ -60,7 +60,7 @@ class PlayersTestBase(unittest.TestCase):
         return self.app.extensions.get("mail_outbox", [])
 
     def last_link(self, kind):
-        body = self.mails()[-1].get_content()
+        body = self.mails()[-1].get_body(("plain",)).get_content()
         match = re.search(r"https://we2002\.example(/conta/%s/[^\s]+)" % kind, body)
         self.assertIsNotNone(match, body)
         return match.group(1)
@@ -96,7 +96,7 @@ class RegistrationTest(PlayersTestBase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Confirme seu e-mail", response.get_data(as_text=True))
         self.assertEqual(len(self.mails()), 1)
-        self.assertIn("Pele", self.mails()[0].get_content())
+        self.assertIn("Pele", self.mails()[0].get_body(("plain",)).get_content())
 
         login = self.client.post("/conta/entrar", data={"csrf_token": "csrf", "username": "Pele", "password": "segredo123"})
         self.assertEqual(login.status_code, 302)
@@ -162,7 +162,7 @@ class RegistrationTest(PlayersTestBase):
         self.api_login()
         response = self.client.post("/conta/recuperar", data={"csrf_token": "csrf", "email": "PELE@example.com"})
         self.assertEqual(response.status_code, 200)
-        body = self.mails()[-1].get_content()
+        body = self.mails()[-1].get_body(("plain",)).get_content()
         self.assertIn("Seu usuário é: Pele", body)
 
         link = self.last_link("redefinir")

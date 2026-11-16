@@ -26,13 +26,12 @@ from flask import current_app
 
 from ..accounts import external_url
 from ..db import now
-from ..mailer import MailError, send_mail
+from ..mailer import MailError, compose, deliver, links
 from ..timeutil import format_local
 from . import reports, store
 from .store import TournamentError
 
 AUTO_FINISH_HOURS = 24
-SIGNATURE = "\n--\nWE Camp - Campeonatos\n"
 ADMIN_EMAIL_SETTING = "torneios_admin_email"
 _EMAIL = re.compile(r"^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$")
 
@@ -49,18 +48,20 @@ def admin_emails(db):
 
 
 def _deliver(messages):
-    messages = [m for m in messages if m[0]]
+    # (para, assunto, texto[, html]); o card de cada um é montado aqui, ainda na requisição.
+    messages = [(to, subject, *compose(subject, body, html[0] if html else None))
+                for to, subject, body, *html in messages if to]
     if not messages:
         return
     app = current_app._get_current_object()
 
     def work():
         with app.app_context():
-            for to, subject, body, *html in messages:  # (para, assunto, texto[, html])
+            for to, subject, body, html in messages:
                 try:
-                    send_mail(to, subject, body + SIGNATURE, html[0] if html else None)
+                    deliver(to, subject, body, html)
                 except MailError:
-                    pass  # send_mail já registrou no log
+                    pass  # deliver já registrou no log
 
     if app.config.get("TESTING"):
         work()
@@ -160,7 +161,7 @@ def tournament_started(db, tournament):
                 f"{games}\n\nVeja seus confrontos e reporte os placares em:\n"
                 f"{notice['my_matches_url']}\n\nTabela e todos os jogos do campeonato:\n{notice['games_url']}\n")
         html = render_template("email/tournament_started.html", n=notice, username=entry["username"], games=lines,
-                               group=group)
+                               group=group, mail=links())
         messages.append((entry["email"], f"🏆 {tournament['name']}: está valendo!", body, html))
     _deliver(messages)
 

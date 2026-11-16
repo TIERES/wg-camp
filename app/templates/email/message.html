@@ -1,0 +1,11 @@
+{% extends "email/_base.html" %}
+{# Os e-mails que o site manda só em texto (mailer.compose): o assunto como título
+   e o texto em parágrafos (mailer.paragraphs, já escapados, com os links). #}
+{% block card %}
+    <tr><td style="padding:20px 24px 4px;font-size:15px;line-height:1.55;color:#e5e7eb;">
+      <div style="font-size:19px;line-height:1.3;font-weight:800;color:#ffffff;margin:0 0 14px;">{{ subject }}</div>
+      {% for p in paragraphs %}
+      <p style="margin:0 0 14px;">{{ p }}</p>
+      {% endfor %}
+    </td></tr>
+{% endblock %}
