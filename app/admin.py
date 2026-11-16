@@ -847,12 +847,21 @@ def replays_cleanup_discard(label):
 @bp.get("/jogadores")
 @login_required
 def players_list():
-    from .accounts import UNVERIFIED_TTL
+    from .accounts import PC_SITE_WINDOW, UNVERIFIED_TTL, iso, utcnow
     from .listing import cap, like
     filters = {"name": request.args.get("nome", "").strip(), "status": request.args.get("confirmado", "")}
+    # last_kaillera: a última vez que a Conta WE Camp foi verificada no Kaillera - a entrada pelo
+    # botão "Conta WE Camp" ou o último uso do token de um PC (o DLL chama /api/mc/whoami toda vez
+    # que a janela do Kaillera abre - accounts.pc_active_since), contando PCs já desconectados;
+    # last_pc: o mesmo só dos PCs ainda conectados - com ele dentro de PC_SITE_WINDOW, o jogador
+    # tem PC conectado (accounts.connected_pcs) e não recebe a janela nem o convite.
+    activity = "MAX(MAX(t.created_at, COALESCE(t.last_used_at, '')))"
     sql, params = ("SELECT p.*, (SELECT COUNT(*) FROM memcards m WHERE m.player_id = p.id) AS cards, "
                    "(SELECT MAX(t.created_at) FROM player_tokens t WHERE t.player_id = p.id AND t.kind = 'verify') "
-                   "AS last_verify FROM players p WHERE 1 = 1"), []
+                   f"AS last_verify, (SELECT {activity} FROM player_tokens t WHERE t.player_id = p.id "
+                   f"AND t.kind = 'api') AS last_kaillera, (SELECT {activity} FROM player_tokens t "
+                   "WHERE t.player_id = p.id AND t.kind = 'api' AND t.used_at IS NULL) AS last_pc "
+                   "FROM players p WHERE 1 = 1"), []
     if filters["name"]:
         sql += " AND (p.username LIKE ? ESCAPE '\\' OR p.email LIKE ? ESCAPE '\\')"
         params += [like(filters["name"])] * 2
@@ -860,7 +869,7 @@ def players_list():
         sql += " AND p.email_verified_at IS NOT NULL"
     elif filters["status"] == "nao":
         sql += " AND p.email_verified_at IS NULL"
-    players, total = cap(get_db().execute(sql + " ORDER BY p.username COLLATE NOCASE", params).fetchall())
+    players, total = cap(get_db().execute(sql + " ORDER BY p.created_at DESC, p.id DESC", params).fetchall())
     # Cadastro não confirmado: até quando o nick e o e-mail ficam reservados (48 h depois do
     # cadastro ou do último link de confirmação - accounts.already_registered); None = já livres.
     reserved = {}
@@ -872,7 +881,9 @@ def players_list():
         reserved[player["id"]] = until.isoformat() if until > datetime.now(timezone.utc) else None
     return render_template("admin/players.html", players=players, total=total, filters=filters,
                            filtered=any(filters.values()), reserved=reserved,
-                           reserve_hours=int(UNVERIFIED_TTL.total_seconds() // 3600))
+                           reserve_hours=int(UNVERIFIED_TTL.total_seconds() // 3600),
+                           pc_window_hours=int(PC_SITE_WINDOW.total_seconds() // 3600),
+                           pc_connected_since=iso(utcnow() - PC_SITE_WINDOW))
 
 
 def _player_back():
@@ -993,6 +1004,67 @@ def player_resend(player_id):
         else:
             flash(f"Confirmação reenviada para {player['email']}. O link vale por 48 horas, e o nick "
                   f"{player['username']} fica reservado até lá.", "success")
+    return _player_back()
+
+
+@bp.post("/jogadores/<int:player_id>/convidar-kaillera")
+@login_required
+def player_kaillera_invite(player_id):
+    """Manda por e-mail a janela "Conecte sua Conta WE Camp no Kaillera" (a animação e o
+    passo a passo de _wecamp_login.html) para quem confirmou o cadastro e está sem nenhum PC
+    conectado - a mesma regra da janela no site (accounts.connected_pcs: nunca entrou pelo
+    Kaillera ou não o abre há mais de PC_SITE_WINDOW). Fica anotado em
+    players.kaillera_invite_at, e a janela volta a aparecer no site na próxima visita dele
+    (accounts.pc_popup_due)."""
+    from .accounts import PC_SITE_WINDOW, connected_pcs, external_url, parse_iso, utcnow
+    from .mailer import MailError, links, send_mail
+    validate_csrf()
+    db = get_db()
+    player = _player_or_404(db, player_id)
+    invited = parse_iso(player["kaillera_invite_at"])
+    ever = db.execute("SELECT 1 FROM player_tokens WHERE player_id = ? AND kind = 'api'", (player_id,)).fetchone()
+    if not player["email_verified_at"]:
+        flash(f"{player['username']} ainda não confirmou o cadastro: use \"Reenviar confirmação\".", "error")
+    elif connected_pcs(db, player_id):
+        flash(f"{player['username']} tem PC conectado no Kaillera: o convite não é necessário.", "error")
+    elif invited and utcnow() - invited < timedelta(minutes=2):
+        flash(f"O convite foi enviado para {player['username']} há menos de 2 minutos. Espere um pouco antes de "
+              "reenviar.", "error")
+    else:
+        account = external_url("players.account", _anchor="pcs")
+        gif = external_url("static", filename="images/gif/contaWeCamp.gif")
+        home = external_url("public.index", _anchor="emulator-title")
+        steps = [
+            "No RetroArch FFW TIERES, abra o Menu principal e escolha Kaillera Netplay.",
+            "Na janela do Kaillera, clique no botão Conta WE Camp, na linha de botões de baixo.",
+            f"Digite o e-mail ({player['email']}) e a senha da sua conta WE Camp e clique em Entrar.",
+            f"Pronto: o Nick passa a ser {player['username']} e o PC aparece em PCs conectados no Kaillera:",
+        ]
+        hours = int(PC_SITE_WINDOW.total_seconds() // 3600)
+        intro = (f"Faz mais de {hours} horas que nenhum PC abre o Kaillera com a sua Conta WE Camp." if ever else
+                 "Sua conta no WE Camp está pronta, mas ainda não foi conectada no Kaillera do RetroArch.")
+        body = (f"Olá, {player['username']}!\n\n{intro} Com a conta conectada, você usa o Memory Card online e a "
+                "chamada de voz no Discord, aparece no Ao vivo do WE Camp e o placar dos seus jogos vai sozinho "
+                "para o campeonato ou para o amistoso.\n\nComo conectar:\n"
+                + "\n".join(f"  {n}. {step}" for n, step in enumerate(steps, 1))
+                + f"\n     {account}\n\nVeja a animação com o passo a passo:\n{gif}\n\n"
+                f"Já entrou? O PC fica na lista por {hours} horas depois da última vez que você abriu o Kaillera "
+                "nele. Sem abrir nesse prazo, ele sai da lista, mas a conta continua conectada no Kaillera: é só "
+                "abrir o Kaillera Netplay de novo nesse PC.\n\n"
+                f"Ainda não tem o RetroArch FFW TIERES? Baixe na página inicial:\n{home}\n")
+        html = render_template("email/wecamp_login.html", subject="Conecte sua Conta WE Camp no Kaillera",
+                               mail=links(), player=player, intro=intro, account_url=account, gif_url=gif,
+                               home_url=home, pc_window_hours=hours)
+        try:
+            send_mail(player["email"], "Conecte sua Conta WE Camp no Kaillera", body, html)
+        except MailError:
+            flash("Não foi possível enviar o e-mail agora. Tente novamente em alguns minutos.", "error")
+        else:
+            db.execute("UPDATE players SET kaillera_invite_at = ? WHERE id = ?", (now(), player_id))
+            db.commit()
+            flash(f"Convite enviado para {player['email']}: o passo a passo para entrar na Conta WE Camp pelo "
+                  f"Kaillera. A janela com a animação também volta a aparecer para {player['username']} no site.",
+                  "success")
     return _player_back()
 
 

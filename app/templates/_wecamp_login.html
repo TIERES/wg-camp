@@ -3,11 +3,12 @@
    sozinha (auto_open) para o jogador sem nenhum PC conectado
    (players.wecamp_pc_popup); a "Minha conta" a abre pelo botão
    data-dialog="<id>" (static/js/dialogs.js). #}
-{% macro wecamp_login_dialog(id, auto_open=false) -%}
+{% macro wecamp_login_dialog(id, auto_open=false, first_login=false) -%}
 <dialog class="form-dialog info-dialog wecamp-login-dialog" id="{{ id }}" aria-labelledby="{{ id }}-title"{% if auto_open %} data-auto-open{% endif %}>
   <div class="form-dialog-body">
     <h2 id="{{ id }}-title" tabindex="-1" autofocus>Conecte sua Conta WE Camp no Kaillera</h2>
-    <p>Com a conta conectada no Kaillera do RetroArch, você usa o Memory Card online e a chamada de voz no Discord, aparece no Ao vivo do WE Camp e o placar dos seus jogos vai sozinho para o campeonato ou para o amistoso.</p>
+    {# first_login: a primeira entrada no site depois de confirmar o cadastro (players.wecamp_pc_popup). #}
+    <p>{% if first_login %}Sua conta foi aprovada! 🎉 Agora você já pode entrar na <strong>Conta WE Camp</strong> do Kaillera Netplay. {% endif %}Com a conta conectada no Kaillera do RetroArch, você usa o Memory Card online e a chamada de voz no Discord, aparece no Ao vivo do WE Camp e o placar dos seus jogos vai sozinho para o campeonato ou para o amistoso.</p>
     <img class="wecamp-login-gif" src="{{ url_for('static', filename='images/gif/contaWeCamp.gif') }}" width="850" height="638" decoding="async"
          alt="No Menu principal do RetroArch, Kaillera Netplay; na janela do Kaillera, o botão Conta WE Camp; e-mail e senha e Entrar; o Nick vira o usuário da conta.">
     <ol class="wecamp-login-steps">

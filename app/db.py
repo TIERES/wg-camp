@@ -644,6 +644,10 @@ def ensure_player_columns(database):
     # Foto do perfil (nome do arquivo em AVATARS_DIR - app/images.py).
     if "avatar" not in columns:
         database.execute("ALTER TABLE players ADD COLUMN avatar TEXT")
+    # Quando a administração mandou o "Conecte sua Conta WE Camp no Kaillera" por e-mail
+    # (admin.player_kaillera_invite); a janela do site volta a aparecer depois dele.
+    if "kaillera_invite_at" not in columns:
+        database.execute("ALTER TABLE players ADD COLUMN kaillera_invite_at TEXT")
 
 
 def ensure_live_columns(database):

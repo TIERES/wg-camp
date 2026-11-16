@@ -112,6 +112,20 @@ class PopupTest(KaillerapcsTestBase):
         self.web_login()
         self.assertIn(POPUP, self.page("/conta/"))
 
+    def test_first_login_says_the_account_was_approved(self):
+        """Primeira entrada no site depois de confirmar o cadastro: o texto inicial avisa
+        que a conta foi aprovada; nas outras entradas, o texto de sempre."""
+        self.web_login()
+        first = self.page()
+        self.assertIn(POPUP, first)
+        self.assertIn("Sua conta foi aprovada!", first)
+        self.assertIn("Agora você já pode entrar na <strong>Conta WE Camp</strong> do Kaillera Netplay.", first)
+        self.assertNotIn("Sua conta foi aprovada!", self.page("/conta/"))   # o botão da Minha conta: texto de sempre
+        self.web_login()
+        again = self.page()
+        self.assertIn(POPUP, again)
+        self.assertNotIn("Sua conta foi aprovada!", again)
+
     def test_visitor_and_admin_never_see_it(self):
         self.assertNotIn(POPUP, self.page())
         self.web_login()
@@ -210,6 +224,114 @@ class OpenKailleraTest(KaillerapcsTestBase):
         self.client.post(f"/conta/conexoes/{token}/revogar", data={"csrf_token": "csrf"})
         self.assertEqual(self.open_kaillera(token), 401)   # o DLL esquece o login (fix/conta-recusada)
         self.assertNotIn(f"/conta/conexoes/{token}/revogar", self.page("/conta/"))
+
+
+class AdminKailleraInviteTest(KaillerapcsTestBase):
+    """Administração > Jogadores: os mais novos primeiro, a última verificação da Conta WE Camp
+    no Kaillera e o "Enviar convite do Kaillera" na mesma regra da janela (sem PC conectado)."""
+
+    def setUp(self):
+        super().setUp()
+        with self.app.app_context():
+            db = get_db()
+            db.execute("INSERT INTO users (username, password_hash, created_at, updated_at) VALUES ('adm', 'x', ?, ?)",
+                       (ago(days=1), ago(days=1)))
+            db.execute("UPDATE players SET created_at = ? WHERE username = 'Garrincha'", (ago(days=1),))
+            db.commit()
+            self.ids = {r["username"]: r["id"] for r in db.execute("SELECT id, username FROM players")}
+        self.admin = self.app.test_client()
+        with self.admin.session_transaction() as session:
+            session["csrf_token"] = "csrf"
+            session["user_id"] = 1
+
+    def mails(self):
+        box = self.app.extensions.setdefault("mail_outbox", [])
+        sent = list(box)
+        box.clear()
+        return sent
+
+    def invite(self, username):
+        return self.admin.post(f"/admin/jogadores/{self.ids[username]}/convidar-kaillera",
+                               data={"csrf_token": "csrf", "voltar": "/admin/jogadores"},
+                               follow_redirects=True).get_data(as_text=True)
+
+    def card(self, page, username):
+        """O pedaço da lista com o card do jogador."""
+        start = page.index(f'<strong class="t-name">{username}</strong>')
+        end = page.find('<div class="t-card', start)
+        return page[start:end if end > 0 else len(page)]
+
+    def button(self, username):
+        return f"/admin/jogadores/{self.ids[username]}/convidar-kaillera"
+
+    def test_newest_first_with_the_kaillera_line_and_the_button_rule(self):
+        self.api_login("Pele")
+        page = self.admin.get("/admin/jogadores").get_data(as_text=True)
+        self.assertLess(page.index(">Garrincha</strong>"), page.index(">Pele</strong>"))  # cadastro mais novo primeiro
+        pele, garrincha = self.card(page, "Pele"), self.card(page, "Garrincha")
+        self.assertIn("Validação no Kaillera", pele)
+        self.assertNotIn("PC conectado", pele)
+        self.assertNotIn(self.button("Pele"), pele)                 # PC conectado: sem a janela, sem o botão
+        self.assertIn("Nunca entrou pelo Kaillera", garrincha)
+        self.assertIn(self.button("Garrincha"), garrincha)
+        self.assertIn("Enviar convite do Kaillera", garrincha)
+
+    def test_pc_gone_from_the_site_brings_the_button_back(self):
+        token = self.api_login("Pele")
+        self.set_token(token, created_at=ago(hours=49))
+        pele = self.card(self.admin.get("/admin/jogadores").get_data(as_text=True), "Pele")
+        self.assertIn("Validação no Kaillera", pele)
+        self.assertIn(self.button("Pele"), pele)
+        self.invite("Pele")
+        mail = self.mails()[0]
+        self.assertIn("Faz mais de 48 horas que nenhum PC abre o Kaillera", mail.get_body(("plain",)).get_content())
+
+    def test_invite_sends_the_card_email_and_reopens_the_popup(self):
+        self.web_login("Garrincha")
+        self.assertIn(POPUP, self.page())
+        self.assertNotIn(POPUP, self.page())
+        with self.client.session_transaction() as session:
+            session["pc_popup_at"] = int(time.time()) - 60     # a janela foi vista antes do convite
+        page = self.invite("Garrincha")
+        self.assertIn("Convite enviado para garrincha@example.com", page)
+        [mail] = self.mails()
+        self.assertEqual((mail["To"], mail["Subject"]), ("garrincha@example.com", "Conecte sua Conta WE Camp no Kaillera"))
+        text = mail.get_body(("plain",)).get_content()
+        html = mail.get_body(("html",)).get_content()
+        self.assertIn("ainda não foi conectada no Kaillera", text)
+        self.assertIn("  3. Digite o e-mail (garrincha@example.com)", text)
+        self.assertIn("https://we2002.example/static/images/gif/contaWeCamp.gif", text)
+        self.assertIn("não é preciso responder", text)
+        self.assertIn('src="https://we2002.example/static/images/gif/contaWeCamp.gif"', html)
+        self.assertIn("<strong style=\"color:#ffffff;\">Garrincha</strong> e o PC aparece", html)
+        self.assertIn('href="https://we2002.example/conta/#pcs"', html)
+        self.assertIn(">Winning Eleven</span>", html)   # card padrão
+        with self.app.app_context():
+            invited = get_db().execute("SELECT kaillera_invite_at FROM players WHERE username = 'Garrincha'").fetchone()[0]
+        self.assertGreater(invited, ago(minutes=1))
+        # A janela volta a aparecer no site, uma vez.
+        self.assertIn(POPUP, self.page())
+        self.assertNotIn(POPUP, self.page())
+        # O card mostra o convite; outro em menos de 2 minutos é recusado.
+        card = self.card(self.admin.get("/admin/jogadores").get_data(as_text=True), "Garrincha")
+        self.assertIn("Convite do Kaillera enviado", card)
+        self.assertIn("Reenviar convite do Kaillera", card)
+        self.assertIn("há menos de 2 minutos", self.invite("Garrincha"))
+        self.assertEqual(self.mails(), [])
+
+    def test_no_invite_with_a_connected_pc_or_an_unconfirmed_account(self):
+        self.api_login("Pele")
+        self.assertIn("tem PC conectado no Kaillera", self.invite("Pele"))
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE players SET email_verified_at = NULL WHERE username = 'Garrincha'")
+            db.commit()
+        self.assertIn("ainda não confirmou o cadastro", self.invite("Garrincha"))
+        self.assertNotIn(self.button("Garrincha"), self.admin.get("/admin/jogadores").get_data(as_text=True))
+        self.assertEqual(self.mails(), [])
+        with self.app.app_context():
+            self.assertEqual(get_db().execute("SELECT COUNT(*) FROM players WHERE kaillera_invite_at IS NOT NULL")
+                             .fetchone()[0], 0)
 
 
 if __name__ == "__main__":

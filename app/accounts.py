@@ -337,10 +337,16 @@ def pc_popup_due(db, player_id, shown_at=None):
     """Mostrar a janela "Conecte sua Conta WE Camp no Kaillera"? Só sem nenhum
     PC conectado, e uma vez: `shown_at` (timestamp) é quando ela apareceu
     neste navegador (a sessão do login - entrar de novo zera). Volta a
-    aparecer quando um PC que conectou depois disso sai do site."""
+    aparecer quando um PC que conectou depois disso sai do site, ou quando a
+    administração mandou o convite por e-mail depois disso
+    (admin.player_kaillera_invite - players.kaillera_invite_at)."""
     if connected_pcs(db, player_id):
         return False
     if shown_at is None:
+        return True
+    invite = db.execute("SELECT kaillera_invite_at FROM players WHERE id = ?", (player_id,)).fetchone()
+    invited = parse_iso(invite["kaillera_invite_at"]) if invite else None
+    if invited and invited.timestamp() > shown_at:
         return True
     last = None
     for token in db.execute("SELECT created_at, last_used_at, used_at FROM player_tokens "

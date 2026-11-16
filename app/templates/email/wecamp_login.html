@@ -1,0 +1,30 @@
+{% extends "email/_base.html" %}
+{# "Conecte sua Conta WE Camp no Kaillera" por e-mail (admin.player_kaillera_invite):
+   a mesma janela do site (_wecamp_login.html) - a animação e o passo a passo - no
+   card padrão. intro: nunca entrou pelo Kaillera, ou nenhum PC abre o Kaillera há
+   mais de pc_window_hours. #}
+{% block card %}
+    <tr><td style="padding:20px 24px 4px;font-size:15px;line-height:1.55;color:#e5e7eb;">
+      <div style="font-size:19px;line-height:1.3;font-weight:800;color:#ffffff;margin:0 0 14px;">Conecte sua Conta WE Camp no Kaillera</div>
+      <p style="margin:0 0 14px;">Olá, <strong style="color:#ffffff;">{{ player.username }}</strong>! {{ intro }} Com a conta conectada, você usa o Memory Card online e a chamada de voz no Discord, aparece no Ao vivo do WE Camp e o placar dos seus jogos vai sozinho para o campeonato ou para o amistoso.</p>
+    </td></tr>
+    <tr><td style="padding:0 24px 6px;">
+      <a href="{{ account_url }}"><img src="{{ gif_url }}" width="552" alt="No Menu principal do RetroArch, Kaillera Netplay; na janela do Kaillera, o botão Conta WE Camp; e-mail e senha e Entrar; o Nick vira o usuário da conta." style="display:block;width:100%;max-width:552px;height:auto;border:1px solid #374151;border-radius:8px;"></a>
+    </td></tr>
+    <tr><td style="padding:12px 24px 4px;font-size:15px;line-height:1.55;color:#e5e7eb;">
+      <div style="font-weight:700;color:#ffffff;margin:0 0 6px;">Como conectar</div>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;">
+        {% set n = 'width="28" valign="top" style="padding:4px 0;font-weight:800;color:#34d399;"'|safe %}
+        {% set b = 'style="color:#ffffff;"'|safe %}
+        <tr><td {{ n }}>1.</td><td valign="top" style="padding:4px 0;">No RetroArch FFW TIERES, abra o <strong {{ b }}>Menu principal</strong> e escolha <strong {{ b }}>Kaillera Netplay</strong>.</td></tr>
+        <tr><td {{ n }}>2.</td><td valign="top" style="padding:4px 0;">Na janela do Kaillera, clique no botão <strong {{ b }}>Conta WE Camp</strong>, na linha de botões de baixo.</td></tr>
+        <tr><td {{ n }}>3.</td><td valign="top" style="padding:4px 0;">Digite o <strong {{ b }}>e-mail</strong> ({{ player.email }}) e a <strong {{ b }}>senha</strong> da sua conta WE Camp e clique em <strong {{ b }}>Entrar</strong>.</td></tr>
+        <tr><td {{ n }}>4.</td><td valign="top" style="padding:4px 0;">Pronto: o Nick passa a ser <strong {{ b }}>{{ player.username }}</strong> e o PC aparece em <a href="{{ account_url }}" style="color:#34d399;">PCs conectados no Kaillera</a>.</td></tr>
+      </table>
+      <p style="margin:0 0 10px;font-size:13px;color:#9ca3af;">Já entrou? O PC fica na lista por {{ pc_window_hours }} horas depois da última vez que você abriu o Kaillera nele. Sem abrir nesse prazo, ele sai da lista, mas a conta continua conectada no Kaillera: é só abrir o Kaillera Netplay de novo nesse PC.</p>
+      <p style="margin:0 0 10px;font-size:13px;color:#9ca3af;">Ainda não tem o RetroArch FFW TIERES? <a href="{{ home_url }}" style="color:#34d399;">Baixe na página inicial</a>.</p>
+    </td></tr>
+    <tr><td align="center" style="padding:8px 24px 22px;">
+      <a href="{{ account_url }}" style="display:inline-block;background:#34d399;color:#062a1f;font-weight:700;font-size:15px;text-decoration:none;padding:12px 22px;border-radius:8px;">Ver meus PCs conectados</a>
+    </td></tr>
+{% endblock %}

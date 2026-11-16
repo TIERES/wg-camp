@@ -57,7 +57,7 @@
   {% set notice = tournament_notice() if tournament_notice is defined else none %}
   {% if notice %}{% from 'tournaments/_notice.html' import tournament_notice_dialog with context %}{{ tournament_notice_dialog(notice) }}
   {# Jogador sem nenhum PC conectado no Kaillera: o passo a passo da Conta WE Camp, uma vez (players.wecamp_pc_popup). #}
-  {% elif wecamp_pc_popup is defined and wecamp_pc_popup() %}{% from '_wecamp_login.html' import wecamp_login_dialog with context %}{{ wecamp_login_dialog('conta-wecamp-popup', auto_open=true) }}{% endif %}
+  {% elif wecamp_pc_popup is defined and wecamp_pc_popup() %}{% from '_wecamp_login.html' import wecamp_login_dialog with context %}{{ wecamp_login_dialog('conta-wecamp-popup', auto_open=true, first_login=g.get('pc_popup_first_login')) }}{% endif %}
   <script>
   // Menu do usuário: fecha ao clicar fora ou com Esc.
   (function () {

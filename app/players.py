@@ -11,7 +11,7 @@ import time
 import zipfile
 from functools import wraps
 
-from flask import (Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file,
+from flask import (Blueprint, abort, current_app, flash, g, jsonify, redirect, render_template, request, send_file,
                    session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -210,6 +210,10 @@ def login():
             if request.form.get("lembrar"):
                 session.permanent = True
                 session["login_until"] = int(time.time() + current_app.permanent_session_lifetime.total_seconds())
+            if not player["last_login_at"]:
+                # Primeira entrada depois de confirmar o cadastro: a janela da Conta WE Camp
+                # abre com o aviso de conta aprovada (wecamp_pc_popup).
+                session["first_login"] = True
             db.execute("UPDATE players SET last_login_at = ? WHERE id = ?", (now(), player["id"]))
             db.commit()
             target = request.args.get("next", "")
@@ -539,11 +543,15 @@ def wecamp_pc_popup():
     (templates/_wecamp_login.html, chamada pelo base.html)? Para o jogador
     logado no site sem nenhum PC conectado (accounts.pc_popup_due): depois de
     entrar no site e, logado, uma vez - até um PC conectar e sair do site de
-    novo. Fica anotado na sessão quando ela aparece."""
+    novo. Fica anotado na sessão quando ela aparece. Na primeira entrada no site
+    (login: session["first_login"]) ela abre com o aviso de conta aprovada
+    (g.pc_popup_first_login - o texto inicial do _wecamp_login.html)."""
     if "player_id" not in session or session.get("user_id"):
         return False  # visitante, ou administrador (o cabeçalho também é só o dele)
+    first_login = session.pop("first_login", False)
     if not pc_popup_due(get_db(), session["player_id"], session.get("pc_popup_at")):
         return False
     session["pc_popup_at"] = int(time.time())
+    g.pc_popup_first_login = first_login
     return True
 
