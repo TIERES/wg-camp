@@ -136,6 +136,9 @@ table.standings { padding:0; font-size:.9rem } .standings th,.standings td { pad
 /* V/E/D: o mesmo quadradinho centralizado em todas as telas. */
 .recent span { display:inline-flex; align-items:center; justify-content:center; width:1.3rem; height:1.3rem; margin:0 1px; border-radius:3px; font-size:.7rem; font-weight:700; line-height:1; color:#111827; vertical-align:middle }
 .f-V { background:#34d399 } .f-E { background:#9ca3af } .f-D { background:#f87171 }
+/* WO (desistência): o "WO" na cor do V (venceu) ou do D (perdeu), menor para caber no quadradinho. */
+.f-WV { background:#34d399 } .f-WD { background:#f87171 }
+.recent .f-WV,.recent .f-WD { font-size:.55rem; letter-spacing:-.03em }
 .groups { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr)); gap:0 1rem } .group h3 { margin:.75rem 0 0 }
 .bracket { display:flex; gap:1rem; overflow-x:auto; scroll-snap-type:x mandatory; padding-bottom:.5rem; -webkit-overflow-scrolling:touch }
 .bracket-round { flex:1 0 min(85%,220px); scroll-snap-align:start; display:flex; flex-direction:column; gap:.75rem }
@@ -1057,3 +1060,18 @@ a.record-card:focus-visible { outline:none }
 .mm-pending .my-match { display:grid; gap:.35rem; margin-top:.6rem }
 .my-match-actions a.button { background:#f97316; color:#1c0d02; height:20px; padding:0 .6rem; line-height:20px; font-size:.75rem }
 .mm-where { color:#9ca3af } .mm-where a { color:inherit } .mm-what { color:#fbbf24 }
+/* WO nos quadradinhos grandes (Últimos resultados, Comparar): menor que as letras, para caber. */
+.recent .f-btn.f-WV,.recent .f-btn.f-WD { font-size:.75rem }
+.recent.result-badges a.f-btn.f-WV,.recent.result-badges a.f-btn.f-WD { font-size:clamp(.5rem, 2vw, .75rem) }
+/* Desistência (tournaments/show.html, store.withdraw_running). */
+.gave-up { display:inline-block; margin-left:.25rem; padding:0 .35rem; border-radius:999px; background:#7f1d1d; color:#fecaca; font-size:.68rem; font-weight:700; line-height:1.35; vertical-align:middle; white-space:nowrap }
+.entry-name small .gave-up { font-size:.85em }
+.wo-mark { display:inline-block; margin-left:.2rem; padding:0 .3rem; border-radius:3px; background:#374151; color:var(--text); font-size:.7em; font-weight:700; vertical-align:middle }
+.gave-up-notice { margin:.25rem 0 0; color:#fca5a5; font-weight:600 }
+.withdraw-dialog { width:min(38rem, calc(100vw - 2rem)) } .withdraw-dialog h3 { margin:.2rem 0 0; font-size:1rem }
+.withdraw-cheer { display:grid; gap:.3rem; padding:.75rem .85rem; border-radius:8px; background:#064e3b; color:#d1fae5 } .withdraw-cheer strong { color:#6ee7b7; font-size:1.05rem }
+.withdraw-rules { margin:0; padding-left:1.2rem; display:grid; gap:.35rem; font-size:.92rem }
+.withdraw-mine { padding:.6rem .75rem; border-radius:6px; background:#1f2937; border-left:3px solid #f87171; font-size:.92rem }
+.withdraw-help { display:flex; justify-content:space-between; gap:.75rem; font-size:.82rem } .withdraw-count { flex-shrink:0; font-variant-numeric:tabular-nums } .withdraw-count.short { color:#fca5a5 }
+.withdraw-word { text-transform:uppercase; letter-spacing:.08em; font-weight:700 } .withdraw-word::placeholder { letter-spacing:.08em; font-weight:400 }
+.withdraw-dialog button.danger:disabled { opacity:.45; cursor:not-allowed }

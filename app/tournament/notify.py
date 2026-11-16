@@ -663,3 +663,58 @@ def tournament_change_done(db, tournament, change, items, outcome, by_id=None, r
             f"Olá, {p['username']}!\n\n{who} {did} {whose} no campeonato \"{tournament['name']}\":\n\n"
             f"{change_lines(items)}\n{why}\n{end}\n{link}\n")))
     _deliver(messages)
+
+
+# --- Desistência (store.withdraw_running) --------------------------------------
+
+def withdrawal(db, tournament, entry, result):
+    """Um inscrito desistiu do campeonato em andamento (result: o que
+    store.withdraw_running devolveu). Recebem e-mail:
+      - os organizadores (organizador e ajudantes - sem outro além de quem
+        desistiu, a administração do WE Camp): o motivo e o que aconteceu com os jogos;
+      - os adversários dos jogos que viraram WO: a vitória;
+      - o suplente que ficou com a vaga no mata-mata;
+      - quem desistiu: a confirmação."""
+    who = _entry(db, entry["id"])
+    page = external_url("tournaments.show", slug=tournament["slug"])
+    reason = "\n".join("  " + line for line in (entry["withdraw_reason"] or "").strip().splitlines())
+    lines, wins = [], {}
+    for match_id in result["walkovers"]:
+        match, home, away, _, link = _match_context(db, tournament, match_id)
+        lines.append(f"  WO: {_label(home)} {_score_text(match)} {_label(away)}")
+        opponent = away if match["walkover_entry_id"] == home["id"] else home
+        wins.setdefault(opponent["id"], (opponent, []))[1].append(
+            f"  {_label(home)} {_score_text(match)} {_label(away)}\n  {link}")
+    for match_id in result["kept"]:
+        match, home, away, _, _ = _match_context(db, tournament, match_id)
+        lines.append(f"  Placar reportado mantido: {_label(home)} {_score_text(match)} {_label(away)}")
+    substitute = _entry(db, result["substitute"]) if result["substitute"] else None
+    if substitute:
+        summary = (f"{who['username']} estava classificado para o mata-mata e ainda não tinha jogado nele: a vaga "
+                   f"ficou com o suplente {_label(substitute)}.")
+    elif lines:
+        summary = "Os jogos que faltavam:\n" + "\n".join(lines)
+    else:
+        summary = "Não havia jogos pendentes; um confronto de mata-mata que ainda vai ser montado com ele vira WO."
+    subject = f"{who['username']} desistiu do campeonato {tournament['name']}"
+    body = (f"{_label(who)} desistiu do campeonato \"{tournament['name']}\".\n\n"
+            f"Motivo (para a organização melhorar no próximo campeonato):\n{reason}\n\n{summary}\n\n"
+            f"Veja o campeonato:\n{page}\n")
+    people = [p for p in _tournament_people(db, tournament) if p["id"] != who["player_id"]]
+    messages = [(p["email"], subject, f"Olá, {p['username']}!\n\n{body}") for p in people]
+    if not people:
+        messages += [(email, f"[Administração] {subject}", f"Olá!\n\n{body}") for email in admin_emails(db)]
+    for opponent, games in wins.values():
+        messages.append((opponent["email"], f"Vitória por WO no campeonato {tournament['name']}", (
+            f"Olá, {opponent['username']}!\n\n{who['username']} desistiu do campeonato \"{tournament['name']}\", "
+            "e o jogo de vocês foi registrado como vitória sua por WO (3 x 0):\n\n" + "\n\n".join(games) + "\n")))
+    if substitute:
+        messages.append((substitute["email"], f"Você entrou no mata-mata do campeonato {tournament['name']}!", (
+            f"Olá, {substitute['username']}!\n\n{who['username']} desistiu do campeonato \"{tournament['name']}\", e "
+            "você, o próximo da tabela, ficou com a vaga dele no mata-mata. Boa sorte!\n\n"
+            f"Veja os seus jogos em:\n{external_url('tournaments.my_matches')}\n")))
+    messages.append((who["email"], f"Você desistiu do campeonato {tournament['name']}", (
+        f"Olá, {who['username']}!\n\nRegistramos a sua desistência do campeonato \"{tournament['name']}\". "
+        "Os organizadores receberam o seu motivo. Obrigado por contar: isso ajuda a organização a melhorar.\n\n"
+        f"{summary}\n\nEsperamos você no próximo campeonato!\n")))
+    _deliver(messages)

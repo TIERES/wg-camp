@@ -21,6 +21,7 @@ from unicodedata import normalize
 from flask import g
 
 from . import free
+from .engine import WO_LOSS, WO_WIN
 from .xp import FRIENDLY_RESULTS, friendly_results
 
 SCOPES = (("ranked", "Campeonatos e amistosos rankeados"), ("friendly", "Amistosos"), ("free", "Partidas livres"))
@@ -39,6 +40,10 @@ def kind_filter(text):
     plain = " ".join(normalize("NFKD", text or "").encode("ascii", "ignore").decode().casefold().split())
     return _KIND_TEXTS.get(plain)
 
+# Jogo decidido por WO (store.withdraw_running), do ponto de vista da linha (me):
+# 1 = venceu por WO, -1 = perdeu por WO (desistiu), 0 = placar jogado.
+_WALKOVER = ("CASE WHEN m.walkover_entry_id IS NULL THEN 0 WHEN m.walkover_entry_id = me.id THEN -1 ELSE 1 END")
+
 # Uma linha por jogador por jogo confirmado, do ponto de vista dele: jogos de
 # torneio (kind 't') e jogos de amistoso que valem para o ranking (kind 'a' -
 # friendly.py). match_key identifica a partida nos dois (o id do jogo de
@@ -50,7 +55,8 @@ WITH friendly_results AS ({FRIENDLY_RESULTS}), sides AS (
            COALESCE(m.confirmed_at, m.updated_at) AS played_at,
            me.player_id, op.player_id AS opponent_id, me.id AS entry_id, op.id AS opponent_entry_id,
            m.home_goals AS goals_for, m.away_goals AS goals_against,
-           m.home_pens AS pens_for, m.away_pens AS pens_against, 1 AS is_home
+           m.home_pens AS pens_for, m.away_pens AS pens_against, 1 AS is_home,
+           {_WALKOVER} AS walkover
     FROM tournament_matches m
     JOIN tournament_stages s ON s.id = m.stage_id
     JOIN tournament_entries me ON me.id = m.home_entry_id
@@ -59,7 +65,7 @@ WITH friendly_results AS ({FRIENDLY_RESULTS}), sides AS (
     UNION ALL
     SELECT m.id, s.tournament_id, s.name, m.round, m.leg, m.tie_id, COALESCE(m.confirmed_at, m.updated_at),
            me.player_id, op.player_id, me.id, op.id,
-           m.away_goals, m.home_goals, m.away_pens, m.home_pens, 0
+           m.away_goals, m.home_goals, m.away_pens, m.home_pens, 0, {_WALKOVER}
     FROM tournament_matches m
     JOIN tournament_stages s ON s.id = m.stage_id
     JOIN tournament_entries me ON me.id = m.away_entry_id
@@ -72,12 +78,12 @@ WITH friendly_results AS ({FRIENDLY_RESULTS}), sides AS (
     WHERE t.status != 'cancelled'
     UNION ALL
     SELECT r.friendly_id, NULL, 'Amistoso', NULL, NULL, NULL, r.confirmed_at, r.home_id, r.away_id, NULL, NULL,
-           r.home_goals, r.away_goals, r.home_pens, r.away_pens, 1, 'a', r.match_key, NULL, 'Amistoso',
+           r.home_goals, r.away_goals, r.home_pens, r.away_pens, 1, 0, 'a', r.match_key, NULL, 'Amistoso',
            r.game_title_id, r.game_number
     FROM friendly_results r
     UNION ALL
     SELECT r.friendly_id, NULL, 'Amistoso', NULL, NULL, NULL, r.confirmed_at, r.away_id, r.home_id, NULL, NULL,
-           r.away_goals, r.home_goals, r.away_pens, r.home_pens, 0, 'a', r.match_key, NULL, 'Amistoso',
+           r.away_goals, r.home_goals, r.away_pens, r.home_pens, 0, 0, 'a', r.match_key, NULL, 'Amistoso',
            r.game_title_id, r.game_number
     FROM friendly_results r
 )
@@ -90,12 +96,12 @@ WITH friendly_results AS ({friendly_results(0)}), results AS (
     SELECT r.friendly_id AS match_id, NULL AS tournament_id, 'Amistoso' AS stage_name, NULL AS round, NULL AS leg,
            NULL AS tie_id, r.confirmed_at AS played_at, r.home_id AS player_id, r.away_id AS opponent_id,
            NULL AS entry_id, NULL AS opponent_entry_id, r.home_goals AS goals_for, r.away_goals AS goals_against,
-           r.home_pens AS pens_for, r.away_pens AS pens_against, 1 AS is_home, 'a' AS kind, r.match_key,
-           NULL AS slug, 'Amistoso' AS tournament_name, r.game_title_id, r.game_number
+           r.home_pens AS pens_for, r.away_pens AS pens_against, 1 AS is_home, 0 AS walkover, 'a' AS kind,
+           r.match_key, NULL AS slug, 'Amistoso' AS tournament_name, r.game_title_id, r.game_number
     FROM friendly_results r
     UNION ALL
     SELECT r.friendly_id, NULL, 'Amistoso', NULL, NULL, NULL, r.confirmed_at, r.away_id, r.home_id, NULL, NULL,
-           r.away_goals, r.home_goals, r.away_pens, r.home_pens, 0, 'a', r.match_key, NULL, 'Amistoso',
+           r.away_goals, r.home_goals, r.away_pens, r.home_pens, 0, 0, 'a', r.match_key, NULL, 'Amistoso',
            r.game_title_id, r.game_number
     FROM friendly_results r
 )
@@ -107,7 +113,8 @@ _TOTALS = ("COUNT(*) AS played, "
            "SUM(goals_for > goals_against) AS wins, "
            "SUM(goals_for = goals_against) AS draws, "
            "SUM(goals_for < goals_against) AS losses, "
-           "SUM(goals_for) AS goals_for, SUM(goals_against) AS goals_against")
+           "SUM(goals_for) AS goals_for, SUM(goals_against) AS goals_against, "
+           "SUM(walkover = -1) AS wo_losses")
 
 
 def _filters(game_id=None, opponent_id=None):
@@ -125,7 +132,7 @@ def _record(row):
     """Linha de totais -> dict com saldo, pontos e aproveitamento."""
     played = row["played"] if row else 0
     record = {key: (row[key] or 0) if row else 0
-              for key in ("played", "wins", "draws", "losses", "goals_for", "goals_against")}
+              for key in ("played", "wins", "draws", "losses", "goals_for", "goals_against", "wo_losses")}
     record["goal_diff"] = record["goals_for"] - record["goals_against"]
     record["points"] = record["wins"] * 3 + record["draws"]
     # Aproveitamento como no futebol: pontos ganhos / pontos disputados.
@@ -134,12 +141,22 @@ def _record(row):
 
 
 def outcome(row):
-    """'V' / 'E' / 'D' de uma linha de histórico (as letras da tabela, engine.py).
-    Na partida livre interrompida ainda sem placar final (pending - free.py),
-    a do placar de quando parou: as telas a pintam de laranja."""
+    """'V' / 'E' / 'D' de uma linha de histórico (as letras da tabela, engine.py),
+    ou 'WV' / 'WD' no jogo decidido por WO (as telas escrevem "WO" na cor do V
+    ou do D - o filtro ved_label). Na partida livre interrompida ainda sem
+    placar final (pending - free.py), a do placar de quando parou: as telas a
+    pintam de laranja."""
+    walkover = row["walkover"] if "walkover" in row.keys() else 0
+    if walkover:
+        return WO_WIN if walkover > 0 else WO_LOSS
     if row["goals_for"] > row["goals_against"]:
         return "V"
     return "E" if row["goals_for"] == row["goals_against"] else "D"
+
+
+def points_of(letter):
+    """Pontos (3/1/0) de uma letra de outcome() - o WO vale como vitória/derrota."""
+    return {"V": 3, "E": 1, "D": 0, WO_WIN: 3, WO_LOSS: 0}[letter]
 
 
 def player_record(db, player_id, game_id=None, opponent_id=None, scope="ranked"):
@@ -198,7 +215,7 @@ def evolution(rows):
     points, points_list = 0, []
     for index, row in enumerate(reversed(rows), 1):
         result = outcome(row)
-        points += {"V": 3, "E": 1, "D": 0}[result]
+        points += points_of(result)
         points_list.append({"n": index, "outcome": result, "efficiency": round(100 * points / (3 * index)),
                             "score": f"{row['goals_for']} x {row['goals_against']}",
                             "opponent": row["opponent_name"], "played_at": row["played_at"],
@@ -296,7 +313,7 @@ def _free_records(db, game_id=None):
 
 def _tally(rows):
     """Totais (as colunas de _TOTALS) de linhas já calculadas em Python (free.sides)."""
-    item = {"played": 0, "wins": 0, "draws": 0, "losses": 0, "goals_for": 0, "goals_against": 0}
+    item = {"played": 0, "wins": 0, "draws": 0, "losses": 0, "goals_for": 0, "goals_against": 0, "wo_losses": 0}
     for row in rows:
         item["played"] += 1
         item["wins"] += row["goals_for"] > row["goals_against"]

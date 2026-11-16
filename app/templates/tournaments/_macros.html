@@ -5,7 +5,7 @@
 {% macro score(m, live_score=none) -%}
 {% set r = m if m.status == 'confirmed' else reported_score(m) %}
 {% if live_score and m.status != 'confirmed' %}<span class="score-val score-reported score-live" title="{{ score_tips.live }}" tabindex="0"><strong>{{ live_score[0] }} x {{ live_score[1] }}</strong></span>
-{%- elif r and r.home_goals is not none %}<span class="score-val score-{{ m.status }}" title="{{ score_tips[m.status] }}" tabindex="0"><strong>{{ r.home_goals }} x {{ r.away_goals }}</strong>{% if r.home_pens is not none %} <small>({{ r.home_pens }} x {{ r.away_pens }} pên.)</small>{% endif %}</span>{% else %}<span class="muted" title="{{ score_tips.scheduled }}">x</span>{% endif %}
+{%- elif r and r.home_goals is not none %}<span class="score-val score-{{ m.status }}" title="{{ 'Vitória por WO: o adversário desistiu do campeonato' if m.status == 'confirmed' and m.walkover_entry_id else score_tips[m.status] }}" tabindex="0"><strong>{{ r.home_goals }} x {{ r.away_goals }}</strong>{% if r.home_pens is not none %} <small>({{ r.home_pens }} x {{ r.away_pens }} pên.)</small>{% endif %}{% if m.status == 'confirmed' and m.walkover_entry_id %} <small class="wo-mark">WO</small>{% endif %}</span>{% else %}<span class="muted" title="{{ score_tips.scheduled }}">x</span>{% endif %}
 {%- endmacro %}
 
 {% macro status_chip(m) -%}
@@ -48,7 +48,7 @@
       <td>{{ row.played }}</td><td>{{ row.won }}</td><td>{{ row.drawn }}</td><td>{{ row.lost }}</td>
       <td class="hide-sm">{{ row.goals_for }}</td><td class="hide-sm">{{ row.goals_against }}</td><td>{{ row.goal_diff }}</td>
       <td class="hide-sm cards-cell">{% if row.yellow %}<span class="card-chip card-y" title="{{ row.yellow }} amarelo(s)">{{ row.yellow }}</span>{% endif %}{% if row.red %}<span class="card-chip card-r" title="{{ row.red }} vermelho(s)">{{ row.red }}</span>{% endif %}{% if not row.yellow and not row.red %}<span class="muted">-</span>{% endif %}</td>
-      <td class="hide-sm recent">{% for f in row.form %}<span class="f-{{ f }}{% if loop.revindex <= (row.provisional or 0) %} prov{% endif %}">{{ f }}</span>{% endfor %}</td>
+      <td class="hide-sm recent">{% for f in row.form %}<span class="f-{{ f }}{% if loop.revindex <= (row.provisional or 0) %} prov{% endif %}"{% if f|ved_title %} title="{{ f|ved_title }}"{% endif %}>{{ f|ved_label }}</span>{% endfor %}</td>
     </tr>
   {% endfor %}
   </tbody>

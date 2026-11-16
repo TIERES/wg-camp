@@ -70,8 +70,68 @@
     {% endif %}
     {% if can_manage %}<a class="button secondary" href="{{ url_for('tournaments.manage', slug=t.slug) }}">Gerenciar</a>
     {% elif can_edit %}<a class="button secondary" href="{{ url_for('tournaments.manage', slug=t.slug) }}" title="Você ajuda a editar este campeonato">Editar dados e ISO</a>{% endif %}
+    {% if withdraw %}<button type="button" class="danger" data-dialog="desistir" aria-haspopup="dialog">Desistir</button>{% endif %}
   </div>
+  {% if my_entry and my_entry.withdrawn_at %}<p class="gave-up-notice">Você desistiu deste campeonato em {{ my_entry.withdrawn_at|localtime('%d/%m/%Y') }}.</p>{% endif %}
 </section>
+{% if withdraw %}
+{# Desistência (store.withdraw_running): as regras, o que acontece com os jogos dele
+   agora (_withdraw_view), um empurrãozinho para ficar, o motivo (vai para os
+   organizadores) e a confirmação digitando DESISTIR. #}
+<dialog class="form-dialog withdraw-dialog" id="desistir" aria-labelledby="desistir-title">
+  <form method="post" action="{{ url_for('tournaments.give_up', slug=t.slug) }}" class="form-dialog-body" id="desistir-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h2 id="desistir-title">Desistir do campeonato {{ t.name }}</h2>
+    <div class="withdraw-cheer">
+      <strong>Fica com a gente!</strong>
+      <p>O campeonato é mais divertido com você até o fim. Uma derrota não define nada: cada jogo ainda vale XP{% if withdraw.pays %} e W${% endif %}, e a virada pode estar no próximo. Se o problema é horário, conexão ou combinar os jogos, converse com o organizador ({{ t.organizer_name }}) antes: quase sempre dá para encontrar uma solução.</p>
+    </div>
+    <h3>Regras da desistência</h3>
+    <ul class="withdraw-rules">
+      <li>O valor W$ da inscrição{% if t.entry_fee_cents %} ({{ t.entry_fee_cents|wcash }}){% else %} (se existir){% endif %} não é devolvido.</li>
+      <li>As partidas restantes serão consideradas como WO, sendo registradas 3 x 0 para o adversário.</li>
+      <li>Pode existir a perda de XP e W$ dependendo da quantidade de partidas pendentes.</li>
+      <li>Se o participante estiver classificado para uma próxima fase, a vaga dele será para o próximo da lista de suplentes.</li>
+    </ul>
+    <p class="withdraw-mine">
+      {% if withdraw.substitute %}<strong>No seu caso:</strong> você ainda não jogou no mata-mata, então a sua vaga vai para o próximo suplente da tabela, sem WO.
+      {% elif withdraw.losses %}<strong>No seu caso:</strong> você tem {{ withdraw.losses }} jogo{{ 's' if withdraw.losses != 1 }} pendente{{ 's' if withdraw.losses != 1 }}{% if withdraw.kept %} ({{ withdraw.kept }} com placar já reportado em que o adversário venceu: esse placar fica valendo){% endif %}. {% if withdraw.xp_loss or withdraw.wcash_loss %}Estimativa de perda: {% if withdraw.xp_loss %}<strong>{{ withdraw.xp_loss }} XP</strong>{% endif %}{% if withdraw.xp_loss and withdraw.wcash_loss %} e {% endif %}{% if withdraw.wcash_loss %}<strong>{{ withdraw.wcash_loss|wcash }}</strong>{% endif %}.{% else %}No seu rank atual, as derrotas não tiram XP nem W$, mas contam no seu histórico (Derrotas por WO).{% endif %}
+      {% elif withdraw.table %}<strong>No seu caso:</strong> todos os seus jogos desta fase já têm resultado. Você sai da classificação para a próxima fase e do pódio: a vaga fica com o próximo da tabela.
+      {% else %}<strong>No seu caso:</strong> você está esperando o adversário do próximo confronto do mata-mata. Quando ele for definido, o jogo vira WO.{% endif %}
+    </p>
+    <label>Motivo da desistência
+      <textarea name="motivo" rows="4" minlength="{{ withdraw.reason_min }}" maxlength="{{ withdraw.reason_max }}" required placeholder="Conte o que aconteceu (horário, conexão, adversários, regras...)." aria-describedby="desistir-motivo-ajuda"></textarea>
+    </label>
+    <p class="muted withdraw-help" id="desistir-motivo-ajuda"><span>O motivo vai por e-mail para os organizadores, para que a organização melhore no próximo campeonato. Mínimo de {{ withdraw.reason_min }} caracteres.</span> <span class="withdraw-count" aria-live="polite">0/{{ withdraw.reason_max }}</span></p>
+    <label>Para confirmar, digite DESISTIR
+      <input name="confirmar" class="withdraw-word" autocomplete="off" autocapitalize="characters" spellcheck="false" required placeholder="DESISTIR" maxlength="20">
+    </label>
+    <div class="card-actions dialog-actions">
+      <button type="button" data-dialog-close>Continuar</button>
+      <button class="danger btn-left" disabled>Desistir</button>
+    </div>
+  </form>
+</dialog>
+<script>
+(function () {
+  // O botão de desistir só libera com o motivo (mínimo) e DESISTIR digitado (em maiúsculas).
+  var form = document.getElementById('desistir-form'), reason = form.querySelector('[name=motivo]');
+  var word = form.querySelector('[name=confirmar]'), count = form.querySelector('.withdraw-count');
+  var submit = form.querySelector('button.danger'), min = +reason.getAttribute('minlength'), max = +reason.getAttribute('maxlength');
+  function update() {
+    var start = word.selectionStart, end = word.selectionEnd;
+    if (word.value !== word.value.toUpperCase()) { word.value = word.value.toUpperCase(); word.setSelectionRange(start, end); }
+    var size = reason.value.trim().length;
+    count.textContent = reason.value.length + '/' + max;
+    count.classList.toggle('short', size < min);
+    submit.disabled = size < min || word.value.trim() !== 'DESISTIR';
+  }
+  reason.addEventListener('input', update);
+  word.addEventListener('input', update);
+  update();
+})();
+</script>
+{% endif %}
 {% if can_edit %}{% include 'tournaments/_share_image.html' %}{% endif %}
 
 {# Os jogos ao vivo não têm card aqui: a aba Tabela mostra "Ao vivo" e os placares

@@ -84,6 +84,23 @@ def date_br(value):
     return f"{value[8:10]}/{value[5:7]}/{value[:4]}" if value else ""
 
 
+# Jogo decidido por WO (desistência - store.withdraw_running): o quadradinho
+# escreve "WO" na cor do V (WV, venceu) ou do D (WD, perdeu) - engine.form_letter.
+_WO_TITLES = {engine.WO_WIN: "Vitória por WO", engine.WO_LOSS: "Derrota por WO"}
+
+
+@bp.app_template_filter("ved_label")
+def ved_label(letter):
+    """O texto do quadradinho V/E/D: "WO" no jogo decidido por WO."""
+    return "WO" if letter in _WO_TITLES else letter
+
+
+@bp.app_template_filter("ved_title")
+def ved_title(letter):
+    """O balão do quadradinho de WO ("Vitória por WO" / "Derrota por WO"), ou ""."""
+    return _WO_TITLES.get(letter, "")
+
+
 SCORE_TIPS = {
     "scheduled": "Ainda sem resultado",
     "reported": "Placar reportado por um jogador: aguardando a confirmação do adversário",
@@ -273,22 +290,25 @@ def _crests(names):
 
 
 def _names(db, tournament):
-    """entry_id -> HTML com escudo, time e jogador (ou só o jogador)."""
+    """entry_id -> HTML com escudo, time e jogador (ou só o jogador). Quem
+    desistiu (store.withdraw_running) leva a marca "desistiu"."""
     rows = db.execute(
-        "SELECT e.id, e.team_name, p.username, t.name, t.logo, t.flag FROM tournament_entries e "
+        "SELECT e.id, e.team_name, e.withdrawn_at, p.username, t.name, t.logo, t.flag FROM tournament_entries e "
         "JOIN players p ON p.id = e.player_id LEFT JOIN teams t ON t.id = e.team_id WHERE e.tournament_id = ?",
         (tournament["id"],)).fetchall()
     names = {}
     for row in rows:
+        gave_up = Markup(' <span class="gave-up" title="Desistiu do campeonato">desistiu</span>') \
+            if row["withdrawn_at"] else ""
         if not row["team_name"]:
-            names[row["id"]] = Markup('<span class="entry"><span class="entry-name">{}</span></span>').format(
-                row["username"])
+            names[row["id"]] = Markup('<span class="entry"><span class="entry-name">{}{}</span></span>').format(
+                row["username"], gave_up)
             continue
         image = team_image(row) if row["name"] else generated_badge(row["team_name"])
         names[row["id"]] = Markup(
             '<span class="entry"><img class="crest" src="{}" alt="" loading="lazy">'
-            '<span class="entry-name">{}<small>{}</small></span></span>').format(image, row["team_name"],
-                                                                               row["username"])
+            '<span class="entry-name">{}<small>{}{}</small></span></span>').format(image, row["team_name"],
+                                                                                 row["username"], gave_up)
     return names
 
 
@@ -1394,6 +1414,11 @@ def show(slug):
     if tab == "artilharia":
         from . import live
         scorers = live.tournament_scorers(db, tournament["id"])
+    # "Desistir" (campeonato em andamento, inscrito ainda na disputa): a janela
+    # mostra o que acontece com os jogos dele (store.withdraw_preview).
+    withdraw = None
+    if my_entry and store.withdraw_error(db, tournament, my_entry) is None:
+        withdraw = _withdraw_view(db, tournament, my_entry)
     return render_template(
         "tournaments/show.html", t=tournament, entries=entries, my_entry=my_entry, stages=stages, tab=tab,
         live_table=live_table, confirm_hours=setting(db, "torneios_confirmacao_horas"), scorers=scorers,
@@ -1405,7 +1430,24 @@ def show(slug):
         outsider=outsider, prizes=engine.split_prize(pool, split, 3) if pool else [],
         podium=sorted((e for e in entries if e["final_position"]), key=lambda e: e["final_position"]),
         invite=(friends.my_invite(db, tournament["id"], player_id)
-                if player_id and not my_entry and not outsider else None))
+                if player_id and not my_entry and not outsider else None), withdraw=withdraw)
+
+
+def _withdraw_view(db, tournament, entry):
+    """A janela "Desistir": quantos jogos viram WO e a estimativa do que ele
+    perde - cada jogo que falta é uma derrota (xp.loss, uma atrás da outra, e o
+    débito por derrota, se a administração o configurou, até zerar o saldo)."""
+    preview = store.withdraw_preview(db, tournament, entry)
+    losses = preview["walkovers"] + preview["kept"]
+    points = player_xp = xp.player_xp(entry["player_id"])
+    for _ in range(losses):
+        points -= min(xp.loss(points), points)
+    debit = setting(db, "torneios_derrota")
+    balance = db.execute("SELECT wallet_cents FROM players WHERE id = ?", (entry["player_id"],)).fetchone()[0]
+    return dict(preview, losses=losses, xp_loss=player_xp - points,
+                wcash_loss=min(-debit * losses, balance) if debit < 0 else 0,
+                pays=setting(db, "torneios_vitoria") > 0,
+                reason_min=store.WITHDRAW_REASON_MIN, reason_max=store.WITHDRAW_REASON_MAX)
 
 
 @bp.get("/<slug>/tabela-ao-vivo")
@@ -1646,6 +1688,39 @@ def leave(slug):
     if entry:
         _run(lambda db, t: store.withdraw(db, t, entry), tournament, "Você saiu do campeonato; a inscrição foi devolvida.")
     return redirect(url_for("tournaments.show", slug=slug, aba="geral"))
+
+
+WITHDRAW_WORD = "DESISTIR"
+
+
+@bp.post("/<slug>/desistir")
+@player_required
+def give_up(slug):
+    """Desistência com o campeonato em andamento (store.withdraw_running): o
+    jogador digita DESISTIR e conta o motivo, que vai por e-mail aos organizadores."""
+    validate_csrf()
+    db = get_db()
+    tournament = _load(slug)
+    entry = db.execute("SELECT * FROM tournament_entries WHERE tournament_id = ? AND player_id = ?",
+                       (tournament["id"], session["player_id"])).fetchone()
+    back = redirect(url_for("tournaments.show", slug=slug))
+    if request.form.get("confirmar", "").strip().upper() != WITHDRAW_WORD:
+        flash(f"Para desistir, digite {WITHDRAW_WORD} no campo de confirmação.", "error")
+        return back
+    reason = request.form.get("motivo", "")
+    try:
+        result = store.withdraw_running(db, store.get_tournament(db, tournament["id"]), entry, reason)
+        db.commit()
+    except (TournamentError, InsufficientFunds) as error:
+        db.rollback()
+        flash(str(error), "error")
+        return back
+    current = store.get_tournament(db, tournament["id"])
+    entry = db.execute("SELECT * FROM tournament_entries WHERE id = ?", (entry["id"],)).fetchone()
+    notify.withdrawal(db, current, entry, result)
+    notify.check_completion(db, current)
+    flash("Você desistiu do campeonato. Os organizadores foram avisados.", "info")
+    return back
 
 
 @bp.get("/carteira")
@@ -2250,6 +2325,8 @@ def match(slug, match_id):
         "WHERE e.id IN (?, ?)", (m["home_entry_id"], m["away_entry_id"]))}
     home, away = sides.get(m["home_entry_id"]), sides.get(m["away_entry_id"])
     quitter = next((s["username"] for s in sides.values() if m["quitter_id"] and s["player_id"] == m["quitter_id"]), None)
+    # WO (store.withdraw_running): quem desistiu do campeonato.
+    walkover = sides[m["walkover_entry_id"]]["username"] if m["walkover_entry_id"] in sides else None
     h2h = {"home": home["username"], "away": away["username"],
            "record": stats.player_record(db, home["player_id"], opponent_id=away["player_id"])} if home and away else None
     if h2h:  # "Comparar os dois": só para quem está logado e pode comparar os dois (ele mesmo ou amigos)
@@ -2272,7 +2349,7 @@ def match(slug, match_id):
                              live_now["id"] if live_now else None)
     return render_template(
         "tournaments/match.html", t=tournament, m=m, names=names, me=me, manager=manager, h2h=h2h, live_now=live_now,
-        quitter=quitter, goals=goals,
+        quitter=quitter, goals=goals, walkover=walkover,
         confirm_hours=setting(db, "torneios_confirmacao_horas"),
         history=reports.history(db, match_id), labels=reports.ACTION_LABELS,
         disputer=reports.disputer(db, match_id) if m["status"] == "disputed" else None,

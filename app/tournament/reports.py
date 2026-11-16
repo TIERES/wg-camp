@@ -60,10 +60,11 @@ def _match(db, tournament, match_id):
 
 
 def player_entry(db, tournament, match, player_id):
-    """A inscrição do jogador neste jogo, ou None se ele não joga."""
+    """A inscrição do jogador neste jogo, ou None se ele não joga (ou desistiu
+    do campeonato - store.withdraw_running)."""
     entry = db.execute("SELECT * FROM tournament_entries WHERE tournament_id = ? AND player_id = ?",
                        (tournament["id"], player_id)).fetchone()
-    if entry and entry["id"] in (match["home_entry_id"], match["away_entry_id"]):
+    if entry and not entry["withdrawn_at"] and entry["id"] in (match["home_entry_id"], match["away_entry_id"]):
         return entry
     return None
 

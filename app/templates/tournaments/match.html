@@ -27,7 +27,8 @@
   <div class="match-status-row">
   {# Reportado: o placar em laranja e a legenda já dizem que falta confirmar. #}
   {% if m.status != 'reported' %}<p class="match-status status-{{ m.status }}">
-    {% if m.status == 'confirmed' %}Resultado confirmado
+    {% if m.status == 'confirmed' and walkover %}Vitória por WO: {{ walkover }} desistiu do campeonato
+    {% elif m.status == 'confirmed' %}Resultado confirmado
     {% elif m.status == 'disputed' %}Resultado contestado{% if dispute %} (o adversário diz {{ dispute.home_goals }} x {{ dispute.away_goals }}){% endif %} — aguardando quem reportou aceitar ou o organizador decidir
     {% elif live_now %}Ao vivo agora: placar lido do jogo pelo RetroArch TIERES
     {% else %}Ainda sem resultado{% endif %}

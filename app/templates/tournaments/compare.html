@@ -50,6 +50,8 @@
     {% set ra, rb = result.a, result.b %}
     {% for label, key, higher in (('Jogos', 'played', none), ('Vitórias', 'wins', true), ('Empates', 'draws', none), ('Derrotas', 'losses', false), ('Aproveitamento', 'efficiency', true)) %}
       {{ row(label, ra[key], rb[key], higher, '%' if key == 'efficiency' else '') }}
+      {# Só na rankeada (campeonatos e amistosos rankeados): as derrotas por desistência do campeonato. #}
+      {% if key == 'losses' and scope == 'ranked' %}{{ row('Derrotas por WO', ra.wo_losses, rb.wo_losses, false) }}{% endif %}
     {% endfor %}
       {{ row('Ranking', result.a_position, result.b_position, false, 'º') }}
     {% if result.a_podium %}{# Só na rankeada: os campeonatos encerrados (Galeria de troféus do perfil). #}
@@ -71,7 +73,7 @@
   {% if card.matches %}
   <div class="recent recent-lg">
     {% for r in card.matches|reverse %}{% set o = outcome(r) %}
-    <button type="button" class="f-btn f-{{ o }}" data-dialog="jogo-{{ r.match_key }}" title="{{ r.goals_for }} x {{ r.goals_against }} · {{ result_origin(r) }}" aria-haspopup="dialog">{{ o }}</button>
+    <button type="button" class="f-btn f-{{ o }}" data-dialog="jogo-{{ r.match_key }}" title="{% if o|ved_title %}{{ o|ved_title }}: {% endif %}{{ r.goals_for }} x {{ r.goals_against }} · {{ result_origin(r) }}" aria-haspopup="dialog">{{ o|ved_label }}</button>
     {% endfor %}
   </div>
   <p class="muted">Campeonatos, amistosos e partidas livres, do mais antigo ao mais recente. Clique para ver o jogo.</p>

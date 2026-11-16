@@ -265,6 +265,11 @@ CREATE TABLE IF NOT EXISTS tournament_entries (
     team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
     fee_ref TEXT,
     final_position INTEGER,
+    -- Desistência com o campeonato em andamento (store.withdraw_running): quando, o motivo
+    -- (vai por e-mail aos organizadores) e quem ficou com a vaga dele no mata-mata (suplente).
+    withdrawn_at TEXT,
+    withdraw_reason TEXT NOT NULL DEFAULT '',
+    replaced_by_entry_id INTEGER REFERENCES tournament_entries(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL,
     UNIQUE (tournament_id, player_id)
 );
@@ -378,6 +383,9 @@ CREATE TABLE IF NOT EXISTS tournament_matches (
     -- Quem saiu da sessão do Kaillera no meio do jogo (app/live.py): perde o
     -- triplo de XP se o placar lido do jogo for confirmado (xp.QUIT_FACTOR).
     quitter_id INTEGER REFERENCES players(id) ON DELETE SET NULL,
+    -- WO: a inscrição que perdeu o jogo por desistência (3 x 0 para o adversário -
+    -- store.withdraw_running). NULL = placar jogado.
+    walkover_entry_id INTEGER REFERENCES tournament_entries(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -687,6 +695,16 @@ def ensure_tournament_columns(database):
     stage_columns = {column["name"] for column in database.execute("PRAGMA table_info(tournament_stages)")}
     if stage_columns and "all_played_at" not in stage_columns:
         database.execute("ALTER TABLE tournament_stages ADD COLUMN all_played_at TEXT")
+    # Desistência com o campeonato em andamento e o WO (store.withdraw_running).
+    entry_columns = {column["name"] for column in database.execute("PRAGMA table_info(tournament_entries)")}
+    for column, kind in (("withdrawn_at", "TEXT"), ("withdraw_reason", "TEXT NOT NULL DEFAULT ''"),
+                         ("replaced_by_entry_id", "INTEGER REFERENCES tournament_entries(id) ON DELETE SET NULL")):
+        if entry_columns and column not in entry_columns:
+            database.execute(f"ALTER TABLE tournament_entries ADD COLUMN {column} {kind}")
+    match_columns = {column["name"] for column in database.execute("PRAGMA table_info(tournament_matches)")}
+    if match_columns and "walkover_entry_id" not in match_columns:
+        database.execute("ALTER TABLE tournament_matches ADD COLUMN walkover_entry_id INTEGER "
+                         "REFERENCES tournament_entries(id) ON DELETE SET NULL")
     # CRC32:TAMANHO do arquivo (o content_id que o RetroArch TIERES manda no placar ao vivo - app/live.py).
     for table in ("tournament_isos", "catalog_isos"):
         table_columns = {column["name"] for column in database.execute(f"PRAGMA table_info({table})")}

@@ -112,7 +112,8 @@ def pending(db, player_id):
     em "Entendi" (o mais antigo primeiro), ou None."""
     row = db.execute(
         "SELECT t.* FROM tournaments t JOIN tournament_entries e ON e.tournament_id = t.id AND e.player_id = ? "
-        "WHERE t.status = 'running' AND NOT EXISTS (SELECT 1 FROM tournament_notices_seen s "
+        # Quem desistiu (store.withdraw_running) não recebe mais o aviso.
+        "WHERE t.status = 'running' AND e.withdrawn_at IS NULL AND NOT EXISTS (SELECT 1 FROM tournament_notices_seen s "
         "WHERE s.tournament_id = t.id AND s.player_id = ?) ORDER BY t.started_at, t.id LIMIT 1",
         (player_id, player_id)).fetchone()
     return view(db, row) if row else None

@@ -78,7 +78,7 @@
    do mais recente e o .recent-fit (row-reverse) os desenha na ordem certa,
    mandando os que não cabem para uma 2ª linha escondida. #}
 {% macro form_badges(items) -%}
-<span class="recent recent-fit">{% for f in items|reverse %}<span class="f-{{ f }}">{{ f }}</span>{% endfor %}</span>
+<span class="recent recent-fit">{% for f in items|reverse %}<span class="f-{{ f }}"{% if f|ved_title %} title="{{ f|ved_title }}"{% endif %}>{{ f|ved_label }}</span>{% endfor %}</span>
 {%- endmacro %}
 
 {# Os três cards do jogador (stats.summary): campeonatos e amistosos rankeados,
@@ -131,8 +131,8 @@
 {% macro result_badges(rows, outcome) -%}
 <div class="recent recent-lg result-badges">
   {% for r in rows|reverse %}{% set o = outcome(r) %}
-  {% set info = '%s x %s%s contra %s · %s · %s' % (r.goals_for, r.goals_against, (' (pên. %s x %s)' % (r.pens_for, r.pens_against)) if r.pens_for is not none else '', r.opponent_name, result_origin(r), r.played_at|localtime) %}
-  <a class="f-btn f-{{ o }}{% if r.pending %} f-pending{% endif %}" href="{{ history_url(r) }}" title="{{ info }}{% if r.pending %} — {{ r.tip }}{% endif %}">{{ o }}</a>
+  {% set info = '%s%s x %s%s contra %s · %s · %s' % ((o|ved_title ~ ': ') if o|ved_title else '', r.goals_for, r.goals_against, (' (pên. %s x %s)' % (r.pens_for, r.pens_against)) if r.pens_for is not none else '', r.opponent_name, result_origin(r), r.played_at|localtime) %}
+  <a class="f-btn f-{{ o }}{% if r.pending %} f-pending{% endif %}" href="{{ history_url(r) }}" title="{{ info }}{% if r.pending %} — {{ r.tip }}{% endif %}">{{ o|ved_label }}</a>
   {% endfor %}
 </div>
 {%- endmacro %}
@@ -145,7 +145,7 @@
 {% set W, H, L, R, T, B = 640, 220, 40, 12, 12, 28 %}
 {% set pw, ph = W - L - R, H - T - B %}
 {% set step = pw / (evolution|length - 1) %}
-{% set colors = {'V': '#34d399', 'E': '#9ca3af', 'D': '#f87171'} %}
+{% set colors = {'V': '#34d399', 'E': '#9ca3af', 'D': '#f87171', 'WV': '#34d399', 'WD': '#f87171'} %}
 <div class="evo-chart" id="evo-chart">
   <svg viewBox="0 0 {{ W }} {{ H }}" role="img" aria-label="Aproveitamento acumulado ao longo de {{ evolution|length }} partidas, terminando em {{ evolution[-1].efficiency }}%">
     {% for v in (0, 25, 50, 75, 100) %}{% set y = T + (100 - v) / 100 * ph %}
@@ -171,7 +171,7 @@
 (function () {
   var data = {{ evolution|tojson }};
   var box = document.getElementById('evo-chart'), tip = document.getElementById('evo-tip'), cross = document.getElementById('evo-cross');
-  var names = { V: 'Vitória', E: 'Empate', D: 'Derrota' };
+  var names = { V: 'Vitória', E: 'Empate', D: 'Derrota', WV: 'Vitória por WO', WD: 'Derrota por WO' };
   function show(g) {
     var p = data[+g.dataset.i], c = g.querySelector('circle');
     cross.setAttribute('x1', c.getAttribute('cx')); cross.setAttribute('x2', c.getAttribute('cx'));

@@ -120,6 +120,9 @@
         <span class="with-avatar friend-name">{{ avatar_button(e.player_id, e.username) }}<strong class="t-name">{{ e.username }}</strong></span>
         <span class="t-meta"><span>{{ icon('shield') }}{% if e.team_name %}{{ e.team_name }}{% elif t.team_mode == 'draw' %}<em class="muted">sorteado no início</em>{% else %}<em class="muted">sem time: avisado para escolher</em>{% endif %}</span></span>
         <span class="t-meta"><span>{{ icon('clock') }}Inscrito em {{ e.created_at|localtime }}</span></span>
+        {# Desistência (store.withdraw_running): quando e o motivo, que também foi por e-mail aos organizadores. #}
+        {% if e.withdrawn_at %}<span class="t-meta"><span class="gave-up">Desistiu em {{ e.withdrawn_at|localtime('%d/%m/%Y') }}</span></span>
+        <span class="quote">“{{ e.withdraw_reason }}”</span>{% endif %}
       </span>
       {% if t.status == 'registration' %}<div class="t-foot"><form method="post" action="{{ url_for('tournaments.remove_entry', slug=t.slug, entry_id=e.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Remover</button></form></div>{% endif %}
     </div>

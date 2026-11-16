@@ -3,8 +3,21 @@ tournament_entries.id); nada aqui sabe de jogador, conta ou W$."""
 import random
 from collections import namedtuple
 
-# Um jogo com placar confirmado (gols sem os pênaltis).
-Result = namedtuple("Result", "home away home_goals away_goals")
+# Um jogo com placar confirmado (gols sem os pênaltis). walkover: o participante
+# que perdeu por WO (desistiu do torneio - o placar é 3 x 0 para o outro), ou None.
+Result = namedtuple("Result", "home away home_goals away_goals walkover", defaults=(None,))
+
+# Os quadradinhos dos últimos jogos: V/E/D e, no jogo decidido por WO, WV
+# (vitória por WO, na cor do V) e WD (derrota por WO, na cor do D) - as telas
+# escrevem "WO" (o filtro ved_label).
+WO_WIN, WO_LOSS = "WV", "WD"
+
+
+def form_letter(scored, conceded, walkover=None, me=None):
+    """V/E/D de um jogo do ponto de vista de `me` (WV/WD quando foi WO)."""
+    if walkover is not None:
+        return WO_LOSS if walkover == me else WO_WIN
+    return "V" if scored > conceded else "E" if scored == conceded else "D"
 
 POINTS_WIN, POINTS_DRAW, POINTS_LOSS = 3, 1, 0
 
@@ -63,15 +76,13 @@ def _table(entry_ids, results):
             if scored > conceded:
                 row["won"] += 1
                 row["points"] += POINTS_WIN
-                row["form"].append("V")
             elif scored == conceded:
                 row["drawn"] += 1
                 row["points"] += POINTS_DRAW
-                row["form"].append("E")
             else:
                 row["lost"] += 1
                 row["points"] += POINTS_LOSS
-                row["form"].append("D")
+            row["form"].append(form_letter(scored, conceded, result.walkover, row["entry_id"]))
     for row in rows.values():
         row["goal_diff"] = row["goals_for"] - row["goals_against"]
         row["form"] = row["form"][-5:]
@@ -256,10 +267,14 @@ def tie_outcome(entry_a, entry_b, legs, results, decisive_pens=None, away_goals=
     `results`: os jogos confirmados do confronto (Result). `legs`: 1 ou 2 -
     só decide com todos os jogos confirmados. Empate no agregado: gol fora
     (se `away_goals`) e depois os pênaltis do último jogo, `decisive_pens` =
-    (pênaltis de entry_a, pênaltis de entry_b)."""
+    (pênaltis de entry_a, pênaltis de entry_b). Jogo decidido por WO
+    (Result.walkover): passa o adversário de quem desistiu, seja qual for o agregado."""
     results = list(results)
     if len(results) < legs:
         return None
+    gave_up = next((r.walkover for r in results if r.walkover in (entry_a, entry_b)), None)
+    if gave_up is not None:
+        return entry_b if gave_up == entry_a else entry_a
     goals = {entry_a: 0, entry_b: 0}
     away = {entry_a: 0, entry_b: 0}
     for result in results:

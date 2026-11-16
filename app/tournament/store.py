@@ -225,6 +225,210 @@ def update_before_start(db, tournament, values, editor_id=None):
     return notices
 
 
+# --- Desistência com o campeonato em andamento --------------------------------
+#
+# Antes do início, sair é withdraw (com a inscrição devolvida). Com o campeonato
+# em andamento, o jogador desiste (withdraw_running), com o motivo para os
+# organizadores, e:
+#   - a inscrição W$ não volta (e entra no prêmio, como sempre);
+#   - os jogos que faltam viram WO: 3 x 0 para o adversário, confirmado na hora
+#     (W$ e XP como uma vitória/derrota normal; no mata-mata passa o adversário,
+#     seja qual for o agregado - engine.tie_outcome). Na tabela, o placar já
+#     reportado em que o adversário venceu fica valendo (ele não perde os gols);
+#   - confronto de mata-mata que ainda vai ser montado com ele (aguarda o
+#     adversário) vira WO assim que o adversário chega (_fill_slot);
+#   - não se classifica para a fase seguinte (advance pula quem desistiu: a vaga
+#     é do próximo da tabela) e fica fora do pódio e do prêmio (final_ranking);
+#   - já classificado para o mata-mata e sem ter jogado nele: a vaga dele vai
+#     para o suplente (o próximo da tabela da fase anterior - _find_substitute),
+#     sem WO.
+
+WITHDRAW_REASON_MIN, WITHDRAW_REASON_MAX = 10, 500
+WALKOVER_GOALS = 3
+
+
+def withdrawn_ids(db, tournament_id):
+    """Inscrições que desistiram do campeonato."""
+    return {row[0] for row in db.execute(
+        "SELECT id FROM tournament_entries WHERE tournament_id = ? AND withdrawn_at IS NOT NULL", (tournament_id,))}
+
+
+def _withdrawn(db, entry_id):
+    row = db.execute("SELECT withdrawn_at FROM tournament_entries WHERE id = ?", (entry_id,)).fetchone()
+    return row is not None and row[0] is not None
+
+
+def _log_system(db, match_id, score, comment):
+    """Linha do histórico do jogo feita pelo sistema (a página mostra "Sistema definiu o resultado")."""
+    db.execute("INSERT INTO match_reports (match_id, action, home_goals, away_goals, comment, created_at) "
+               "VALUES (?, 'resolve', ?, ?, ?, ?)", (match_id, *score, comment[:500], now()))
+
+
+def _username(db, entry_id):
+    return db.execute("SELECT p.username FROM tournament_entries e JOIN players p ON p.id = e.player_id "
+                      "WHERE e.id = ?", (entry_id,)).fetchone()[0]
+
+
+def _record_walkover(db, tournament, match, loser):
+    """O jogo vira WO: 3 x 0 para o adversário de `loser`, confirmado na hora."""
+    score = (0, WALKOVER_GOALS) if match["home_entry_id"] == loser else (WALKOVER_GOALS, 0)
+    record_result(db, tournament, match["id"], *score, walkover=loser)
+    db.execute("UPDATE tournament_matches SET reported_by_entry_id = NULL, reported_at = NULL, quitter_id = NULL "
+               "WHERE id = ?", (match["id"],))
+    _log_system(db, match["id"], score, f"WO: {_username(db, loser)} desistiu do campeonato.")
+
+
+def _walkover_tie(db, tie):
+    """Confronto de mata-mata recém-montado (_fill_slot) com quem desistiu: os
+    jogos viram WO. Os dois desistiram: passa o entry_a, que leva WO no confronto seguinte."""
+    gone = [entry_id for entry_id in (tie["entry_a"], tie["entry_b"]) if _withdrawn(db, entry_id)]
+    if not gone:
+        return
+    loser = gone[0] if len(gone) == 1 else tie["entry_b"]
+    tournament = db.execute("SELECT t.* FROM tournaments t JOIN tournament_stages s ON s.tournament_id = t.id "
+                            "WHERE s.id = ?", (tie["stage_id"],)).fetchone()
+    for match in tie_matches(db, tie["id"]):
+        if match["status"] != "confirmed":
+            _record_walkover(db, tournament, match, loser)
+
+
+def _kept_score(db, match, loser):
+    """Jogo de tabela (grupos, pontos corridos, liga) já reportado em que o
+    adversário de quem desistiu venceu: esse placar fica valendo, em vez do WO
+    (o adversário não perde os gols). O placar, ou None."""
+    if match["tie_id"] or match["status"] != "reported":
+        return None
+    reported = db.execute("SELECT * FROM match_reports WHERE match_id = ? AND action = 'report' ORDER BY id DESC "
+                          "LIMIT 1", (match["id"],)).fetchone()
+    if reported is None or reported["home_goals"] is None:
+        return None
+    mine, theirs = ((reported["home_goals"], reported["away_goals"]) if match["home_entry_id"] == loser
+                    else (reported["away_goals"], reported["home_goals"]))
+    return (reported["home_goals"], reported["away_goals"]) if theirs > mine else None
+
+
+def still_playing(db, tournament, entry):
+    """O inscrito ainda está na disputa? Na tabela (grupos, pontos corridos,
+    liga) sempre - ainda pode se classificar ou ir ao pódio; no mata-mata, se
+    tem um confronto sem vencedor (inclusive esperando o adversário)."""
+    stages = stages_of(db, tournament["id"])
+    if not stages:
+        return False
+    stage = stages[-1]
+    if stage["kind"] != "knockout":
+        return db.execute("SELECT 1 FROM tournament_group_members gm JOIN tournament_groups g ON g.id = gm.group_id "
+                          "WHERE g.stage_id = ? AND gm.entry_id = ?", (stage["id"], entry["id"])).fetchone() is not None
+    return db.execute("SELECT 1 FROM tournament_ties WHERE stage_id = ? AND winner_entry_id IS NULL "
+                      "AND ? IN (entry_a, entry_b)", (stage["id"], entry["id"])).fetchone() is not None
+
+
+def withdraw_error(db, tournament, entry):
+    """Por que o inscrito não pode desistir agora (texto), ou None se pode."""
+    if entry is None:
+        return "Você não está inscrito neste campeonato."
+    if tournament["status"] != "running":
+        return "Só dá para desistir de um campeonato em andamento."
+    if entry["withdrawn_at"]:
+        return "Você já desistiu deste campeonato."
+    if not still_playing(db, tournament, entry):
+        return "Você já está fora da disputa deste campeonato."
+    return None
+
+
+def _find_substitute(db, tournament, entry):
+    """O suplente que fica com a vaga de quem desistiu no mata-mata sem ter
+    jogado nele: o próximo da tabela da fase anterior que não se classificou
+    (primeiro do grupo dele, depois dos outros grupos pela campanha - como em
+    advance) e não desistiu. None se não cabe suplente (ou não há)."""
+    stages = stages_of(db, tournament["id"])
+    stage = stages[-1]
+    if stage["kind"] != "knockout" or len(stages) < 2 or stages[-2]["kind"] == "knockout":
+        return None
+    if db.execute("SELECT 1 FROM tournament_matches WHERE stage_id = ? AND status != 'scheduled' "
+                  "AND ? IN (home_entry_id, away_entry_id)", (stage["id"], entry["id"])).fetchone():
+        return None  # já jogou (ou reportou) no mata-mata: os jogos que faltam viram WO
+    in_knockout = {entry_id for row in db.execute("SELECT entry_a, entry_b FROM tournament_ties WHERE stage_id = ?",
+                                                  (stage["id"],)) for entry_id in row if entry_id}
+    if entry["id"] not in in_knockout:
+        return None
+    skip = in_knockout | withdrawn_ids(db, tournament["id"]) | {entry["id"]}
+    tables = [table for _, table in group_tables(db, stages[-2]["id"])]
+    own = next((table for table in tables if any(row["entry_id"] == entry["id"] for row in table)), [])
+    others = sorted((row for table in tables if table is not own for row in table),
+                    key=lambda row: (row["position"], -row["points"], -row["goal_diff"], -row["goals_for"],
+                                     -row["won"], row["discipline"]))
+    return next((row["entry_id"] for row in list(own) + others if row["entry_id"] not in skip), None)
+
+
+def _pending_matches(db, tournament, entry_id):
+    return db.execute(
+        "SELECT m.* FROM tournament_matches m JOIN tournament_stages s ON s.id = m.stage_id "
+        "WHERE s.tournament_id = ? AND s.status = 'running' AND m.status != 'confirmed' "
+        "AND ? IN (m.home_entry_id, m.away_entry_id) ORDER BY s.seq, m.round, m.leg, m.id",
+        (tournament["id"], entry_id)).fetchall()
+
+
+def withdraw_preview(db, tournament, entry):
+    """O que a desistência faria agora (a janela de confirmação): o suplente
+    que fica com a vaga (sem WO) ou quantos jogos viram WO e quantos ficam com
+    o placar reportado (derrotas também)."""
+    substitute = _find_substitute(db, tournament, entry)
+    # table: a fase atual é de tabela (sem jogos pendentes, ele só sai da classificação e do pódio);
+    # senão, sem jogos pendentes, ele espera o adversário do próximo confronto do mata-mata.
+    table = stages_of(db, tournament["id"])[-1]["kind"] != "knockout"
+    if substitute:
+        return {"substitute": True, "walkovers": 0, "kept": 0, "table": table}
+    pending = _pending_matches(db, tournament, entry["id"])
+    kept = sum(1 for match in pending if _kept_score(db, match, entry["id"]))
+    return {"substitute": False, "walkovers": len(pending) - kept, "kept": kept, "table": table}
+
+
+def withdraw_running(db, tournament, entry, reason):
+    """O inscrito desiste do campeonato em andamento (as regras acima). Devolve
+    {"substitute": inscrição do suplente ou None, "walkovers": [jogos que
+    viraram WO], "kept": [jogos com o placar reportado mantido]} para os e-mails."""
+    error = withdraw_error(db, tournament, entry)
+    if error:
+        raise TournamentError(error)
+    reason = (reason or "").strip()
+    if not WITHDRAW_REASON_MIN <= len(reason) <= WITHDRAW_REASON_MAX:
+        raise TournamentError(f"Conte o motivo da desistência (de {WITHDRAW_REASON_MIN} a {WITHDRAW_REASON_MAX} "
+                              "caracteres).")
+    db.execute("UPDATE tournament_entries SET withdrawn_at = ?, withdraw_reason = ? WHERE id = ?",
+               (now(), reason, entry["id"]))
+    result = {"substitute": None, "walkovers": [], "kept": []}
+    substitute = _find_substitute(db, tournament, entry)
+    if substitute:
+        stage_id = stages_of(db, tournament["id"])[-1]["id"]
+        for column in ("entry_a", "entry_b", "winner_entry_id"):
+            db.execute(f"UPDATE tournament_ties SET {column} = ? WHERE stage_id = ? AND {column} = ?",
+                       (substitute, stage_id, entry["id"]))
+        for column in ("home_entry_id", "away_entry_id"):
+            db.execute(f"UPDATE tournament_matches SET {column} = ?, updated_at = ? WHERE stage_id = ? AND {column} = ?",
+                       (substitute, now(), stage_id, entry["id"]))
+        db.execute("UPDATE tournament_entries SET replaced_by_entry_id = ? WHERE id = ?", (substitute, entry["id"]))
+        result["substitute"] = substitute
+    else:
+        for row in _pending_matches(db, tournament, entry["id"]):
+            # Um WO no mata-mata pode ter montado (e decidido) outros confrontos: relê o jogo.
+            match = db.execute("SELECT * FROM tournament_matches WHERE id = ?", (row["id"],)).fetchone()
+            if match is None or match["status"] == "confirmed":
+                continue
+            score = _kept_score(db, match, entry["id"])
+            if score:
+                record_result(db, tournament, match["id"], *score)
+                db.execute("UPDATE tournament_matches SET reported_by_entry_id = NULL, reported_at = NULL "
+                           "WHERE id = ?", (match["id"],))
+                _log_system(db, match["id"], score, f"{_username(db, entry['id'])} desistiu do campeonato: "
+                                                    "vale o placar reportado.")
+                result["kept"].append(match["id"])
+            else:
+                _record_walkover(db, tournament, match, entry["id"])
+                result["walkovers"].append(match["id"])
+    db.execute("UPDATE tournaments SET updated_at = ? WHERE id = ?", (now(), tournament["id"]))
+    return result
+
+
 def cancel(db, tournament):
     if tournament["status"] in ("finished", "cancelled"):
         raise TournamentError("Este campeonato já foi encerrado.")
@@ -379,6 +583,7 @@ def _fill_slot(db, tie_id, slot, entry_id):
             # O melhor colocado (entry_a) decide em casa.
             _new_match(db, tie["stage_id"], tie["round"], b, a, tie_id=tie_id, leg=1)
             _new_match(db, tie["stage_id"], tie["round"], a, b, tie_id=tie_id, leg=2)
+        _walkover_tie(db, tie)
 
 
 def _clear_slot(db, tie_id, slot):
@@ -414,7 +619,8 @@ def _set_winner(db, tie, winner):
 
 
 def _results(rows):
-    return [engine.Result(r["home_entry_id"], r["away_entry_id"], r["home_goals"], r["away_goals"]) for r in rows]
+    return [engine.Result(r["home_entry_id"], r["away_entry_id"], r["home_goals"], r["away_goals"],
+                          r["walkover_entry_id"]) for r in rows]
 
 
 def tie_matches(db, tie_id):
@@ -482,9 +688,11 @@ def _pay_match(db, tournament, match):
                 db.execute("UPDATE players SET wallet_empty_pending = 1 WHERE id = ?", (player_id,))
 
 
-def record_result(db, tournament, match_id, home_goals, away_goals, home_pens=None, away_pens=None):
+def record_result(db, tournament, match_id, home_goals, away_goals, home_pens=None, away_pens=None, walkover=None):
     """Grava (ou corrige) o placar de um jogo, paga o W$ do jogo (estornando o
-    resultado anterior, se havia) e, no mata-mata, avança o vencedor."""
+    resultado anterior, se havia) e, no mata-mata, avança o vencedor.
+    walkover: a inscrição que perdeu por WO (_record_walkover); qualquer outro
+    placar gravado no jogo (correção do organizador) deixa de ser WO."""
     match = db.execute(
         "SELECT m.*, s.status AS stage_status, s.tournament_id FROM tournament_matches m "
         "JOIN tournament_stages s ON s.id = m.stage_id WHERE m.id = ?", (match_id,)).fetchone()
@@ -497,12 +705,13 @@ def record_result(db, tournament, match_id, home_goals, away_goals, home_pens=No
     for value in (home_goals, away_goals):
         if value is None or not 0 <= value <= 99:
             raise TournamentError("Placar inválido.")
-    if not needs_pens(db, match):
+    if not needs_pens(db, match) or walkover is not None:
         home_pens = away_pens = None
     db.execute(
         "UPDATE tournament_matches SET home_goals = ?, away_goals = ?, home_pens = ?, away_pens = ?, "
-        "status = 'confirmed', result_version = result_version + 1, confirmed_at = ?, updated_at = ? WHERE id = ?",
-        (home_goals, away_goals, home_pens, away_pens, now(), now(), match_id))
+        "status = 'confirmed', result_version = result_version + 1, confirmed_at = ?, updated_at = ?, "
+        "walkover_entry_id = ? WHERE id = ?",
+        (home_goals, away_goals, home_pens, away_pens, now(), now(), walkover, match_id))
     _pay_match(db, tournament, db.execute("SELECT * FROM tournament_matches WHERE id = ?", (match_id,)).fetchone())
     if match["tie_id"]:
         tie = _tie(db, match["tie_id"])
@@ -537,7 +746,7 @@ def clear_result(db, tournament, match_id):
         _set_winner(db, _tie(db, match["tie_id"]), None)
     db.execute("UPDATE tournament_matches SET home_goals = NULL, away_goals = NULL, home_pens = NULL, "
                "away_pens = NULL, status = 'scheduled', result_version = result_version + 1, confirmed_at = NULL, "
-               "updated_at = ? WHERE id = ?", (now(), match_id))
+               "walkover_entry_id = NULL, updated_at = ? WHERE id = ?", (now(), match_id))
     _pay_match(db, tournament, db.execute("SELECT * FROM tournament_matches WHERE id = ?", (match_id,)).fetchone())
 
 
@@ -597,7 +806,11 @@ def advance(db, tournament):
     if not stage_complete(db, stage):
         raise TournamentError("Ainda há jogos sem resultado nesta fase.")
     config = settings_of(tournament)
-    tables = group_tables(db, stage["id"])
+    # Quem desistiu (withdraw_running) não se classifica: a vaga fica com o
+    # próximo da tabela (o suplente).
+    gone = withdrawn_ids(db, tournament["id"])
+    tables = [(group, [row for row in table if row["entry_id"] not in gone])
+              for group, table in group_tables(db, stage["id"])]
     if stage["kind"] == "swiss":
         table = tables[0][1]
         seeded = [row["entry_id"] for row in table[:config["direct"] * 3]]
@@ -610,7 +823,7 @@ def advance(db, tournament):
         qualifiers = config["qualifiers"]
         groups = len(tables)
         if (tournament["format"] == "world_cup" and qualifiers == 2 and groups >= 2
-                and groups & (groups - 1) == 0):
+                and groups & (groups - 1) == 0 and all(len(table) >= 2 for _, table in tables)):
             pairs = engine.cross_pairs([[row["entry_id"] for row in table] for _, table in tables])
         else:
             # Classificados ordenados por colocação no grupo e depois campanha
@@ -628,10 +841,16 @@ def advance(db, tournament):
 
 
 def final_ranking(db, tournament):
-    """Ids das inscrições em 1º, 2º e 3º (menos se não houver)."""
+    """Ids das inscrições em 1º, 2º e 3º (menos se não houver). Quem desistiu
+    (withdraw_running) fica fora do pódio e do prêmio: os de baixo sobem."""
+    gone = withdrawn_ids(db, tournament["id"])
+    return [entry_id for entry_id in _final_ranking(db, tournament) if entry_id not in gone][:3]
+
+
+def _final_ranking(db, tournament):
     stage = stages_of(db, tournament["id"])[-1]
     if stage["kind"] != "knockout":
-        return [row["entry_id"] for row in group_tables(db, stage["id"])[0][1][:3]]
+        return [row["entry_id"] for row in group_tables(db, stage["id"])[0][1]]
     final_round = db.execute("SELECT MAX(round) FROM tournament_ties WHERE stage_id = ?", (stage["id"],)).fetchone()[0]
     final = db.execute("SELECT * FROM tournament_ties WHERE stage_id = ? AND round = ? AND is_third_place = 0",
                        (stage["id"], final_round)).fetchone()
