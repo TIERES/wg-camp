@@ -844,12 +844,25 @@ def replays_cleanup_discard(label):
 # Jogadores e jogos do Memory Card online (app/players.py, app/memcards.py)
 # ---------------------------------------------------------------------------
 
+# Filtro "Status" da lista de jogadores (valor na URL -> rótulo).
+PLAYER_STATUSES = {
+    "confirmado": "Confirmado",
+    "nao-confirmado": "Não confirmado",
+    "sem-pc-48h": "Não conectado em 48h",
+    "nunca-kaillera": "Nunca entrou no Kaillera",
+}
+
+
 @bp.get("/jogadores")
 @login_required
 def players_list():
     from .accounts import PC_SITE_WINDOW, UNVERIFIED_TTL, iso, utcnow
     from .listing import cap, like
-    filters = {"name": request.args.get("nome", "").strip(), "status": request.args.get("confirmado", "")}
+    status = request.args.get("status", "")
+    if status not in PLAYER_STATUSES:
+        status = {"sim": "confirmado", "nao": "nao-confirmado"}.get(request.args.get("confirmado"), "")  # links antigos
+    filters = {"name": request.args.get("nome", "").strip(), "status": status}
+    pc_connected_since = iso(utcnow() - PC_SITE_WINDOW)
     # last_kaillera: a última vez que a Conta WE Camp foi verificada no Kaillera - a entrada pelo
     # botão "Conta WE Camp" ou o último uso do token de um PC (o DLL chama /api/mc/whoami toda vez
     # que a janela do Kaillera abre - accounts.pc_active_since), contando PCs já desconectados;
@@ -865,10 +878,18 @@ def players_list():
     if filters["name"]:
         sql += " AND (p.username LIKE ? ESCAPE '\\' OR p.email LIKE ? ESCAPE '\\')"
         params += [like(filters["name"])] * 2
-    if filters["status"] == "sim":
-        sql += " AND p.email_verified_at IS NOT NULL"
-    elif filters["status"] == "nao":
+    if status == "nao-confirmado":
         sql += " AND p.email_verified_at IS NULL"
+    elif status:
+        sql += " AND p.email_verified_at IS NOT NULL"
+    if status == "sem-pc-48h":
+        # A regra da janela e do convite (accounts.connected_pcs): nenhum PC que abriu o Kaillera
+        # nas últimas PC_SITE_WINDOW horas - inclui quem nunca entrou pelo Kaillera.
+        sql += (" AND NOT EXISTS (SELECT 1 FROM player_tokens t WHERE t.player_id = p.id AND t.kind = 'api' "
+                "AND t.used_at IS NULL AND MAX(t.created_at, COALESCE(t.last_used_at, '')) > ?)")
+        params.append(pc_connected_since)
+    elif status == "nunca-kaillera":
+        sql += " AND NOT EXISTS (SELECT 1 FROM player_tokens t WHERE t.player_id = p.id AND t.kind = 'api')"
     players, total = cap(get_db().execute(sql + " ORDER BY p.created_at DESC, p.id DESC", params).fetchall())
     # Cadastro não confirmado: até quando o nick e o e-mail ficam reservados (48 h depois do
     # cadastro ou do último link de confirmação - accounts.already_registered); None = já livres.
@@ -883,7 +904,7 @@ def players_list():
                            filtered=any(filters.values()), reserved=reserved,
                            reserve_hours=int(UNVERIFIED_TTL.total_seconds() // 3600),
                            pc_window_hours=int(PC_SITE_WINDOW.total_seconds() // 3600),
-                           pc_connected_since=iso(utcnow() - PC_SITE_WINDOW))
+                           pc_connected_since=pc_connected_since, statuses=PLAYER_STATUSES)
 
 
 def _player_back():

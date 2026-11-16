@@ -9,12 +9,13 @@
     <li><strong>Excluir</strong> apaga um cadastro pendente na hora, liberando o nick e o e-mail sem esperar o prazo.</li>
     <li>Os cadastros mais novos aparecem primeiro.</li>
     <li><strong>Validação no Kaillera</strong> é a última vez que a conta foi verificada no Kaillera: a entrada pelo botão "Conta WE Camp" ou a última vez que a janela do Kaillera foi aberta num PC com a conta.</li>
-    <li><strong>Enviar convite do Kaillera</strong> aparece na mesma regra da janela "Conecte sua Conta WE Camp no Kaillera" do site (nenhum PC conectado nas últimas {{ pc_window_hours }} h): manda por e-mail a animação e o passo a passo, e a janela volta a aparecer para o jogador na próxima visita ao site.</li>
+    <li><strong>Enviar convite do Kaillera</strong> aparece na mesma regra da janela "Conecte sua Conta WE Camp no Kaillera" do site (nenhum PC conectado nas últimas {{ pc_window_hours }} h): manda por e-mail a animação e o passo a passo, e a janela volta a aparecer para o jogador na próxima visita ao site. Depois do primeiro envio, o botão vira <strong>Reenviar convite</strong>.</li>
+    <li><strong>Status</strong> filtra os confirmados, os não confirmados, quem está <strong>sem PC conectado nas últimas {{ pc_window_hours }} h</strong> (a regra do convite, inclusive quem nunca entrou) e quem <strong>nunca entrou no Kaillera</strong>.</li>
   </ul>
 {% endcall %}
 <form method="get" class="live-filters">
   <label class="filter-wide">Nick ou e-mail<input name="nome" value="{{ filters.name }}"></label>
-  <label>Confirmado<select name="confirmado"><option value="">Todos</option><option value="sim" {% if filters.status == 'sim' %}selected{% endif %}>Sim</option><option value="nao" {% if filters.status == 'nao' %}selected{% endif %}>Não</option></select></label>
+  <label>Status<select name="status"><option value="">Todos</option>{% for value, label in statuses.items() %}<option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
   <div class="live-filter-actions"><a class="button secondary" href="{{ url_for('admin.players_list') }}">Limpar filtro</a><button>Filtrar</button></div>
 </form>
 {% if players %}
@@ -42,7 +43,7 @@
     <div class="t-foot player-actions">
       <button type="button" class="secondary icon-button" data-dialog="jogador-editar" aria-haspopup="dialog" data-player-edit="{{ url_for('admin.player_edit', player_id=player.id) }}" data-nick="{{ player.username }}" data-email="{{ player.email }}" data-pending="{{ '' if player.email_verified_at else '1' }}">{{ icon('edit') }}Editar</button>
       {% if player.email_verified_at and not pc_connected %}
-      <form method="post" action="{{ url_for('admin.player_kaillera_invite', player_id=player.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="voltar" value="{{ request.full_path }}"><button class="secondary icon-button">{{ icon('monitor') }}{{ 'Reenviar' if player.kaillera_invite_at else 'Enviar' }} convite do Kaillera</button></form>
+      <form method="post" action="{{ url_for('admin.player_kaillera_invite', player_id=player.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="voltar" value="{{ request.full_path }}"><button class="secondary icon-button">{{ icon('monitor') }}{{ 'Reenviar convite' if player.kaillera_invite_at else 'Enviar convite do Kaillera' }}</button></form>
       {% endif %}
       {% if not player.email_verified_at %}
       <form method="post" action="{{ url_for('admin.player_resend', player_id=player.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="voltar" value="{{ request.full_path }}"><button class="secondary icon-button">{{ icon('mail') }}Reenviar confirmação</button></form>

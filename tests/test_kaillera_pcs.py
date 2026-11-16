@@ -280,6 +280,33 @@ class AdminKailleraInviteTest(KaillerapcsTestBase):
         self.assertIn(self.button("Garrincha"), garrincha)
         self.assertIn("Enviar convite do Kaillera", garrincha)
 
+    def names(self, query):
+        page = self.admin.get(f"/admin/jogadores?{query}").get_data(as_text=True)
+        return sorted(n for n in ("Pele", "Garrincha") if f'<strong class="t-name">{n}</strong>' in page)
+
+    def test_status_filter(self):
+        token = self.api_login("Pele")                       # Pele: PC conectado; Garrincha: nunca entrou
+        page = self.admin.get("/admin/jogadores?status=sem-pc-48h").get_data(as_text=True)
+        self.assertIn("<label>Status<select name=\"status\">", page)
+        self.assertIn('<option value="sem-pc-48h" selected>Não conectado em 48h</option>', page)
+        self.assertEqual(self.names("status=confirmado"), ["Garrincha", "Pele"])
+        self.assertEqual(self.names("status=sem-pc-48h"), ["Garrincha"])
+        self.assertEqual(self.names("status=nunca-kaillera"), ["Garrincha"])
+        self.assertEqual(self.names("status=nao-confirmado"), [])
+        # O PC do Pele não abre o Kaillera há mais de 48 h: entra em "Não conectado em 48h".
+        self.set_token(token, created_at=ago(hours=49))
+        self.assertEqual(self.names("status=sem-pc-48h"), ["Garrincha", "Pele"])
+        self.assertEqual(self.names("status=nunca-kaillera"), ["Garrincha"])
+        # Cadastro não confirmado sai dos filtros do Kaillera; o link antigo ?confirmado= ainda vale.
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE players SET email_verified_at = NULL WHERE username = 'Garrincha'")
+            db.commit()
+        self.assertEqual(self.names("status=nao-confirmado"), ["Garrincha"])
+        self.assertEqual(self.names("status=nunca-kaillera"), [])
+        self.assertEqual(self.names("confirmado=nao"), ["Garrincha"])
+        self.assertEqual(self.names("status=qualquer"), ["Garrincha", "Pele"])
+
     def test_pc_gone_from_the_site_brings_the_button_back(self):
         token = self.api_login("Pele")
         self.set_token(token, created_at=ago(hours=49))
@@ -319,7 +346,8 @@ class AdminKailleraInviteTest(KaillerapcsTestBase):
         # O card mostra o convite; outro em menos de 2 minutos é recusado.
         card = self.card(self.admin.get("/admin/jogadores").get_data(as_text=True), "Garrincha")
         self.assertIn("Convite do Kaillera enviado", card)
-        self.assertIn("Reenviar convite do Kaillera", card)
+        self.assertIn("Reenviar convite</button>", card)
+        self.assertNotIn("Enviar convite do Kaillera", card)
         self.assertIn("há menos de 2 minutos", self.invite("Garrincha"))
         self.assertEqual(self.mails(), [])
 
