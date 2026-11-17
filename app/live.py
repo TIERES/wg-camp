@@ -945,6 +945,7 @@ def card(db, match):
             view["people"] = [{"id": None, "name": view["players"][0]}]
     return {"id": match["id"], "status": match["status"], "stale": stale, "is_test": match["is_test"],
             "reconnecting": reconnecting,
+            "hidden": bool(match["hidden"]),  # ocultado pelo administrador (só ele vê, com "Mostrar")
             "clock": "Sem sinal" if stale else _clock_label(match),
             # sem o risco animado (no "Reconectando", com ele)
             "interval": not reconnecting and (_interval(match) or _period_over(match)),
@@ -1062,6 +1063,7 @@ def list_cards(db, tournament_id=None, kind=None, tournament_query="", only_live
         params.append(_ago(RECENT))
     if not _is_admin():
         where.append("m.is_test = 0")
+        where.append("m.hidden = 0")  # card ocultado pelo administrador (hide)
     ids = [tournament_id] if tournament_id else (tournaments_named(db, tournament_query) if tournament_query else None)
     if ids is not None:
         marks = ",".join("?" * len(ids)) or "NULL"  # nenhum campeonato com esse nome: nada
@@ -1134,7 +1136,7 @@ def tournament_live(db, tournament_id):
     As simulações só aparecem para o admin, como nos cards."""
     rows = db.execute(
         _TOURNAMENT_LIVE_SQL + "WHERE s.tournament_id = ? AND m.status = 'live' AND m.verified = 1 AND m.updated_at >= ?"
-        + ("" if _is_admin() else " AND m.is_test = 0"), (tournament_id, _ago(STALE))).fetchall()
+        + ("" if _is_admin() else " AND m.is_test = 0 AND m.hidden = 0"), (tournament_id, _ago(STALE))).fetchall()
     groups, entries, matches, match_urls, live_ids = set(), {}, {}, {}, {}
     for row in rows:
         score = _home_away(row, (row["local_goals"] or 0, row["visita_goals"] or 0))
@@ -1664,8 +1666,9 @@ def match_goals(db, match, score, live_id=None):
                       or _home_away(row, (row["local_goals"] or 0, row["visita_goals"] or 0)) == tuple(score)):
             teams = _match_state(row).get("teams") or [{}, {}]
             goals = [(teams[side].get("scorers") or []) if side < len(teams) else [] for side in sides]
-            return {"home": goals[0], "away": goals[1], "url": url_for("live.index", partida=row["id"]),
-                    "live": row["status"] == "live"}
+            # Card ocultado pelo administrador: os gols ficam, sem o botão do card.
+            url = url_for("live.index", partida=row["id"]) if _is_admin() or not row["hidden"] else None
+            return {"home": goals[0], "away": goals[1], "url": url, "live": row["status"] == "live"}
     return None
 
 
@@ -1733,6 +1736,28 @@ def cards_fragment():
                        limit=4 if recent else (page_size() if request.args.get("mostrar") else CARDS_LIMIT),
                        **_filters())
     return render_template("live/_cards.html", cards=cards)
+
+
+@bp.post("/ao-vivo/<int:live_id>/ocultar")
+@login_required
+def hide(live_id):
+    """Administrador: oculta o card (ocultar=1) do Ao vivo e do placar ao vivo
+    da tabela para jogadores e visitantes, ou volta a mostrar (ocultar=0). Só
+    a visualização: o placar e os resultados da partida não mudam."""
+    validate_csrf()
+    db = get_db()
+    hidden = request.form.get("ocultar") == "1"
+    if db.execute("UPDATE live_matches SET hidden = ? WHERE id = ?", (int(hidden), live_id)).rowcount:
+        db.commit()
+        flash("Card ocultado: jogadores e visitantes não o veem mais." if hidden
+              else "Card visível de novo para todos.", "success")
+    # De volta à página do card (o recarregado sozinho pela página não traz "voltar": a de onde veio).
+    target = request.form.get("voltar") or ""
+    if not target and request.referrer:
+        from urllib.parse import urlsplit
+        ref = urlsplit(request.referrer)
+        target = (ref.path + ("?" + ref.query if ref.query else "")) if ref.netloc == request.host else ""
+    return redirect(target if target.startswith("/") and not target.startswith("//") else url_for("live.index"))
 
 
 @bp.post("/ao-vivo/limpar-testes")

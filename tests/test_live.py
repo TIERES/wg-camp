@@ -1948,5 +1948,45 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertEqual(self.rows("SELECT interrupted FROM tournament_matches")[0]["interrupted"], 1)
 
 
+    # --- Administrador: ocultar o card -------------------------------------------
+
+    def test_admin_hides_a_card_from_players_and_visitors(self):
+        t, group, entries = self.make_league()
+        self.post(state(goals=(1, 0)))
+        live_id = self.rows("SELECT id FROM live_matches")[0]["id"]
+        admin, player = self.admin(), self.player(self.tieres)
+        self.assertIn("live-mini", self.table())
+        self.assertNotIn("live-hide-form", self.cards())  # visitantes e jogadores não têm o botão
+        self.assertNotIn("live-hide-form", self.cards(player))
+        self.assertIn('<button type="submit" class="secondary small" title="Ocultar o card para jogadores e visitantes">Ocultar</button>',
+                      self.cards(admin))
+        # Só o administrador oculta.
+        self.assertEqual(player.post("/ao-vivo/%d/ocultar" % live_id, data={"csrf_token": CSRF, "ocultar": "1"}).status_code, 302)
+        self.assertEqual(self.rows("SELECT hidden FROM live_matches")[0]["hidden"], 0)
+        reply = admin.post("/ao-vivo/%d/ocultar" % live_id, data={"csrf_token": CSRF, "ocultar": "1", "voltar": "/ao-vivo?jogador=TIERES"})
+        self.assertEqual((reply.status_code, reply.headers["Location"]), (302, "/ao-vivo?jogador=TIERES"))
+        self.assertEqual(self.rows("SELECT hidden FROM live_matches")[0]["hidden"], 1)
+        # Some para visitantes e jogadores: cards, a partida pelo link e o placar ao vivo da tabela.
+        for client in (None, player):
+            self.assertNotIn("TIERES", without_suggestions(self.cards(client)))
+            page = (client or self.app.test_client()).get("/ao-vivo?partida=%d" % live_id).get_data(as_text=True)
+            self.assertIn('<p class="muted" data-live-empty >Nenhuma partida com esses filtros.</p>', page)
+        self.assertNotIn("live-mini", self.table())
+        # O administrador continua vendo, esmaecido, com "Oculto" e "Mostrar".
+        html = self.cards(admin)
+        self.assertIn('class="live-card is-hidden"', html)
+        self.assertIn('title="Só o administrador vê este card">Oculto</span>', html)
+        self.assertIn(">Mostrar</button>", html)
+        self.assertIn("live-mini", admin.get("/torneios/liga-1/tabela-ao-vivo").get_data(as_text=True))
+        # O resultado não muda: a partida segue valendo para o jogo do campeonato.
+        self.assertIsNotNone(self.rows("SELECT tournament_match_id FROM live_matches")[0]["tournament_match_id"])
+        # Mostrar de novo (sem "voltar", nem de outro site: o Ao vivo).
+        reply = admin.post("/ao-vivo/%d/ocultar" % live_id, data={"csrf_token": CSRF, "ocultar": "0", "voltar": "//outro.site/x"})
+        self.assertEqual(reply.headers["Location"], "/ao-vivo")
+        self.assertIn("TIERES", self.cards())
+        self.assertIn("live-mini", self.table())
+        # Sem o token do formulário: recusado.
+        self.assertEqual(admin.post("/ao-vivo/%d/ocultar" % live_id, data={"ocultar": "1"}).status_code, 400)
+
 if __name__ == "__main__":
     unittest.main()

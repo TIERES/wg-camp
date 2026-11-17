@@ -33,7 +33,7 @@
     {% elif live_now %}Ao vivo agora: placar lido do jogo pelo RetroArch TIERES
     {% else %}Ainda sem resultado{% endif %}
   </p>{% endif %}
-  {% if goals %}<a class="button secondary" href="{{ goals.url }}">{{ 'Placar Ao Vivo' if goals.live else 'Ver card Ao Vivo' }}</a>{% endif %}
+  {% if goals and goals.url %}<a class="button secondary" href="{{ goals.url }}">{{ 'Placar Ao Vivo' if goals.live else 'Ver card Ao Vivo' }}</a>{% endif %}
   </div>
   {% if quitter and m.status in ('reported', 'disputed', 'confirmed') %}<p class="friendly-warn">{{ quitter }} saiu da partida no meio do jogo (vale o placar de quando parou){% if m.status == 'confirmed' %} e perdeu o triplo de XP{% else %}: se o placar for confirmado, perde o triplo de XP - mesmo que tenha sido queda de conexão{% endif %}.</p>
   <p class="friendly-note muted">Joguem até o fim, mesmo faltando pouco tempo. Se a conexão cair, usem o Reconectar do Kaillera para continuar de onde parou ou joguem de novo: enquanto ninguém confirmar o placar de quando parou, vale a partida nova, sem a penalidade.</p>{% endif %}

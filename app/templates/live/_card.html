@@ -1,7 +1,7 @@
 {# Card de uma partida ao vivo (app/live.py card()): jogo base/campeonato, tempo, times com quem controla, placar e gols. #}
 {% from '_avatar.html' import avatar, avatar_button %}
 {% set a, b = c.teams %}
-<article class="live-card{% if c.status != 'live' %} ended{% endif %}">
+<article class="live-card{% if c.status != 'live' %} ended{% endif %}{% if c.hidden %} is-hidden{% endif %}">
   <div class="live-card-head">
     {# Logos: o jogo base e a imagem do campeonato ou, sem ela, a da ISO do cadastro (live._profile).
        Com a ISO identificada, os logos, o nome e a descrição levam à página do campeonato
@@ -24,6 +24,7 @@
     {# "Reconectando" (o Reconectar do Kaillera, até o host liberar os controles): verde e com
        o risco animado como o tempo de jogo ao vivo, sem o "Ao vivo" em cima. #}
     <span class="live-status">
+      {% if c.hidden %}<span class="badge live-hidden-badge" title="Só o administrador vê este card">Oculto</span>{% endif %}
       {% if c.status == 'live' and not c.stale and not c.reconnecting %}<span class="live-badge">Ao vivo</span>{% endif %}
       <span class="live-clock{% if c.status == 'live' and not c.stale and not c.interval %} on{% endif %}">{{ c.clock }}</span>
     </span>
@@ -102,5 +103,11 @@
     {% if c.status == 'finished' and c.agreed %}<small class="live-agreed">Placar conferido nos {{ c.reporters }} PCs</small>{% endif %}
     {# Partida livre interrompida: o placar final que os dois combinam (live._free_final). #}
     {% if c.final %}<small class="live-final{% if c.final.pending %} pending{% endif %}">{% if c.final.url %}<a href="{{ c.final.url }}">{{ c.final.text }}</a>{% else %}{{ c.final.text }}{% endif %}</small>{% endif %}
+    {# Administrador: ocultar o card para jogadores e visitantes (live.hide), ou mostrar de novo. #}
+    {% if session.user_id %}<form class="live-hide-form" method="post" action="{{ url_for('live.hide', live_id=c.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="ocultar" value="{{ '0' if c.hidden else '1' }}">
+      {% if request.endpoint != 'live.cards_fragment' %}<input type="hidden" name="voltar" value="{{ request.full_path }}">{% endif %}
+      <button type="submit" class="secondary small" title="{{ 'Mostrar o card para todos de novo' if c.hidden else 'Ocultar o card para jogadores e visitantes' }}">{{ 'Mostrar' if c.hidden else 'Ocultar' }}</button>
+    </form>{% endif %}
   </div>
 </article>

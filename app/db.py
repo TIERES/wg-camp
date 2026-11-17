@@ -698,7 +698,7 @@ def ensure_live_columns(database):
         # As partidas de antes da regra ficam de fora (mandadas sem login garantido).
         database.execute("ALTER TABLE live_matches ADD COLUMN verified INTEGER NOT NULL DEFAULT 0")
     for column, kind in (("reconnecting_at", "TEXT"), ("reconnect_session", "TEXT"), ("resume_key", "TEXT"),
-                         ("frame_base", "INTEGER NOT NULL DEFAULT 0")):
+                         ("frame_base", "INTEGER NOT NULL DEFAULT 0"), ("hidden", "INTEGER NOT NULL DEFAULT 0")):
         if columns and column not in columns:
             database.execute(f"ALTER TABLE live_matches ADD COLUMN {column} {kind}")
 
@@ -882,7 +882,10 @@ CREATE TABLE IF NOT EXISTS live_matches (
     reconnecting_at TEXT,
     reconnect_session TEXT,
     resume_key TEXT,
-    frame_base INTEGER NOT NULL DEFAULT 0
+    frame_base INTEGER NOT NULL DEFAULT 0,
+    -- 1 = o administrador ocultou o card (live.hide): some do Ao vivo e do placar
+    -- ao vivo da tabela para jogadores e visitantes; o resultado não muda.
+    hidden INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS live_matches_status_idx ON live_matches(status, updated_at);
 CREATE INDEX IF NOT EXISTS live_matches_tournament_match_idx ON live_matches(tournament_match_id);
