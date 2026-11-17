@@ -293,6 +293,13 @@ class FreeMatchesTest(unittest.TestCase):
                      'Partida livre · interrompida · ' % stopped, "Registrem um placar final",
                      'class="f-btn f-V" href="/ao-vivo?partida=', "Em laranja:</span> interrompida"):
             self.assertIn(text, popup)
+        # Em cada card: ranking, jogos e aproveitamento em cima; V, E e D embaixo.
+        page = self.get(self.c, "/torneios/jogadores/TIERES")
+        for html in (popup, page):
+            card = html[html.index('class="record-card record-free"'):]
+            card = card[:card.index("</a>")]
+            order = [card.index('title="%s"' % t) for t in ("Ranking", "Jogos", "Aproveitamento", "Vitórias", "Empates", "Derrotas")]
+            self.assertEqual(order, sorted(order))
         # Cada card leva ao Ao vivo com o jogador e o tipo de partida filtrados.
         for kind in ("Rankeado", "Amistoso", "Partida+livre"):
             self.assertIn('href="/ao-vivo?jogador=TIERES&amp;campeonato=%s"' % kind, popup)

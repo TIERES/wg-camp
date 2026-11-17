@@ -82,8 +82,8 @@
 {%- endmacro %}
 
 {# Os três cards do jogador (stats.summary): campeonatos e amistosos rankeados,
-   amistosos e partidas livres, cada um com a posição no ranking dele, jogos,
-   V/E/D e aproveitamento. compact = o popup do jogador (_player_card.html):
+   amistosos e partidas livres, cada um com a posição no ranking dele, jogos e
+   aproveitamento em cima e V/E/D embaixo. compact = o popup do jogador (_player_card.html):
    "Rank." e "Aprov." abreviados, com o nome inteiro no balão (title).
    Cada card é um link para o Ao vivo com o jogador e o tipo de partida já
    filtrados (Campeonato: Rankeado, Amistoso ou Partida livre - stats.KIND_FILTERS). #}
@@ -95,10 +95,11 @@
     <div class="stat-tiles compact">
       <div class="stat-tile" title="Ranking"><span>{{ 'Rank.' if compact else 'Ranking' }}</span><strong>{{ s.position ~ 'º' if s.position else '—' }}</strong></div>
       <div class="stat-tile" title="Jogos"><span>Jogos</span><strong>{{ s.record.played }}</strong></div>
+      {# Aproveitamento na linha de cima, com o ranking e os jogos; V, E e D juntos embaixo. #}
+      <div class="stat-tile" title="Aproveitamento"><span>{{ 'Aprov.' if compact else 'Aproveit.' }}</span><strong>{{ s.record.efficiency }}%</strong></div>
       <div class="stat-tile win" title="Vitórias"><span>V</span><strong>{{ s.record.wins }}</strong></div>
       <div class="stat-tile draw" title="Empates"><span>E</span><strong>{{ s.record.draws }}</strong></div>
       <div class="stat-tile loss" title="Derrotas"><span>D</span><strong>{{ s.record.losses }}</strong></div>
-      <div class="stat-tile" title="Aproveitamento"><span>{{ 'Aprov.' if compact else 'Aproveit.' }}</span><strong>{{ s.record.efficiency }}%</strong></div>
     </div>
   </a>
   {% endfor %}
