@@ -674,19 +674,22 @@ def _clock_label(match):
 
 def _context(db, match):
     """(linhas, link) do campeonato/amistoso da partida: no jogo de campeonato,
-    uma linha para o campeonato, a fase, a rodada e a ida/volta."""
+    o campeonato numa linha e, na outra, a fase com a rodada e a ida/volta."""
     if match["tournament_match_id"]:
         row = db.execute(
             "SELECT m.round, m.leg, m.id, s.name AS stage_name, s.kind, t.name, t.slug, tie.legs FROM tournament_matches m "
             "JOIN tournament_stages s ON s.id = m.stage_id JOIN tournaments t ON t.id = s.tournament_id "
             "LEFT JOIN tournament_ties tie ON tie.id = m.tie_id WHERE m.id = ?", (match["tournament_match_id"],)).fetchone()
         if row:
-            parts = [row["name"], row["stage_name"]]
+            # 2 linhas: o campeonato e "Fase de grupos: Rodada 6" (mata-mata de ida e volta: "Final: Ida").
+            detail = []
             if row["kind"] != "knockout":
-                parts.append("Rodada %d" % row["round"])
+                detail.append("Rodada %d" % row["round"])
             if row["legs"] == 2:
-                parts.append("Ida" if row["leg"] == 1 else "Volta")
-            return [p for p in parts if p], url_for("tournaments.show", slug=row["slug"], aba="tabela")
+                detail.append("Ida" if row["leg"] == 1 else "Volta")
+            stage = row["stage_name"] or ""
+            second = "%s: %s" % (stage, " · ".join(detail)) if stage and detail else stage or " · ".join(detail)
+            return [p for p in (row["name"], second) if p], url_for("tournaments.show", slug=row["slug"], aba="tabela")
     if match["friendly_id"]:
         # A página do amistoso é só dos dois jogadores: o link, só para eles.
         row = db.execute("SELECT home_id, away_id FROM friendly_matches WHERE id = ?", (match["friendly_id"],)).fetchone()

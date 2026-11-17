@@ -268,7 +268,7 @@ class LiveMatchesTest(unittest.TestCase):
         first = self.rows("SELECT * FROM live_matches")[0]
         self.assertEqual(first["tournament_match_id"], ida)
         html = self.cards()
-        self.assertIn('<span class="live-context-line">Euro WE Camp</span><span class="live-context-line">Final</span><span class="live-context-line">Ida</span>', html)
+        self.assertIn('<span class="live-context-line">Euro WE Camp</span><span class="live-context-line">Final: Ida</span>', html)
         self.assertIn("Grécia", html)
         self.assertNotIn("Finland", html)
         learned = self.rows("SELECT * FROM iso_team_slots WHERE slot = 16")[0]
@@ -277,7 +277,7 @@ class LiveMatchesTest(unittest.TestCase):
         self.post(state(kickoff=64201, goals=(0, 1)))
         second = self.rows("SELECT * FROM live_matches ORDER BY id")[1]
         self.assertEqual(second["tournament_match_id"], volta)
-        self.assertIn('<span class="live-context-line">Euro WE Camp</span><span class="live-context-line">Final</span><span class="live-context-line">Volta</span>', self.cards())
+        self.assertIn('<span class="live-context-line">Euro WE Camp</span><span class="live-context-line">Final: Volta</span>', self.cards())
         tournament_id = self.rows("SELECT id FROM tournaments")[0]["id"]
         self.assertIn("Euro WE Camp", self.cards(campeonato=tournament_id))
         self.assertIn("Euro 2004", self.cards())  # jogo base do campeonato
@@ -1824,6 +1824,7 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertTrue(first.startswith('">'))  # não é "ended"
         self.assertIn("ANDERSHOW", first)
         self.assertIn('<span class="live-clock on">Reconectando</span>', first)
+        self.assertIn('<span class="live-context-line">Liga WE Camp</span><span class="live-context-line">Liga: Rodada 1</span>', first)
         self.assertNotIn('class="live-badge"', first)
         self.assertNotIn("Sem sinal", first)  # sem informe há 3 minutos, mas esperando o host
         self.assertNotIn("data-live-confirm", self.cards(self.player(self.anders)))
