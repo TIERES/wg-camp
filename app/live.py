@@ -1047,13 +1047,105 @@ def tournaments_named(db, text):
     return exact or [row["id"] for row in rows if typed in _plain(row["name"])]
 
 
+# Filtro "ISO" do Ao vivo: a ISO de cada partida como o card a identifica
+# (_profile, _catalog_iso) - a do cadastro de amistosos ou a de um campeonato.
+NO_ISO = "Sem ISO"
+# O nome do arquivo da partida no SQL (_file_name): a sala sem o "PCSX ReARMed: ".
+_ROOM_FILE = "(CASE WHEN m.room LIKE 'PCSX ReARMed:%' THEN ltrim(substr(m.room, 14)) ELSE m.room END)"
+# As ISOs que valem: as ativas do cadastro e as enviadas nos campeonatos (não cancelados).
+_CATALOG_ISO_IDS = "SELECT id FROM catalog_isos WHERE is_active = 1"
+_TOURNAMENT_ISO_IDS = ("SELECT i.tournament_id FROM tournament_isos i JOIN tournaments t ON t.id = i.tournament_id "
+                       "WHERE t.status != 'cancelled'")
+# A partida tem o CRC32:TAMANHO de alguma ISO cadastrada (ou ligada a uma no perfil
+# da ISO): sem isso, o card cai no nome do arquivo.
+_KNOWN_CONTENT = (
+    "m.content_id COLLATE NOCASE IN (SELECT content_id FROM catalog_isos WHERE is_active = 1 "
+    "AND COALESCE(content_id, '') != '' UNION SELECT content_id FROM tournament_isos "
+    f"WHERE tournament_id IN ({_TOURNAMENT_ISO_IDS}) AND COALESCE(content_id, '') != '' "
+    "UNION SELECT content_id FROM iso_profiles WHERE catalog_iso_id IS NOT NULL OR tournament_id IS NOT NULL)")
+
+
+def _iso_where(catalog_in=None, tournament_in=None):
+    """SQL de "a partida m foi jogada com uma destas ISOs": catalog_in e
+    tournament_in vão no IN (...) - ids do cadastro e de campeonatos com ISO
+    (só números) ou uma subconsulta; None = nenhuma. Vale a ISO escolhida no
+    amistoso, o jogo do campeonato, o perfil da ISO (admin/aprendido), a mesma
+    ISO (CRC32:TAMANHO) ou, sem o CRC32 de nenhuma ISO cadastrada, o mesmo
+    nome de arquivo. Sempre 0 ou 1, nunca NULL (o "Sem ISO" é o NOT dela)."""
+    parts, files = [], []
+    if catalog_in:
+        catalog = f"SELECT id FROM catalog_isos WHERE is_active = 1 AND id IN ({catalog_in})"
+        parts += [f"m.friendly_id IN (SELECT id FROM friendly_matches WHERE iso_catalog_id IN ({catalog}))",
+                  f"m.content_id COLLATE NOCASE IN (SELECT content_id FROM iso_profiles WHERE catalog_iso_id IN ({catalog}))",
+                  f"m.content_id COLLATE NOCASE IN (SELECT content_id FROM catalog_isos WHERE id IN ({catalog}) "
+                  "AND COALESCE(content_id, '') != '')"]
+        files.append(f"SELECT original_filename FROM catalog_isos WHERE id IN ({catalog}) "
+                     "AND COALESCE(original_filename, '') != ''")
+    if tournament_in:
+        tournaments = f"SELECT tournament_id FROM tournament_isos WHERE tournament_id IN ({tournament_in}) " \
+                      f"AND tournament_id IN ({_TOURNAMENT_ISO_IDS})"
+        parts += ["m.tournament_match_id IN (SELECT tm.id FROM tournament_matches tm JOIN tournament_stages ts "
+                  f"ON ts.id = tm.stage_id WHERE ts.tournament_id IN ({tournaments}))",
+                  f"m.friendly_id IN (SELECT id FROM friendly_matches WHERE iso_tournament_id IN ({tournaments}))",
+                  f"m.content_id COLLATE NOCASE IN (SELECT content_id FROM iso_profiles WHERE tournament_id IN ({tournaments}))",
+                  f"m.content_id COLLATE NOCASE IN (SELECT content_id FROM tournament_isos "
+                  f"WHERE tournament_id IN ({tournaments}) AND COALESCE(content_id, '') != '')"]
+        files.append(f"SELECT original_filename FROM tournament_isos WHERE tournament_id IN ({tournaments}) "
+                     "AND COALESCE(original_filename, '') != ''")
+    if files:
+        parts.append(f"(NOT {_KNOWN_CONTENT} AND {_ROOM_FILE} COLLATE NOCASE IN ({' UNION '.join(files)}))")
+    return "COALESCE(%s, 0)" % " OR ".join(parts) if parts else "0"
+
+
+def _isos(db):
+    """As ISOs que o filtro conhece: [(nome, "c" do cadastro / "t" do campeonato, id)]."""
+    rows = db.execute("SELECT id, name FROM catalog_isos WHERE is_active = 1").fetchall()
+    result = [(row["name"], "c", row["id"]) for row in rows]
+    rows = db.execute(f"SELECT id, name FROM tournaments WHERE id IN ({_TOURNAMENT_ISO_IDS})").fetchall()
+    return result + [(row["name"], "t", row["id"]) for row in rows]
+
+
+def iso_options(db):
+    """Sugestões do filtro "ISO": as ISOs do cadastro de amistosos e as dos
+    campeonatos (o nome do campeonato) com partidas no Ao vivo, por nome."""
+    visible = "m.verified = 1" + ("" if _is_admin() else " AND m.is_test = 0 AND m.hidden = 0")
+    names = set()
+    for name, kind, iso_id in _isos(db):
+        where = _iso_where(**{"catalog_in" if kind == "c" else "tournament_in": str(int(iso_id))})
+        if name not in names and db.execute(f"SELECT 1 FROM live_matches m WHERE {visible} AND {where} LIMIT 1").fetchone():
+            names.add(name)
+    return sorted(names, key=_plain)
+
+
+def iso_filter(db, text):
+    """(SQL, parâmetros) do filtro "ISO" pelo texto do campo: "Sem ISO" (as
+    partidas sem nenhuma ISO cadastrada - o card só com o nome do arquivo), o
+    nome exato de uma ISO (sem acento/maiúscula) ou, sem ele, as ISOs que
+    contêm o texto e as partidas com ele no nome do arquivo (o rodapé do card)."""
+    typed = _plain(text)
+    if typed == _plain(NO_ISO):
+        return f"NOT {_iso_where(_CATALOG_ISO_IDS, _TOURNAMENT_ISO_IDS)}", []
+    isos = _isos(db)
+    chosen = [(kind, iso_id) for name, kind, iso_id in isos if _plain(name) == typed]
+    partial = not chosen
+    if partial:
+        chosen = [(kind, iso_id) for name, kind, iso_id in isos if typed in _plain(name)]
+    ids = {kind: ",".join(str(int(i)) for k, i in chosen if k == kind) or None for kind in ("c", "t")}
+    where = _iso_where(ids["c"], ids["t"])
+    if not partial:
+        return where, []
+    from .listing import like
+    return f"({where} OR {_ROOM_FILE} LIKE ? ESCAPE '\\')", [like(text)]
+
+
 def list_cards(db, tournament_id=None, kind=None, tournament_query="", only_live=False, recent_only=False, player="",
-               date_from="", date_to="", match_id=None, limit=CARDS_LIMIT, count=False):
+               date_from="", date_to="", match_id=None, iso_query="", limit=CARDS_LIMIT, count=False):
     """As últimas partidas (ao vivo primeiro), com os filtros da página:
     tournament_id = os jogos daquele campeonato (o link "Ao vivo" da tabela);
     kind = Rankeado, Amistoso ou Partida livre (_KIND_WHERE); tournament_query =
     o nome digitado de um campeonato (tournaments_named); match_id = só aquela
-    partida (o placar ao lado do time na tabela do campeonato)."""
+    partida (o placar ao lado do time na tabela do campeonato); iso_query = o
+    texto do filtro "ISO" (iso_filter)."""
     reap(db)
     where, params = ["m.verified = 1"], []  # só com os dois jogadores logados (refresh)
     if only_live:
@@ -1075,6 +1167,10 @@ def list_cards(db, tournament_id=None, kind=None, tournament_query="", only_live
     if match_id:
         where.append("m.id = ?")
         params.append(match_id)
+    if iso_query:
+        sql, values = iso_filter(db, iso_query)
+        where.append(sql)
+        params.extend(values)
     if player:
         # O nick de uma conta (o que a sugestão do campo preenche): só as
         # partidas dele ("TIERES" não traz as do TIERES_ART); um pedaço do
@@ -1699,7 +1795,8 @@ def _filters():
             "tournament_id": int(championship) if championship.isdigit() else None,
             "tournament_query": championship if championship and not kind and not championship.isdigit() else "",
             "match_id": int(args["partida"]) if args.get("partida", "").isdigit() else None,
-            "date_from": args.get("de", ""), "date_to": args.get("ate", "")}
+            "date_from": args.get("de", ""), "date_to": args.get("ate", ""),
+            "iso_query": args.get("iso", "").strip()[:120]}
 
 
 @bp.get("/ao-vivo")
@@ -1721,7 +1818,7 @@ def index():
     return render_template("live/index.html", cards=list_cards(db, limit=limit, **filters),
                            total=list_cards(db, count=True, **filters), filters=filters, players=players,
                            tournaments=tournaments, is_admin=_is_admin(), limit=limit, championship=championship,
-                           kind_options=[label for label, _ in KIND_FILTERS],
+                           kind_options=[label for label, _ in KIND_FILTERS], iso_options=iso_options(db), no_iso=NO_ISO,
                            cards_url=url_for("live.cards_fragment", **dict(request.args.to_dict(), mostrar=limit)))
 
 

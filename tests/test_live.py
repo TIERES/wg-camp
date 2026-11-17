@@ -213,6 +213,58 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertNotIn("P11", without_suggestions(page))
         self.assertIn('data-nick="Fulano"', page)  # o filtro "Jogador" sugere quem já jogou logado
 
+    def test_iso_filter(self):
+        """Filtro "ISO": a do cadastro de amistosos (pelo CRC32 ou, sem ele, pelo
+        nome do arquivo), a do campeonato, "Sem ISO" e um pedaço do nome (da ISO
+        ou do arquivo). As sugestões: só as ISOs com partidas no Ao vivo."""
+        with self.app.app_context():
+            db = get_db()
+            game = db.execute("SELECT id FROM game_titles WHERE code = 'we2002'").fetchone()["id"]
+            for name, content, filename in (("EUROCOPA 2004", "BA9BDE21:1C473F60", "Euro vs Copa America 2004.bin"),
+                                            ("Copa Africana 2025", None, "Copa_Africana.bin"),
+                                            ("World Cup 2026", "EEEE:5", "WorldCup26.chd")):
+                db.execute("INSERT INTO catalog_isos (name, game_title_id, content_id, original_filename, created_at, "
+                           "updated_at) VALUES (?, ?, ?, ?, ?, ?)", (name, game, content, filename, now(), now()))
+            t = db.execute("INSERT INTO tournaments (slug, name, game_title_id, organizer_id, format, status, max_players, "
+                           "created_at, updated_at) VALUES ('liga-m', 'Liga Master', ?, ?, 'league', 'running', 4, ?, ?)",
+                           (game, self.tieres, now(), now())).lastrowid
+            db.execute("INSERT INTO tournament_isos (tournament_id, stored_name, original_filename, file_size, md5, "
+                       "archive_name, content_id, created_at, updated_at) VALUES (?, 'x', 'Liga.bin', 1, 'x', 'x', "
+                       "'cccc:3', ?, ?)", (t, now(), now()))
+            db.commit()
+        # (CRC32, arquivo): EUROCOPA pelo CRC32, a Copa Africana pelo arquivo, uma sem ISO
+        # cadastrada e duas da Liga - a 2ª com o arquivo da Copa Africana, mas o CRC32 manda.
+        for n, (content, room) in enumerate((("BA9BDE21:1C473F60", "Euro vs Copa America 2004.bin"),
+                                             ("AAAA:1", "Copa_Africana.bin"), ("BBBB:2", "Master Liga 12.bin"),
+                                             ("CCCC:3", "Liga.bin"), ("CCCC:3", "Copa_Africana.bin"))):
+            self.post(state(kickoff=1000 * (n + 1)), players="TIERES,P%d" % n)
+            with self.app.app_context():
+                db = get_db()
+                db.execute("UPDATE live_matches SET content_id = ?, room = ? WHERE id = (SELECT MAX(id) FROM live_matches)",
+                           (content, "PCSX ReARMed: " + room))
+                db.commit()
+
+        def players(text, **params):
+            return sorted(re.findall(r"<small>(P\d)</small>", self.cards(iso=text, **params)))
+        self.assertEqual(players("EUROCOPA 2004"), ["P0"])
+        self.assertEqual(players("eurocopa 2004"), ["P0"])
+        self.assertEqual(players("Copa Africana 2025"), ["P1"])
+        self.assertEqual(players("Liga Master"), ["P3", "P4"])
+        self.assertEqual(players("Sem ISO"), ["P2"])
+        self.assertEqual(players("sem iso", campeonato="Partida livre"), ["P2"])
+        # Pedaço do nome: as ISOs com ele e as partidas com ele no nome do arquivo.
+        self.assertEqual(players("copa"), ["P0", "P1", "P4"])
+        self.assertEqual(players("master"), ["P2", "P3", "P4"])
+        self.assertEqual(players("World Cup 2026"), [])
+        self.assertEqual(players("xyz"), [])
+        page = self.app.test_client().get("/ao-vivo?iso=Sem+ISO").get_data(as_text=True)
+        self.assertIn('id="live-iso" value="Sem ISO"', page)
+        self.assertIn('data-fixed="[&#34;Sem ISO&#34;]"', page)
+        self.assertIn('data-options="[&#34;Copa Africana 2025&#34;, &#34;EUROCOPA 2004&#34;, &#34;Liga Master&#34;]"', page)
+        self.assertIn("/ao-vivo/cards?iso=Sem+ISO", page)
+        self.assertIn("<small>P2</small>", page)
+        self.assertNotIn("<small>P0</small>", page)
+
     def test_final_agreement(self):
         self.post(state(period=1, clock=0, goals=(4, 4), final=True))
         self.post(state(period=1, clock=0, goals=(4, 4), final=True), reporter="ANDERSHOW")
