@@ -16,11 +16,15 @@
       {% elif iso_image %}<img class="live-tournament" src="{{ c.iso.image }}" alt="{{ c.iso.name }}" loading="lazy">{% endif %}
       {% if c.target %}</a>{% endif %}
     </span>{% endif %}
-    <span class="live-context">{% if c.link %}<a href="{{ c.link }}">{{ c.context }}</a>{% elif c.target %}<a href="{{ c.target }}" title="{{ target_title }}">{{ c.context }}</a>{% else %}{{ c.context }}{% endif %}{% if c.is_test %} <span class="badge live-test">Teste</span>{% endif %}
+    {# A descrição em linhas (live._context): no jogo de campeonato, o campeonato, a fase e a rodada. #}
+    {% set context_lines %}{% for line in c.context %}<span class="live-context-line">{{ line }}</span>{% endfor %}{% endset %}
+    <span class="live-context">{% if c.link %}<a href="{{ c.link }}">{{ context_lines }}</a>{% elif c.target %}<a href="{{ c.target }}" title="{{ target_title }}">{{ context_lines }}</a>{% else %}{{ context_lines }}{% endif %}{% if c.is_test %} <span class="badge live-test">Teste</span>{% endif %}
       {# Sem o nome do jogo base: a capa dele já está nos logos. #}
       {% if c.tournament and not c.championship %}<small><a href="{{ c.tournament.url }}">{{ c.tournament.name }}</a></small>{% elif c.iso and not c.tournament %}<small>{% if c.iso.url %}<a href="{{ c.iso.url }}">{{ c.iso.name }}</a>{% else %}{{ c.iso.name }}{% endif %}</small>{% endif %}</span>
+    {# "Reconectando" (o Reconectar do Kaillera, até o host liberar os controles): verde e com
+       o risco animado como o tempo de jogo ao vivo, sem o "Ao vivo" em cima. #}
     <span class="live-status">
-      {% if c.status == 'live' and not c.stale %}<span class="live-badge">Ao vivo</span>{% endif %}
+      {% if c.status == 'live' and not c.stale and not c.reconnecting %}<span class="live-badge">Ao vivo</span>{% endif %}
       <span class="live-clock{% if c.status == 'live' and not c.stale and not c.interval %} on{% endif %}">{{ c.clock }}</span>
     </span>
   </div>

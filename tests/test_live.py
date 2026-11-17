@@ -76,12 +76,14 @@ class LiveMatchesTest(unittest.TestCase):
                 db.commit()
         return self.tokens[name]
 
-    def post(self, st, reporter=None, players="TIERES,ANDERSHOW", test=False, key=None):
+    def post(self, st, reporter=None, players="TIERES,ANDERSHOW", test=False, key=None, resume=None):
         """Como o DLL manda: com o token da conta de quem manda (reporter; sem
         ele, o PC de cada jogador, todos logados). Simulação (test) ou key: a
-        chave do DLL."""
+        chave do DLL. resume: a partida retomada pelo Reconectar (a sessão do replay)."""
         data = {"state": st, "players": players, "room": "PCSX ReARMed: Euro vs Copa America 2004.bin",
                 "test": "1" if test else "0"}
+        if resume:
+            data["resume"] = resume
         client = self.app.test_client()
         if test or key:
             return client.post("/api/live/match", headers={"X-Api-Key": key or KEY}, data=dict(data, reporter=reporter or "TIERES"))
@@ -266,7 +268,7 @@ class LiveMatchesTest(unittest.TestCase):
         first = self.rows("SELECT * FROM live_matches")[0]
         self.assertEqual(first["tournament_match_id"], ida)
         html = self.cards()
-        self.assertIn("Euro WE Camp · Final · Ida", html)
+        self.assertIn('<span class="live-context-line">Euro WE Camp</span><span class="live-context-line">Final</span><span class="live-context-line">Ida</span>', html)
         self.assertIn("Grécia", html)
         self.assertNotIn("Finland", html)
         learned = self.rows("SELECT * FROM iso_team_slots WHERE slot = 16")[0]
@@ -275,7 +277,7 @@ class LiveMatchesTest(unittest.TestCase):
         self.post(state(kickoff=64201, goals=(0, 1)))
         second = self.rows("SELECT * FROM live_matches ORDER BY id")[1]
         self.assertEqual(second["tournament_match_id"], volta)
-        self.assertIn("Euro WE Camp · Final · Volta", self.cards())
+        self.assertIn('<span class="live-context-line">Euro WE Camp</span><span class="live-context-line">Final</span><span class="live-context-line">Volta</span>', self.cards())
         tournament_id = self.rows("SELECT id FROM tournaments")[0]["id"]
         self.assertIn("Euro WE Camp", self.cards(campeonato=tournament_id))
         self.assertIn("Euro 2004", self.cards())  # jogo base do campeonato
@@ -771,7 +773,7 @@ class LiveMatchesTest(unittest.TestCase):
         with client.session_transaction() as sess:
             sess["player_id"] = self.tieres
         html = self.cards(client)
-        self.assertRegex(html, r'<span class="live-context"><a href="[^"]*/amistosos/%d">Amistoso</a>' % fid)
+        self.assertRegex(html, r'<span class="live-context"><a href="[^"]*/amistosos/%d"><span class="live-context-line">Amistoso</span></a>' % fid)
         self.assertRegex(html, name)
         self.assertRegex(self.cards(), name)  # quem não joga: o título sem link, o nome embaixo
 
@@ -1158,21 +1160,22 @@ class LiveMatchesTest(unittest.TestCase):
         report = self.last_report()
         self.assertEqual((match["status"], match["quitter_id"], report["home_goals"], report["away_goals"]),
                          ("reported", self.tieres, 2, 0))
-        self.assertIn("vale o placar de quando parou", report["comment"])
+        self.assertIn("o placar de quando parou vale se um dos jogadores confirmar", report["comment"])
+        self.assertEqual(match["interrupted"], 1)
         self.assertEqual(self.rows("SELECT game_report FROM live_matches")[0]["game_report"],
                          "reportado; TIERES saiu no meio do jogo")
         page = self.app.test_client().get("/torneios/liga-1/jogos/%d" % match["id"]).get_data(as_text=True)
         self.assertIn("TIERES saiu da partida no meio do jogo", page)
         self.assertIn("perde o triplo de XP - mesmo que tenha sido queda de conexão", page)
-        self.assertIn("voltem em até 20 minutos e joguem de novo", page)
-        # Os dois confirmam: vale, e no XP o jogo vai com quem saiu.
+        self.assertIn("usem o Reconectar do Kaillera para continuar de onde parou ou joguem de novo", page)
+        # Um dos dois confirma (até quem saiu): já vale, e no XP o jogo vai com quem saiu.
         with self.app.app_context():
             db = get_db()
             tournament = store.get_tournament(db, self.rows("SELECT id FROM tournaments")[0]["id"])
-            reports.confirm(db, tournament, match["id"], self.tieres)
-            self.assertTrue(reports.confirm(db, tournament, match["id"], self.anders))
+            self.assertTrue(reports.confirm(db, tournament, match["id"], self.tieres))
             db.commit()
             rows = [dict(r) for r in db.execute(xp._MATCHES)]
+        self.assertEqual(self.rows("SELECT status FROM tournament_matches")[0]["status"], "confirmed")
         self.assertEqual([(r["id"], r["quitter"]) for r in rows], [(match["id"], self.tieres)])
 
     def test_championship_game_finished_by_who_stayed_marks_who_left(self):
@@ -1753,6 +1756,195 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertRegex(scorers, r"(?s)S\.Vryzas</strong><small>TIERES</small>.*?<strong>3</strong>")
         self.assertRegex(scorers, r"(?s)J\.Leko</strong><small>ANDERSHOW</small>.*?<strong>2</strong>")
         self.assertRegex(assists, r"(?s)Karagounis.*?<strong>3</strong>")
+
+    # --- Partida interrompida sem prazo e o Reconectar ---------------------------
+
+    def reconnect(self, session_id, phase="start", name="TIERES"):
+        """O aviso do Reconectar que o DLL de um PC manda: o host escolheu o
+        replay (start) ou o jogo acabou antes de ele liberar os controles (cancel)."""
+        return self.app.test_client().post(
+            "/api/live/reconnect", headers={"Authorization": "Bearer " + self.token(name)},
+            data={"session": session_id, "phase": phase})
+
+    def interrupted_league_game(self):
+        """Liga: TIERES x ANDERSHOW parou em 0 x 2 (o TIERES saiu) e o placar
+        de quando parou virou o reporte. O replay da sessão é o t0."""
+        self.make_league()
+        self.post(state(kickoff=1000, frame=5000, goals=(0, 2)))
+        self.abandon(1000)
+        self.stream([("TIERES", 5400)])
+        self.cards()
+        return self.rows("SELECT id FROM live_matches")[0]["id"], self.rows("SELECT id FROM tournament_matches")[0]["id"]
+
+    def test_interrupted_game_has_no_deadline_and_one_confirmation_releases_it(self):
+        from app.tournament import reports
+        live_id, match_id = self.interrupted_league_game()
+        match = self.rows("SELECT * FROM tournament_matches")[0]
+        self.assertEqual((match["status"], match["interrupted"], match["quitter_id"]), ("reported", 1, self.tieres))
+        with self.app.app_context():
+            db = get_db()
+            self.assertIsNone(reports.deadline(db, match))
+            # Nem dias depois ele vale sozinho.
+            self.assertEqual(reports.auto_confirm(db, at=datetime.now(timezone.utc) + timedelta(days=10)), 0)
+        self.assertEqual(self.rows("SELECT status FROM tournament_matches")[0]["status"], "reported")
+        anders = self.player(self.anders)
+        page = anders.get("/torneios/liga-1/jogos/%d" % match_id).get_data(as_text=True)
+        self.assertIn("A partida foi interrompida com 2 x 0", page)
+        self.assertIn("Ele não é confirmado automaticamente: vale quando um dos dois confirmar", page)
+        self.assertNotIn("sem resposta até", page)
+        mine = anders.get("/torneios/meus-jogos").get_data(as_text=True)
+        self.assertIn("Partida interrompida: vale se um dos dois confirmar", mine)
+        self.assertNotIn("Confirmação automática em", mine)
+        # Um dos dois confirma pelo card: já vale.
+        reply = anders.post("/ao-vivo/%d/confirmar" % live_id, data={"csrf_token": CSRF})
+        self.assertEqual(reply.json["ok"], 1)
+        self.assertEqual(self.rows("SELECT status FROM tournament_matches")[0]["status"], "confirmed")
+        # Liberado: o Reconectar não reabre mais a partida.
+        self.assertIn("id=0", self.reconnect("t0").get_data(as_text=True))
+        self.assertEqual(self.rows("SELECT status FROM live_matches")[0]["status"], "abandoned")
+
+    def test_reconnect_reopens_the_interrupted_game_and_continues_it(self):
+        live_id, match_id = self.interrupted_league_game()
+        # Outra partida ao vivo, mais nova: a que está "Reconectando" fica em primeiro mesmo assim.
+        self.post(state(kickoff=7000, goals=(0, 0)), players="TERCEIRO,outro")
+        self.assertIn("id=%d" % live_id, self.reconnect("t0").get_data(as_text=True))
+        self.reconnect("t0", name="ANDERSHOW")  # o outro PC avisa também
+        live = self.rows("SELECT * FROM live_matches WHERE id = ?", live_id)[0]
+        self.assertEqual((live["status"], live["reconnect_session"], live["game_report"]), ("live", "t0", None))
+        self.assertIsNotNone(live["reconnecting_at"])
+        # O placar de quando parou sai (sem confirmação): vale o fim da partida retomada.
+        match = self.rows("SELECT * FROM tournament_matches")[0]
+        self.assertEqual((match["status"], match["interrupted"], match["quitter_id"]), ("scheduled", 0, None))
+        last = self.rows("SELECT * FROM match_reports ORDER BY id DESC LIMIT 1")[0]
+        self.assertEqual(last["action"], "clear")
+        self.assertIn("Reconectaram a partida no RetroArch TIERES (Ao vivo nº %d)" % live_id, last["comment"])
+        cards = self.cards().split('<article class="live-card')
+        self.assertEqual(len(cards), 3)
+        first = cards[1]
+        self.assertTrue(first.startswith('">'))  # não é "ended"
+        self.assertIn("ANDERSHOW", first)
+        self.assertIn('<span class="live-clock on">Reconectando</span>', first)
+        self.assertNotIn('class="live-badge"', first)
+        self.assertNotIn("Sem sinal", first)  # sem informe há 3 minutos, mas esperando o host
+        self.assertNotIn("data-live-confirm", self.cards(self.player(self.anders)))
+        # O host liberou os controles: os PCs mandam a partida retomada (pontapé 0, os
+        # quadros do 1) com a sessão do replay - na sala nova, o ANDERSHOW é o 1P.
+        resumed = dict(kickoff=0, pads=(1, 0), clock=6000)
+        self.post(state(frame=30, goals=(0, 2), **resumed), players="ANDERSHOW,TIERES", resume="t0")
+        rows = self.rows("SELECT * FROM live_matches WHERE players_json LIKE '%TIERES%'")
+        self.assertEqual(len(rows), 1)  # o mesmo card
+        self.assertEqual((rows[0]["status"], rows[0]["reconnecting_at"], rows[0]["frame_base"]), ("live", None, 5000))
+        first = self.cards().split('<article class="live-card')[1]
+        self.assertIn('<span class="live-badge">Ao vivo</span>', first)
+        self.assertNotIn("Reconectando", first)
+        # Os quadros novos somam os de antes: o informe retomado é o mais adiantado.
+        self.post(state(frame=600, goals=(1, 2), **resumed), players="ANDERSHOW,TIERES", resume="t0")
+        self.assertEqual(self.rows("SELECT local_goals FROM live_matches WHERE id = ?", live_id)[0]["local_goals"], 1)
+        # O fim da partida retomada nos 2 PCs: ela reporta o jogo (como um jogo terminado).
+        self.post(state(frame=90000, goals=(1, 2), period=1, final=True, **dict(resumed, clock=0)),
+                  players="ANDERSHOW,TIERES", resume="t0")
+        self.settle()
+        self.cards()
+        match = self.rows("SELECT * FROM tournament_matches")[0]
+        report = self.last_report()
+        self.assertEqual((match["status"], match["interrupted"], report["home_goals"], report["away_goals"]),
+                         ("reported", 0, 2, 1))
+        self.assertEqual(self.rows("SELECT game_report FROM live_matches WHERE id = ?", live_id)[0]["game_report"],
+                         "reportado")
+
+    def test_resumed_score_reopens_even_without_the_reconnect_notice(self):
+        live_id, match_id = self.interrupted_league_game()
+        self.post(state(kickoff=0, frame=30, goals=(0, 2), clock=6000), resume="t0")
+        live = self.rows("SELECT * FROM live_matches")
+        self.assertEqual(len(live), 1)
+        self.assertEqual((live[0]["status"], live[0]["reconnect_session"]), ("live", "t0"))
+        self.assertEqual(self.rows("SELECT status FROM tournament_matches")[0]["status"], "scheduled")
+
+    def test_reconnect_cancelled_goes_back_to_the_interrupted_game(self):
+        live_id, match_id = self.interrupted_league_game()
+        before = self.rows("SELECT finished_at, updated_at FROM live_matches")[0]
+        self.reconnect("t0")
+        self.assertIn("id=%d" % live_id, self.reconnect("t0", phase="cancel").get_data(as_text=True))
+        live = self.rows("SELECT * FROM live_matches")[0]
+        self.assertEqual((live["status"], live["reconnecting_at"], live["finished_at"], live["updated_at"]),
+                         ("abandoned", None, before["finished_at"], before["updated_at"]))
+        self.assertIn(">Interrompido<", self.cards())
+        # O placar de quando parou volta, sem prazo, com quem saiu.
+        match = self.rows("SELECT * FROM tournament_matches")[0]
+        self.assertEqual((match["status"], match["interrupted"], match["quitter_id"]), ("reported", 1, self.tieres))
+
+    def test_reconnect_without_releasing_the_controls_times_out(self):
+        live_id, match_id = self.interrupted_league_game()
+        self.reconnect("t0")
+        self.assertIn("Reconectando", self.cards())
+        old = (datetime.now(timezone.utc) - timedelta(minutes=21)).replace(microsecond=0).isoformat()
+        with self.app.app_context():
+            db = get_db()
+            # (O último informe também é velho: sem ele, conta o mais novo dos dois.)
+            db.execute("UPDATE live_matches SET reconnecting_at = ?, updated_at = ?", (old, old))
+            db.commit()
+        self.assertIn(">Interrompido<", self.cards())
+        self.assertEqual(self.rows("SELECT reconnecting_at FROM live_matches")[0]["reconnecting_at"], None)
+        self.assertEqual(self.rows("SELECT status, interrupted FROM tournament_matches")[0]["interrupted"], 1)
+
+    def test_reconnect_needs_a_player_of_the_match(self):
+        live_id, match_id = self.interrupted_league_game()
+        self.assertEqual(self.app.test_client().post("/api/live/reconnect", data={"session": "t0"}).status_code, 401)
+        self.assertIn("id=0", self.reconnect("t0", name="TERCEIRO").get_data(as_text=True))
+        self.assertIn("id=0", self.reconnect("nao-existe").get_data(as_text=True))
+        self.assertEqual(self.reconnect("", name="TIERES").status_code, 400)
+        self.assertEqual(self.rows("SELECT status FROM live_matches")[0]["status"], "abandoned")
+
+    def test_playing_again_replaces_a_pending_interrupted_report(self):
+        live_id, match_id = self.interrupted_league_game()
+        # Depois (sem o Reconectar), jogaram de novo: a partida nova vai para o
+        # mesmo jogo, e o placar de quando a outra parou sai.
+        self.post(state(kickoff=3000, frame=9000, goals=(1, 0)))
+        rows = self.rows("SELECT * FROM live_matches ORDER BY id")
+        self.assertEqual(rows[1]["tournament_match_id"], match_id)
+        self.assertEqual(rows[0]["game_report"], "jogaram de novo: vale a partida seguinte")
+        match = self.rows("SELECT * FROM tournament_matches")[0]
+        self.assertEqual((match["status"], match["interrupted"], match["quitter_id"]), ("scheduled", 0, None))
+        last = self.rows("SELECT * FROM match_reports ORDER BY id DESC LIMIT 1")[0]
+        self.assertIn("Jogaram de novo no RetroArch TIERES (Ao vivo nº %d)" % rows[1]["id"], last["comment"])
+        self.post(state(kickoff=3000, frame=90000, goals=(1, 0), period=1, clock=0, final=True))
+        self.settle()
+        self.cards()
+        report = self.last_report()
+        self.assertEqual((report["home_goals"], report["away_goals"]), (0, 1))
+        self.assertEqual(self.rows("SELECT status, interrupted FROM tournament_matches")[0]["interrupted"], 0)
+
+    def test_reconnect_a_friendly_game(self):
+        with self.app.app_context():
+            db = get_db()
+            fid = db.execute("INSERT INTO friendly_matches (home_id, away_id, status, created_at, updated_at) "
+                             "VALUES (?, ?, 'accepted', ?, ?)", (self.tieres, self.anders, now(), now())).lastrowid
+            db.commit()
+        self.post(state(kickoff=1000, frame=5000, goals=(1, 0)))
+        self.abandon(1000)
+        self.stream([("TIERES", 5400)])
+        live_id = self.rows("SELECT id FROM live_matches")[0]["id"]
+        self.assertIn("id=%d" % live_id, self.reconnect("t0").get_data(as_text=True))
+        self.assertIn("Reconectando", self.cards())
+        self.post(state(kickoff=0, frame=30, goals=(1, 0), clock=6000), resume="t0")
+        live = self.rows("SELECT * FROM live_matches")
+        self.assertEqual([(r["id"], r["status"], r["friendly_id"]) for r in live], [(live_id, "live", fid)])
+
+    def test_old_pending_interrupted_reports_lose_the_deadline(self):
+        from app.db import ensure_live_columns
+        self.make_league()
+        with self.app.app_context():
+            db = get_db()
+            match_id = db.execute("SELECT id FROM tournament_matches").fetchone()["id"]
+            db.execute("UPDATE tournament_matches SET status = 'reported', reported_at = ? WHERE id = ?", (now(), match_id))
+            db.execute("INSERT INTO match_reports (match_id, action, home_goals, away_goals, comment, created_at) "
+                       "VALUES (?, 'report', 0, 0, ?, ?)",
+                       (match_id, "Partida interrompida no RetroArch TIERES (Ao vivo nº 7): vale o placar de quando parou.",
+                        now()))
+            db.execute("ALTER TABLE tournament_matches DROP COLUMN interrupted")
+            ensure_live_columns(db)
+            db.commit()
+        self.assertEqual(self.rows("SELECT interrupted FROM tournament_matches")[0]["interrupted"], 1)
 
 
 if __name__ == "__main__":

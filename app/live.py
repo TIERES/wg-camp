@@ -21,6 +21,13 @@ patches nem sempre renomeiam a tabela (no CAN 2025 o slot 16 ainda se chama
 FINLAND e é Camarões). Ordem: o time da inscrição de quem controla o lado
 (jogo de campeonato - e a ISO aprende o slot), o cadastro por ISO
 (iso_team_slots: aprendido ou do admin), o nome da RAM e, por fim, "Time N".
+
+Reconectar (o botão do Kaillera que retoma uma partida que caiu a partir do
+replay do Stream ao vivo): quando o host escolhe o replay, o DLL de cada PC
+avisa (POST /api/live/reconnect) e a partida interrompida daquele replay
+volta, em primeiro na lista, como "Reconectando"; quando o host libera os
+controles, o fork volta a mandar o placar (com resume = a sessão do replay) e
+ela segue "Ao vivo" no mesmo card, valendo para o mesmo jogo.
 """
 import hashlib
 from pathlib import Path
@@ -172,8 +179,9 @@ def api_match():
     if player and reporter.casefold() not in {nick.casefold() for nick in players}:
         return _error(400, "not_a_player", "O seu nick no Kaillera tem que ser o usuario da sua conta WE Camp.")
     db = get_db()
+    # Partida retomada pelo Reconectar: resume = o session_id do replay escolhido pelo host.
     live_id = ingest(db, state, players, reporter, player["id"] if player else None,
-                     _text(request.form.get("room"), 120), is_test)
+                     _text(request.form.get("room"), 120), is_test, _text(request.form.get("resume"), 64))
     if request.form.get("left") == "1":
         # A DLL avisa que o jogador saiu (Leave, fechou o Kaillera) com o último
         # estado que mandou: a partida que ainda corria fica interrompida na
@@ -185,8 +193,21 @@ def api_match():
     return _reply(ok=1, id=live_id)
 
 
-def ingest(db, state, players, reporter, player_id, room, is_test=False):
-    key = match_key(state["content"], players, state["kickoff"])
+def resume_key(content, players, session_id):
+    """Chave da partida retomada pelo Reconectar: a ISO, os jogadores (em
+    qualquer ordem - a sala nova pode trocar 1P e 2P) e a sessão do replay."""
+    raw = "resume|%s|%s|%s" % (content, ",".join(sorted(p.casefold() for p in players)), session_id)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
+
+
+def ingest(db, state, players, reporter, player_id, room, is_test=False, resume=""):
+    if resume and not is_test:
+        row = _resumed_match(db, state, players, resume)
+        if row is not None:
+            return _store_report(db, row["id"], state, reporter, player_id, row["frame_base"])
+    # Retomada sem partida para continuar: um card novo, com a chave da sessão (o
+    # pontapé vem 0 - sem ela, todas as retomadas dos dois nesta ISO teriam a mesma).
+    key = resume_key(state["content"], players, resume) if resume else match_key(state["content"], players, state["kickoff"])
     row = db.execute("SELECT * FROM live_matches WHERE match_key = ?", (key,)).fetchone()
     if row is None and not state["kickoff"]:
         row = db.execute(
@@ -202,7 +223,9 @@ def ingest(db, state, players, reporter, player_id, room, is_test=False):
         for old in db.execute("SELECT id, players_json FROM live_matches WHERE status = 'live' AND content_id = ? "
                               "AND kickoff_frame != ?", (state["content"], state["kickoff"])).fetchall():
             if sorted(nick.casefold() for nick in json.loads(old["players_json"])) == same:
-                db.execute("UPDATE live_matches SET status = 'abandoned', finished_at = ? WHERE id = ?", (stamp, old["id"]))
+                # (Também a que estava "Reconectando": em vez de retomar, começaram outra.)
+                db.execute("UPDATE live_matches SET status = 'abandoned', reconnecting_at = NULL, "
+                           "finished_at = COALESCE(finished_at, ?) WHERE id = ?", (stamp, old["id"]))
     if row is None:
         live_id = db.execute(
             "INSERT INTO live_matches (match_key, content_id, room, players_json, kickoff_frame, is_test, started_at, "
@@ -210,12 +233,163 @@ def ingest(db, state, players, reporter, player_id, room, is_test=False):
             (key, state["content"], room, json.dumps(players), state["kickoff"], int(is_test), stamp, stamp)).lastrowid
     else:
         live_id = row["id"]
+    return _store_report(db, live_id, state, reporter, player_id)
+
+
+def _store_report(db, live_id, state, reporter, player_id, frame_base=0):
+    """Grava o informe deste PC e recalcula a partida. frame_base: a partida
+    retomada pelo Reconectar conta os quadros de novo do 1 - somado a eles o
+    maior quadro de antes, o informe novo é sempre o mais adiantado."""
     db.execute(
         "INSERT OR REPLACE INTO live_match_reports (live_match_id, reporter, player_id, frame, final, state_json, "
         "updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (live_id, reporter, player_id, state["frame"], int(state["final"]), json.dumps(state), stamp))
+        (live_id, reporter, player_id, (frame_base or 0) + state["frame"], int(state["final"]), json.dumps(state), now()))
     refresh(db, live_id)
     return live_id
+
+
+# --- Reconectar ------------------------------------------------------------------
+
+RECONNECT_NOTE = ("Reconectaram a partida no RetroArch TIERES (Ao vivo nº %d): o placar de quando ela parou "
+                  "foi retirado - vale o fim da partida retomada.")
+REPLAYED_NOTE = ("Jogaram de novo no RetroArch TIERES (Ao vivo nº %d): o placar de quando a partida anterior "
+                 "parou foi retirado - vale a partida nova.")
+REPLAYED_OUTCOME = "jogaram de novo: vale a partida seguinte"
+
+
+def _nickset(nicks):
+    return {nick.strip().casefold() for nick in nicks if nick and nick.strip()}
+
+
+def _reconnect_target(db, session_id, players=None, content=None):
+    """A partida que o Reconectar retoma: a que ele já reabriu com esta sessão
+    ou a última partida (não de teste, com os dois logados) jogada no replay
+    escolhido (live_sessions.session_id) - entre os jogadores dele e, com
+    players/content, dos mesmos jogadores e ISO. None sem nenhuma."""
+    row = db.execute("SELECT * FROM live_matches WHERE reconnect_session = ? AND is_test = 0 "
+                     "ORDER BY id DESC LIMIT 1", (session_id,)).fetchone()
+    if row is not None:
+        return row
+    replay = db.execute("SELECT * FROM live_sessions WHERE session_id = ?", (session_id,)).fetchone()
+    if replay is None:
+        return None
+    names = _nickset((replay["player_names"] or "").split(","))
+    until = replay["ended_at"] or now()
+    for row in db.execute(
+            "SELECT * FROM live_matches WHERE is_test = 0 AND verified = 1 AND started_at <= ? "
+            "AND COALESCE(finished_at, updated_at) >= ? ORDER BY COALESCE(finished_at, updated_at) DESC, id DESC",
+            (until, replay["started_at"])):
+        nicks = _nickset(json.loads(row["players_json"]))
+        if not nicks or not nicks <= names:
+            continue
+        if players is not None and nicks != _nickset(players):
+            continue
+        if content is not None and row["content_id"] != content:
+            continue
+        return row  # a última dos jogadores no replay (terminada ou não)
+    return None
+
+
+def _can_reopen(db, match):
+    """A partida ainda pode voltar a valer? Não terminada e, no jogo de
+    campeonato, sem placar liberado (só o de quando parou, sem confirmação) e
+    sem outra partida dos dois para o mesmo jogo depois dela; no amistoso,
+    antes de as partidas da sessão virarem o placar dele."""
+    if match["status"] == "finished" or match["is_test"]:
+        return False
+    if match["tournament_match_id"]:
+        game = db.execute("SELECT status, interrupted, reported_by_entry_id FROM tournament_matches WHERE id = ?",
+                          (match["tournament_match_id"],)).fetchone()
+        if game is None:
+            return False
+        pending = game["status"] == "reported" and game["interrupted"] and not game["reported_by_entry_id"]
+        if game["status"] != "scheduled" and not pending:
+            return False
+        return db.execute("SELECT 1 FROM live_matches WHERE tournament_match_id = ? AND is_test = 0 AND id > ?",
+                          (match["tournament_match_id"], match["id"])).fetchone() is None
+    if match["friendly_id"]:
+        return match["status"] == "live" or not match["game_report"]
+    return True
+
+
+def reopen(db, match, session_id):
+    """O host escolheu o replay no Reconectar: a partida interrompida volta,
+    em primeiro na lista, como "Reconectando" (até o placar da partida
+    retomada chegar - refresh). No jogo de campeonato, o placar de quando ela
+    parou (sem confirmação) é retirado: vale o fim da partida retomada.
+    O fim da partida (finished_at) e o último informe (updated_at) ficam: se o
+    Reconectar não for adiante, ela volta a ser a interrompida que era."""
+    from .tournament import reports
+    if match["status"] == "live" and match["reconnect_session"] == session_id and not match["reconnecting_at"]:
+        return False  # já retomada: o aviso do outro PC chegou depois do placar
+    if not _can_reopen(db, match):
+        return False
+    clear = False
+    if match["tournament_match_id"]:
+        if (match["game_report"] or "").startswith("reportado"):
+            reports.withdraw_interrupted(db, match["tournament_match_id"], RECONNECT_NOTE % match["id"])
+        clear = True  # sem placar no jogo: a partida retomada reporta no fim (ou ao parar de novo)
+    db.execute("UPDATE live_matches SET status = 'live', reconnecting_at = ?, reconnect_session = ?, "
+               "game_report = CASE WHEN ? THEN NULL ELSE game_report END WHERE id = ?",
+               (now(), session_id, int(clear), match["id"]))
+    return True
+
+
+def cancel_reconnect(db, match, session_id):
+    """O jogo do Reconectar acabou antes de o host liberar os controles: a
+    partida volta a ser a interrompida (e o placar de quando parou volta a
+    valer da mesma forma: _report_abandoned)."""
+    if match["reconnect_session"] != session_id or not match["reconnecting_at"] or match["status"] != "live":
+        return False
+    db.execute("UPDATE live_matches SET status = 'abandoned', reconnecting_at = NULL, "
+               "finished_at = COALESCE(finished_at, updated_at) WHERE id = ?", (match["id"],))
+    return True
+
+
+def _resumed_match(db, state, players, session_id):
+    """A partida que o placar retomado (resume) continua: a que já recebeu
+    informes desta sessão (resume_key) ou a do replay (_reconnect_target) -
+    reaberta aqui mesmo se o aviso do Reconectar não chegou. Ela volta a ser
+    "Ao vivo" (refresh), sem o fim de antes, e os quadros novos somam o maior
+    quadro de antes (frame_base). None: não há o que continuar (card novo)."""
+    key = resume_key(state["content"], players, session_id)
+    row = db.execute("SELECT * FROM live_matches WHERE resume_key = ?", (key,)).fetchone()
+    if row is not None:
+        return row
+    target = _reconnect_target(db, session_id, players, state["content"])
+    if target is None:
+        return None
+    if not target["reconnecting_at"] and not reopen(db, target, session_id):
+        return None
+    base = db.execute("SELECT COALESCE(MAX(frame), 0) AS frame FROM live_match_reports WHERE live_match_id = ?",
+                      (target["id"],)).fetchone()["frame"]
+    # Os jogadores na ordem da sala nova (1P, 2P...): os controles do placar retomado são os dela.
+    db.execute("UPDATE live_matches SET status = 'live', resume_key = ?, frame_base = ?, finished_at = NULL, "
+               "players_json = ? WHERE id = ?", (key, base, json.dumps(players), target["id"]))
+    return db.execute("SELECT * FROM live_matches WHERE id = ?", (target["id"],)).fetchone()
+
+
+@api_bp.post("/reconnect")
+def api_reconnect():
+    """Reconectar do Kaillera, mandado pelo DLL de cada PC: phase=start logo
+    depois que o host escolhe o replay (session = o session_id dele no Stream
+    ao vivo) - a partida interrompida daquele replay volta como "Reconectando";
+    phase=cancel se o jogo acabar antes de o host liberar os controles. Só com
+    o token da conta WE Camp de um dos jogadores da partida."""
+    player = _api_player()
+    if player is None:
+        return _error(401, "invalid_token", "Entre na sua conta WE Camp (botao Conta WE Camp) para o placar ao vivo.")
+    session_id = _text(request.form.get("session"), 64)
+    phase = request.form.get("phase") or "start"
+    if not session_id or phase not in ("start", "cancel"):
+        return _error(400, "bad_request", "Faltam dados do Reconectar.")
+    db = get_db()
+    target = _reconnect_target(db, session_id)
+    if target is None or player["username"].casefold() not in _nickset(json.loads(target["players_json"])):
+        return _reply(ok=1, id=0)  # nada a reabrir
+    done = reopen(db, target, session_id) if phase == "start" else cancel_reconnect(db, target, session_id)
+    db.commit()
+    return _reply(ok=1, id=target["id"] if done else 0)
 
 
 def _sides(players, pads):
@@ -245,10 +419,12 @@ def refresh(db, live_id):
     local, visita = _sides(json.loads(match["players_json"]), best["pads"])
     finished = bool(finals)
     verified = 1 if match["is_test"] else int(_all_logged_in(db, json.loads(match["players_json"]), reports))
+    # Um informe novo: a partida está rolando - a que estava "Reconectando" segue "Ao vivo".
     db.execute(
         "UPDATE live_matches SET status = ?, period = ?, clock_left = ?, half_frames = ?, local_slot = ?, visita_slot = ?, "
         "local_goals = ?, visita_goals = ?, state_json = ?, local_players_json = ?, visita_players_json = ?, "
-        "reporters = ?, agreed = ?, verified = ?, updated_at = ?, finished_at = COALESCE(finished_at, ?) WHERE id = ?",
+        "reporters = ?, agreed = ?, verified = ?, updated_at = ?, finished_at = COALESCE(finished_at, ?), "
+        "reconnecting_at = NULL WHERE id = ?",
         ("finished" if finished else ("abandoned" if match["status"] == "abandoned" else "live"), best["period"], best["clock"], best["half"], best["teams"][0]["id"],
          best["teams"][1]["id"], best["teams"][0]["goals"], best["teams"][1]["goals"], json.dumps(best),
          json.dumps(local), json.dumps(visita), len(reports), int(len(finals) >= 2 and len(scores) == 1), verified,
@@ -302,10 +478,13 @@ def detect_context(db, match, local_nick, visita_nick):
     if row:
         db.execute("UPDATE live_matches SET friendly_id = ? WHERE id = ?", (row["id"], match["id"]))
         return
-    # Uma partida interrompida que ainda não virou reporte não prende o jogo:
-    # voltaram e jogaram de novo (_report_abandoned).
+    # Uma partida interrompida não prende o jogo enquanto o placar de quando
+    # ela parou não for liberado (um dos dois confirma ou o organizador):
+    # voltaram e jogaram de novo - vale a partida nova (_report_abandoned).
     taken = ("SELECT tournament_match_id FROM live_matches WHERE tournament_match_id IS NOT NULL AND id != ? "
-             "AND is_test = ? AND (status != 'abandoned' OR game_report LIKE 'reportado%')")
+             "AND is_test = ? AND (status != 'abandoned' OR (game_report LIKE 'reportado%' AND tournament_match_id "
+             "NOT IN (SELECT id FROM tournament_matches WHERE status = 'reported' AND interrupted = 1 "
+             "AND reported_by_entry_id IS NULL)))")
     # A ISO tem que ser a do campeonato (content_id dela ou uma ligada pelo
     # admin/aprendida em iso_profiles); campeonato sem ISO identificada vale.
     row = db.execute(
@@ -322,6 +501,13 @@ def detect_context(db, match, local_nick, visita_nick):
         db.execute("UPDATE live_matches SET tournament_match_id = ? WHERE id = ?", (row["id"], match["id"]))
         if not match["is_test"]:
             learn_slots(db, match["id"])
+            # Jogaram de novo com o placar de quando a anterior parou ainda sem
+            # liberar: ele sai, e quem reporta é esta partida.
+            from .tournament import reports
+            if reports.withdraw_interrupted(db, row["id"], REPLAYED_NOTE % match["id"]):
+                db.execute("UPDATE live_matches SET game_report = ? WHERE tournament_match_id = ? AND id != ? "
+                           "AND status = 'abandoned' AND game_report LIKE 'reportado%'",
+                           (REPLAYED_OUTCOME, row["id"], match["id"]))
 
 
 def _entry_team(db, match, nick):
@@ -369,10 +555,12 @@ CARDS_LIMIT = 10
 
 def reap(db):
     """Partidas sem informe há muito tempo: encerradas (se paradas no fim do
-    2º tempo) ou abandonadas."""
+    2º tempo) ou abandonadas - a "Reconectando", contado do Reconectar (o
+    host não liberou os controles: volta a ser a interrompida)."""
     db.execute("UPDATE live_matches SET status = CASE WHEN period = 1 AND clock_left = 0 THEN 'finished' "
-               "ELSE 'abandoned' END, finished_at = COALESCE(finished_at, updated_at) "
-               "WHERE status = 'live' AND updated_at < ?", (_ago(GONE),))
+               "ELSE 'abandoned' END, finished_at = COALESCE(finished_at, updated_at), reconnecting_at = NULL "
+               "WHERE status = 'live' AND updated_at < ? AND (reconnecting_at IS NULL OR reconnecting_at < ?)",
+               (_ago(GONE), _ago(GONE)))
     db.commit()
     report_finished(db)
 
@@ -457,10 +645,17 @@ def _period_over(match):
     return match["status"] == "live" and match["period"] in (1, 3) and bool(_match_state(match).get("over"))
 
 
+def _reconnecting(match):
+    """Reaberta pelo Reconectar, esperando o host liberar os controles."""
+    return match["status"] == "live" and bool(match["reconnecting_at"])
+
+
 def _clock_label(match):
     period, left, half = match["period"], match["clock_left"], match["half_frames"] or 18000
     if match["status"] != "live":
         return "Encerrado" if match["status"] == "finished" else "Interrompido"
+    if _reconnecting(match):
+        return "Reconectando"
     if period >= 4:
         return "Pênaltis"
     if _interval(match):
@@ -478,7 +673,8 @@ def _clock_label(match):
 
 
 def _context(db, match):
-    """(rótulo, link) do campeonato/amistoso da partida."""
+    """(linhas, link) do campeonato/amistoso da partida: no jogo de campeonato,
+    uma linha para o campeonato, a fase, a rodada e a ida/volta."""
     if match["tournament_match_id"]:
         row = db.execute(
             "SELECT m.round, m.leg, m.id, s.name AS stage_name, s.kind, t.name, t.slug, tie.legs FROM tournament_matches m "
@@ -490,13 +686,13 @@ def _context(db, match):
                 parts.append("Rodada %d" % row["round"])
             if row["legs"] == 2:
                 parts.append("Ida" if row["leg"] == 1 else "Volta")
-            return " · ".join(p for p in parts if p), url_for("tournaments.show", slug=row["slug"], aba="tabela")
+            return [p for p in parts if p], url_for("tournaments.show", slug=row["slug"], aba="tabela")
     if match["friendly_id"]:
         # A página do amistoso é só dos dois jogadores: o link, só para eles.
         row = db.execute("SELECT home_id, away_id FROM friendly_matches WHERE id = ?", (match["friendly_id"],)).fetchone()
         mine = row is not None and session.get("player_id") in (row["home_id"], row["away_id"])
-        return "Amistoso", url_for("tournaments.friendly_show", friendly_id=match["friendly_id"]) if mine else None
-    return "Partida livre", None
+        return ["Amistoso"], url_for("tournaments.friendly_show", friendly_id=match["friendly_id"]) if mine else None
+    return ["Partida livre"], None
 
 
 def _tie_view(db, match, sides, goals):
@@ -648,7 +844,9 @@ def _confirmation(db, match, views):
                 reported["home_goals"], reported["away_goals"]):
             return None  # outra partida do mesmo jogo (jogaram de novo): o placar reportado é de outra
         entry = row["home_entry_id"] if row["home_player"] == me else row["away_entry_id"]
-        done = row["reported_by_entry_id"] == entry or entry in reports.confirmed_by(db, row["id"])
+        # (Partida interrompida: a confirmação de um já libera o placar - nunca fica esperando o outro.)
+        done = row["reported_by_entry_id"] == entry or (
+            not row["interrupted"] and entry in reports.confirmed_by(db, row["id"]))
         url = url_for("tournaments.match", slug=row["slug"], match_id=row["id"])
         info.update(kind="tournament", tournament_id=row["tournament_id"], match_id=row["id"], url=url,
                     dispute_url=url + "#contestar", what="a partida " + label)
@@ -725,7 +923,9 @@ def card(db, match):
     teams = state.get("teams") or [{}, {}]
     sides = (json.loads(match["local_players_json"]), json.loads(match["visita_players_json"]))
     label, link = _context(db, match)
-    stale = match["status"] == "live" and match["updated_at"] < _ago(STALE)
+    reconnecting = _reconnecting(match)
+    # "Reconectando": sem informe até o host liberar os controles - não é "Sem sinal".
+    stale = match["status"] == "live" and not reconnecting and match["updated_at"] < _ago(STALE)
     game, tournament, catalog = _profile(db, match)
     # Clicar nos logos, no nome ou na descrição da partida: a página do
     # campeonato da ISO ou, sem ele, a página da ISO do cadastro (só a liberada).
@@ -741,8 +941,10 @@ def card(db, match):
             view["players"] = ["Player %d" % number] if nobody else ["CPU"]
             view["people"] = [{"id": None, "name": view["players"][0]}]
     return {"id": match["id"], "status": match["status"], "stale": stale, "is_test": match["is_test"],
+            "reconnecting": reconnecting,
             "clock": "Sem sinal" if stale else _clock_label(match),
-            "interval": _interval(match) or _period_over(match),  # sem o risco animado
+            # sem o risco animado (no "Reconectando", com ele)
+            "interval": not reconnecting and (_interval(match) or _period_over(match)),
             "context": label, "link": link,
             # Confirmar/Contestar no card, para quem joga a partida e ainda precisa responder.
             "confirm": _confirmation(db, match, views),
@@ -886,9 +1088,10 @@ def list_cards(db, tournament_id=None, kind=None, tournament_query="", only_live
     where_sql = "WHERE " + " AND ".join(where) if where else ""
     if count:
         return db.execute("SELECT COUNT(*) FROM live_matches m " + where_sql, params).fetchone()[0]
+    # A que está "Reconectando" em primeiro, depois as ao vivo e as mais novas.
     rows = db.execute(
-        "SELECT m.* FROM live_matches m %s ORDER BY m.status = 'live' DESC, m.started_at DESC LIMIT ?"
-        % where_sql, (*params, limit)).fetchall()
+        "SELECT m.* FROM live_matches m %s ORDER BY (m.status = 'live' AND m.reconnecting_at IS NOT NULL) DESC, "
+        "m.status = 'live' DESC, m.started_at DESC LIMIT ?" % where_sql, (*params, limit)).fetchall()
     return [card(db, row) for row in rows]
 
 
@@ -982,12 +1185,16 @@ def report_finished(db):
     _report_friendlies(db)
 
 
-ABANDONED_NOTE = "Partida interrompida no RetroArch TIERES (Ao vivo nº %d): vale o placar de quando parou."
+# (O começo "Partida interrompida no RetroArch TIERES" marca, em db.ensure_live_columns,
+# os placares de antes da coluna tournament_matches.interrupted.)
+ABANDONED_NOTE = ("Partida interrompida no RetroArch TIERES (Ao vivo nº %d): o placar de quando parou vale se "
+                  "um dos jogadores confirmar - até lá, dá para reconectar ou jogar de novo.")
 
 
-def _report_game(db, tournament, row, score, note):
+def _report_game(db, tournament, row, score, note, interrupted=False):
     """Reporta o placar lido do jogo de campeonato (reports.report_from_game)
-    com quem saiu no meio dele (_game_quitter); devolve a anotação da partida."""
+    com quem saiu no meio dele (_game_quitter); devolve a anotação da partida.
+    interrupted: o placar de quando a partida parou (sem prazo, um confirma)."""
     from .tournament import reports
     from .tournament.store import TournamentError
     quitter = _game_quitter(db, (row["home_nick"], row["away_nick"]), row)
@@ -996,7 +1203,7 @@ def _report_game(db, tournament, row, score, note):
     try:
         reports.report_from_game(db, tournament, row["tournament_match_id"], score,
                                  row["finished_at"] or row["updated_at"], note,
-                                 _player_id(db, quitter) if quitter else None)
+                                 _player_id(db, quitter) if quitter else None, interrupted)
     except TournamentError as error:
         return str(error)[:200]
     return "reportado" + ("; %s saiu no meio do jogo" % quitter if quitter else "")
@@ -1004,10 +1211,11 @@ def _report_game(db, tournament, row, score, note):
 
 def _report_abandoned(db):
     """Jogo de campeonato interrompido (alguém saiu ou caiu: reap, ou partida
-    nova dos dois no ingest): vale o placar de quando parou, como o de um jogo
-    terminado (os dois confirmam ou o prazo), e quem saiu no meio perde o
-    triplo de XP se ele valer. Se voltaram e jogaram de novo o mesmo jogo do
-    campeonato, vale a partida nova - a interrompida espera ela acabar."""
+    nova dos dois no ingest): o placar de quando parou vira o reporte do jogo,
+    mas sem prazo - vale quando UM dos jogadores confirma ou o organizador
+    decide (reports.report_from_game interrupted) -, e quem saiu no meio perde
+    o triplo de XP se ele valer. Até ser liberado, reconectar (reopen) ou
+    jogar de novo o mesmo jogo (detect_context) o retira: vale a partida nova."""
     from .tournament import notify, store
     rows = db.execute(_TOURNAMENT_LIVE_SQL + "WHERE m.status = 'abandoned' AND m.is_test = 0 AND m.verified = 1 "
                       "AND m.game_report IS NULL AND COALESCE(m.finished_at, m.updated_at) <= ?",
@@ -1020,11 +1228,12 @@ def _report_abandoned(db):
         tournament = store.get_tournament(db, row["tournament_id"])
         score = _home_away(row, (row["local_goals"] or 0, row["visita_goals"] or 0))
         if newer:
-            outcome = "jogaram de novo: vale a partida seguinte"
+            outcome = REPLAYED_OUTCOME
         elif score is None:
             outcome = "não deu para saber quem é o mandante"
         else:
-            outcome = _report_game(db, tournament, row, (*score, None, None), ABANDONED_NOTE % row["id"])
+            outcome = _report_game(db, tournament, row, (*score, None, None), ABANDONED_NOTE % row["id"],
+                                   interrupted=True)
         db.execute("UPDATE live_matches SET game_report = ? WHERE id = ?", (outcome, row["id"]))
         db.commit()
         if outcome.startswith("reportado"):

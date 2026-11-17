@@ -20,7 +20,7 @@
     <ul class="right">{% for g in goals.away %}<li>{{ g|scorer }}</li>{% endfor %}</ul>
   </div>
   {% if goals_pending %}{% call info_dialog('gols-a-confirmar', 'Gols e assistências a confirmar') %}
-    <p>{% if goals.live %}A partida está rolando agora: os gols e as assistências ainda podem mudar.{% else %}O placar deste jogo ainda precisa ser confirmado entre os jogadores (ou sozinho, {{ confirm_hours }} h depois do jogo).{% endif %}</p>
+    <p>{% if goals.live %}A partida está rolando agora: os gols e as assistências ainda podem mudar.{% elif m.status == 'reported' and m.interrupted %}A partida foi interrompida: o placar de quando ela parou só vale se um dos jogadores confirmar (ou o organizador decidir).{% else %}O placar deste jogo ainda precisa ser confirmado entre os jogadores (ou sozinho, {{ confirm_hours }} h depois do jogo).{% endif %}</p>
     <p class="muted">Lidos do jogo pelo RetroArch TIERES. Só entram na Artilharia do campeonato depois que o resultado for confirmado.</p>
   {% endcall %}{% endif %}
   {% endif %}
@@ -36,14 +36,15 @@
   {% if goals %}<a class="button secondary" href="{{ goals.url }}">{{ 'Placar Ao Vivo' if goals.live else 'Ver card Ao Vivo' }}</a>{% endif %}
   </div>
   {% if quitter and m.status in ('reported', 'disputed', 'confirmed') %}<p class="friendly-warn">{{ quitter }} saiu da partida no meio do jogo (vale o placar de quando parou){% if m.status == 'confirmed' %} e perdeu o triplo de XP{% else %}: se o placar for confirmado, perde o triplo de XP - mesmo que tenha sido queda de conexão{% endif %}.</p>
-  <p class="friendly-note muted">Joguem até o fim, mesmo faltando pouco tempo. Se a conexão cair, voltem em até 20 minutos e joguem de novo antes de sair: vale a partida nova, sem a penalidade.</p>{% endif %}
-  {% if me and m.status == 'scheduled' and open %}<p class="friendly-note muted">Com os dois logados no WE Camp, o RetroArch TIERES manda o placar sozinho. Joguem até o fim, mesmo faltando pouco tempo: quem sai no meio do jogo (até por queda de conexão) perde o triplo de XP se o placar for confirmado. Se a conexão cair, voltem em até 20 minutos e joguem de novo antes de sair.</p>{% endif %}
+  <p class="friendly-note muted">Joguem até o fim, mesmo faltando pouco tempo. Se a conexão cair, usem o Reconectar do Kaillera para continuar de onde parou ou joguem de novo: enquanto ninguém confirmar o placar de quando parou, vale a partida nova, sem a penalidade.</p>{% endif %}
+  {% if me and m.status == 'scheduled' and open %}<p class="friendly-note muted">Com os dois logados no WE Camp, o RetroArch TIERES manda o placar sozinho. Joguem até o fim, mesmo faltando pouco tempo: quem sai no meio do jogo (até por queda de conexão) perde o triplo de XP se o placar for confirmado. Se a conexão cair, usem o Reconectar do Kaillera para continuar de onde parou ou joguem de novo.</p>{% endif %}
   {% if live_now or m.status in ('reported', 'disputed') %}{{ pending_legend(confirm_hours) }}{% endif %}
 </section>
 
 {% if open %}
   {% if me %}
-    {% if m.status == 'reported' and m.reported_by_entry_id is none and me.id in confirmed_by %}
+    {# (Partida interrompida: sem "esperando o adversário" - a confirmação de um já libera o placar.) #}
+    {% if m.status == 'reported' and m.reported_by_entry_id is none and me.id in confirmed_by and not m.interrupted %}
     <section>
       <h2>Você confirmou o placar {{ reported.home_goals }} x {{ reported.away_goals }}</h2>
       <p class="muted">Falta o adversário confirmar. Sem resposta até {{ deadline|localtime }}, o placar é confirmado automaticamente.</p>
@@ -83,7 +84,10 @@
     </section>
     {% elif m.status == 'reported' %}
     <section>
-      {% if reported.entry_id is none %}
+      {% if reported.entry_id is none and m.interrupted %}
+      <h2>A partida foi interrompida com {{ reported.home_goals }} x {{ reported.away_goals }}</h2>
+      <p class="muted">Placar de quando a partida parou no RetroArch TIERES. Ele não é confirmado automaticamente: vale quando um dos dois confirmar (ou o organizador decidir). Até lá, vocês podem usar o Reconectar do Kaillera para continuar de onde parou, ou jogar de novo: a partida nova substitui este placar.</p>
+      {% elif reported.entry_id is none %}
       <h2>O jogo terminou {{ reported.home_goals }} x {{ reported.away_goals }}</h2>
       <p class="muted">Placar lido do próprio jogo pelo RetroArch TIERES. Os dois jogadores confirmam{% if confirmed_by %} (o adversário já confirmou){% endif %} ou contestam; sem resposta até {{ deadline|localtime }}, ele é confirmado automaticamente.</p>
       {% else %}

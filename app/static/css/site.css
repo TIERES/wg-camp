@@ -646,7 +646,7 @@ button.small,.button.small { padding:.4rem .7rem; font-size:.78rem }
 .live-card { background:var(--card); border:1px solid #374151; border-radius:10px; padding:1rem 1.1rem; display:grid; grid-template-columns:minmax(0,1fr); gap:.85rem; min-width:0 }
 .live-card-head { display:flex; align-items:center; gap:.65rem; font-size:.875rem; color:#9ca3af }
 .live-logos { display:flex; gap:.4rem; align-items:center } .live-logos:empty { display:none } .live-game { width:34px; height:42px; object-fit:cover; border-radius:3px } .live-tournament { height:42px; max-width:64px; object-fit:contain; border-radius:4px; display:block }
-.live-context { flex:1 1 auto; min-width:0; overflow-wrap:anywhere; display:grid } .live-context small { font-size:.78rem } .live-context a { color:#9ca3af } .live-context a:hover { color:var(--accent) }
+.live-context { flex:1 1 auto; min-width:0; overflow-wrap:anywhere; display:grid } .live-context-line { display:block } .live-context small { font-size:.78rem } .live-context a { color:#9ca3af } .live-context a:hover { color:var(--accent) }
 .live-status { flex:0 0 auto; display:grid; justify-items:end; gap:.15rem; text-align:right } .live-badge { color:#4ade80; font-weight:700 }
 /* Ao vivo: um risco embaixo do tempo de jogo (e do "Ao vivo" da tabela) que estica
    para a direita, some, volta esticando e some de novo, como no placar do Google.

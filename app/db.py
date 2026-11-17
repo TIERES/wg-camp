@@ -386,6 +386,11 @@ CREATE TABLE IF NOT EXISTS tournament_matches (
     -- WO: a inscrição que perdeu o jogo por desistência (3 x 0 para o adversário -
     -- store.withdraw_running). NULL = placar jogado.
     walkover_entry_id INTEGER REFERENCES tournament_entries(id) ON DELETE SET NULL,
+    -- 1 = o placar reportado é o de quando a partida foi interrompida no
+    -- RetroArch TIERES (live._report_abandoned): sem prazo - vale quando UM
+    -- dos jogadores confirma ou o organizador decide; até lá, reconectar ou
+    -- jogar de novo o substitui (reports.withdraw_interrupted).
+    interrupted INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -678,12 +683,24 @@ def ensure_live_columns(database):
     if columns and "quitter_id" not in columns:
         database.execute("ALTER TABLE tournament_matches ADD COLUMN quitter_id INTEGER "
                          "REFERENCES players(id) ON DELETE SET NULL")
+    if columns and "interrupted" not in columns:
+        database.execute("ALTER TABLE tournament_matches ADD COLUMN interrupted INTEGER NOT NULL DEFAULT 0")
+        # Os placares de partida interrompida ainda esperando confirmação (de antes
+        # da regra, com o prazo de 24 h): ficam sem prazo, como os novos.
+        database.execute(
+            "UPDATE tournament_matches SET interrupted = 1 WHERE status = 'reported' AND reported_by_entry_id IS NULL "
+            "AND (SELECT r.comment FROM match_reports r WHERE r.match_id = tournament_matches.id AND r.action = 'report' "
+            "ORDER BY r.id DESC LIMIT 1) LIKE 'Partida interrompida no RetroArch TIERES%'")
     columns = {column["name"] for column in database.execute("PRAGMA table_info(live_matches)")}
     if columns and "game_report" not in columns:
         database.execute("ALTER TABLE live_matches ADD COLUMN game_report TEXT")
     if columns and "verified" not in columns:
         # As partidas de antes da regra ficam de fora (mandadas sem login garantido).
         database.execute("ALTER TABLE live_matches ADD COLUMN verified INTEGER NOT NULL DEFAULT 0")
+    for column, kind in (("reconnecting_at", "TEXT"), ("reconnect_session", "TEXT"), ("resume_key", "TEXT"),
+                         ("frame_base", "INTEGER NOT NULL DEFAULT 0")):
+        if columns and column not in columns:
+            database.execute(f"ALTER TABLE live_matches ADD COLUMN {column} {kind}")
 
 
 def ensure_tournament_columns(database):
@@ -855,7 +872,17 @@ CREATE TABLE IF NOT EXISTS live_matches (
     game_report TEXT,
     -- 1 = cada jogador mandou o placar do próprio PC, logado na conta dele
     -- (live.refresh); só assim a partida aparece, entra em campeonato e reporta.
-    verified INTEGER NOT NULL DEFAULT 0
+    verified INTEGER NOT NULL DEFAULT 0,
+    -- Reconectar do Kaillera (live.api_reconnect): a partida interrompida volta
+    -- a valer, em primeiro na lista com "Reconectando", desde o replay escolhido
+    -- pelo host (reconnect_session = o session_id do Stream ao vivo) até ele
+    -- liberar os controles - aí os PCs mandam o placar com resume = a sessão e
+    -- ela segue "Ao vivo" (resume_key, a chave deles; frame_base soma aos
+    -- quadros novos, que recomeçam do 1, o maior quadro de antes).
+    reconnecting_at TEXT,
+    reconnect_session TEXT,
+    resume_key TEXT,
+    frame_base INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS live_matches_status_idx ON live_matches(status, updated_at);
 CREATE INDEX IF NOT EXISTS live_matches_tournament_match_idx ON live_matches(tournament_match_id);

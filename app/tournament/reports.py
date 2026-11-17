@@ -1,7 +1,9 @@
 """Resultado informado pelos próprios jogadores (fase 2).
 
   scheduled --reportar--> reported --confirmar--> confirmed
-  (placar lido do jogo, sem quem reportou: os DOIS confirmam, ou o prazo)
+  (placar lido do jogo, sem quem reportou: os DOIS confirmam, ou o prazo;
+   o de quando a partida foi interrompida: UM confirma, sem prazo - e
+   reconectar ou jogar de novo o retira, de volta a scheduled)
                              |  +--organizador libera novo reporte--> scheduled
                              |  +--sem resposta em N horas--> confirmed (automático)
                              +--contestar--> disputed --organizador/admin decide--> confirmed
@@ -97,24 +99,42 @@ def report(db, tournament, match_id, player_id, score, comment=""):
                               "corrigir o resultado ou liberar um novo reporte.")
     _check_score(db, tournament, match_id, score)
     db.execute("UPDATE tournament_matches SET status = 'reported', reported_by_entry_id = ?, reported_at = ?, "
-               "quitter_id = NULL, updated_at = ? WHERE id = ?", (entry["id"], now(), now(), match_id))
+               "quitter_id = NULL, interrupted = 0, updated_at = ? WHERE id = ?", (entry["id"], now(), now(), match_id))
     log(db, match_id, "report", entry, score=score, comment=comment)
 
 
-def report_from_game(db, tournament, match_id, score, at, comment, quitter_id=None):
+def report_from_game(db, tournament, match_id, score, at, comment, quitter_id=None, interrupted=False):
     """O placar que o RetroArch TIERES leu do jogo (app/live.py), como um
     reporte sem jogador (reported_by_entry_id NULL): qualquer um dos dois
     confirma ou contesta, e sem resposta no prazo ele é confirmado sozinho - o
     prazo conta de `at`, o fim do jogo. Só para jogo ainda sem placar.
     quitter_id: quem saiu no meio do jogo - perde o triplo de XP se este
-    placar valer (os dois confirmam, o prazo ou o organizador o mantém)."""
+    placar valer (os dois confirmam, o prazo ou o organizador o mantém).
+    interrupted: o placar de quando a partida parou - sem prazo, vale quando
+    UM dos dois confirma ou o organizador decide (até lá, reconectar ou jogar
+    de novo o retira: withdraw_interrupted)."""
     match = _match(db, tournament, match_id)
     if match["status"] != "scheduled":
         raise TournamentError("O jogo já tem placar informado pelos jogadores.")
     _check_score(db, tournament, match_id, score)
     db.execute("UPDATE tournament_matches SET status = 'reported', reported_by_entry_id = NULL, reported_at = ?, "
-               "quitter_id = ?, updated_at = ? WHERE id = ?", (at, quitter_id, now(), match_id))
+               "quitter_id = ?, interrupted = ?, updated_at = ? WHERE id = ?",
+               (at, quitter_id, int(interrupted), now(), match_id))
     log(db, match_id, "report", None, score=score, comment=comment)
+
+
+def withdraw_interrupted(db, match_id, comment):
+    """Retira o placar de quando a partida parou, ainda sem confirmação (os
+    dois reconectaram ou jogaram de novo): o jogo volta a ficar sem placar, e
+    a partida que eles jogam agora é que vai reportar. True se retirou."""
+    match = db.execute("SELECT status, interrupted, reported_by_entry_id FROM tournament_matches WHERE id = ?",
+                       (match_id,)).fetchone()
+    if match is None or match["status"] != "reported" or not match["interrupted"] or match["reported_by_entry_id"]:
+        return False
+    db.execute("UPDATE tournament_matches SET status = 'scheduled', reported_at = NULL, quitter_id = NULL, "
+               "interrupted = 0, updated_at = ? WHERE id = ?", (now(), match_id))
+    log(db, match_id, "clear", comment=comment)
+    return True
 
 
 def confirmed_by(db, match_id):
@@ -128,13 +148,14 @@ def confirmed_by(db, match_id):
 def confirm(db, tournament, match_id, player_id):
     """Confirma o placar do adversário. Placar lido do jogo (sem quem
     reportou): cada jogador confirma o seu lado e o jogo só fecha com os
-    dois (ou no prazo, auto_confirm). Devolve True quando o jogo fechou."""
+    dois (ou no prazo, auto_confirm) - o de uma partida interrompida fecha
+    com a confirmação de UM deles (sem prazo). Devolve True quando o jogo fechou."""
     match = _match(db, tournament, match_id)
     entry = player_entry(db, tournament, match, player_id)
     if entry is None or match["status"] != "reported" or match["reported_by_entry_id"] == entry["id"]:
         raise TournamentError("Não há placar do adversário para você confirmar neste jogo.")
     reported = last_report(db, match_id)
-    if match["reported_by_entry_id"] is None:
+    if match["reported_by_entry_id"] is None and not match["interrupted"]:
         already = confirmed_by(db, match_id)
         if entry["id"] in already:
             raise TournamentError("Você já confirmou este placar: falta o adversário confirmar.")
@@ -214,13 +235,20 @@ def clear(db, tournament, match_id, user_id=None, entry=None):
                    (now(), match_id))
     else:
         raise TournamentError("Este jogo não tem resultado.")
-    db.execute("UPDATE tournament_matches SET reported_by_entry_id = NULL, reported_at = NULL, quitter_id = NULL "
-               "WHERE id = ?", (match_id,))
+    db.execute("UPDATE tournament_matches SET reported_by_entry_id = NULL, reported_at = NULL, quitter_id = NULL, "
+               "interrupted = 0 WHERE id = ?", (match_id,))
     log(db, match_id, "clear", entry, user_id=user_id)
 
 
+def is_interrupted(match):
+    """O placar reportado é o de uma partida interrompida (sem prazo, um confirma)?"""
+    return match["status"] == "reported" and "interrupted" in match.keys() and bool(match["interrupted"])
+
+
 def deadline(db, match):
-    if not match["reported_at"]:
+    """Até quando o placar reportado espera a resposta (depois, auto_confirm) -
+    None sem placar ou no de uma partida interrompida (não tem prazo)."""
+    if not match["reported_at"] or is_interrupted(match):
         return None
     reported = datetime.fromisoformat(match["reported_at"])
     return (reported + timedelta(hours=setting(db, "torneios_confirmacao_horas"))).replace(microsecond=0).isoformat()
@@ -235,7 +263,7 @@ def auto_confirm(db, at=None, disputed=None):
     limit = (at - timedelta(hours=setting(db, "torneios_confirmacao_horas"))).replace(microsecond=0).isoformat()
     rows = db.execute(
         "SELECT m.id, s.tournament_id FROM tournament_matches m JOIN tournament_stages s ON s.id = m.stage_id "
-        "WHERE m.status = 'reported' AND m.reported_at <= ?", (limit,)).fetchall()
+        "WHERE m.status = 'reported' AND m.interrupted = 0 AND m.reported_at <= ?", (limit,)).fetchall()
     done = 0
     for row in rows:
         tournament = store.get_tournament(db, row["tournament_id"])
@@ -263,7 +291,8 @@ def matches_for_player(db, player_id):
         "SELECT m.*, t.id AS tournament_id, t.slug, t.name AS tournament_name, t.status AS tournament_status, "
         "s.name AS stage_name, s.status AS stage_status, e.id AS my_entry_id, o.username AS organizer_name, "
         # reportado esperando o adversário: o meu reporte, ou o placar lido do jogo que eu já confirmei
-        "(m.status = 'reported' AND (m.reported_by_entry_id = e.id OR (m.reported_by_entry_id IS NULL AND "
+        # (o de uma partida interrompida não espera: a minha confirmação já o libera)
+        "(m.status = 'reported' AND (m.reported_by_entry_id = e.id OR (m.reported_by_entry_id IS NULL AND m.interrupted = 0 AND "
         "EXISTS (SELECT 1 FROM match_reports c WHERE c.match_id = m.id AND c.action = 'confirm' AND c.entry_id = e.id AND c.id > (SELECT MAX(r2.id) FROM match_reports r2 WHERE r2.match_id = m.id AND r2.action = 'report'))))) AS waiting_other "
         "FROM tournament_entries e JOIN tournaments t ON t.id = e.tournament_id "
         "JOIN players o ON o.id = t.organizer_id "

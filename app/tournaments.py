@@ -3217,7 +3217,7 @@ def inject_wallet():
             "JOIN tournament_matches m ON m.stage_id = s.id AND (m.home_entry_id = e.id OR m.away_entry_id = e.id) "
             "WHERE e.player_id = ? AND t.status = 'running' AND (m.status = 'scheduled' OR "
             "(m.status = 'reported' AND (m.reported_by_entry_id != e.id OR (m.reported_by_entry_id IS NULL "
-            "AND NOT EXISTS (SELECT 1 FROM match_reports c WHERE c.match_id = m.id AND c.action = 'confirm' AND c.entry_id = e.id AND c.id > (SELECT MAX(r2.id) FROM match_reports r2 WHERE r2.match_id = m.id AND r2.action = 'report'))))) OR "
+            "AND (m.interrupted = 1 OR NOT EXISTS (SELECT 1 FROM match_reports c WHERE c.match_id = m.id AND c.action = 'confirm' AND c.entry_id = e.id AND c.id > (SELECT MAX(r2.id) FROM match_reports r2 WHERE r2.match_id = m.id AND r2.action = 'report')))))) OR "
             "(m.status = 'disputed' AND EXISTS (SELECT 1 FROM match_reports r WHERE r.match_id = m.id "
             "AND r.action = 'dispute' AND r.home_goals IS NOT NULL AND (m.reported_by_entry_id = e.id OR "
             "(m.reported_by_entry_id IS NULL AND r.entry_id != e.id)))))",

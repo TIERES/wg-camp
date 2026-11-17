@@ -44,7 +44,8 @@
       </div>
       <label>Motivo<textarea name="comment" rows="3" minlength="3" maxlength="500" required placeholder="Explique o que aconteceu; se tiver o replay, diga o horário da partida."></textarea></label>
     {% endcall %}
-    <span class="my-match-status">Confirmação automática em {{ deadlines[row.id]|localtime }}</span>
+    {% if deadlines[row.id] %}<span class="my-match-status">Confirmação automática em {{ deadlines[row.id]|localtime }}</span>
+    {% elif row.interrupted %}<span class="my-match-status">Partida interrompida: vale se um dos dois confirmar</span>{% endif %}
     {% endif %}
   </div>
   {% endfor %}

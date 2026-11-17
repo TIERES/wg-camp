@@ -198,6 +198,17 @@ def score_from_game(db, tournament, match_id):
     link para confirmar ou contestar."""
     match, home, away, title, link = _match_context(db, tournament, match_id)
     reported = reports.last_report(db, match_id)
+    if reports.is_interrupted(match):
+        # Partida interrompida: sem prazo - um dos dois confirma, ou reconectam/jogam de novo.
+        _deliver([(player["email"], f"Partida interrompida: {title}", (
+            f"Olá, {player['username']}!\n\nA partida do jogo {title} no campeonato {tournament['name']} "
+            f"foi interrompida no RetroArch TIERES com:\n\n  {_label(home)} {_score_text(reported)} {_label(away)}\n\n"
+            "Vocês podem usar o Reconectar do Kaillera para continuar de onde parou, ou jogar de novo: "
+            "a partida nova substitui este placar.\n\n"
+            f"Para valer o placar de quando parou, basta um dos dois confirmar (ou contestar) em:\n{link}\n\n"
+            "Este placar não é confirmado automaticamente: só um dos jogadores ou o organizador o libera.\n"))
+            for player in (home, away)])
+        return
     deadline = format_local(reports.deadline(db, match), "%d/%m/%Y às %H:%M")
     _deliver([(player["email"], f"Confira o placar: {title}", (
         f"Olá, {player['username']}!\n\nO RetroArch TIERES leu o placar do jogo {title} no campeonato "
