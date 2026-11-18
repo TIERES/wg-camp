@@ -1,8 +1,9 @@
 // "Confirmar" nos cards do Ao vivo (live/_card.html, live._confirmation): confirma a
 // partida por quem está logado sem sair da página (POST /ao-vivo/<id>/confirmar),
-// mostra o toast "Obrigado por confirmar a partida A x B" e troca os botões pelo
-// "Você confirmou", o link da página do jogo do campeonato ou do amistoso. Os
-// cards se recarregam sozinhos (live-cards.js): o clique é tratado no documento.
+// mostra o toast "Obrigado por confirmar a partida A x B", tira Contestar e
+// Confirmar (o .live-confirm da linha de botões; os outros, como o Excluir, ficam)
+// e põe o selo verde "TIERES confirmou" embaixo do status. Os cards se recarregam
+// sozinhos (live-cards.js): o clique é tratado no documento.
 (function () {
   function say(message, kind) {
     if (window.toast) window.toast(message, kind);
@@ -26,21 +27,25 @@
         return;
       }
       say(data.message, 'success');
+      // Sem os botões: os selos verdes "TIERES confirmou" embaixo do status, um por
+      // jogador que já confirmou (data.confirmed_by).
+      var card = button.closest('.live-card');
       var box = button.closest('.live-confirm');
-      var done = document.createElement('a');
-      done.className = 'button secondary small live-confirmed';
-      done.href = data.url;
-      done.title = 'Você confirmou: ver a partida';
-      done.setAttribute('aria-label', done.title);
-      var icon = document.createElement('span');
-      icon.className = 'live-confirm-ico';
-      icon.setAttribute('aria-hidden', 'true');
-      icon.textContent = '✅';
-      var text = document.createElement('span');
-      text.className = 'live-confirm-text';
-      text.textContent = 'Você confirmou';
-      done.append(icon, text);
-      if (box) box.replaceChildren(done);
+      var row = button.closest('.live-actions');
+      if (box) box.remove();
+      if (row && !row.querySelector('.live-act')) row.remove();
+      var status = card && card.querySelector('.live-status');
+      if (status && data.confirmed_by && data.confirmed_by.length) {
+        status.querySelectorAll('.live-confirmed-by').forEach(function (old) { old.remove(); });
+        var before = status.querySelector('.live-deleted-by');
+        data.confirmed_by.forEach(function (name) {
+          var badge = document.createElement('span');
+          badge.className = 'badge live-confirmed-by';
+          badge.title = name + ' confirmou o placar desta partida';
+          badge.textContent = name + ' confirmou';
+          status.insertBefore(badge, before);
+        });
+      }
     }).catch(function () {
       button.disabled = false;
       say('Sem conexão com o site: tente de novo.', 'error');

@@ -672,13 +672,21 @@ button.small,.button.small { padding:.4rem .7rem; font-size:.78rem }
 .card-chip::before { content:""; display:inline-block; width:.5rem; height:.7rem; border-radius:2px; background:#facc15 } .card-r::before { background:#ef4444 }
 .tiebreak-legend { margin:.5rem 0 0 }
 /* Aviso de campeonato liberado (tournaments/_notice.html): a imagem do campeonato, a capa do jogo e o checklist. */
-/* Contestar/Confirmar no card do Ao vivo (live/_card.html), embaixo do placar; no celular só o ícone. */
-.live-confirm { display:flex; justify-content:center; gap:.45rem; margin:.4rem 0 0 }
-.live-confirm .button, .live-confirm button { display:inline-flex; align-items:center; gap:.35rem; margin:0; white-space:nowrap }
-.live-confirm-ico { font-size:1.05em; line-height:1 }
-@media (max-width:560px) { .live-confirm .button, .live-confirm button { padding:.4rem .6rem }
-  .live-confirm-ico { font-size:1.3rem }
-  .live-confirm-text { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap } }
+/* Botões do card do Ao vivo (live/_card.html: Contestar/Confirmar, Registrar placar, Excluir):
+   numa linha embaixo do placar, separada por um traço, todos do mesmo tamanho; no celular,
+   um embaixo do outro. Só o texto, sem ícone. */
+.live-actions { display:flex; flex-wrap:wrap; justify-content:center; gap:.5rem; border-top:1px solid #374151; padding-top:.75rem }
+.live-confirm { display:contents }
+.live-act { display:inline-flex; align-items:center; justify-content:center; gap:.4rem; flex:1 1 0; min-width:0; max-width:10.5rem; width:auto; margin:0; padding:.45rem .7rem; font-size:.8rem; line-height:1.2; white-space:nowrap }
+.live-act-text { overflow:hidden; text-overflow:ellipsis }
+.live-act.danger { background:#f87171; color:#2a0b0b } .live-act.danger:hover { background:#fca5a5 }
+@media (max-width:560px) { .live-actions { flex-direction:column; align-items:stretch } .live-act { flex:none; max-width:none; padding:.6rem .8rem; font-size:.875rem } }
+/* Selos embaixo do status: oculto/excluído (cinza, só o administrador vê), quem já confirmou o
+   placar (verde) e quem já excluiu o card (vermelho). */
+.live-deleted-by,.live-confirmed-by,.live-hidden-badge { background:#b91c1c; color:#fff; font-size:.7rem; padding:.05rem .45rem; border-radius:4px; max-width:14rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.live-confirmed-by { background:#15803d } .live-hidden-badge { background:#4b5563; color:#f3f4f6 }
+/* Celular: o card sem as imagens do jogo base e da ISO/campeonato (fica o nome). */
+@media (max-width:560px) { .live-card .live-logos { display:none } }
 .tournament-notice .notice-banner { display:block; width:100%; height:auto; border-radius:8px; margin:0 0 .85rem }
 .tournament-notice .notice-head { display:flex; align-items:center; gap:.85rem; margin:0 0 .6rem }
 .tournament-notice .notice-head h2 { margin:0 } .tournament-notice .notice-cover { width:3.6rem; height:auto; flex:none; border-radius:6px }
@@ -719,8 +727,9 @@ button.small,.button.small { padding:.4rem .7rem; font-size:.78rem }
 .live-stat-name { text-align:center; color:#d1d5db }
 .live-card-foot { display:flex; justify-content:space-between; gap:.5rem; flex-wrap:wrap; color:#9ca3af; font-size:.8rem } .live-agreed { color:#6ee7b7 }
 /* Card ocultado pelo administrador (live.hide): só ele vê, esmaecido e com o selo "Oculto". */
-.live-card.is-hidden { opacity:.6; border-style:dashed } .live-hidden-badge { background:#4b5563; color:#f3f4f6 }
-.live-hide-form { display:inline; margin-left:auto } .live-hide-form button { padding:.2rem .55rem; font-size:.75rem }
+.live-card.is-hidden { opacity:.6; border-style:dashed }
+/* Ocultar/Mostrar do administrador: um botão da linha de botões (o form não ocupa lugar). */
+.live-actions .live-hide-form { display:contents }
 .badge.live-test { background:#92400e; color:#fde68a; font-size:.7rem; padding:.05rem .4rem; border-radius:4px; text-transform:uppercase }
 .live-admin { display:flex; flex-wrap:wrap; gap:.75rem; align-items:center }
 @media(max-width:420px){ .live-goals { font-size:2rem; gap:.75rem } .live-crest { width:44px; height:33px } }
@@ -729,14 +738,15 @@ button.small,.button.small { padding:.4rem .7rem; font-size:.78rem }
 .live-filters .user-picker > label { font-size:.875rem; color:#9ca3af }
 .live-filter-actions { grid-column:1 / -1; display:flex; gap:.75rem } .live-filter-actions > * { flex:1 1 0; text-align:center; width:auto }
 @media(min-width:860px){ .live-filters { grid-template-columns:repeat(4,minmax(0,1fr)) } .live-filter-actions > * { flex:0 0 auto } }
-/* Ao vivo: Jogador, Campeonato, ISO, De e Até - numa linha na tela larga; na média, 3 + 2. */
+/* Ao vivo: no máximo 3 filtros por linha - Jogador, Campeonato e ISO; embaixo De, Até e a caixa
+   "Partidas interrompidas" (alinhada aos campos). */
 @media(min-width:860px){ .live-filters.live-page-filters { grid-template-columns:repeat(3,minmax(0,1fr)) } }
-@media(min-width:1100px){ .live-filters.live-page-filters { grid-template-columns:repeat(5,minmax(0,1fr)) } }
 /* Celular: o filtro de nick (e o .filter-wide, ex. Campeonato no Ao vivo) sempre numa linha
    inteira; as datas (De / Até) dividem a de baixo. */
-@media(max-width:859px){ .live-filters > .user-picker, .live-filters > .filter-wide { grid-column:1 / -1 }
+@media(max-width:859px){ .live-filters > .user-picker, .live-filters > .filter-wide, .live-filters > .live-filter-check { grid-column:1 / -1 }
   .friendly-filters input[type=datetime-local] { font-size:.85rem; padding:.5rem .4rem } }
 .live-iso form.inline-form label { display:flex; gap:.4rem; align-items:center }
+.live-filters label.live-filter-check { align-self:end; padding:0 0 .6rem; color:var(--text); font-size:.9rem; cursor:pointer } .live-filters label.live-filter-check input { width:auto; flex:none }
 
 /* Selo (i) e janela só de texto (templates/_dialog.html: info_button / info_dialog) */
 .info-badge { display:inline-grid; place-items:center; width:1.3rem; height:1.3rem; padding:0; margin-left:.4rem; border-radius:50%; background:transparent; border:1.5px solid #6b7280; color:#9ca3af; font:italic 700 .8rem/1 Georgia,"Times New Roman",serif; vertical-align:middle; cursor:pointer; flex:none }
@@ -1036,7 +1046,7 @@ a.record-card:focus-visible { outline:none }
 .free-final.pending { border-color:#ea580c88 } .free-final h2 { margin-top:0 }
 .free-final .score-inputs { margin:.25rem 0 } .free-final-done { color:var(--accent) } .free-final-rejected { color:#fca5a5 }
 .free-final .card-actions form { display:inline }
-.live-final { display:block } .live-final.pending, .live-final.pending a { color:#fdba74 }
+.live-final { display:block }
 /* Amistosos: partidas livres com o placar final do adversário para eu responder. */
 .free-waiting { margin:1rem 0 1.5rem; padding:.2rem 1rem .6rem; border-radius:12px; background:#0b1220; border:1px solid #ea580c66 }
 .free-waiting h2 { color:#fdba74 }
@@ -1098,3 +1108,6 @@ header a.brand img { width:40px; height:40px; border-radius:9px; flex-shrink:0; 
    preto). Os campos com ícone (.input-icon) continuam com o verde. */
 /* :where() sem peso: as regras com classe (.input-icon, placar reportado...) continuam valendo. */
 :where(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=color]), select, textarea):focus-visible { outline:none; border-color:#e5e7eb; box-shadow:0 0 0 1px #e5e7eb }
+/* "Excluir" o card de uma partida interrompida (live/_delete.html) em Meus jogos; no card, .live-act. */
+.my-match.mm-delete { border-left-color:#9ca3af; background:#262b33 !important } .my-match.mm-delete .match-line small { color:#9ca3af; font-weight:400 }
+.my-match-actions a.button.secondary { background:#374151; color:var(--text) } .my-match-actions button.danger { background:#f87171; color:#2a0b0b }

@@ -319,7 +319,11 @@ class FreeMatchesTest(unittest.TestCase):
         page = self.get(self.a, "/torneios/partidas-livres/%d" % stopped)
         self.assertIn("A partida foi interrompida com TIERES <strong>2 x 2</strong> ANDERSHOW", page)
         self.assertIn('name="local_goals"', page)
-        self.assertIn("Registrar o placar final", self.get(self.a, "/ao-vivo/cards", query_string={"partida": stopped}))
+        # O botão "Registrar placar" na linha de botões do card, só para quem jogou.
+        self.assertIn('title="Registrar o placar final da partida interrompida"', self.get(
+            self.a, "/ao-vivo/cards", query_string={"partida": stopped}))
+        self.assertIn('interrompida"><span class="live-act-text">Registrar placar</span>', self.get(
+            self.a, "/ao-vivo/cards", query_string={"partida": stopped}))
         self.assertNotIn("placar final", self.get(self.c, "/ao-vivo/cards", query_string={"partida": stopped}))
         # Quem joga: a foto com o rank; logado, a foto abre o resumo e o nick, o perfil completo.
         logged = self.get(self.c, "/ao-vivo/cards", query_string={"partida": stopped})

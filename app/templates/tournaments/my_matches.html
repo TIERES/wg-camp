@@ -1,18 +1,19 @@
-{% extends 'base.html' %}{% from 'tournaments/_macros.html' import score %}{% from '_dialog.html' import form_dialog %}{% block title %}Meus jogos · WE Camp{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from 'tournaments/_macros.html' import score %}{% from '_dialog.html' import form_dialog %}{% from 'live/_delete.html' import delete_button, delete_dialog %}{% block title %}Meus jogos · WE Camp{% endblock %}{% block content %}
 <h1>Meus jogos</h1>
 {# Esperando você: os jogos de campeonato com uma ação minha - informar o placar,
    confirmar o do adversário ou aceitar o placar de uma contestação (o mesmo que o
    número do menu) -, os amistosos com placar para eu confirmar e as partidas
-   livres interrompidas com o placar final do adversário (tournaments.my_matches).
+   livres interrompidas com o placar final do adversário e os cards de partidas
+   interrompidas que dá para excluir (tournaments.my_matches).
    Some quando não há nada pendente. Embaixo, o Histórico de partidas (filtros +
    gráfico), como na página do jogador. #}
-{% set waiting_total = pending|length + friendlies_pending|length + free_pending|length %}
+{% set waiting_total = pending|length + friendlies_pending|length + free_pending|length + deletable|length %}
 {% if waiting_total %}
 {% set labels = {'report': 'Informe o placar', 'confirm': 'Confirme o placar do adversário', 'accept': 'O adversário contestou com outro placar'} %}
 {% set kinds = {'report': 'none', 'confirm': 'confirm', 'accept': 'disputed'} %}
 <section class="mm-pending" id="esperando">
   <h2>Esperando você ({{ waiting_total }})</h2>
-  <p class="muted">Jogos com uma ação sua: informar o placar, confirmar o do adversário ou responder a uma contestação.</p>
+  <p class="muted">Jogos com uma ação sua: informar o placar, confirmar o do adversário, responder a uma contestação ou excluir o card de uma partida interrompida.</p>
   {% for row, action in pending %}
   <div class="my-match mm-{{ kinds[action] }}" id="jogo-{{ row.id }}" title="{{ labels[action] }}">
     <small class="mm-where"><a href="{{ url_for('tournaments.show', slug=row.slug, aba='jogos') }}">{{ row.tournament_name }}</a> · {{ row.stage_name }}{% if row.round %} · Rodada {{ row.round }}{% endif %} · <span class="mm-what">{{ labels[action] }}</span></small>
@@ -66,6 +67,21 @@
       <span class="match-line"><span class="home">{{ m.local_name }}</span><span class="score"><span class="score-val score-reported">{{ m.score[0] }} x {{ m.score[1] }}</span></span><span class="away">{{ m.visita_name }}</span></span>
     </a>
     <div class="my-match-actions"><a class="button" href="{{ url_for('tournaments.free_match', live_id=m.id) }}">Confirmar ou não aceitar</a></div>
+  </div>
+  {% endfor %}
+  {# Cards de partidas interrompidas (conexão ruim, desistiram): cada jogador exclui;
+     com todos, o card sai do site (live.delete_card). #}
+  {% for c in deletable %}{% set a, b = c.teams %}{% set link = url_for('live.index', partida=c.id) %}
+  <div class="my-match mm-delete" id="card-{{ c.id }}" title="Partida interrompida: o card pode ser excluído">
+    <small class="mm-where"><a href="{{ link }}">Ao vivo · {{ c.context|join(' · ') }}</a> · <span class="mm-what">{% if c.delete.by %}{{ c.delete.by|join(', ') }} já excluiu o card: exclua também{% else %}Partida interrompida: o card pode ser excluído{% endif %}</span></small>
+    <a class="my-match-link" href="{{ link }}">
+      {# "Time (jogador)"; sem o time identificado, só o jogador. #}
+      {% set a_nicks, b_nicks = a.people|map(attribute='name')|join(', '), b.people|map(attribute='name')|join(', ') %}
+      <span class="match-line"><span class="home">{% if a.known %}{{ a.name }} <small>({{ a_nicks }})</small>{% else %}{{ a_nicks }}{% endif %}</span><span class="score"><span class="score-val">{{ a.goals }} x {{ b.goals }}</span></span><span class="away">{% if b.known %}{{ b.name }} <small>({{ b_nicks }})</small>{% else %}{{ b_nicks }}{% endif %}</span></span>
+    </a>
+    <div class="my-match-actions"><a class="button secondary" href="{{ link }}">Ver o card</a>{{ delete_button(c, card=False) }}</div>
+    {{ delete_dialog(c, 'meus-jogos') }}
+    <span class="my-match-status">Interrompida · {{ c.when }}</span>
   </div>
   {% endfor %}
 </section>

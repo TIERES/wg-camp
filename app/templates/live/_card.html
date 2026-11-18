@@ -1,5 +1,6 @@
 {# Card de uma partida ao vivo (app/live.py card()): jogo base/campeonato, tempo, times com quem controla, placar e gols. #}
 {% from '_avatar.html' import avatar, avatar_button %}
+{% from 'live/_delete.html' import delete_button, delete_dialog %}
 {% set a, b = c.teams %}
 <article class="live-card{% if c.status != 'live' %} ended{% endif %}{% if c.hidden %} is-hidden{% endif %}">
   <div class="live-card-head">
@@ -24,9 +25,16 @@
     {# "Reconectando" (o Reconectar do Kaillera, até o host liberar os controles): verde e com
        o risco animado como o tempo de jogo ao vivo, sem o "Ao vivo" em cima. #}
     <span class="live-status">
-      {% if c.hidden %}<span class="badge live-hidden-badge" title="Só o administrador vê este card">Oculto</span>{% endif %}
       {% if c.status == 'live' and not c.stale and not c.reconnecting %}<span class="live-badge">Ao vivo</span>{% endif %}
       <span class="live-clock{% if c.status == 'live' and not c.stale and not c.interval %} on{% endif %}">{{ c.clock }}</span>
+      {# Selos embaixo do status: em cinza, o card que só o administrador vê (oculto por ele ou
+         excluído pelos jogadores - live.hide); um por jogador em verde, quem já confirmou o placar
+         (jogo de campeonato ou amistoso - live._confirmation), e em vermelho, na partida
+         interrompida, quem já excluiu o card (ele sai do site quando todos excluírem). #}
+      {% if c.deleted %}<span class="badge live-hidden-badge" title="Os jogadores excluíram este card: só o administrador vê">Excluído</span>
+      {% elif c.hidden %}<span class="badge live-hidden-badge" title="Só o administrador vê este card">Oculto</span>{% endif %}
+      {% for name in (c.confirm.confirmed_by if c.confirm else []) %}<span class="badge live-confirmed-by" title="{{ name }} confirmou o placar desta partida">{{ name }} confirmou</span>{% endfor %}
+      {% for name in c.deleted_by %}<span class="badge live-deleted-by" title="{% if c.delete and c.delete.state == 'done' %}Você excluiu este card: ele sai do site quando {{ c.delete.waiting }} excluir também{% else %}O card sai do site quando todos os jogadores excluírem{% endif %}">{{ name }} excluiu</span>{% endfor %}
     </span>
   </div>
   <div class="live-score">
@@ -42,18 +50,39 @@
         {%- else %}<small>{{ pl.name }}</small>{% endif %}</span>{% endfor %}</div>
     </div>
     {% if loop.first %}<div class="live-mid"><div class="live-goals"><span>{{ a.goals }}</span><span class="live-x">×</span><span>{{ b.goals }}</span></div>
-      {% if c.pens %}<div class="live-pens" title="Disputa de pênaltis">Pênaltis {{ c.pens[0] }} × {{ c.pens[1] }}</div>{% endif %}
-    {# Quem joga a partida e ainda precisa responder (live._confirmation), embaixo do placar:
-       Contestar (📣, a página do jogo/amistoso com a janela de contestar aberta) e Confirmar
-       (🤝, static/js/live-confirm.js); depois, "Você confirmou" (✅). No celular, só o ícone. #}
-    {% if c.confirm %}<div class="live-confirm">{% if c.confirm.state == 'pending' %}
-      <a class="button secondary small" href="{{ c.confirm.dispute_url }}" title="Contestar o placar" aria-label="Contestar o placar"><span class="live-confirm-ico" aria-hidden="true">📣</span><span class="live-confirm-text">Contestar</span></a>
-      <button type="button" class="small" data-live-confirm="{{ c.confirm.confirm_url }}" data-csrf="{{ csrf_token() }}" title="Confirmar o placar" aria-label="Confirmar o placar"><span class="live-confirm-ico" aria-hidden="true">🤝</span><span class="live-confirm-text">Confirmar</span></button>
-    {% else %}<a class="button secondary small live-confirmed" href="{{ c.confirm.url }}" title="Você confirmou: ver {{ 'o jogo' if c.confirm.kind == 'tournament' else 'o amistoso' }}" aria-label="Você confirmou: ver {{ 'o jogo' if c.confirm.kind == 'tournament' else 'o amistoso' }}"><span class="live-confirm-ico" aria-hidden="true">✅</span><span class="live-confirm-text">Você confirmou</span></a>{% endif %}</div>{% endif %}</div>{% endif %}
+      {% if c.pens %}<div class="live-pens" title="Disputa de pênaltis">Pênaltis {{ c.pens[0] }} × {{ c.pens[1] }}</div>{% endif %}</div>{% endif %}
     {% endfor %}
   </div>
   {% if c.tie %}
   <div class="live-tie">{{ c.tie.label }}{% if c.tie.aggregate %}<span>Total com jogo de ida: {{ c.tie.aggregate[0] }} - {{ c.tie.aggregate[1] }}{% if c.tie.provisional %} <small title="O placar do jogo de ida ainda não foi confirmado pelos jogadores">(ida não confirmada)</small>{% endif %}</span>{% endif %}</div>
+  {% endif %}
+  {# Os botões de quem joga a partida, numa linha embaixo do placar, todos do mesmo
+     tamanho, só com o texto (no celular, um embaixo do outro):
+     - jogo de campeonato/amistoso esperando a resposta dele (live._confirmation):
+       Contestar (a página do jogo/amistoso com a janela de contestar aberta) e
+       Confirmar (static/js/live-confirm.js); depois de confirmar, só o selo verde
+       "TIERES confirmou" embaixo do status;
+     - partida livre interrompida, o placar final que os dois combinam (live._free_final):
+       Registrar placar, Confirmar placar ou Placar informado;
+     - partida interrompida: Excluir o card (live._deletion - _delete.html);
+     - administrador: Ocultar o card para jogadores e visitantes, ou Mostrar de novo (live.hide). #}
+  {% set fin = c.final if c.final and c.final.pending else none %}
+  {% set can_delete = c.delete and c.delete.state == 'pending' %}
+  {% set can_confirm = c.confirm and c.confirm.state == 'pending' %}
+  {% if can_confirm or fin or can_delete or session.user_id %}
+  <div class="live-actions">
+    {% if can_confirm %}<span class="live-confirm"><a class="button secondary live-act" href="{{ c.confirm.dispute_url }}" title="Contestar o placar" aria-label="Contestar o placar"><span class="live-act-text">Contestar</span></a>
+      <button type="button" class="live-act" data-live-confirm="{{ c.confirm.confirm_url }}" data-csrf="{{ csrf_token() }}" title="Confirmar o placar" aria-label="Confirmar o placar"><span class="live-act-text">Confirmar</span></button></span>{% endif %}
+    {% if fin %}{% set text = {'report': 'Registrar placar', 'confirm': 'Confirmar placar', 'wait': 'Placar informado'}[fin.action] %}
+    <a class="button live-act{{ '' if fin.action == 'confirm' else ' secondary' }}" href="{{ fin.url }}" title="{{ fin.text }}" aria-label="{{ fin.text }}"><span class="live-act-text">{{ text }}</span></a>{% endif %}
+    {{ delete_button(c) }}
+    {% if session.user_id %}<form class="live-hide-form" method="post" action="{{ url_for('live.hide', live_id=c.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="ocultar" value="{{ '0' if c.hidden else '1' }}">
+      {% if request.endpoint != 'live.cards_fragment' %}<input type="hidden" name="voltar" value="{{ request.full_path }}">{% endif %}
+      <button type="submit" class="secondary live-act" title="{{ 'Mostrar o card para todos de novo (desfaz a exclusão dos jogadores)' if c.deleted else 'Mostrar o card para todos de novo' if c.hidden else 'Ocultar o card para jogadores e visitantes' }}"><span class="live-act-text">{{ 'Mostrar' if c.hidden else 'Ocultar' }}</span></button>
+    </form>{% endif %}
+  </div>
+  {% if can_delete %}{{ delete_dialog(c, request.full_path if request.endpoint != 'live.cards_fragment' else '') }}{% endif %}
   {% endif %}
   {# Gols e, abaixo, os expulsos, os amarelos e as contusões (WE 2002): um grupo por
      tipo, LOCAL à esquerda e VISITA à direita, o ícone do tipo no meio (live._team_view). #}
@@ -101,13 +130,8 @@
   <div class="live-card-foot">
     <small class="live-card-file"><span>{{ c.when }} ·</span>{% if c.target %}<a href="{{ c.target }}" title="{{ target_title }}">{{ c.file|fit }}</a>{% else %}{{ c.file|fit }}{% endif %}</small>
     {% if c.status == 'finished' and c.agreed %}<small class="live-agreed">Placar conferido nos {{ c.reporters }} PCs</small>{% endif %}
-    {# Partida livre interrompida: o placar final que os dois combinam (live._free_final). #}
-    {% if c.final %}<small class="live-final{% if c.final.pending %} pending{% endif %}">{% if c.final.url %}<a href="{{ c.final.url }}">{{ c.final.text }}</a>{% else %}{{ c.final.text }}{% endif %}</small>{% endif %}
-    {# Administrador: ocultar o card para jogadores e visitantes (live.hide), ou mostrar de novo. #}
-    {% if session.user_id %}<form class="live-hide-form" method="post" action="{{ url_for('live.hide', live_id=c.id) }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="ocultar" value="{{ '0' if c.hidden else '1' }}">
-      {% if request.endpoint != 'live.cards_fragment' %}<input type="hidden" name="voltar" value="{{ request.full_path }}">{% endif %}
-      <button type="submit" class="secondary small" title="{{ 'Mostrar o card para todos de novo' if c.hidden else 'Ocultar o card para jogadores e visitantes' }}">{{ 'Mostrar' if c.hidden else 'Ocultar' }}</button>
-    </form>{% endif %}
+    {# Partida livre interrompida: o placar final que os dois combinaram (live._free_final;
+       enquanto combinam, é um botão da linha de botões). #}
+    {% if c.final and not c.final.pending %}<small class="live-final">{% if c.final.url %}<a href="{{ c.final.url }}">{{ c.final.text }}</a>{% else %}{{ c.final.text }}{% endif %}</small>{% endif %}
   </div>
 </article>

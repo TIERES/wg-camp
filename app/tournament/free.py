@@ -31,7 +31,7 @@ _SQL = ("SELECT m.id, m.status, m.content_id, m.room, m.state_json, m.local_play
         "s.reported_by, s.reported_at, s.rejected_by, s.rejected_note, s.confirmed_at "
         "FROM live_matches m LEFT JOIN free_match_scores s ON s.live_match_id = m.id "
         "WHERE m.verified = 1 AND m.is_test = 0 AND m.tournament_match_id IS NULL AND m.friendly_id IS NULL "
-        "AND m.status IN ('finished', 'abandoned')")
+        "AND m.status IN ('finished', 'abandoned') AND m.deleted_at IS NULL")  # (excluída pelos jogadores: live.py)
 
 
 def _accounts(db, nicks):
@@ -237,7 +237,7 @@ def todo_count(db, me):
     rows = db.execute(
         "SELECT m.local_players_json, m.visita_players_json FROM free_match_scores s "
         "JOIN live_matches m ON m.id = s.live_match_id WHERE s.status = 'reported' AND s.reported_by != ? "
-        "AND m.status = 'abandoned' AND m.verified = 1 AND m.is_test = 0 "
+        "AND m.status = 'abandoned' AND m.verified = 1 AND m.is_test = 0 AND m.deleted_at IS NULL "
         "AND m.tournament_match_id IS NULL AND m.friendly_id IS NULL", (me,)).fetchall()
     if not rows:
         return 0

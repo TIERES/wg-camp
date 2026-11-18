@@ -2431,9 +2431,10 @@ def my_matches():
     fase em andamento) com uma ação minha: informar o placar ("report"),
     confirmar o do adversário ("confirm") ou aceitar o placar de uma
     contestação ("accept"), as mesmas regras do número do menu (inject_wallet);
-    os amistosos com placar para eu confirmar e as partidas livres
-    interrompidas com o placar final do adversário (free.py) - e, embaixo, o
-    Histórico de partidas (filtros + gráfico, _history.html)."""
+    os amistosos com placar para eu confirmar, as partidas livres
+    interrompidas com o placar final do adversário (free.py) e os cards de
+    partidas interrompidas que eu posso excluir (live.deletable_cards) - e,
+    embaixo, o Histórico de partidas (filtros + gráfico, _history.html)."""
     db = get_db()
     me = session["player_id"]
     pending = []
@@ -2459,7 +2460,11 @@ def my_matches():
                           if row["status"] == "reported" and friendly.needs_me(row, me)]
     history = _history_context(db, me)
     history.pop("everything")
+    # Partidas interrompidas cujo card eu ainda posso excluir (live.deletable_cards).
+    from . import live
+    deletable = [live.card(db, match) for match in live.deletable_cards(db, me)]
     return render_template("tournaments/my_matches.html", pending=pending, names=names, game=None, **history,
+                           deletable=deletable,
                            friendlies_pending=friendlies_pending, free_pending=free.waiting_for(db, me),
                            deadlines={row["id"]: reports.deadline(db, row) for row, action in pending
                                       if action == "confirm"})
@@ -3222,6 +3227,9 @@ def inject_wallet():
             "AND r.action = 'dispute' AND r.home_goals IS NOT NULL AND (m.reported_by_entry_id = e.id OR "
             "(m.reported_by_entry_id IS NULL AND r.entry_id != e.id)))))",
             (player_id,)).fetchone()[0]
+        # E os cards de partidas interrompidas que ele pode excluir (Meus jogos).
+        from . import live
+        todo += len(live.deletable_cards(db, player_id))
         friends_todo = friends.pending_count(db, player_id)
         invites_todo = len(friends.my_invites(db, player_id))
         # Amistosos e, junto, as partidas livres interrompidas com o placar final do adversário para confirmar.

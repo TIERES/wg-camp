@@ -415,6 +415,25 @@ def free_score_event(db, live_id, to_id, subject, text):
     _deliver([(to["email"], subject, f"Olá, {to['username']}!\n\n{text}\n{link}\n")])
 
 
+def live_card_deleted(db, live_id, by_name, to_ids, label, when, players, score_pending=False):
+    """Um jogador excluiu o card da partida interrompida no Ao vivo
+    (live.delete_card): quem ainda não excluiu recebe o aviso e o link do card,
+    que já abre a janela de excluir."""
+    link = external_url("live.index", partida=live_id) + "#excluir-%d" % live_id
+    everyone = "todos os jogadores da partida excluírem" if players > 2 else "vocês dois excluírem"
+    note = ("\n\nExcluindo, o placar de quando a partida parou deixa de valer no jogo do campeonato: "
+            "o jogo volta a ficar sem placar, para vocês jogarem de novo." if score_pending else "")
+    messages = []
+    for to_id in to_ids:
+        to = db.execute("SELECT username, email FROM players WHERE id = ?", (to_id,)).fetchone()
+        if to:
+            messages.append((to["email"], f"{by_name} excluiu o card da partida interrompida", (
+                f"Olá, {to['username']}!\n\n{by_name} excluiu do Ao vivo o card da partida interrompida "
+                f"{label}, de {when}.\n\nO card só sai do site quando {everyone}. Se você também quer "
+                f"excluí-lo, abra o card e clique em Excluir:\n{link}{note}\n")))
+    _deliver(messages)
+
+
 def _image_text(name):
     return external_url("images.serve", kind="torneio", name=name) if name else "sem imagem"
 

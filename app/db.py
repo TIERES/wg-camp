@@ -698,7 +698,8 @@ def ensure_live_columns(database):
         # As partidas de antes da regra ficam de fora (mandadas sem login garantido).
         database.execute("ALTER TABLE live_matches ADD COLUMN verified INTEGER NOT NULL DEFAULT 0")
     for column, kind in (("reconnecting_at", "TEXT"), ("reconnect_session", "TEXT"), ("resume_key", "TEXT"),
-                         ("frame_base", "INTEGER NOT NULL DEFAULT 0"), ("hidden", "INTEGER NOT NULL DEFAULT 0")):
+                         ("frame_base", "INTEGER NOT NULL DEFAULT 0"), ("hidden", "INTEGER NOT NULL DEFAULT 0"),
+                         ("deleted_at", "TEXT")):
         if columns and column not in columns:
             database.execute(f"ALTER TABLE live_matches ADD COLUMN {column} {kind}")
 
@@ -885,10 +886,24 @@ CREATE TABLE IF NOT EXISTS live_matches (
     frame_base INTEGER NOT NULL DEFAULT 0,
     -- 1 = o administrador ocultou o card (live.hide): some do Ao vivo e do placar
     -- ao vivo da tabela para jogadores e visitantes; o resultado não muda.
-    hidden INTEGER NOT NULL DEFAULT 0
+    hidden INTEGER NOT NULL DEFAULT 0,
+    -- Partida interrompida que todos os jogadores excluíram (live.delete_card,
+    -- live_match_deletions): o card sai do site (hidden = 1) e ela não vale
+    -- mais (partida livre, placar de quando parou no jogo de campeonato).
+    deleted_at TEXT
 );
 CREATE INDEX IF NOT EXISTS live_matches_status_idx ON live_matches(status, updated_at);
 CREATE INDEX IF NOT EXISTS live_matches_tournament_match_idx ON live_matches(tournament_match_id);
+
+-- "Excluir" no card de uma partida interrompida (live.delete_card): um pedido
+-- por jogador; com todos os jogadores da partida, o card sai do site
+-- (live_matches.deleted_at).
+CREATE TABLE IF NOT EXISTS live_match_deletions (
+    live_match_id INTEGER NOT NULL REFERENCES live_matches(id) ON DELETE CASCADE,
+    player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (live_match_id, player_id)
+);
 
 -- Placar final combinado de uma partida livre interrompida (app/tournament/free.py):
 -- um dos dois informa (reported), o outro confirma (confirmed) ou não aceita

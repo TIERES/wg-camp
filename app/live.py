@@ -295,8 +295,8 @@ def _can_reopen(db, match):
     campeonato, sem placar liberado (só o de quando parou, sem confirmação) e
     sem outra partida dos dois para o mesmo jogo depois dela; no amistoso,
     antes de as partidas da sessão virarem o placar dele."""
-    if match["status"] == "finished" or match["is_test"]:
-        return False
+    if match["status"] == "finished" or match["is_test"] or match["deleted_at"]:
+        return False  # (o card que os jogadores excluíram não volta: o Reconectar abre outro)
     if match["tournament_match_id"]:
         game = db.execute("SELECT status, interrupted, reported_by_entry_id FROM tournament_matches WHERE id = ?",
                           (match["tournament_match_id"],)).fetchone()
@@ -818,17 +818,18 @@ def _profile(db, match):
 
 
 def _confirmation(db, match, views):
-    """"Confirmar" e "Contestar" no card para quem está logado e joga a partida
-    que espera a confirmação dele - o jogo de campeonato com o placar reportado
-    (só no card da partida que deu esse placar), o jogo do amistoso sem "Placar
-    agregado" (friendly.confirm_game) ou o amistoso com placar agregado já
-    reportado (friendly.confirm, o amistoso inteiro). state "pending" (os dois
-    botões) ou "done" (já confirmou: "Você confirmou", o link da página do jogo
-    ou do amistoso); None sem nada a mostrar."""
+    """"Confirmar" e "Contestar" no card e quem já confirmou o placar dele - o
+    jogo de campeonato reportado ou confirmado (só no card da partida que deu
+    esse placar), o jogo do amistoso sem "Placar agregado" (friendly.confirm_game)
+    ou o amistoso com placar agregado já reportado (friendly.confirm, o amistoso
+    inteiro). confirmed_by = os nomes de quem já confirmou (o selo verde
+    "TIERES confirmou" embaixo do status, para todos); state, para quem está
+    logado e joga a partida: "pending" (os dois botões), "done" (já confirmou: só
+    o selo) ou None (não joga, ou o jogo já fechou). None sem nada a mostrar."""
     from .tournament import friendly, reports
-    me = session.get("player_id")
-    if not me or match["is_test"] or match["status"] == "live":
+    if match["is_test"] or match["status"] == "live":
         return None
+    me = session.get("player_id")
     label = "%s x %s" % (views[0]["name"], views[1]["name"])
     info = {"label": label, "confirm_url": url_for("live.confirm", live_id=match["id"])}
     if match["tournament_match_id"]:
@@ -839,24 +840,32 @@ def _confirmation(db, match, views):
             "JOIN tournament_entries he ON he.id = m.home_entry_id JOIN players hp ON hp.id = he.player_id "
             "JOIN tournament_entries ae ON ae.id = m.away_entry_id JOIN players ap ON ap.id = ae.player_id "
             "WHERE m.id = ?", (match["tournament_match_id"],)).fetchone()
-        if row is None or row["status"] != "reported" or me not in (row["home_player"], row["away_player"]):
+        if row is None or row["status"] not in ("reported", "confirmed"):
             return None
-        reported = reports.last_report(db, row["id"])
+        if row["status"] == "reported":
+            reported = reports.last_report(db, row["id"])
+            score = (reported["home_goals"], reported["away_goals"]) if reported else None
+        else:
+            score = (row["home_goals"], row["away_goals"])
         sides = dict(match, home_nick=row["home_nick"], away_nick=row["away_nick"])
-        if reported is None or _home_away(sides, (match["local_goals"] or 0, match["visita_goals"] or 0)) != (
-                reported["home_goals"], reported["away_goals"]):
-            return None  # outra partida do mesmo jogo (jogaram de novo): o placar reportado é de outra
-        entry = row["home_entry_id"] if row["home_player"] == me else row["away_entry_id"]
+        if score is None or _home_away(sides, (match["local_goals"] or 0, match["visita_goals"] or 0)) != score:
+            return None  # outra partida do mesmo jogo (jogaram de novo): o placar é de outra
+        # Quem confirmou o último placar reportado (ou o informou ele mesmo), na ordem.
         # (Partida interrompida: a confirmação de um já libera o placar - nunca fica esperando o outro.)
-        done = row["reported_by_entry_id"] == entry or (
-            not row["interrupted"] and entry in reports.confirmed_by(db, row["id"]))
+        order = [row["reported_by_entry_id"]] if row["reported_by_entry_id"] else []
+        order += reports.confirmed_by(db, row["id"])
+        by_entry = {row["home_entry_id"]: row["home_player"], row["away_entry_id"]: row["away_player"]}
+        players = {row["home_player"]: row["home_nick"], row["away_player"]: row["away_nick"]}
+        done = list(dict.fromkeys(by_entry[entry] for entry in order if entry in by_entry))
+        open_ = row["status"] == "reported"
         url = url_for("tournaments.match", slug=row["slug"], match_id=row["id"])
         info.update(kind="tournament", tournament_id=row["tournament_id"], match_id=row["id"], url=url,
                     dispute_url=url + "#contestar", what="a partida " + label)
     elif match["friendly_id"]:
         row = friendly.get(db, match["friendly_id"])
-        if row is None or me not in (row["home_id"], row["away_id"]):
+        if row is None:
             return None
+        players = {row["home_id"]: row["home_name"], row["away_id"]: row["away_name"]}
         url = url_for("tournaments.friendly_show", friendly_id=row["id"])
         if friendly.per_game(row):
             if row["status"] == "accepted":
@@ -866,21 +875,27 @@ def _confirmation(db, match, views):
                     "SELECT 1 FROM friendly_games WHERE friendly_id = ? AND live_match_id = ?",
                     (row["id"], match["id"])).fetchone() is None:
                 return None
-            done = me in friendly.game_confirms(db, row["id"]).get(match["id"], ()) or (
-                row["status"] == "reported" and row["first_confirmed_by"] == me)
+            confirms = friendly.game_confirms(db, row["id"]).get(match["id"], ())
+            done = [pid for pid in players if pid in confirms or (
+                row["status"] == "reported" and row["first_confirmed_by"] == pid)]
             what = "a partida " + label
         else:
             if row["status"] != "reported":
                 return None
-            done = row["reported_by"] == me or bool(row["game_report"] and row["first_confirmed_by"] == me)
+            done = [pid for pid in players if row["reported_by"] == pid or bool(
+                row["game_report"] and row["first_confirmed_by"] == pid)]
             what = "o amistoso %s x %s" % (row["home_name"], row["away_name"])
+        open_ = True
         # "Não aceitar o placar" só existe depois do fim da sessão (amistoso reportado).
         info.update(kind="friendly", friendly_id=row["id"], per_game=friendly.per_game(row), url=url,
                     dispute_url=url + ("#rejeitar-%d" % row["id"] if row["status"] == "reported" else ""),
                     what=what)
     else:
         return None
-    info["state"] = "done" if done else "pending"
+    info["confirmed_by"] = [players[pid] for pid in done]
+    info["state"] = ("done" if me in done else "pending") if open_ and me in players else None
+    if not info["confirmed_by"] and info["state"] is None:
+        return None
     return info
 
 
@@ -915,7 +930,10 @@ def confirm(live_id):
         return jsonify(ok=0, message=str(error), url=info["url"]), 400
     if tournament is not None:
         notify.check_completion(db, tournament)  # o aviso de fim do campeonato, como na página do jogo
-    return jsonify(ok=1, message="Obrigado por confirmar %s" % info["what"], url=info["url"])
+    # Quem já confirmou: os selos verdes "TIERES confirmou" que entram no lugar dos botões (live-confirm.js).
+    after = card(db, db.execute("SELECT * FROM live_matches WHERE id = ?", (live_id,)).fetchone())["confirm"]
+    return jsonify(ok=1, message="Obrigado por confirmar %s" % info["what"], url=info["url"],
+                   confirmed_by=after["confirmed_by"] if after else [])
 
 
 def card(db, match):
@@ -946,6 +964,11 @@ def card(db, match):
     return {"id": match["id"], "status": match["status"], "stale": stale, "is_test": match["is_test"],
             "reconnecting": reconnecting,
             "hidden": bool(match["hidden"]),  # ocultado pelo administrador (só ele vê, com "Mostrar")
+            "deleted": bool(match["deleted_at"]),  # excluído pelos jogadores (só o administrador vê)
+            # "Excluir" o card da partida interrompida, para quem a jogou (_deletion).
+            "delete": _deletion(db, match),
+            # Quem já excluiu (o selo embaixo do "Interrompido", para todos).
+            "deleted_by": _deleted_by(db, match),
             "clock": "Sem sinal" if stale else _clock_label(match),
             # sem o risco animado (no "Reconectando", com ele)
             "interval": not reconnecting and (_interval(match) or _period_over(match)),
@@ -996,12 +1019,154 @@ def _free_final(db, match):
         return {"text": "Placar final combinado: %d x %d" % found["score"], "url": url, "pending": False}
     if not mine:
         return None
-    if found["score_status"] == "reported":
-        text = ("Placar final informado: falta o adversário confirmar" if found["reported_by"] == me
-                else "O adversário informou o placar final: confirme")
+    # Pendente: um botão na linha de botões do card - action = o rótulo dele.
+    if found["score_status"] == "reported" and found["reported_by"] == me:
+        text, action = "Placar final informado: falta o adversário confirmar", "wait"
+    elif found["score_status"] == "reported":
+        text, action = "O adversário informou o placar final: confirme ou não aceite", "confirm"
     else:
-        text = "Registrar o placar final"
-    return {"text": text, "url": url, "pending": True}
+        text, action = "Registrar o placar final da partida interrompida", "report"
+    return {"text": text, "url": url, "pending": True, "action": action}
+
+
+# --- Excluir o card de uma partida interrompida ----------------------------------
+#
+# Partida que parou logo (conexão ruim, desistiram): cada jogador clica em
+# "Excluir" no card (live_match_deletions); o primeiro avisa os outros por
+# e-mail (notify.live_card_deleted) e, com todos, o card sai do site (deleted_at,
+# hidden) e a partida não vale mais nada. Os que o jogador ainda pode excluir
+# ficam em Meus jogos e no número do menu (deletable_cards).
+
+DELETED_OUTCOME = "excluída pelos jogadores"
+DELETED_NOTE = ("Os jogadores excluíram o card da partida interrompida no Ao vivo (nº %d): o placar de quando "
+                "ela parou foi retirado - o jogo volta a ficar sem placar.")
+
+
+def _card_players(db, match):
+    """[(id, nome)] das contas dos jogadores da partida, na ordem da sala; None
+    se algum nick não tem conta (então ninguém exclui)."""
+    people = []
+    for nick in json.loads(match["players_json"] or "[]"):
+        row = db.execute("SELECT id, username FROM players WHERE username = ? COLLATE NOCASE", (nick,)).fetchone()
+        if row is None:
+            return None
+        if all(row["id"] != pid for pid, _ in people):
+            people.append((row["id"], row["username"]))
+    return people
+
+
+def _pending_score(db, match):
+    """O placar de quando a partida parou, ainda sem confirmação, é o do jogo de
+    campeonato dela? (Excluindo o card, ele é retirado.)"""
+    if not match["tournament_match_id"] or not (match["game_report"] or "").startswith("reportado"):
+        return False
+    game = db.execute("SELECT status, interrupted, reported_by_entry_id FROM tournament_matches WHERE id = ?",
+                      (match["tournament_match_id"],)).fetchone()
+    return bool(game and game["status"] == "reported" and game["interrupted"] and not game["reported_by_entry_id"])
+
+
+def undeletable(db, match):
+    """Por que o card não pode ser excluído pelos jogadores (o texto), ou None
+    se pode: só o de uma partida interrompida (não de teste, com todos
+    logados) que não vale nada - não de amistoso (as partidas dele fazem o
+    placar do amistoso), partida livre sem o placar final combinado e, no
+    jogo de campeonato, sem placar valendo por ela (o de quando parou ainda
+    sem confirmação sai junto: _pending_score)."""
+    if match["status"] != "abandoned" or match["is_test"] or not match["verified"] or match["deleted_at"]:
+        return "Só o card de uma partida interrompida pode ser excluído."
+    if match["friendly_id"]:
+        return "O card de um jogo de amistoso não pode ser excluído: ele faz parte do placar do amistoso."
+    if match["tournament_match_id"]:
+        if (match["game_report"] or "").startswith("reportado") and not _pending_score(db, match):
+            game = db.execute("SELECT status FROM tournament_matches WHERE id = ?",
+                              (match["tournament_match_id"],)).fetchone()
+            if game and game["status"] != "scheduled":
+                return "O placar desta partida já vale no jogo do campeonato: o card não pode ser excluído."
+    else:
+        score = db.execute("SELECT status FROM free_match_scores WHERE live_match_id = ?", (match["id"],)).fetchone()
+        if score and score["status"] == "confirmed":
+            return "O placar final desta partida já foi combinado: o card não pode ser excluído."
+    if not _card_players(db, match):
+        return "Só dá para excluir o card quando todos os jogadores da partida têm conta no WE Camp."
+    return None
+
+
+def deletion_requests(db, live_id):
+    """Ids de quem já excluiu o card."""
+    return {row["player_id"] for row in db.execute(
+        "SELECT player_id FROM live_match_deletions WHERE live_match_id = ?", (live_id,))}
+
+
+def _names_text(names):
+    names = list(names)
+    return " e ".join([", ".join(names[:-1]), names[-1]]) if len(names) > 1 else (names[0] if names else "")
+
+
+def _deleted_by(db, match):
+    """Os nomes de quem já excluiu o card da partida interrompida, enquanto
+    falta alguém (o selo "tassio excluiu" embaixo do "Interrompido")."""
+    if match["status"] != "abandoned" or match["deleted_at"]:
+        return []
+    return [row["username"] for row in db.execute(
+        "SELECT p.username FROM live_match_deletions d JOIN players p ON p.id = d.player_id "
+        "WHERE d.live_match_id = ? ORDER BY d.created_at, p.username COLLATE NOCASE", (match["id"],))]
+
+
+def _deletion(db, match):
+    """O "Excluir" no card para quem está logado e jogou a partida
+    (undeletable): state "pending" (ainda não excluiu) ou "done" (já excluiu,
+    falta outro); by/waiting = os nomes de quem já excluiu e de quem falta;
+    score = o placar de quando parou que sai do jogo de campeonato (texto) ou
+    None; free = há placar final proposto (sai junto). None: nada a mostrar."""
+    me = session.get("player_id")
+    if not me or match["status"] != "abandoned" or match["deleted_at"]:
+        return None
+    people = _card_players(db, match)
+    if not people or all(pid != me for pid, _ in people) or undeletable(db, match):
+        return None
+    done = deletion_requests(db, match["id"])
+    score = None
+    if _pending_score(db, match):
+        score = "%d x %d" % (match["local_goals"] or 0, match["visita_goals"] or 0)
+    free_score = None if match["tournament_match_id"] else db.execute(
+        "SELECT 1 FROM free_match_scores WHERE live_match_id = ?", (match["id"],)).fetchone()
+    return {"state": "done" if me in done else "pending",
+            "by": [name for pid, name in people if pid in done and pid != me],
+            "waiting": _names_text(name for pid, name in people if pid not in done and pid != me),
+            "url": url_for("live.delete_card", live_id=match["id"]), "score": score, "free": bool(free_score)}
+
+
+def deletable_cards(db, player_id):
+    """As partidas interrompidas cujo card o jogador ainda pode excluir (sem o
+    pedido dele), da mais recente: Meus jogos e o número do menu. A partida
+    livre com o placar final sendo combinado (free.py: informado ou não
+    aceito) fica de fora - ela já está lá pelo placar; o card ainda exclui."""
+    from .listing import like
+    row = db.execute("SELECT username FROM players WHERE id = ?", (player_id,)).fetchone()
+    if row is None:
+        return []
+    found = []
+    for match in db.execute(
+            "SELECT * FROM live_matches m WHERE m.status = 'abandoned' AND m.is_test = 0 AND m.verified = 1 "
+            "AND m.deleted_at IS NULL AND m.friendly_id IS NULL AND m.players_json LIKE ? ESCAPE '\\' "
+            "AND NOT EXISTS (SELECT 1 FROM live_match_deletions d WHERE d.live_match_id = m.id AND d.player_id = ?) "
+            "AND NOT EXISTS (SELECT 1 FROM free_match_scores s WHERE s.live_match_id = m.id) "
+            "ORDER BY m.started_at DESC, m.id DESC", (like('"%s"' % row["username"]), player_id)).fetchall():
+        people = _card_players(db, match)
+        if people and any(pid == player_id for pid, _ in people) and not undeletable(db, match):
+            found.append(match)
+    return found
+
+
+def _delete_card(db, match):
+    """Todos os jogadores excluíram: o card sai do site e a partida não vale
+    mais - o placar de quando parou sai do jogo de campeonato (sem
+    confirmação: _pending_score) e a partida livre some do perfil (free.py)."""
+    from .tournament import reports
+    if _pending_score(db, match):
+        reports.withdraw_interrupted(db, match["tournament_match_id"], DELETED_NOTE % match["id"])
+    db.execute("UPDATE live_matches SET deleted_at = ?, hidden = 1, game_report = ? WHERE id = ?",
+               (now(), DELETED_OUTCOME, match["id"]))
 
 
 def _local_day(value, end=False):
@@ -1139,13 +1304,15 @@ def iso_filter(db, text):
 
 
 def list_cards(db, tournament_id=None, kind=None, tournament_query="", only_live=False, recent_only=False, player="",
-               date_from="", date_to="", match_id=None, iso_query="", limit=CARDS_LIMIT, count=False):
+               date_from="", date_to="", match_id=None, iso_query="", interrupted=False, limit=CARDS_LIMIT,
+               count=False):
     """As últimas partidas (ao vivo primeiro), com os filtros da página:
     tournament_id = os jogos daquele campeonato (o link "Ao vivo" da tabela);
     kind = Rankeado, Amistoso ou Partida livre (_KIND_WHERE); tournament_query =
     o nome digitado de um campeonato (tournaments_named); match_id = só aquela
     partida (o placar ao lado do time na tabela do campeonato); iso_query = o
-    texto do filtro "ISO" (iso_filter)."""
+    texto do filtro "ISO" (iso_filter); interrupted = só as interrompidas (a
+    caixa "Partidas interrompidas")."""
     reap(db)
     where, params = ["m.verified = 1"], []  # só com os dois jogadores logados (refresh)
     if only_live:
@@ -1171,6 +1338,8 @@ def list_cards(db, tournament_id=None, kind=None, tournament_query="", only_live
         sql, values = iso_filter(db, iso_query)
         where.append(sql)
         params.extend(values)
+    if interrupted:
+        where.append("m.status = 'abandoned'")
     if player:
         # O nick de uma conta (o que a sugestão do campo preenche): só as
         # partidas dele ("TIERES" não traz as do TIERES_ART); um pedaço do
@@ -1786,7 +1955,8 @@ def friendly_scorers(db, friendly_row, games):
 def _filters():
     """Filtros da página. Campeonato (autocompletar): Rankeado, Amistoso ou
     Partida livre (stats.kind_filter), o nome de um campeonato ou o id dele
-    (o link "Ao vivo" da tabela do campeonato)."""
+    (o link "Ao vivo" da tabela do campeonato); interrompidas=1 = só as
+    partidas interrompidas."""
     from .tournament.stats import kind_filter
     args = request.args
     championship = args.get("campeonato", "").strip()[:120]
@@ -1795,6 +1965,7 @@ def _filters():
             "tournament_id": int(championship) if championship.isdigit() else None,
             "tournament_query": championship if championship and not kind and not championship.isdigit() else "",
             "match_id": int(args["partida"]) if args.get("partida", "").isdigit() else None,
+            "interrupted": args.get("interrompidas") == "1",
             "date_from": args.get("de", ""), "date_to": args.get("ate", ""),
             "iso_query": args.get("iso", "").strip()[:120]}
 
@@ -1840,21 +2011,79 @@ def cards_fragment():
 def hide(live_id):
     """Administrador: oculta o card (ocultar=1) do Ao vivo e do placar ao vivo
     da tabela para jogadores e visitantes, ou volta a mostrar (ocultar=0). Só
-    a visualização: o placar e os resultados da partida não mudam."""
+    a visualização: o placar e os resultados da partida não mudam. Mostrar o
+    card que os jogadores excluíram desfaz a exclusão (o placar retirado do
+    jogo de campeonato não volta)."""
     validate_csrf()
     db = get_db()
     hidden = request.form.get("ocultar") == "1"
-    if db.execute("UPDATE live_matches SET hidden = ? WHERE id = ?", (int(hidden), live_id)).rowcount:
+    if db.execute("UPDATE live_matches SET hidden = ?, deleted_at = CASE WHEN ? THEN deleted_at END WHERE id = ?",
+                  (int(hidden), int(hidden), live_id)).rowcount:
+        if not hidden:
+            db.execute("DELETE FROM live_match_deletions WHERE live_match_id = ?", (live_id,))
         db.commit()
         flash("Card ocultado: jogadores e visitantes não o veem mais." if hidden
               else "Card visível de novo para todos.", "success")
-    # De volta à página do card (o recarregado sozinho pela página não traz "voltar": a de onde veio).
+    return _redirect_back()
+
+
+def _redirect_back():
+    """De volta à página do card: "voltar" do formulário (meus-jogos = Meus
+    jogos) ou, sem ele (o card recarregado sozinho pela página não traz), a de
+    onde veio - só deste site; senão, o Ao vivo."""
     target = request.form.get("voltar") or ""
+    if target == "meus-jogos":
+        return redirect(url_for("tournaments.my_matches"))
     if not target and request.referrer:
         from urllib.parse import urlsplit
         ref = urlsplit(request.referrer)
         target = (ref.path + ("?" + ref.query if ref.query else "")) if ref.netloc == request.host else ""
     return redirect(target if target.startswith("/") and not target.startswith("//") else url_for("live.index"))
+
+
+@bp.post("/ao-vivo/<int:live_id>/excluir")
+def delete_card(live_id):
+    """Um jogador exclui o card da partida interrompida (undeletable): o
+    primeiro avisa os outros por e-mail (com o link do card); com todos, o
+    card sai do site e a partida não vale mais (_delete_card)."""
+    from .tournament import notify
+    if "player_id" not in session:
+        flash("Entre na sua conta para excluir o card.", "error")
+        return redirect(url_for("players.login"))
+    validate_csrf()
+    db = get_db()
+    match = db.execute("SELECT * FROM live_matches WHERE id = ?", (live_id,)).fetchone()
+    if match is None:
+        abort(404)
+    me = session["player_id"]
+    people = _card_players(db, match) or []
+    reason = undeletable(db, match)
+    if not reason and all(pid != me for pid, _ in people):
+        reason = "Só quem jogou a partida pode excluir o card."
+    if reason:
+        flash(reason, "error")
+        return _redirect_back()
+    new = db.execute("INSERT OR IGNORE INTO live_match_deletions (live_match_id, player_id, created_at) "
+                     "VALUES (?, ?, ?)", (live_id, me, now())).rowcount
+    done = deletion_requests(db, live_id)
+    waiting = [(pid, name) for pid, name in people if pid not in done]
+    if not waiting:
+        _delete_card(db, match)
+        db.commit()
+        flash("Card excluído: ele saiu do site.", "success")
+        return _redirect_back()
+    db.commit()
+    if new:
+        info = card(db, match)
+        # "Time (jogador)"; sem o time identificado, só o jogador.
+        sides = [(view["name"] if view["known"] else "", ", ".join(p["name"] for p in view["people"]))
+                 for view in info["teams"]]
+        label = " x ".join("%s (%s)" % side if side[0] else side[1] for side in sides)
+        notify.live_card_deleted(db, match["id"], dict(people)[me], [pid for pid, _ in waiting], label,
+                                 info["when"], len(people), _pending_score(db, match))
+    flash("Você excluiu o card: ele sai do site quando %s excluir também. Avisamos por e-mail."
+          % _names_text(name for _, name in waiting), "success")
+    return _redirect_back()
 
 
 @bp.post("/ao-vivo/limpar-testes")

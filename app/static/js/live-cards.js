@@ -92,6 +92,8 @@
       else if (section) section.hidden = !any;
     }
     function load() {
+      // Janela aberta num card (o "Excluir" - live/_delete.html): recarregar a apagaria.
+      if (box.querySelector('dialog[open]')) return;
       fetch(box.dataset.liveSrc, { credentials: 'same-origin' })
         .then(function (r) { return r.ok ? r.text() : null; })
         .then(function (html) { if (html !== null) show(html.trim()); })

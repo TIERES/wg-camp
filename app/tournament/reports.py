@@ -138,11 +138,11 @@ def withdraw_interrupted(db, match_id, comment):
 
 
 def confirmed_by(db, match_id):
-    """Inscrições que já confirmaram o último placar reportado do jogo."""
+    """Inscrições que já confirmaram o último placar reportado do jogo, na ordem."""
     return [row["entry_id"] for row in db.execute(
-        "SELECT DISTINCT entry_id FROM match_reports WHERE match_id = ? AND action = 'confirm' AND entry_id IS NOT NULL "
-        "AND id > (SELECT COALESCE(MAX(id), 0) FROM match_reports WHERE match_id = ? AND action = 'report')",
-        (match_id, match_id))]
+        "SELECT entry_id FROM match_reports WHERE match_id = ? AND action = 'confirm' AND entry_id IS NOT NULL "
+        "AND id > (SELECT COALESCE(MAX(id), 0) FROM match_reports WHERE match_id = ? AND action = 'report') "
+        "GROUP BY entry_id ORDER BY MIN(id)", (match_id, match_id))]
 
 
 def confirm(db, tournament, match_id, player_id):

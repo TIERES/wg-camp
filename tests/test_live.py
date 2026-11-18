@@ -517,7 +517,8 @@ class LiveMatchesTest(unittest.TestCase):
 
     def test_card_confirm_and_contest_buttons_for_a_championship_game(self):
         """Card do Ao vivo de jogo de campeonato reportado: Confirmar/Contestar para quem
-        joga e ainda não respondeu; confirmar pelo card (JSON + toast) vira "Você confirmou"."""
+        joga e ainda não respondeu; confirmar pelo card (JSON + toast) tira os botões e põe o
+        selo verde "TIERES confirmou" embaixo do status, para todos."""
         t, group, (tieres, anders, third) = self.make_league()
         self.finish_live(goals=(2, 1))
         live_id = self.rows("SELECT id FROM live_matches")[0]["id"]
@@ -530,28 +531,41 @@ class LiveMatchesTest(unittest.TestCase):
         html = self.cards(me)
         self.assertIn('data-live-confirm="/ao-vivo/%d/confirmar"' % live_id, html)
         self.assertIn('href="/torneios/liga-1/jogos/%d#contestar" title="Contestar o placar"' % match_id, html)
-        # Embaixo do placar (no meio do card), com os ícones 📣 e 🤝 (no celular, só eles).
-        mid = html[html.index('class="live-mid"'):html.index('class="live-tie"') if 'live-tie' in html else None]
-        self.assertIn('class="live-confirm"', mid)
-        self.assertIn('aria-hidden="true">📣</span><span class="live-confirm-text">Contestar</span>', html)
-        self.assertIn('aria-hidden="true">🤝</span><span class="live-confirm-text">Confirmar</span>', html)
+        # Na linha de botões embaixo do placar (depois dele, antes dos gols), só com o texto.
+        actions = html[html.index('class="live-actions"'):html.index('class="live-card-foot"')]
+        self.assertLess(html.index('class="live-score"'), html.index('class="live-actions"'))
+        self.assertIn('class="live-confirm"', actions)
+        self.assertIn('aria-label="Contestar o placar"><span class="live-act-text">Contestar</span>', actions)
+        self.assertIn('aria-label="Confirmar o placar"><span class="live-act-text">Confirmar</span>', actions)
+        self.assertNotIn('aria-hidden', actions)  # sem ícone
         self.assertNotIn("data-live-confirm", self.cards())  # quem não está logado
         self.assertNotIn("data-live-confirm", self.cards(self.player(third)))  # quem não joga
+        self.assertNotIn("live-confirmed-by", html)  # ninguém confirmou ainda
         reply = me.post("/ao-vivo/%d/confirmar" % live_id, data={"csrf_token": CSRF})
         self.assertEqual(reply.status_code, 200)
         self.assertEqual(reply.json["message"], "Obrigado por confirmar a partida Grécia x Croácia")
         self.assertEqual(reply.json["url"], "/torneios/liga-1/jogos/%d" % match_id)
+        self.assertEqual(reply.json["confirmed_by"], ["TIERES"])
         html = self.cards(me)
         self.assertNotIn("data-live-confirm", html)
-        self.assertIn('href="/torneios/liga-1/jogos/%d" title="Você confirmou: ver o jogo"' % match_id, html)
-        self.assertIn('>✅</span><span class="live-confirm-text">Você confirmou</span>', html)
+        self.assertNotIn("Você confirmou</span></a>", html)  # sem o botão "Você confirmou"
+        self.assertNotIn('class="live-actions"', html)  # nenhum botão: sem a linha
+        self.assertIn('<span class="badge live-confirmed-by" title="TIERES confirmou o placar desta partida">TIERES confirmou</span>', html)
+        # O selo, para todos: o visitante e o adversário (que ainda tem os botões).
+        self.assertIn('>TIERES confirmou</span>', self.cards())
+        self.assertIn("TIERES confirmou</span>", self.cards(self.player(self.anders)))
+        self.assertIn("data-live-confirm", self.cards(self.player(self.anders)))
         self.assertEqual(me.post("/ao-vivo/%d/confirmar" % live_id, data={"csrf_token": CSRF}).status_code, 400)
         self.assertEqual(self.rows("SELECT status FROM tournament_matches")[0]["status"], "reported")
         # O adversário confirma pelo card: o jogo fecha e os botões somem.
         other = self.player(self.anders)
         self.assertEqual(other.post("/ao-vivo/%d/confirmar" % live_id, data={"csrf_token": CSRF}).json["ok"], 1)
         self.assertEqual(self.rows("SELECT status FROM tournament_matches")[0]["status"], "confirmed")
-        self.assertNotIn("live-confirm", self.cards(other))
+        self.assertNotIn('class="live-confirm"', self.cards(other))
+        self.assertNotIn("live-actions", self.cards(other))  # sem botão nenhum: sem a linha
+        # O jogo fechado mantém os selos, um por jogador, na ordem em que confirmaram.
+        html = self.cards()
+        self.assertLess(html.index(">TIERES confirmou</span>"), html.index(">ANDERSHOW confirmou</span>"))
         # Sem o token do formulário: recusado.
         self.assertEqual(self.player(self.tieres).post("/ao-vivo/%d/confirmar" % live_id).status_code, 400)
 
@@ -574,7 +588,7 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertEqual(reply.json["message"], "Obrigado por confirmar a partida Não identificado x Não identificado")
         self.assertEqual(tuple(self.rows("SELECT live_match_id, player_id FROM friendly_game_confirms")[0]),
                          (live[0], self.tieres))
-        self.assertIn('href="/torneios/amistosos/%d" title="Você confirmou: ver o amistoso"' % fid, self.cards(me))
+        self.assertIn('>TIERES confirmou</span>', self.cards(me))
         # Placar agregado: depois de reportado, o card confirma o amistoso inteiro (o 1º dos dois).
         with self.app.app_context():
             db = get_db()
@@ -590,7 +604,7 @@ class LiveMatchesTest(unittest.TestCase):
         reply = me.post("/ao-vivo/%d/confirmar" % live[0], data={"csrf_token": CSRF})
         self.assertEqual(reply.json["message"], "Obrigado por confirmar o amistoso TIERES x ANDERSHOW")
         self.assertEqual(self.rows("SELECT first_confirmed_by FROM friendly_matches WHERE id = ?", fid)[0][0], self.tieres)
-        self.assertEqual(self.cards(me).count('live-confirm-text">Você confirmou'), 2)  # os dois cards do amistoso
+        self.assertEqual(self.cards(me).count('>TIERES confirmou</span>'), 2)  # os dois cards do amistoso
 
     def test_finished_match_becomes_the_report_and_confirms_in_24h(self):
         from app.tournament import reports, store
@@ -2010,7 +2024,7 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertIn("live-mini", self.table())
         self.assertNotIn("live-hide-form", self.cards())  # visitantes e jogadores não têm o botão
         self.assertNotIn("live-hide-form", self.cards(player))
-        self.assertIn('<button type="submit" class="secondary small" title="Ocultar o card para jogadores e visitantes">Ocultar</button>',
+        self.assertIn('<button type="submit" class="secondary live-act" title="Ocultar o card para jogadores e visitantes"><span class="live-act-text">Ocultar</span></button>',
                       self.cards(admin))
         # Só o administrador oculta.
         self.assertEqual(player.post("/ao-vivo/%d/ocultar" % live_id, data={"csrf_token": CSRF, "ocultar": "1"}).status_code, 302)
@@ -2028,7 +2042,9 @@ class LiveMatchesTest(unittest.TestCase):
         html = self.cards(admin)
         self.assertIn('class="live-card is-hidden"', html)
         self.assertIn('title="Só o administrador vê este card">Oculto</span>', html)
-        self.assertIn(">Mostrar</button>", html)
+        self.assertIn(">Mostrar</span></button>", html)
+        # O selo "Oculto" embaixo do status (depois do tempo de jogo), como os outros selos.
+        self.assertLess(html.index('class="live-clock'), html.index(">Oculto</span>"))
         self.assertIn("live-mini", admin.get("/torneios/liga-1/tabela-ao-vivo").get_data(as_text=True))
         # O resultado não muda: a partida segue valendo para o jogo do campeonato.
         self.assertIsNotNone(self.rows("SELECT tournament_match_id FROM live_matches")[0]["tournament_match_id"])
@@ -2039,6 +2055,206 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertIn("live-mini", self.table())
         # Sem o token do formulário: recusado.
         self.assertEqual(admin.post("/ao-vivo/%d/ocultar" % live_id, data={"ocultar": "1"}).status_code, 400)
+
+    # --- Excluir o card de uma partida interrompida (live.delete_card) ---------------
+
+    def interrupted(self, kickoff=1000, goals=(0, 0)):
+        """Partida interrompida (sem sinal: reap) entre TIERES e ANDERSHOW; devolve o id."""
+        self.post(state(kickoff=kickoff, frame=kickoff + 3000, goals=goals))
+        self.abandon(kickoff)
+        return self.rows("SELECT id FROM live_matches WHERE kickoff_frame = ?", kickoff)[0]["id"]
+
+    def test_interrupted_filter(self):
+        """A caixa "Partidas interrompidas" do filtro (interrompidas=1): só as interrompidas."""
+        stopped = self.interrupted()
+        self.post(state(kickoff=9000, period=1, clock=0, goals=(1, 0), final=True))
+        self.assertEqual(self.cards().count('<article class="live-card'), 2)
+        html = self.cards(interrompidas="1")
+        self.assertEqual(html.count('<article class="live-card'), 1)
+        self.assertIn("Interrompido", html)
+        self.assertEqual(self.cards(interrompidas="1", jogador="ninguem"), "")
+        page = self.app.test_client().get("/ao-vivo?interrompidas=1").get_data(as_text=True)
+        self.assertIn('name="interrompidas" value="1" checked', page)
+        self.assertIn("/ao-vivo/cards?interrompidas=1", page)  # a recarga dos cards mantém o filtro
+        self.assertNotIn('value="1" checked', self.app.test_client().get("/ao-vivo").get_data(as_text=True))
+        self.assertEqual(stopped, self.rows("SELECT id FROM live_matches WHERE status = 'abandoned'")[0]["id"])
+
+    def test_interrupted_championship_card_buttons_in_one_row(self):
+        """Jogo de campeonato interrompido: Contestar, Confirmar e Excluir na mesma linha
+        de botões, embaixo do placar; o Excluir com a cor de perigo."""
+        live_id, match_id = self.interrupted_league_game()
+        html = self.cards(self.player(self.anders))
+        actions = html[html.index('class="live-actions"'):html.index('class="live-card-foot"')]
+        self.assertEqual(actions.count('class="button secondary live-act"'), 1)  # Contestar
+        self.assertEqual(actions.count('class="live-act" data-live-confirm='), 1)  # Confirmar
+        self.assertIn('class="danger live-delete live-act" data-dialog="excluir-%d"' % live_id, actions)
+        self.assertIn('interrompida"><span class="live-act-text">Excluir</span>', actions)
+        foot = html[html.index('class="live-card-foot"'):]
+        self.assertNotIn("live-act", foot)  # nada de botão de jogador no rodapé
+
+    def mails(self):
+        box = self.app.extensions.setdefault("mail_outbox", [])
+        sent = [(m["To"], m["Subject"], m.get_body(("plain",)).get_content()) for m in box]
+        box.clear()
+        return sent
+
+    def delete(self, client, live_id, **data):
+        return client.post("/ao-vivo/%d/excluir" % live_id, data={"csrf_token": CSRF, **data})
+
+    def test_both_players_delete_an_interrupted_card(self):
+        from app import live
+        from app.tournament import free
+        live_id = self.interrupted()
+        self.post(state(kickoff=50000, frame=60000, goals=(1, 0)))  # a partida seguinte, ao vivo: sem "Excluir"
+        with self.app.app_context():
+            outsider = add_player(get_db(), "OUTRO")
+            get_db().commit()
+        tieres, anders, admin = self.player(self.tieres), self.player(self.anders), self.admin()
+        # Só quem jogou a partida interrompida vê o "Excluir" (e a janela dele).
+        for client in (None, admin, self.player(outsider)):
+            self.assertNotIn('data-dialog="excluir-', self.cards(client))
+        html = self.cards(tieres)
+        self.assertEqual(html.count('data-dialog="excluir-'), 1)
+        self.assertIn('data-dialog="excluir-%d"' % live_id, html)
+        self.assertIn('<dialog class="form-dialog" id="excluir-%d"' % live_id, html)
+        self.assertIn("Ele só sai do site quando ANDERSHOW excluir também: avisamos por e-mail que você excluiu.", html)
+        # Em Meus jogos e no número do menu dos dois.
+        for client in (tieres, anders):
+            page = client.get("/torneios/meus-jogos").get_data(as_text=True)
+            self.assertIn('id="card-%d"' % live_id, page)
+            self.assertIn("Partida interrompida: o card pode ser excluído", page)
+            self.assertIn('title="Jogos esperando você">1</span>', page)
+            self.assertIn("Esperando você (1)", page)
+        # Quem não jogou não exclui.
+        self.delete(self.player(outsider), live_id)
+        self.assertEqual(self.rows("SELECT COUNT(*) AS n FROM live_match_deletions")[0]["n"], 0)
+        # O TIERES exclui (em Meus jogos): o ANDERSHOW recebe o e-mail com o link do card.
+        self.mails()
+        reply = self.delete(tieres, live_id, voltar="meus-jogos")
+        self.assertEqual((reply.status_code, reply.headers["Location"]), (302, "/torneios/meus-jogos"))
+        [(to, subject, body)] = self.mails()
+        self.assertEqual((to, subject), ("ANDERSHOW@x.com", "TIERES excluiu o card da partida interrompida"))
+        self.assertIn("TIERES excluiu do Ao vivo o card da partida interrompida TIERES x ANDERSHOW, de ", body)
+        self.assertIn("O card só sai do site quando vocês dois excluírem.", body)
+        self.assertIn("/ao-vivo?partida=%d#excluir-%d" % (live_id, live_id), body)
+        # O card segue no site até o outro excluir, com o selo "TIERES excluiu" embaixo do
+        # "Interrompido" para todos; o TIERES não tem mais o botão e vê quem falta no selo.
+        self.assertIn('id="excluir-%d"' % live_id, self.cards(anders))
+        self.assertIn('data-dialog="excluir-%d"' % live_id, self.cards(anders))
+        html = self.cards(tieres)
+        self.assertNotIn('data-dialog="excluir-%d"' % live_id, html)
+        self.assertIn('title="Você excluiu este card: ele sai do site quando ANDERSHOW excluir também">TIERES excluiu</span>',
+                      html)
+        self.assertIn('title="O card sai do site quando todos os jogadores excluírem">TIERES excluiu</span>', self.cards())
+        self.assertEqual(self.cards().count('<article class="live-card'), 2)
+        page = tieres.get("/torneios/meus-jogos").get_data(as_text=True)
+        self.assertNotIn('id="card-%d"' % live_id, page)
+        self.assertNotIn('title="Jogos esperando você"', page)
+        # Excluir de novo não manda outro e-mail.
+        self.delete(tieres, live_id)
+        self.assertEqual(self.mails(), [])
+        page = anders.get("/torneios/meus-jogos").get_data(as_text=True)
+        self.assertIn("TIERES já excluiu o card: exclua também", page)
+        self.assertIn("<strong>TIERES</strong> já excluiu este card. Excluindo, ele sai do site.", page)
+        # O ANDERSHOW exclui também: o card sai do site e a partida livre não conta mais.
+        reply = self.delete(anders, live_id, voltar="/ao-vivo?jogador=ANDERSHOW")
+        self.assertEqual(reply.headers["Location"], "/ao-vivo?jogador=ANDERSHOW")
+        row = self.rows("SELECT * FROM live_matches WHERE id = ?", live_id)[0]
+        self.assertEqual((row["hidden"], row["game_report"]), (1, "excluída pelos jogadores"))
+        self.assertIsNotNone(row["deleted_at"])
+        self.assertEqual(self.mails(), [])
+        for client in (None, tieres, anders):
+            html = self.cards(client)
+            self.assertEqual(html.count('<article class="live-card'), 1)  # só a partida ao vivo
+            self.assertNotIn("excluir-%d" % live_id, html)
+            page = (client or self.app.test_client()).get("/ao-vivo?partida=%d" % live_id).get_data(as_text=True)
+            self.assertIn('<p class="muted" data-live-empty >Nenhuma partida com esses filtros.</p>', page)
+        for client in (tieres, anders):
+            self.assertNotIn('id="card-%d"' % live_id, client.get("/torneios/meus-jogos").get_data(as_text=True))
+        with self.app.test_request_context("/"):
+            db = get_db()
+            self.assertEqual(free.matches(db), [])
+            self.assertFalse(live._can_reopen(db, row))  # o Reconectar abre outro card
+        # O administrador ainda vê, com "Excluído"; o "Mostrar" desfaz a exclusão.
+        html = self.cards(admin)
+        self.assertIn('title="Os jogadores excluíram este card: só o administrador vê">Excluído</span>', html)
+        self.assertIn('title="Mostrar o card para todos de novo (desfaz a exclusão dos jogadores)"><span class="live-act-text">Mostrar</span></button>', html)
+        admin.post("/ao-vivo/%d/ocultar" % live_id, data={"csrf_token": CSRF, "ocultar": "0"})
+        row = self.rows("SELECT * FROM live_matches WHERE id = ?", live_id)[0]
+        self.assertEqual((row["hidden"], row["deleted_at"]), (0, None))
+        self.assertEqual(self.rows("SELECT COUNT(*) AS n FROM live_match_deletions")[0]["n"], 0)
+        self.assertEqual(self.cards().count('<article class="live-card'), 2)
+
+    def test_deleting_a_championship_card_withdraws_the_score_at_the_stop(self):
+        self.make_league()  # mandante no campeonato = ANDERSHOW; no jogo o LOCAL é o TIERES
+        self.post(state(kickoff=1000, frame=5000, goals=(0, 2)))
+        self.abandon(1000)
+        self.stream([("TIERES", 5400)])
+        self.cards()
+        match = self.rows("SELECT * FROM tournament_matches")[0]
+        self.assertEqual((match["status"], match["interrupted"], match["quitter_id"]), ("reported", 1, self.tieres))
+        live_id = self.rows("SELECT id FROM live_matches")[0]["id"]
+        tieres, anders = self.player(self.tieres), self.player(self.anders)
+        self.assertIn("O placar de quando a partida parou (0 x 2) deixa de valer no jogo do campeonato", self.cards(anders))
+        self.mails()
+        self.delete(tieres, live_id)
+        [(to, _, body)] = self.mails()
+        self.assertEqual(to, "ANDERSHOW@x.com")
+        self.assertIn("o placar de quando a partida parou deixa de valer no jogo do campeonato", body)
+        self.assertEqual(self.rows("SELECT status FROM tournament_matches")[0]["status"], "reported")
+        self.delete(anders, live_id)
+        match = self.rows("SELECT * FROM tournament_matches")[0]
+        self.assertEqual((match["status"], match["interrupted"], match["quitter_id"], match["reported_at"]),
+                         ("scheduled", 0, None, None))
+        clear = self.rows("SELECT * FROM match_reports ORDER BY id DESC LIMIT 1")[0]
+        self.assertEqual(clear["action"], "clear")
+        self.assertIn("Os jogadores excluíram o card da partida interrompida no Ao vivo (nº %d)" % live_id, clear["comment"])
+        self.assertNotIn("live-mini", self.table())
+        # Jogam de novo: a partida nova vai para o mesmo jogo do campeonato.
+        self.post(state(kickoff=90000, frame=95000, goals=(1, 1)))
+        self.assertEqual(self.rows("SELECT tournament_match_id FROM live_matches WHERE kickoff_frame = 90000")[0][0],
+                         match["id"])
+
+    def test_cards_that_count_cannot_be_deleted(self):
+        from app.tournament import free, reports, store
+        # Partida livre com o placar final sendo combinado: o card ainda exclui, mas ela fica em
+        # Meus jogos só pelo placar (não duas vezes)...
+        live_id = self.interrupted()
+        tieres, anders = self.player(self.tieres), self.player(self.anders)
+        with self.app.app_context():
+            db = get_db()
+            free.report(db, live_id, self.tieres, 1, 0)
+            db.commit()
+        self.assertIn('data-dialog="excluir-%d"' % live_id, self.cards(anders))
+        self.assertIn("O placar final proposto para esta partida sai junto.", self.cards(anders))
+        page = anders.get("/torneios/meus-jogos").get_data(as_text=True)
+        self.assertIn('id="partida-livre-%d"' % live_id, page)
+        self.assertNotIn('id="card-%d"' % live_id, page)
+        # ... e, com o placar final combinado pelos dois, ela vale: não exclui mais.
+        with self.app.app_context():
+            db = get_db()
+            free.confirm(db, live_id, self.anders)
+            db.commit()
+        self.assertNotIn('data-dialog="excluir-', self.cards(tieres))
+        self.assertNotIn('id="card-', tieres.get("/torneios/meus-jogos").get_data(as_text=True))
+        self.delete(tieres, live_id)
+        self.assertEqual(self.rows("SELECT COUNT(*) AS n FROM live_match_deletions")[0]["n"], 0)
+        # Jogo de campeonato com o placar de quando parou já confirmado.
+        self.make_league()
+        self.post(state(kickoff=7000, frame=9000, goals=(0, 1)))
+        self.abandon(7000)
+        self.cards()
+        match = self.rows("SELECT * FROM tournament_matches")[0]
+        with self.app.app_context():
+            db = get_db()
+            reports.confirm(db, store.get_tournament(db, self.rows("SELECT id FROM tournaments")[0]["id"]),
+                            match["id"], self.anders)
+            db.commit()
+        self.assertEqual(self.rows("SELECT status FROM tournament_matches")[0]["status"], "confirmed")
+        championship = self.rows("SELECT id FROM live_matches WHERE kickoff_frame = 7000")[0]["id"]
+        self.assertNotIn("excluir-%d" % championship, self.cards(tieres))
+        self.delete(tieres, championship)
+        self.assertEqual(self.rows("SELECT COUNT(*) AS n FROM live_match_deletions")[0]["n"], 0)
 
 if __name__ == "__main__":
     unittest.main()
