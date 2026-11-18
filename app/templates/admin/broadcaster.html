@@ -1,0 +1,58 @@
+{% extends 'base.html' %}{% block title %}Transmissões no YouTube · Administração{% endblock %}{% block content %}
+<div class="page-title"><h1>Transmissões no YouTube</h1><a href="{{ url_for('live.index') }}">Ver partidas ao vivo</a></div>
+<p class="muted">O broadcaster é um PC com o RetroArch TIERES em modo broadcaster: ele assiste a partida pelo Watch Live e manda o jogo para o YouTube. Os jogos de campeonato entram na fila sozinhos (se a opção abaixo estiver ligada); qualquer outra partida ao vivo entra pelo botão "Transmitir" do card no Ao vivo. A live começa 10 s antes do pontapé inicial e termina 20 s depois do fim da partida. Num card encerrado, o "Transmitir" manda a reprise: o replay inteiro da sala, do começo ao fim, enquanto ele estiver no servidor. Com todas as vagas ocupadas, um jogo ao vivo de campeonato interrompe uma reprise.</p>
+
+<h2>Broadcasters</h2>
+{% if agents %}
+<div class="table-scroll"><table>
+  <thead><tr><th>Nome</th><th>Situação</th><th>Última consulta</th><th>Vagas</th><th>Versão</th><th>Detalhes</th></tr></thead>
+  <tbody>
+  {% for a in agents %}
+    <tr>
+      <td>{{ a.row.name }}</td>
+      <td>{% if a.online %}<span class="badge">Conectado</span>{% else %}<span class="badge live-hidden-badge">Desconectado</span>{% endif %}</td>
+      <td>{{ format_local(a.row.last_seen_at, '%d/%m/%Y %H:%M:%S') if a.row.last_seen_at else 'nunca' }}</td>
+      <td>{{ a.row.slots }}</td>
+      <td>{{ a.row.version or '—' }}</td>
+      <td><small>{% if a.status.cpu is defined %}CPU {{ a.status.cpu }}% · {% endif %}{% if a.status.youtube %}YouTube: {{ a.status.youtube }} · {% endif %}{% if a.status.isos is defined %}{{ a.status.isos }} ISO(s){% endif %}{% if a.status.downloading %} · baixando {{ a.status.downloading }}{% endif %}{% if a.status.disk_free_gb is defined %} · {{ a.status.disk_free_gb }} GB livres{% endif %}</small></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}<p>Nenhum broadcaster cadastrado.</p>{% endif %}
+<form method="post" class="inline-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="acao" value="agente">
+  <label>Nome<input name="nome" maxlength="40" placeholder="Ex.: notebook" required></label>
+  <button class="secondary">Gerar token</button>
+  <small class="muted">Com o nome de um broadcaster já cadastrado, gera um token novo (o antigo deixa de valer).</small>
+</form>
+
+<h2>Ajustes</h2>
+<form method="post" class="inline-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="acao" value="ajustes">
+  <label class="check"><input type="checkbox" name="auto" value="1"{% if settings.auto %} checked{% endif %}> Transmitir os jogos de campeonato sozinho</label>
+  <label>Privacidade da live<select name="privacidade">{% for key, label in privacy_options.items() %}<option value="{{ key }}"{% if settings.privacy == key %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+  <label>Versão do RetroArch TIERES (descrição)<input name="versao" value="{{ settings.version }}" maxlength="20" size="8"></label>
+  <button class="secondary">Salvar</button>
+</form>
+
+<h2>Transmissões</h2>
+{% if broadcasts %}
+<div class="table-scroll"><table>
+  <thead><tr><th>Partida</th><th>Motivo</th><th>Situação</th><th>Broadcaster</th><th>YouTube</th><th>Criada</th><th></th></tr></thead>
+  <tbody>
+  {% for b in broadcasts %}
+    <tr>
+      <td><a href="{{ url_for('live.index', partida=b.row.live_match_id) }}">{{ b.players or 'Partida %d' % b.row.live_match_id }}</a></td>
+      <td>{{ b.reason }}</td>
+      <td>{{ b.status }}{% if b.row.error %}<br><small class="muted">{{ b.row.error }}</small>{% endif %}</td>
+      <td>{{ b.row.agent_name or '—' }}</td>
+      <td>{% if b.row.youtube_url %}<a href="{{ b.row.youtube_url }}" target="_blank" rel="noopener">Abrir</a>{% else %}—{% endif %}</td>
+      <td>{{ b.when }}</td>
+      <td>{% if b.row.status in ('queued', 'assigned', 'live') %}<form method="post" class="inline-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="acao" value="cancelar"><input type="hidden" name="id" value="{{ b.row.id }}"><button class="secondary">Parar</button></form>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}<p>Nenhuma transmissão ainda.</p>{% endif %}
+{% endblock %}
