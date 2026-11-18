@@ -958,6 +958,50 @@ CREATE TABLE IF NOT EXISTS iso_profiles (
 """
 
 
+# Transmissão das partidas no YouTube (app/broadcaster.py):
+#  - broadcast_agents: os PCs broadcaster (o token deles, só o hash; o que
+#    contaram na última consulta);
+#  - broadcasts: uma por card do Ao vivo - na fila, dada a um broadcaster,
+#    ao vivo, encerrada, falhou ou cancelada - com a sessão do Stream ao vivo
+#    que ele assiste, de que quadro a que quadro, e a live no YouTube.
+BROADCAST_DDL = """
+CREATE TABLE IF NOT EXISTS broadcast_agents (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    token_hash TEXT NOT NULL,
+    slots INTEGER NOT NULL DEFAULT 1,
+    version TEXT NOT NULL DEFAULT '',
+    status_json TEXT NOT NULL DEFAULT '{}',
+    last_seen_at TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS broadcasts (
+    id INTEGER PRIMARY KEY,
+    live_match_id INTEGER NOT NULL UNIQUE REFERENCES live_matches(id) ON DELETE CASCADE,
+    reason TEXT NOT NULL CHECK (reason IN ('campeonato', 'admin')),
+    -- 1 = reprise: a partida já encerrada, do replay do Stream ao vivo (o administrador
+    -- pediu "Transmitir" num card encerrado).
+    replay INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'queued'
+        CHECK (status IN ('queued', 'assigned', 'live', 'done', 'failed', 'cancelled')),
+    agent_id INTEGER REFERENCES broadcast_agents(id) ON DELETE SET NULL,
+    session_id TEXT,
+    start_frame INTEGER,
+    stop_frame INTEGER,
+    youtube_id TEXT,
+    youtube_url TEXT,
+    error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    assigned_at TEXT,
+    started_at TEXT,
+    ended_at TEXT,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS broadcasts_status_idx ON broadcasts(status, agent_id);
+"""
+
+
 SITE_SETTINGS_DDL = """
 CREATE TABLE IF NOT EXISTS site_settings (
     key TEXT PRIMARY KEY,
@@ -993,6 +1037,7 @@ def init_db():
     ensure_tournament_columns(db)
     db.executescript(LIVE_DDL)
     ensure_live_columns(db)
+    db.executescript(BROADCAST_DDL)
     from .tournament.teams import seed_teams
     from .tournament.games import seed_games
     seed_teams(db)
@@ -1099,6 +1144,9 @@ def migrate_db():
     ensure_tournament_columns(database)
     database.executescript(LIVE_DDL)
     ensure_live_columns(database)
+    database.executescript(BROADCAST_DDL)
+    if "replay" not in {column["name"] for column in database.execute("PRAGMA table_info(broadcasts)")}:
+        database.execute("ALTER TABLE broadcasts ADD COLUMN replay INTEGER NOT NULL DEFAULT 0")
     # Jogos dos amistosos com placar lido do jogo de antes da tabela friendly_games.
     from .live import backfill_friendly_games
     backfill_friendly_games(database)

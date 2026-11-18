@@ -961,8 +961,11 @@ def card(db, match):
         if not view["players"]:
             view["players"] = ["Player %d" % number] if nobody else ["CPU"]
             view["people"] = [{"id": None, "name": view["players"][0]}]
+    from .broadcaster import card_view as broadcast_view
     return {"id": match["id"], "status": match["status"], "stale": stale, "is_test": match["is_test"],
             "reconnecting": reconnecting,
+            # Transmissão no YouTube (app/broadcaster.py): o link e, para o administrador, Transmitir/Parar.
+            "broadcast": broadcast_view(db, match["id"]),
             "hidden": bool(match["hidden"]),  # ocultado pelo administrador (só ele vê, com "Mostrar")
             "deleted": bool(match["deleted_at"]),  # excluído pelos jogadores (só o administrador vê)
             # "Excluir" o card da partida interrompida, para quem a jogou (_deletion).

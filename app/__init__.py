@@ -155,6 +155,9 @@ def create_app(test_config=None):
     from .live import api_bp as live_api_bp, bp as live_bp
     app.register_blueprint(live_bp)
     app.register_blueprint(live_api_bp)
+    from .broadcaster import api_bp as broadcaster_api_bp, bp as broadcaster_bp  # transmissão no YouTube
+    app.register_blueprint(broadcaster_bp)
+    app.register_blueprint(broadcaster_api_bp)
     from .tournaments import admin_bp as tournaments_admin_bp, bp as tournaments_bp
     from .wallet import format_cents
     app.register_blueprint(tournaments_bp)

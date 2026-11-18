@@ -65,12 +65,23 @@
      - partida livre interrompida, o placar final que os dois combinam (live._free_final):
        Registrar placar, Confirmar placar ou Placar informado;
      - partida interrompida: Excluir o card (live._deletion - _delete.html);
-     - administrador: Ocultar o card para jogadores e visitantes, ou Mostrar de novo (live.hide). #}
+     - transmissão no YouTube (app/broadcaster.py): Assistir no YouTube (ao vivo) / Ver no YouTube
+       (a gravação), para todos;
+     - administrador: Transmitir ou Parar transmissão (partida ao vivo; broadcaster.toggle), e
+       Ocultar o card para jogadores e visitantes, ou Mostrar de novo (live.hide). #}
   {% set fin = c.final if c.final and c.final.pending else none %}
   {% set can_delete = c.delete and c.delete.state == 'pending' %}
   {% set can_confirm = c.confirm and c.confirm.state == 'pending' %}
-  {% if can_confirm or fin or can_delete or session.user_id %}
+  {% set bc = c.broadcast %}
+  {% if can_confirm or fin or can_delete or session.user_id or (bc and bc.url) %}
   <div class="live-actions">
+    {% if bc and bc.url %}<a class="button live-act live-youtube{{ '' if bc.live else ' secondary' }}" href="{{ bc.url }}" target="_blank" rel="noopener" title="{{ 'Assistir a partida ao vivo no YouTube' if bc.status != 'done' else 'Ver a gravação da partida no YouTube' }}"><span class="live-act-text">{{ 'Assistir no YouTube' if bc.status != 'done' else 'Ver no YouTube' }}</span></a>{% endif %}
+    {# Transmitir: a partida ao vivo, ou a encerrada como reprise (do replay); some depois que a transmissão terminou. #}
+    {% if session.user_id and ((bc and bc.active) or (c.status in ('live', 'finished') and not (bc and bc.status == 'done'))) %}<form class="live-hide-form" method="post" action="{{ url_for('broadcaster.toggle', live_id=c.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="transmitir" value="{{ '0' if bc and bc.active else '1' }}">
+      {% if request.endpoint != 'live.cards_fragment' %}<input type="hidden" name="voltar" value="{{ request.full_path }}">{% endif %}
+      <button type="submit" class="secondary live-act" title="{{ ('Parar a transmissão no YouTube (' ~ bc.label|lower ~ ')') if bc and bc.active else 'Transmitir esta partida no YouTube' if c.status == 'live' else 'Transmitir a reprise desta partida no YouTube (do replay)' }}"><span class="live-act-text">{{ 'Parar transmissão' if bc and bc.active else 'Transmitir' }}</span></button>
+    </form>{% endif %}
     {% if can_confirm %}<span class="live-confirm"><a class="button secondary live-act" href="{{ c.confirm.dispute_url }}" title="Contestar o placar" aria-label="Contestar o placar"><span class="live-act-text">Contestar</span></a>
       <button type="button" class="live-act" data-live-confirm="{{ c.confirm.confirm_url }}" data-csrf="{{ csrf_token() }}" title="Confirmar o placar" aria-label="Confirmar o placar"><span class="live-act-text">Confirmar</span></button></span>{% endif %}
     {% if fin %}{% set text = {'report': 'Registrar placar', 'confirm': 'Confirmar placar', 'wait': 'Placar informado'}[fin.action] %}
