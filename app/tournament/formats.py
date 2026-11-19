@@ -1,19 +1,22 @@
-"""Os 6 formatos e a validação da configuração de cada um.
+"""Os 5 formatos e a validação da configuração de cada um.
 
 A configuração fica em tournaments.settings_json. Chaves usadas:
   league:       legs
   league_knockout: legs, playoff_qualifiers, ko_legs, final_legs, third_place
   world_cup:    groups, group_legs, qualifiers, ko_legs, final_legs, third_place
-  libertadores: groups, group_legs, qualifiers, ko_legs, final_legs, third_place
   ucl:          pots, per_pot, direct, ko_legs, final_legs, third_place
   knockout:     ko_legs, final_legs, third_place
+
+A Copa (world_cup) é a antiga Copa do Mundo e também a antiga Libertadores,
+que era a mesma coisa com ida e volta - opção dos grupos e do mata-mata. O
+mata-mata segue os grupos: em jogo único, o cruzamento da Copa do Mundo (1º A
+x 2º B); em ida e volta, pela campanha, como na Libertadores (store.advance).
 """
 FORMATS = {
     "league": "Pontos corridos",
     "league_knockout": "Pontos corridos + mata-mata",
     "ucl": "Liga dos Campeões (formato novo)",
-    "world_cup": "Copa do Mundo (grupos + mata-mata)",
-    "libertadores": "Libertadores (grupos ida e volta + mata-mata)",
+    "world_cup": "Copa (grupos + mata-mata)",
     "knockout": "Eliminatórias (mata-mata)",
 }
 
@@ -21,7 +24,6 @@ DEFAULTS = {
     "league": {"legs": 2},
     "league_knockout": {"legs": 1, "playoff_qualifiers": 4, "ko_legs": 1, "final_legs": 1, "third_place": False},
     "world_cup": {"groups": 2, "group_legs": 1, "qualifiers": 2, "ko_legs": 1, "final_legs": 1, "third_place": True},
-    "libertadores": {"groups": 2, "group_legs": 2, "qualifiers": 2, "ko_legs": 2, "final_legs": 1, "third_place": False},
     "ucl": {"pots": 4, "per_pot": 1, "direct": 2, "ko_legs": 2, "final_legs": 1, "third_place": False},
     "knockout": {"ko_legs": 1, "final_legs": 1, "third_place": False},
 }
@@ -73,7 +75,7 @@ def config_error(fmt, config, players):
         qualifiers = config["playoff_qualifiers"]
         if not 2 <= qualifiers < players:
             return f"Classificados para o mata-mata: entre 2 e {players - 1} (menos que o número de jogadores)."
-    if fmt in ("world_cup", "libertadores"):
+    if fmt == "world_cup":
         groups, qualifiers = config["groups"], config["qualifiers"]
         if groups < 1:
             return "Informe o número de grupos."
@@ -113,7 +115,7 @@ def describe(fmt, config):
     if fmt == "league_knockout":
         return (f"Pontos corridos em {turns(config['legs'])}; os {config['playoff_qualifiers']} primeiros vão ao "
                 f"mata-mata em {legs(config['ko_legs'])}{final}{third}.")
-    if fmt in ("world_cup", "libertadores"):
+    if fmt == "world_cup":
         return (f"{config['groups']} grupo(s) em {legs(config['group_legs'])}, {config['qualifiers']} classificado(s) "
                 f"por grupo; mata-mata em {legs(config['ko_legs'])}{final}{third}.")
     if fmt == "ucl":

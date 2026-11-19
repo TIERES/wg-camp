@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from datetime import datetime, timezone
 
@@ -166,6 +167,7 @@ CREATE TABLE IF NOT EXISTS tournaments (
     name TEXT NOT NULL,
     game_title_id INTEGER NOT NULL REFERENCES game_titles(id) ON DELETE RESTRICT,
     organizer_id INTEGER NOT NULL REFERENCES players(id) ON DELETE RESTRICT,
+    -- 'libertadores': só de bancos antigos - virou a Copa, world_cup (merge_cup_formats).
     format TEXT NOT NULL
         CHECK (format IN ('league', 'league_knockout', 'ucl', 'world_cup', 'libertadores', 'knockout')),
     status TEXT NOT NULL DEFAULT 'draft'
@@ -786,6 +788,40 @@ def allow_tournament_formats(database):
         raise RuntimeError(f"tournaments: {len(broken)} referência(s) quebrada(s) depois de refazer a tabela")
 
 
+# A antiga Libertadores (a Copa com ida e volta como padrão), para os campeonatos que eram dela.
+LIBERTADORES_DEFAULTS = {"groups": 2, "group_legs": 2, "qualifiers": 2, "ko_legs": 2, "final_legs": 1,
+                         "third_place": False}
+
+
+def merge_cup_formats(database):
+    """Copa do Mundo e Libertadores viraram um formato só, "Copa (grupos +
+    mata-mata)" (world_cup): a ida e volta nos grupos e no mata-mata já são
+    opções dele, e com os grupos em ida e volta o mata-mata sai pela campanha,
+    como na Libertadores (store.advance). Os campeonatos Libertadores (e as
+    alterações esperando confirmação com ela) passam a world_cup com a
+    configuração que tinham. O CHECK de tournaments.format continua aceitando
+    'libertadores' (bancos antigos)."""
+    def merged(settings):
+        return {**LIBERTADORES_DEFAULTS, **(settings or {})}
+
+    def loads(text):
+        try:
+            return json.loads(text or "{}")
+        except ValueError:
+            return {}
+
+    for row in database.execute("SELECT id, settings_json FROM tournaments WHERE format = 'libertadores'").fetchall():
+        settings = merged(loads(row["settings_json"]))
+        database.execute("UPDATE tournaments SET format = 'world_cup', settings_json = ?, updated_at = ? WHERE id = ?",
+                         (json.dumps(settings), now(), row["id"]))
+    for row in database.execute("SELECT id, values_json FROM tournament_changes "
+                                "WHERE values_json LIKE '%libertadores%'").fetchall():
+        values = loads(row["values_json"])
+        if values.get("format") == "libertadores":
+            values["format"], values["config"] = "world_cup", merged(values.get("config"))
+            database.execute("UPDATE tournament_changes SET values_json = ? WHERE id = ?", (json.dumps(values), row["id"]))
+
+
 def allow_iso_memcards(database):
     """Bancos de antes do "M. Card da ISO" têm memcards.player_id NOT NULL.
     O SQLite não muda a restrição de uma coluna, então a tabela é refeita com
@@ -1142,6 +1178,7 @@ def migrate_db():
     allow_tournament_formats(database)
     database.executescript(TOURNAMENTS_DDL)
     ensure_tournament_columns(database)
+    merge_cup_formats(database)
     database.executescript(LIVE_DDL)
     ensure_live_columns(database)
     database.executescript(BROADCAST_DDL)
