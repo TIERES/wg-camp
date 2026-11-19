@@ -147,8 +147,8 @@ class TournamentsWebTest(unittest.TestCase):
 
         owner = self.client(self.players[0])
         new_page = owner.get("/torneios/novo").get_data(as_text=True)
-        self.assertEqual(new_page.count('name="game_title_id"'), 3)  # WE3 Final Version, WE4 e WE2002
-        self.assertIn("images/games/we3fv.svg", new_page)
+        self.assertEqual(new_page.count('name="game_title_id"'), 5)  # WE3 FV, WE4, WE2000 U-23, J.League 2001 e WE2002
+        self.assertIn("images/games/we3fv.webp", new_page)
         too_expensive = owner.post("/torneios/novo", data={
             "csrf_token": CSRF, "name": "Copa Teste", "starts_on": "2026-12-01", "rules": "Regras", "game_title_id": game_id, "format": "knockout",
             "max_players": "4", "entry_fee": "60,00", "prize_split": "60,30,10", "ko_legs": "1", "final_legs": "1"})
@@ -165,7 +165,7 @@ class TournamentsWebTest(unittest.TestCase):
         page = anon.get(f"/torneios/{slug}")
         self.assertEqual(page.status_code, 200)
         self.assertIn("Entre para se inscrever".encode(), page.data)
-        self.assertIn(b'class="t-header-cover" src="/static/images/games/we2002.svg"', page.data)
+        self.assertIn(b'class="t-header-cover" src="/static/images/games/we2002.webp"', page.data)
         listing = anon.get(f"/torneios/?jogo={game_id}").get_data(as_text=True)
         self.assertIn('class="t-cover" src="/static/images/games/we2002.svg"', listing)
         self.assertIn('game-chip active', listing)

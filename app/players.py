@@ -300,7 +300,7 @@ def _card_view(db, card):
     view["title"] = iso["name"] if iso else card["game_name"]
     view["image"] = images.url("torneio", iso["image"]) if iso and iso["image"] else None
     view["game_title"] = iso["game"] if iso and iso["game"] else None
-    view["cover"] = cover_url(iso["code"] if iso else None)
+    view["cover"] = cover_url(iso["code"] if iso else None, mini=True)
     return view
 
 

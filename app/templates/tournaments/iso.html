@@ -53,7 +53,7 @@
   </div>
   <div class="iso-page-info">
     <div class="iso-page-head">
-      {% if iso.image %}<img class="iso-page-cover" src="{{ game_cover(iso.game_code) }}" alt="{{ iso.game_name }}" width="200" height="250">{% endif %}
+      {% if iso.image %}<img class="iso-page-cover" src="{{ game_cover(iso.game_code, mini=True) }}" alt="{{ iso.game_name }}" width="200" height="250">{% endif %}
       <div>
         <span class="t-badges"><span class="badge iso-catalog">ISO do WE Camp</span>{% if not iso.approved_at %}<span class="badge iso-pending">Aguardando liberação</span>{% elif not iso.is_active %}<span class="badge iso-pending">Desativada</span>{% endif %}</span>
         {# O botão de compartilhar vai colado na última palavra do nome, como no campeonato. #}

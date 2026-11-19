@@ -554,7 +554,7 @@ def start(db, tournament, rng=random):
     fmt = tournament["format"]
     if fmt in ("league", "league_knockout"):
         _round_robin_stage(db, tournament, 1, "league", "Pontos corridos", [entries], config["legs"])
-    elif fmt in ("world_cup", "libertadores"):
+    elif fmt == "world_cup":
         _round_robin_stage(db, tournament, 1, "groups", "Fase de grupos",
                            engine.draw_groups(entries, config["groups"], rng), config["group_legs"])
     elif fmt == "ucl":
@@ -793,7 +793,7 @@ def stage_complete(db, stage):
 
 
 def has_next_stage(tournament, stage):
-    return (tournament["format"] in ("world_cup", "libertadores", "ucl", "league_knockout")
+    return (tournament["format"] in ("world_cup", "ucl", "league_knockout")
             and stage["kind"] != "knockout")
 
 
@@ -822,7 +822,9 @@ def advance(db, tournament):
     else:
         qualifiers = config["qualifiers"]
         groups = len(tables)
-        if (tournament["format"] == "world_cup" and qualifiers == 2 and groups >= 2
+        # Grupos em jogo único: cruzamento da Copa do Mundo quando a chave fecha.
+        # Em ida e volta (ou sem fechar a chave), pela campanha, como na Libertadores.
+        if (tournament["format"] == "world_cup" and config.get("group_legs", 1) == 1 and qualifiers == 2 and groups >= 2
                 and groups & (groups - 1) == 0 and all(len(table) >= 2 for _, table in tables)):
             pairs = engine.cross_pairs([[row["entry_id"] for row in table] for _, table in tables])
         else:

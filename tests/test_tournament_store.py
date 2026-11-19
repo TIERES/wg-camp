@@ -229,8 +229,11 @@ class TournamentStoreTest(unittest.TestCase):
         self.assertEqual(len(self.finish(tid)), 3)
         self.assert_money_conserved()
 
-    def test_libertadores_two_legs_seeded(self):
-        tid = self.tournament("libertadores", 12, groups=3, qualifiers=2, ko_legs=2, final_legs=1)
+    def test_cup_two_legs_seeded(self):
+        # A antiga Libertadores: a Copa com ida e volta nos grupos e no mata-mata.
+        tid = self.tournament("world_cup", 12, groups=3, qualifiers=2, group_legs=2, ko_legs=2, final_legs=1,
+                              third_place=0)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM tournament_matches").fetchone()[0], 36)
         self.play_stage(tid)
         store.advance(self.db, self.t(tid))
         self.db.commit()
@@ -244,6 +247,21 @@ class TournamentStoreTest(unittest.TestCase):
         self.play_stage(tid, draws=True)
         self.assertEqual(len(self.finish(tid)), 3)
         self.assert_money_conserved()
+
+    def test_cup_crosses_only_with_single_leg_groups(self):
+        """2 grupos e 2 classificados: com os grupos em jogo único a Copa cruza 1º A x 2º B
+        (Copa do Mundo); em ida e volta, monta o mata-mata pela campanha (Libertadores)."""
+        from unittest import mock
+        crossed = []
+        for group_legs in (1, 2):
+            tid = self.tournament("world_cup", 8, groups=2, qualifiers=2, group_legs=group_legs)
+            self.play_stage(tid)
+            with mock.patch.object(store.engine, "cross_pairs", wraps=store.engine.cross_pairs) as cross:
+                store.advance(self.db, self.t(tid))
+            self.db.commit()
+            crossed.append(cross.called)
+            self.assertEqual(len(store.stages_of(self.db, tid)), 2)
+        self.assertEqual(crossed, [True, False])
 
     def test_ucl_league_phase_then_playoff(self):
         tid = self.tournament("ucl", 16, pots=4, per_pot=1, direct=4)

@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -54,6 +55,46 @@ class TournamentFormatMigrationTest(unittest.TestCase):
                 db.execute("UPDATE tournaments SET format = 'league_knockout' WHERE id = ?", (tid,))
                 self.assertIsNotNone(db.execute("SELECT 1 FROM sqlite_master WHERE name = 'tournaments_status_idx'")
                                      .fetchone())
+
+    def test_libertadores_becomes_the_cup(self):
+        """Copa do Mundo e Libertadores viraram a "Copa (grupos + mata-mata)": os
+        Libertadores passam a world_cup com a configuração deles (e os grupos em ida
+        e volta, que mantêm o mata-mata pela campanha)."""
+        with tempfile.TemporaryDirectory() as temp:
+            app = make_app(Path(temp))
+            with app.app_context():
+                init_db()
+                db = get_db()
+                player = add_player(db, "dono")
+                game = db.execute("SELECT id FROM game_titles ORDER BY id LIMIT 1").fetchone()[0]
+                ids = {}
+                for status, settings in (("registration", '{"groups": 4, "qualifiers": 2, "ko_legs": 1}'),
+                                         ("running", '{"groups": 2, "group_legs": 2, "qualifiers": 2, "ko_legs": 2, '
+                                                     '"final_legs": 1, "third_place": false}')):
+                    ids[status] = db.execute(
+                        "INSERT INTO tournaments (slug, name, game_title_id, organizer_id, format, status, max_players, "
+                        "settings_json, created_at, updated_at) VALUES (?, ?, ?, ?, 'libertadores', ?, 8, ?, ?, ?)",
+                        (status, status, game, player, status, settings, now(), now())).lastrowid
+                change = json.dumps({"kind": "full", "format": "libertadores", "config": {"groups": 2}})
+                db.execute("INSERT INTO tournament_changes (tournament_id, values_json, submitted_at, created_at, "
+                           "updated_at) VALUES (?, ?, ?, ?, ?)", (ids["registration"], change, now(), now(), now()))
+                db.commit()
+
+                migrate_db()
+                migrate_db()  # idempotente
+
+                db = get_db()
+                rows = {row["status"]: row for row in db.execute("SELECT * FROM tournaments")}
+                self.assertEqual({row["format"] for row in rows.values()}, {"world_cup"})
+                self.assertEqual(json.loads(rows["registration"]["settings_json"]),
+                                 {"groups": 4, "group_legs": 2, "qualifiers": 2, "ko_legs": 1, "final_legs": 1,
+                                  "third_place": False})
+                self.assertEqual(json.loads(rows["running"]["settings_json"]),
+                                 {"groups": 2, "group_legs": 2, "qualifiers": 2, "ko_legs": 2, "final_legs": 1,
+                                  "third_place": False})
+                values = json.loads(db.execute("SELECT values_json FROM tournament_changes").fetchone()[0])
+                self.assertEqual(values["format"], "world_cup")
+                self.assertEqual((values["config"]["groups"], values["config"]["group_legs"]), (2, 2))
 
 
 if __name__ == "__main__":
