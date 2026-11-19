@@ -74,7 +74,7 @@
         {% set details_id = 'campeonato-info-%d' % championship.id %}
         <div class="t-card championship-card">
           <span class="t-side"><span class="t-side-images">
-            <img class="t-cover" src="{{ game_cover(game.code if game else None) }}" alt="{{ game.name if game else '' }}" width="200" height="250" loading="lazy">
+            <img class="t-cover" src="{{ game_cover(game.code if game else None, mini=True) }}" alt="{{ game.name if game else '' }}" width="200" height="250" loading="lazy">
           </span></span>
           <span class="t-body">
             <span class="badge championship-league">{{ championship.league_name or 'Campeonato' }}</span>

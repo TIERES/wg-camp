@@ -104,7 +104,7 @@
         <button type="button" class="t-card iso-option" data-value="{{ o.value }}" data-order="{{ loop.index0 }}" data-search="{{ o.title }} {{ o.filename }} {{ o.game }}">
           <span class="t-side"><span class="t-side-images">
             {% if o.image %}<img class="t-cover t-image" src="{{ image_url('torneio', o.image) }}" alt="" loading="lazy">{% endif %}
-            <img class="t-cover" src="{{ game_cover(o.game_code) }}" alt="{{ o.game }}" width="200" height="250" loading="lazy">
+            <img class="t-cover" src="{{ game_cover(o.game_code, mini=True) }}" alt="{{ o.game }}" width="200" height="250" loading="lazy">
           </span></span>
           <span class="t-body">
             <span class="badge {{ 'iso-catalog' if o.kind == 'catalog' else '' }}">{{ 'ISO do WE Camp' if o.kind == 'catalog' else 'ISO de campeonato' }}</span>
@@ -296,7 +296,7 @@
     <div class="t-card my-iso-card">
       <span class="t-side"><span class="t-side-images">
         {% if i.image %}<img class="t-cover t-image" src="{{ image_url('torneio', i.image) }}" alt="" loading="lazy">{% endif %}
-        <img class="t-cover" src="{{ game_cover(i.game_code) }}" alt="{{ i.game_name }}" width="200" height="250" loading="lazy">
+        <img class="t-cover" src="{{ game_cover(i.game_code, mini=True) }}" alt="{{ i.game_name }}" width="200" height="250" loading="lazy">
       </span></span>
       <span class="t-body">
         <span class="t-badges">

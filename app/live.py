@@ -57,7 +57,8 @@ JOIN_WINDOW = timedelta(minutes=10)
 MAX_PLAYERS = 8
 # Motor do jogo (executável que o fork lê na RAM) -> jogo base (game_titles.code):
 # o logo do jogo base mesmo com uma ISO que o site não conhece.
-ENGINE_GAMES = {"SLPM_870.56": "we2002", "SLPM_862.91": "we4", "SLPM_861.62": "we3fv"}
+ENGINE_GAMES = {"SLPM_870.56": "we2002", "SLPM_862.91": "we4", "SLPM_861.62": "we3fv",
+                "SLPM_868.35": "we2001", "SLPM_866.00": "we2000u23"}
 NAME_RE = re.compile(r"^[A-Za-z0-9 .'&/-]{2,24}$")
 
 
@@ -983,7 +984,7 @@ def card(db, match):
             "championship": bool(match["tournament_match_id"]),
             "agreed": match["agreed"], "reporters": match["reporters"], "file": _file_name(match),
             "when": format_local(match["started_at"], "%d/%m/%Y %H:%M"),
-            "game": {"name": game["name"], "cover": cover_url(game["code"])} if game else None,
+            "game": {"name": game["name"], "cover": cover_url(game["code"], mini=True)} if game else None,
             "tournament": {"name": tournament["name"], "image": image_url("torneio", tournament["image"]),
                            "url": tournament_url} if tournament else None,
             # Sem campeonato com imagem: a ISO do cadastro (a do amistoso ou a mesma ISO).

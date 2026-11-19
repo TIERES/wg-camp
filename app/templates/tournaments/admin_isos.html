@@ -19,7 +19,7 @@
 <div class="t-card">
   <span class="t-side"><span class="t-side-images">
     {% if row.image %}<img class="t-cover t-image" src="{{ image_url('torneio', row.image) }}" alt="" loading="lazy">{% endif %}
-    <img class="t-cover" src="{{ game_cover(row.game_code) }}" alt="{{ row.game_name }}" width="200" height="250" loading="lazy">
+    <img class="t-cover" src="{{ game_cover(row.game_code, mini=True) }}" alt="{{ row.game_name }}" width="200" height="250" loading="lazy">
   </span></span>
   <span class="t-body">
     <span class="t-badges">
@@ -43,7 +43,7 @@
 <div class="t-card">
   <span class="t-side"><span class="t-side-images">
     {% if row.image %}<img class="t-cover t-image" src="{{ image_url('torneio', row.image) }}" alt="" loading="lazy">{% endif %}
-    <img class="t-cover" src="{{ game_cover(row.game_code) }}" alt="{{ row.game_name }}" width="200" height="250" loading="lazy">
+    <img class="t-cover" src="{{ game_cover(row.game_code, mini=True) }}" alt="{{ row.game_name }}" width="200" height="250" loading="lazy">
   </span></span>
   <span class="t-body">
     <span class="badge iso-revision">{{ ('Confirmada, esperando o arquivo' if row.rev_confirmed_by else 'Aprovada, esperando o arquivo') if row.rev_approved_at else 'Alteração em análise' }}</span>

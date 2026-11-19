@@ -6,7 +6,7 @@
   <h2>Convites para campeonatos ({{ invites|length }})</h2>
   {% call carousel('Convite anterior', 'Próximo convite', 'invite-cards') %}{% for i in invites %}
     <div class="invite-card">
-      <img class="t-cover" src="{{ game_cover(i.game_code) }}" alt="" width="200" height="250" loading="lazy">
+      <img class="t-cover" src="{{ game_cover(i.game_code, mini=True) }}" alt="" width="200" height="250" loading="lazy">
       <div class="invite-info">
         <strong>{{ i.name }}</strong>
         <span class="muted">{{ i.game_name }} · convite de {{ i.organizer_name }}</span>

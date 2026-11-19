@@ -137,7 +137,7 @@ def build(db, row):
         match_url = None if row["kind"] == "a" else history_url(row)
     return {
         "friendly_url": friendly_url, "match_url": match_url,
-        "game": {"name": game["name"], "cover": cover_url(game["code"])} if game else None,
+        "game": {"name": game["name"], "cover": cover_url(game["code"], mini=True)} if game else None,
         "tournament": {"name": tournament["name"], "image": image_url("torneio", tournament["image"]),
                        "url": tournament_url} if tournament else None,
         "iso": {"name": catalog["name"], "image": image_url("torneio", catalog["image"]), "url": iso_url}

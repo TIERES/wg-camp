@@ -933,6 +933,18 @@ class LiveMatchesTest(unittest.TestCase):
         self.post(state(engine="SLPM_861.62"))
         self.assertIn("Winning Eleven 3: Final Version", self.cards())
 
+    def test_jleague_2001_engine_gives_its_base_game(self):
+        self.post(state(engine="SLPM_868.35"))
+        cards = self.cards()
+        self.assertIn("J.League Winning Eleven 2001", cards)
+        self.assertIn("images/games/we2001.svg", cards)
+
+    def test_we2000_u23_engine_gives_its_base_game(self):
+        self.post(state(engine="SLPM_866.00"))
+        cards = self.cards()
+        self.assertIn("Winning Eleven 2000 U-23", cards)
+        self.assertIn("images/games/we2000u23.svg", cards)
+
     def test_new_kickoff_abandons_the_open_match(self):
         self.post(state(period=1, clock=12000, goals=(1, 0)))  # WE4: saíram pelo menu de pausa
         self.post(state(kickoff=62550, goals=(0, 0)))
@@ -943,9 +955,9 @@ class LiveMatchesTest(unittest.TestCase):
         self.post(state(period=1, clock=11900, goals=(1, 0), frame=20030), reporter="ANDERSHOW")
         self.assertEqual(self.rows("SELECT status FROM live_matches ORDER BY id")[0]["status"], "abandoned")
 
-    def test_only_three_base_games(self):
+    def test_only_the_five_base_games(self):
         rows = self.rows("SELECT code FROM game_titles WHERE is_active = 1 ORDER BY year")
-        self.assertEqual([r["code"] for r in rows], ["we3fv", "we4", "we2002"])
+        self.assertEqual([r["code"] for r in rows], ["we3fv", "we4", "we2000u23", "we2001", "we2002"])
 
     def test_simulation_does_not_take_the_real_leg(self):
         ida, volta = self.make_tournament()

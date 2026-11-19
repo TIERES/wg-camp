@@ -160,7 +160,7 @@
     <div class="friendly-iso-media">
       <div class="friendly-iso-covers">
         {% if f.iso_image %}<img class="friendly-iso-cover t-image" src="{{ image_url('torneio', f.iso_image) }}" alt="" loading="lazy">{% endif %}
-        <img class="friendly-iso-cover" src="{{ game_cover(f.game_code) }}" alt="{{ f.game_name }}" loading="lazy">
+        <img class="friendly-iso-cover" src="{{ game_cover(f.game_code, mini=True) }}" alt="{{ f.game_name }}" loading="lazy">
       </div>
       {% if mine or session.user_id %}<a class="button secondary" href="{{ url_for('tournaments.friendly_iso', friendly_id=f.id) }}" title="Baixar {{ f.iso_filename }}">Download ISO</a>{% endif %}
     </div>

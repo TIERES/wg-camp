@@ -9,8 +9,11 @@ os outros - torneios antigos de um jogo desativado continuam aparecendo.
 Só os jogos cujo placar o RetroArch TIERES sabe ler (app/live.py, os mapas
 de RAM do fork): um jogo base novo entra aqui junto com o mapa dele.
 
-Capa (200 x 250): app/static/images/games/<code>.webp/.jpg/.png; sem ela,
-vale a capa provisória <code>.svg.
+Capa (200 x 250, gravada em 480 x 600): app/static/images/games/<code>.webp/.jpg/.png;
+sem ela, vale a capa provisória <code>.svg. As .webp são fotos da TV com a
+tela de título cortadas em 4:5, com 90% da largura e o corte sobretudo
+embaixo (o fio do controle). Nas capas pequenas (cover_url mini) vale
+a .svg; no e-mail, ela em PNG 400 x 500 (images/games/email, tournament/announce.py).
 """
 from pathlib import Path
 
@@ -22,6 +25,8 @@ from ..db import now
 GAMES = (
     ("we3fv", "Winning Eleven 3: Final Version", 1998),
     ("we4", "Winning Eleven 4", 1999),
+    ("we2000u23", "Winning Eleven 2000 U-23", 2000),
+    ("we2001", "J.League Winning Eleven 2001", 2001),
     ("we2002", "Winning Eleven 2002", 2002),
 )
 COVER_DIR = "images/games"
@@ -49,10 +54,13 @@ def seed_games(db):
                f"AND (code IS NULL OR code NOT IN ({','.join('?' * len(codes))}))", (now(), *codes))
 
 
-def cover_url(code):
-    """URL da capa do jogo (a provisória .svg quando não há uma de verdade)."""
+def cover_url(code, mini=False):
+    """URL da capa do jogo (a provisória .svg quando não há uma de verdade).
+    mini: a das capas pequenas (até 96 px de largura: cards do Ao vivo, filtros,
+    listas) - a .svg, que a foto da TV não fica legível nesse tamanho."""
     folder = Path(current_app.static_folder) / COVER_DIR
-    for extension in COVER_EXTENSIONS:
+    extensions = ("svg",) + COVER_EXTENSIONS if mini else COVER_EXTENSIONS
+    for extension in extensions:
         if code and (folder / f"{code}.{extension}").exists():
             return url_for("static", filename=f"{COVER_DIR}/{code}.{extension}")
     return url_for("static", filename=f"{COVER_DIR}/default.svg")
