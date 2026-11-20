@@ -20,6 +20,11 @@ sessão dos mesmos jogadores e do mesmo jogo (find_session) e começa LEAD_FRAME
 antes do pontapé (o RetroArch avança rápido até lá, sem transmitir). Quando o
 card termina, ela para TAIL_FRAMES depois do último quadro informado - a sala
 pode seguir com outra partida.
+
+Antes do jogo o agente põe no ar um vídeo de espera e, no fim, um de
+encerramento: "fim" quando a partida terminou no apito, "interrompida" quando
+alguém saiu antes, a transmissão foi cancelada ou o Stream ao vivo acabou antes
+(o anfitrião saiu). O tipo vai em "ending" (_ending) com o quadro da parada.
 """
 import hashlib
 import json
@@ -37,7 +42,7 @@ bp = Blueprint("broadcaster", __name__)
 
 FPS = 60
 LEAD_FRAMES = 10 * FPS        # a live começa 10 s antes do pontapé
-TAIL_FRAMES = 20 * FPS        # e acaba 20 s depois do último quadro informado (o placar final na tela)
+TAIL_FRAMES = 10 * FPS        # e acaba 10 s depois do último quadro informado (o placar final na tela)
 QUEUE_WINDOW = timedelta(hours=3)  # card de campeonato mais antigo que isso não entra na fila sozinho
 LOST = timedelta(minutes=2)   # dada a um agente que não falou dela por esse tempo: perdida
 ONLINE = timedelta(seconds=60)
@@ -176,6 +181,11 @@ def start_frame(match):
     return max(0, (match["kickoff_frame"] or 0) - LEAD_FRAMES)
 
 
+def _ending(match):
+    """O vídeo de encerramento: "fim" só para a partida que terminou no apito."""
+    return "fim" if match is not None and match["status"] == "finished" else "interrompida"
+
+
 def stop_frame(db, match):
     top = db.execute("SELECT COALESCE(MAX(frame), 0) AS frame FROM live_match_reports WHERE live_match_id = ?",
                      (match["id"],)).fetchone()["frame"]
@@ -298,6 +308,8 @@ def _start_job(db, broadcast, match):
             # Partida que terminou antes de o agente confirmar: o quadro do fim já vem aqui
             # (a reprise não tem: vai até o fim do replay).
             "stop_frame": broadcast["stop_frame"], "replay": bool(broadcast["replay"]), "title": title,
+            # Já se sabe como acabou (a reprise, ou a partida que terminou antes): o vídeo do fim.
+            "ending": _ending(match) if broadcast["replay"] or match["status"] != "live" else None,
             "description": description, "privacy": settings()["privacy"], "card_url": card_url,
             "iso": iso_for_match(db, match)}
 
@@ -382,7 +394,7 @@ def _actions(db, agent, reported):
         lost = row["id"] not in reported and (row["updated_at"] or "") < _ago(LOST)
         if row["status"] == "cancelled":
             if row["id"] in reported:
-                actions.append({"id": row["id"], "action": "stop", "stop_frame": 0})
+                actions.append({"id": row["id"], "action": "stop", "stop_frame": 0, "ending": "interrompida"})
             elif lost:
                 db.execute("UPDATE broadcasts SET ended_at = ?, updated_at = ? WHERE id = ?", (now(), now(), row["id"]))
             continue
@@ -397,7 +409,8 @@ def _actions(db, agent, reported):
             actions.append(_start_job(db, row, match))
         if (match is None or match["status"] != "live") and not row["replay"]:
             # (A reprise vai até o fim do replay: o RetroArch sai sozinho quando ele acaba.)
-            actions.append({"id": row["id"], "action": "stop", "stop_frame": _stop_at(db, row, match)})
+            actions.append({"id": row["id"], "action": "stop", "stop_frame": _stop_at(db, row, match),
+                            "ending": _ending(match)})
     slots = agent["slots"] if agent["slots"] is not None else 1
     free = max(0, slots - len(running))
     if not free and _live_waiting(db):
@@ -408,7 +421,7 @@ def _actions(db, agent, reported):
             db.execute("UPDATE broadcasts SET status = 'cancelled', stop_frame = 0, error = 'Interrompida para "
                        "transmitir uma partida ao vivo.', updated_at = ? WHERE id = ?", (now(), row["id"]))
             actions = [a for a in actions if a["id"] != row["id"]]
-            actions.append({"id": row["id"], "action": "stop", "stop_frame": 0})
+            actions.append({"id": row["id"], "action": "stop", "stop_frame": 0, "ending": "interrompida"})
     for row in db.execute("SELECT * FROM broadcasts WHERE status = 'queued' "
                           "ORDER BY replay, reason = 'admin' DESC, created_at, id").fetchall():
         match = db.execute("SELECT * FROM live_matches WHERE id = ?", (row["live_match_id"],)).fetchone()

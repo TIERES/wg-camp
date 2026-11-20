@@ -87,6 +87,7 @@ class BroadcasterTest(unittest.TestCase):
                       job["description"])
         self.assertEqual(job["privacy"], "unlisted")
         self.assertIsNone(job["iso"])  # campeonato sem ISO enviada
+        self.assertIsNone(job["ending"])  # ainda ao vivo: o vídeo do fim vem com a parada
         self.assertEqual(self.broadcast()[0]["status"], "assigned")
         # O agente ainda não confirmou: manda de novo; confirmou (starting), não manda mais.
         self.assertEqual(self.poll()[1]["jobs"][0]["action"], "start")
@@ -98,10 +99,11 @@ class BroadcasterTest(unittest.TestCase):
         row = self.broadcast()[0]
         self.assertEqual((row["status"], row["youtube_url"]), ("live", "https://youtu.be/abc"))
         self.assertIsNotNone(row["started_at"])
-        # Fim da partida: para 20 s depois do último quadro informado.
+        # Fim da partida: para 10 s depois do último quadro informado, com o vídeo de fim.
+        self.assertEqual(TAIL_FRAMES, 600)
         self.post(state(kickoff=5000, frame=120000, period=1, clock=0, final=True))
         stop = self.poll([{"id": bid, "state": "live"}])[1]["jobs"]
-        self.assertEqual(stop, [{"id": bid, "action": "stop", "stop_frame": 120000 + TAIL_FRAMES}])
+        self.assertEqual(stop, [{"id": bid, "action": "stop", "stop_frame": 120000 + TAIL_FRAMES, "ending": "fim"}])
         self.poll([{"id": bid, "state": "ended"}])
         row = self.broadcast()[0]
         self.assertEqual(row["status"], "done")
@@ -109,6 +111,20 @@ class BroadcasterTest(unittest.TestCase):
         html = self.cards()
         self.assertIn("Ver no YouTube", html)
         self.assertIn("https://youtu.be/abc", html)
+
+    def test_player_who_left_stops_with_the_interrupted_video(self):
+        self.make_tournament()
+        self.post(state(kickoff=5000, frame=8000))
+        self.session()
+        job = self.poll()[1]["jobs"][0]
+        self.poll([{"id": job["id"], "state": "live"}])
+        reply = self.app.test_client().post("/api/live/match", headers={"Authorization": "Bearer " + self.token("TIERES")},
+                                            data={"state": state(kickoff=5000, frame=30000), "players": "TIERES,ANDERSHOW",
+                                                  "reporter": "TIERES", "left": "1", "room": ROOM})
+        self.assertEqual(reply.status_code, 200)
+        stop = self.poll([{"id": job["id"], "state": "live"}])[1]["jobs"]
+        self.assertEqual(stop, [{"id": job["id"], "action": "stop", "stop_frame": 30000 + TAIL_FRAMES,
+                                 "ending": "interrompida"}])
 
     def test_only_matching_session_is_used(self):
         self.make_tournament()
@@ -142,7 +158,7 @@ class BroadcasterTest(unittest.TestCase):
         admin.post("/ao-vivo/%d/transmitir" % live_id, data={"csrf_token": CSRF, "transmitir": "0"})
         self.assertEqual(self.broadcast()[0]["status"], "cancelled")
         self.assertEqual(self.poll([{"id": job["id"], "state": "live"}])[1]["jobs"],
-                         [{"id": job["id"], "action": "stop", "stop_frame": 0}])
+                         [{"id": job["id"], "action": "stop", "stop_frame": 0, "ending": "interrompida"}])
         self.poll([{"id": job["id"], "state": "ended"}])
         row = self.broadcast()[0]
         self.assertEqual(row["status"], "cancelled")
@@ -248,6 +264,7 @@ class BroadcasterTest(unittest.TestCase):
         self.assertEqual((job["action"], job["session_id"], job["replay"]), ("start", "replay1", True))
         # O .krec inteiro: do quadro 0, sem avanço rápido, até o fim do replay (sem quadro de parada).
         self.assertEqual((job["start_frame"], job["stop_frame"]), (0, None))
+        self.assertEqual(job["ending"], "fim")  # terminou no apito: o vídeo de fim no fim do replay
         self.assertTrue(job["title"].startswith("Reprise: TIERES x ANDERSHOW | Partida livre"))
         self.assertIn("Reprise da partida de ", job["description"])
         self.assertIn("Placar da partida: https://we2002.example/ao-vivo?partida=%d" % live_id, job["description"])
@@ -272,7 +289,7 @@ class BroadcasterTest(unittest.TestCase):
         self.post(state(kickoff=200000, frame=201000))
         self.session("ao-vivo", minutes=2)
         jobs = self.poll([{"id": replay["id"], "state": "live"}])[1]["jobs"]
-        self.assertEqual(jobs, [{"id": replay["id"], "action": "stop", "stop_frame": 0}])
+        self.assertEqual(jobs, [{"id": replay["id"], "action": "stop", "stop_frame": 0, "ending": "interrompida"}])
         row = self.rows("SELECT * FROM broadcasts WHERE id = ?", replay["id"])[0]
         self.assertEqual(row["status"], "cancelled")
         self.assertIn("partida ao vivo", row["error"])
