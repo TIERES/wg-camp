@@ -77,6 +77,34 @@ class SpectateIngestTest(unittest.TestCase):
         self.assertEqual(row["game_name"], "Winning Eleven 2002")
         self.assertEqual(row["bytes_received"], len(first_body) + len(second_body))
 
+    def test_old_states_are_pruned_by_the_ingest_at_most_hourly(self):
+        import os
+        import time
+        from app import spectate
+        states = self.live_dir / "live_states"
+        states.mkdir(parents=True)
+        day_ago = time.time() - 25 * 3600
+        names = {"old-golive": "1-1.state", "old-card": "1-1.c3450.state", "old-part": "1-1.c900.state.part",
+                 "new-golive": "2-2.state", "new-card": "2-2.c41070.state"}
+        for key, name in names.items():
+            (states / name).write_bytes(b"x")
+            if key.startswith("old"):
+                os.utime(states / name, (day_ago, day_ago))
+        spectate._last_prune = 0.0
+        reply = self.client.post("/spectate/ingest", data=build_header() + frame_record(),
+                                 headers={"X-Session-Id": "111-222", "X-Sequence": "0"},
+                                 content_type="application/octet-stream")
+        self.assertEqual(reply.status_code, 204)
+        self.assertEqual(sorted(p.name for p in states.iterdir()), sorted([names["new-golive"], names["new-card"]]))
+        # De novo dentro da hora: não varre a pasta outra vez.
+        (states / "3-3.state").write_bytes(b"x")
+        os.utime(states / "3-3.state", (day_ago, day_ago))
+        self.client.post("/spectate/ingest", data=frame_record(), headers={"X-Session-Id": "111-222", "X-Sequence": "1"},
+                         content_type="application/octet-stream")
+        self.assertTrue((states / "3-3.state").exists())
+        with self.app.app_context():
+            self.assertEqual(spectate.prune_live_states(force=True), 1)
+
     def test_rejects_bad_session_id(self):
         response = self.client.post(
             "/spectate/ingest",

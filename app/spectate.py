@@ -256,6 +256,7 @@ def ingest():
         _finalize_session(db, session_id, stored_name, now())
 
     db.commit()
+    prune_live_states()
     return ("", 204)
 
 
@@ -369,6 +370,39 @@ def _live_states_dir():
     return path
 
 
+# Os states save da pasta live_states - o do "Ir direto para o Ao Vivo!" (um por
+# sessão, <sessão>.state) e os do começo dos cards do Ao vivo, para o broadcaster
+# (<sessão>.c<quadro>.state) - só servem enquanto a partida/sessão está no ar
+# (uns 4,5 MB cada): os de mais de STATE_KEEP são apagados (prune_live_states),
+# no máximo a cada PRUNE_EVERY, pela ingestão do Stream ao vivo (sempre que há
+# partida) e quando chega um state novo.
+STATE_KEEP = timedelta(days=1)
+PRUNE_EVERY = 3600  # segundos
+_last_prune = 0.0
+
+
+def prune_live_states(force=False):
+    """Apaga os states save (e os .part de um envio que parou) de mais de
+    STATE_KEEP. Devolve quantos apagou."""
+    global _last_prune
+    stamp = time.time()
+    if not force and stamp - _last_prune < PRUNE_EVERY:
+        return 0
+    _last_prune = stamp
+    limit = stamp - STATE_KEEP.total_seconds()
+    removed = 0
+    for old in _live_states_dir().glob("*.state*"):
+        try:
+            if old.stat().st_mtime < limit:
+                old.unlink()
+                removed += 1
+        except OSError:
+            pass
+    if removed:
+        current_app.logger.info("live_states: %d state(s) save de mais de %s apagado(s)", removed, STATE_KEEP)
+    return removed
+
+
 def _known_session_or_404(session_id):
     if not SESSION_ID_RE.match(session_id):
         abort(400, "Session id inválido.")
@@ -431,6 +465,7 @@ def upload_state(session_id):
     if len(body) < 4:
         abort(400, "Corpo do state save inválido.")
 
+    prune_live_states()
     (_live_states_dir() / f"{session_id}.state").write_bytes(body)
     db = get_db()
     db.execute("UPDATE live_sessions SET state_requested_at = NULL WHERE session_id = ?", (session_id,))
@@ -465,8 +500,7 @@ def _send_state(state_name):
 # o "Repeat" ou o pontapé - live_matches.setup_frame): o broadcaster começa a
 # transmissão dele carregando-o, sem avançar a sessão desde o quadro 0. Cada
 # card tem o seu (o "Ir ao vivo!" não o substitui); só servem enquanto a
-# partida passa - os de mais de CHECKPOINT_KEEP são apagados a cada novo.
-CHECKPOINT_KEEP = timedelta(days=1)
+# partida passa - apagados depois de STATE_KEEP (prune_live_states).
 
 
 def checkpoint_name(session_id, card):
@@ -501,14 +535,8 @@ def upload_checkpoint(session_id):
         abort(413)
     if len(body) < 8:
         abort(400, "Corpo do state save inválido.")
+    prune_live_states()
     folder = _live_states_dir()
-    limit = time.time() - CHECKPOINT_KEEP.total_seconds()
-    for old in folder.glob("*.c*.state"):
-        try:
-            if old.stat().st_mtime < limit:
-                old.unlink()
-        except OSError:
-            pass
     temp = folder / (checkpoint_name(session_id, card) + ".part")
     temp.write_bytes(body)
     temp.replace(folder / checkpoint_name(session_id, card))
