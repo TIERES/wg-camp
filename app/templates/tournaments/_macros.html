@@ -24,9 +24,9 @@
 {% macro match_line(m, names, slug=none, live_url=none, live_score=none, trophies=none) -%}
 {% if live_url %}<div class="match-line-live">{% endif %}
 <{{ 'a' if slug else 'div' }} class="match-line{% if m.status == 'confirmed' %} done{% endif %}" id="jogo-{{ m.id }}" data-entries="{{ m.home_entry_id }} {{ m.away_entry_id }}"{% if slug %} href="{{ url_for('tournaments.match', slug=slug, match_id=m.id) }}"{% endif %}>
-  <span class="home">{% if trophies and trophies.get(m.home_entry_id) %}{{ trophy_badge(trophies[m.home_entry_id]) }}{% endif %}{{ names[m.home_entry_id] }}</span>
+  <span class="home">{% if trophies and trophies.get(m.home_entry_id) %}{{ trophy_badge(trophies[m.home_entry_id]) }}{% endif %}{{ side_name(names, m, 'home') }}</span>
   <span class="score">{{ score(m, live_score) }}</span>
-  <span class="away">{{ names[m.away_entry_id] }}{% if trophies and trophies.get(m.away_entry_id) %}{{ trophy_badge(trophies[m.away_entry_id]) }}{% endif %}</span>
+  <span class="away">{{ side_name(names, m, 'away') }}{% if trophies and trophies.get(m.away_entry_id) %}{{ trophy_badge(trophies[m.away_entry_id]) }}{% endif %}</span>
 </{{ 'a' if slug else 'div' }}>
 {% if live_url %}<a class="match-live standings-live" href="{{ live_url }}" title="Ver a partida no Ao vivo">Ao vivo</a></div>{% endif %}
 {%- endmacro %}
@@ -119,7 +119,7 @@
             {# O mandante do jogo fica em cima: time 1 na ida, time 2 na volta. #}
             {% for s in (slots if slots[0].entry == m.home_entry_id or slots[1].entry != m.home_entry_id else slots|reverse) %}{% set g = s.legs[leg] if s.legs|length > leg else none %}
             <div class="tie-slot{% if tie.winner_entry_id and tie.winner_entry_id == s.entry %} winner{% endif %}">
-              <span class="tie-team">{% if s.entry %}{{ names[s.entry] }}{% set place = (view.tie_trophies or {}).get(tie.id, {}).get(s.entry) %}{% if place %}{{ trophy_badge(place) }}{% endif %}{% elif item.waits_for and s.slot == 'b' %}<em class="muted">aguarda o {{ item.waits_for }}</em>{% else %}<em class="muted">a definir</em>{% endif %}</span>
+              <span class="tie-team">{% if s.entry %}{{ side_name(names, m, 'home' if s.entry == m.home_entry_id else 'away') }}{% set place = (view.tie_trophies or {}).get(tie.id, {}).get(s.entry) %}{% if place %}{{ trophy_badge(place) }}{% endif %}{% elif item.waits_for and s.slot == 'b' %}<em class="muted">aguarda o {{ item.waits_for }}</em>{% else %}<em class="muted">a definir</em>{% endif %}</span>
               <span class="leg-score">{% if g %}<span class="score-val score-{{ g.status }}" title="{{ score_tips[g.status] }}"><strong>{{ g.goals }}</strong>{% if g.pens is not none %} <small>({{ g.pens }} pên.)</small>{% endif %}</span>{% elif s.entry %}<span class="muted" title="{{ score_tips.scheduled }}">–</span>{% endif %}</span>
               {% if s.goals %}<span class="tie-score score-val score-{{ s.agg }}" title="{{ score_tips[s.agg] }}"><small>Agregado:</small> <strong>{{ s.goals|sum }}</strong></span>{% endif %}
             </div>
@@ -129,12 +129,13 @@
         </div>
       </div>
     {% else %}
+    {% set only = item.legs|first if item.legs|length == 1 else none %}
     {% if target %}<a class="tie mine{% if tie.is_third_place %} third{% endif %}" href="{{ url_for('tournaments.match', slug=slug, match_id=target.id) }}" title="Abrir o seu jogo para informar ou conferir o placar">
     {% else %}<div class="tie{% if tie.is_third_place %} third{% endif %}">{% endif %}
       {% if item.label %}<div class="tie-label">{{ item.label }}</div>{% endif %}
       {% for s in slots %}
       <div class="tie-slot{% if tie.winner_entry_id and tie.winner_entry_id == s.entry %} winner{% endif %}">
-        <span>{% if s.entry %}{{ names[s.entry] }}{% set place = (view.tie_trophies or {}).get(tie.id, {}).get(s.entry) %}{% if place %}{{ trophy_badge(place) }}{% endif %}{% elif tie.is_bye and s.slot == 'b' %}<em class="muted">passa direto</em>{% elif item.waits_for and s.slot == 'b' %}<em class="muted">aguarda o {{ item.waits_for }}</em>{% else %}<em class="muted">a definir</em>{% endif %}</span>
+        <span>{% if s.entry %}{{ side_name(names, only, 'home' if s.entry == only.home_entry_id else 'away') if only else names[s.entry] }}{% set place = (view.tie_trophies or {}).get(tie.id, {}).get(s.entry) %}{% if place %}{{ trophy_badge(place) }}{% endif %}{% elif tie.is_bye and s.slot == 'b' %}<em class="muted">passa direto</em>{% elif item.waits_for and s.slot == 'b' %}<em class="muted">aguarda o {{ item.waits_for }}</em>{% else %}<em class="muted">a definir</em>{% endif %}</span>
         {% if s.goals %}<span class="tie-score score-val score-{{ s.status }}" title="{{ score_tips[s.status] }}">{% if tie.legs == 2 %}<small>Agregado:</small> {% endif %}<strong>{{ s.goals|sum }}</strong>{% if s.pens is not none %} <small>({{ s.pens }} pên.)</small>{% endif %}</span>{% endif %}
       </div>
       {% endfor %}

@@ -65,9 +65,11 @@
     groupsBox.querySelectorAll('input[name=team_ids][value="' + id + '"]').forEach(function (o) { o.checked = on; });
   }
   function refreshTeams() {
-    var mode = form.elements.team_mode.value;
-    picker.hidden = mode === 'free';
-    picker.querySelectorAll('input[name=team_ids]').forEach(function (el) { el.disabled = mode === 'free'; });
+    var mode = form.elements.team_mode.value, noList = mode === 'free' || mode === 'round';
+    picker.hidden = noList;
+    picker.querySelectorAll('input[name=team_ids]').forEach(function (el) { el.disabled = noList; });
+    var roundHint = document.getElementById('round-hint');
+    if (roundHint) roundHint.hidden = mode !== 'round';
     count.textContent = Object.keys(checkedIds()).length;
     picker.querySelectorAll('.team-group').forEach(function (group) {
       var boxes = group.querySelectorAll('input[name=team_ids]');

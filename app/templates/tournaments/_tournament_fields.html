@@ -101,6 +101,7 @@
         </select>
       </label>
     </div>
+    <p class="muted" id="round-hint"{% if form.get('team_mode', 'free') != 'round' %} hidden{% endif %}>Ninguém fica com um time fixo: a cada partida, cada jogador escolhe o time no próprio jogo. Os pontos e a classificação ficam com o jogador; o time que ele usou aparece no card do Ao vivo e nos jogos da rodada (lido do jogo pelo RetroArch TIERES ou informado junto com o placar).</p>
     <div id="team-picker">
       <p class="muted">Marque os times disponíveis (pelo menos um por vaga): um grupo inteiro, time a time abrindo o grupo, ou importe a lista de um arquivo CSV com os nomes separados por ";".{% if editing and edit_entries %}<br>Quem já escolheu um time que você desmarcar continua inscrito e recebe um e-mail para escolher outro.{% endif %}</p>
       <p class="team-count-line">Times escolhidos: <strong id="team-count">0</strong></p>

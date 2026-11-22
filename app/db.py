@@ -177,8 +177,9 @@ CREATE TABLE IF NOT EXISTS tournaments (
     prize_split TEXT NOT NULL DEFAULT '60,30,10',
     settings_json TEXT NOT NULL DEFAULT '{}',
     rules TEXT NOT NULL DEFAULT '',
-    -- free: o jogador digita o time; choose/draw: times da lista tournament_teams.
-    team_mode TEXT NOT NULL DEFAULT 'free' CHECK (team_mode IN ('free', 'choose', 'draw')),
+    -- free: o jogador digita o time; choose/draw: times da lista tournament_teams; round: sem time
+    -- na inscrição - cada um escolhe o time no jogo, a cada partida (o do jogo fica em tournament_matches).
+    team_mode TEXT NOT NULL DEFAULT 'free' CHECK (team_mode IN ('free', 'choose', 'draw', 'round')),
     -- Sem uso: seleções aparecem sempre com a bandeira (a opção "escudo da federação" saiu).
     team_display TEXT NOT NULL DEFAULT 'flag' CHECK (team_display IN ('logo', 'flag')),
     -- Datas prováveis de início e fim (AAAA-MM-DD), informadas pelo organizador.
@@ -393,6 +394,13 @@ CREATE TABLE IF NOT EXISTS tournament_matches (
     -- dos jogadores confirma ou o organizador decide; até lá, reconectar ou
     -- jogar de novo o substitui (reports.withdraw_interrupted).
     interrupted INTEGER NOT NULL DEFAULT 0,
+    -- Campeonato com um time diferente a cada rodada (team_mode 'round'): o time que cada um usou
+    -- neste jogo - lido do jogo pelo Ao vivo ou informado no reporte (store.set_match_teams).
+    -- '' = ainda sem. Nos outros modos o time é o da inscrição.
+    home_team_name TEXT NOT NULL DEFAULT '',
+    home_team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+    away_team_name TEXT NOT NULL DEFAULT '',
+    away_team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -731,6 +739,13 @@ def ensure_tournament_columns(database):
     if match_columns and "walkover_entry_id" not in match_columns:
         database.execute("ALTER TABLE tournament_matches ADD COLUMN walkover_entry_id INTEGER "
                          "REFERENCES tournament_entries(id) ON DELETE SET NULL")
+    # O time de cada um no jogo (campeonato com um time diferente a cada rodada).
+    for column, kind in (("home_team_name", "TEXT NOT NULL DEFAULT ''"),
+                         ("home_team_id", "INTEGER REFERENCES teams(id) ON DELETE SET NULL"),
+                         ("away_team_name", "TEXT NOT NULL DEFAULT ''"),
+                         ("away_team_id", "INTEGER REFERENCES teams(id) ON DELETE SET NULL")):
+        if match_columns and column not in match_columns:
+            database.execute(f"ALTER TABLE tournament_matches ADD COLUMN {column} {kind}")
     # CRC32:TAMANHO do arquivo (o content_id que o RetroArch TIERES manda no placar ao vivo - app/live.py).
     for table in ("tournament_isos", "catalog_isos"):
         table_columns = {column["name"] for column in database.execute(f"PRAGMA table_info({table})")}
@@ -756,11 +771,12 @@ def ensure_tournament_columns(database):
 
 def allow_tournament_formats(database):
     """Bancos de antes do formato "Pontos corridos + mata-mata" têm o CHECK de
-    tournaments.format sem ele. Como em allow_iso_memcards, a tabela é refeita
-    (mesmos ids e colunas) com a definição atual do TOURNAMENTS_DDL; as outras
-    tabelas continuam apontando para ela pelo nome."""
+    tournaments.format sem ele (e os de antes do "um time diferente a cada
+    rodada", o de tournaments.team_mode sem 'round'). Como em allow_iso_memcards,
+    a tabela é refeita (mesmos ids e colunas) com a definição atual do
+    TOURNAMENTS_DDL; as outras tabelas continuam apontando para ela pelo nome."""
     row = database.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tournaments'").fetchone()
-    if row is None or "league_knockout" in row["sql"]:
+    if row is None or ("league_knockout" in row["sql"] and "'draw', 'round'" in row["sql"]):
         return
     start = TOURNAMENTS_DDL.index("CREATE TABLE IF NOT EXISTS tournaments (")
     ddl = TOURNAMENTS_DDL[start:TOURNAMENTS_DDL.index(");", start) + 2]

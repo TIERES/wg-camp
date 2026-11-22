@@ -2581,5 +2581,29 @@ class LiveMatchesTest(unittest.TestCase):
             from app import live
             self.assertFalse(live.tournament_live(get_db(), tournament_id)["matches"])
 
+    def test_round_mode_takes_the_teams_from_the_game(self):
+        """Campeonato com um time diferente a cada rodada: a inscrição não tem time,
+        o card mostra o time do jogo, e o placar lido do jogo leva o time de cada um."""
+        t, group, (tieres, anders, third) = self.make_league()
+        with self.app.app_context():
+            db = get_db()
+            db.execute("UPDATE tournaments SET team_mode = 'round' WHERE id = ?", (t,))
+            db.execute("UPDATE tournament_entries SET team_name = '', team_id = NULL")
+            db.commit()
+        self.post(state(goals=(1, 0), v=2))
+        cards = self.cards()
+        self.assertIn("GRECIA", cards)  # o nome da tela de seleção (a inscrição não tem time)
+        self.assertIn("CROACIA", cards)
+        self.finish_live(goals=(2, 1))
+        match = self.rows("SELECT * FROM tournament_matches")[0]
+        # Mandante no campeonato = ANDERSHOW, que jogou de VISITA (CROACIA): o nome da base, com a bandeira.
+        self.assertEqual((match["status"], match["home_team_name"], match["away_team_name"]),
+                         ("reported", "Croácia", "Grécia"))
+        self.assertIsNotNone(match["home_team_id"])
+        games = self.app.test_client().get("/torneios/liga-1?aba=jogos").get_data(as_text=True)
+        self.assertIn("Croácia<small>ANDERSHOW</small>", games)
+        self.assertIn("Grécia<small>TIERES</small>", games)
+
+
 if __name__ == "__main__":
     unittest.main()

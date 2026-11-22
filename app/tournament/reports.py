@@ -123,6 +123,11 @@ def report_from_game(db, tournament, match_id, score, at, comment, quitter_id=No
     log(db, match_id, "report", None, score=score, comment=comment)
 
 
+# O jogo volta a ficar sem placar: sai também o time que cada um usou nele (campeonato
+# com um time diferente a cada rodada - store.set_match_teams); o próximo placar traz o dele.
+NO_TEAMS = "home_team_name = '', home_team_id = NULL, away_team_name = '', away_team_id = NULL"
+
+
 def withdraw_interrupted(db, match_id, comment):
     """Retira o placar de quando a partida parou, ainda sem confirmação (os
     dois reconectaram ou jogaram de novo): o jogo volta a ficar sem placar, e
@@ -141,7 +146,7 @@ def withdraw_game_report(db, match_id, comment):
     if match is None or match["status"] != "reported" or match["reported_by_entry_id"]:
         return False
     db.execute("UPDATE tournament_matches SET status = 'scheduled', reported_at = NULL, quitter_id = NULL, "
-               "interrupted = 0, updated_at = ? WHERE id = ?", (now(), match_id))
+               f"interrupted = 0, {NO_TEAMS}, updated_at = ? WHERE id = ?", (now(), match_id))
     log(db, match_id, "clear", comment=comment)
     return True
 
@@ -245,7 +250,7 @@ def clear(db, tournament, match_id, user_id=None, entry=None):
     else:
         raise TournamentError("Este jogo não tem resultado.")
     db.execute("UPDATE tournament_matches SET reported_by_entry_id = NULL, reported_at = NULL, quitter_id = NULL, "
-               "interrupted = 0 WHERE id = ?", (match_id,))
+               f"interrupted = 0, {NO_TEAMS} WHERE id = ?", (match_id,))
     log(db, match_id, "clear", entry, user_id=user_id)
 
 

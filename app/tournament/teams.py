@@ -24,6 +24,10 @@ SEED_SETTING = "teams_seed_version"
 
 TEAM_MODES = {
     "free": "Livre: cada jogador digita o nome do seu time",
+    # Sem time fixo: cada um escolhe o time no próprio jogo, a cada partida. Os pontos
+    # ficam com o jogador; o time usado em cada jogo fica no jogo (tournament_matches
+    # home_team_name/away_team_name - store.set_match_teams).
+    "round": "Livre: um time diferente a cada rodada",
     "choose": "Lista: cada jogador escolhe um time da lista",
     "draw": "Lista: os times são sorteados entre os jogadores",
 }

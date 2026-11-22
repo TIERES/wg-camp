@@ -224,5 +224,154 @@ class TeamsTest(unittest.TestCase):
         self.assertNotEqual(anon.post("/torneios/times-avulsos", data={"csrf_token": CSRF, "name": "Outro"}).status_code, 200)
 
 
+    # --- Livre: um time diferente a cada rodada (team_mode 'round') ---
+
+    def start_round(self, players=4):
+        tid = self.tournament("round", [], players)
+        for pid in self.players[1:1 + players]:
+            store.enroll(self.db, store.get_tournament(self.db, tid), pid, "ignorado", 999)
+        store.start(self.db, store.get_tournament(self.db, tid), random.Random(1))
+        return store.get_tournament(self.db, tid)
+
+    def test_round_mode_has_no_team_on_the_entry(self):
+        tid = self.tournament("round", [])
+        t = store.get_tournament(self.db, tid)
+        store.enroll(self.db, t, self.players[1], "Brasil", 999)
+        entry = self.db.execute("SELECT * FROM tournament_entries").fetchone()
+        self.assertEqual((entry["team_name"], entry["team_id"]), ("", None))
+        self.assertEqual(store.entries_without_team(self.db, t), [])  # ninguém precisa escolher
+        with self.assertRaises(TournamentError):
+            store.choose_team(self.db, t, entry, "Brasil")
+        for pid in self.players[2:5]:
+            store.enroll(self.db, t, pid)
+        store.start(self.db, store.get_tournament(self.db, tid), random.Random(1))
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM tournament_entries WHERE team_name != ''")
+                         .fetchone()[0], 0)
+
+    def test_round_mode_keeps_the_team_of_each_match(self):
+        from app import tournaments
+        from app.tournament import reports
+        t = self.start_round()
+        brasil = self.db.execute("SELECT * FROM teams WHERE kind = 'national' AND country = 'br'").fetchone()
+        # O nome de um time da base (sem acento/maiúsculas) vira o time; outro nome fica como digitado.
+        self.assertEqual(store.match_team(self.db, "  BRASIL "), ("Brasil", brasil["id"]))
+        self.assertEqual(store.match_team(self.db, "Unidos da Várzea"), ("Unidos da Várzea", None))
+        self.assertEqual(store.match_team(self.db, "   "), ("", None))
+        m1, m2 = self.db.execute("SELECT m.* FROM tournament_matches m JOIN tournament_stages s ON s.id = m.stage_id "
+                                 "WHERE s.tournament_id = ? ORDER BY m.id LIMIT 2", (t["id"],)).fetchall()
+        store.set_match_teams(self.db, t, m1["id"], store.match_team(self.db, "brasil"),
+                              store.match_team(self.db, "Unidos da Várzea"))
+        store.set_match_teams(self.db, t, m2["id"], None, store.match_team(self.db, "Brasil"))
+        m1 = self.db.execute("SELECT * FROM tournament_matches WHERE id = ?", (m1["id"],)).fetchone()
+        self.assertEqual((m1["home_team_name"], m1["home_team_id"], m1["away_team_name"], m1["away_team_id"]),
+                         ("Brasil", brasil["id"], "Unidos da Várzea", None))
+        # O mesmo time em jogos diferentes (e para jogadores diferentes) vale.
+        m2 = self.db.execute("SELECT * FROM tournament_matches WHERE id = ?", (m2["id"],)).fetchone()
+        self.assertEqual((m2["home_team_name"], m2["away_team_name"]), ("", "Brasil"))
+        with self.app.test_request_context():
+            names = tournaments._names(self.db, t)
+            home = self.db.execute("SELECT p.username FROM tournament_entries e JOIN players p ON p.id = e.player_id "
+                                   "WHERE e.id = ?", (m1["home_entry_id"],)).fetchone()[0]
+            # A inscrição é só o jogador; o lado do jogo tem o time daquele jogo, com o jogador embaixo.
+            self.assertNotIn("crest", names[m1["home_entry_id"]])
+            self.assertIn("Brasil<small>%s</small>" % home, tournaments.side_name(names, m1, "home"))
+            self.assertIn("/static/flags/br.svg", tournaments.side_name(names, m1, "home"))
+            self.assertIn("Unidos da Várzea", tournaments.side_name(names, m1, "away"))
+            self.assertEqual(tournaments.side_name(names, m2, "home"), names[m2["home_entry_id"]])
+        # Placar apagado/descartado: o jogo volta sem placar e sem os times.
+        reports.resolve(self.db, t, m1["id"], (1, 0, None, None))
+        reports.clear(self.db, t, m1["id"])
+        m1 = self.db.execute("SELECT * FROM tournament_matches WHERE id = ?", (m1["id"],)).fetchone()
+        self.assertEqual((m1["status"], m1["home_team_name"], m1["away_team_name"], m1["home_team_id"]),
+                         ("scheduled", "", "", None))
+
+    def test_match_teams_only_in_round_mode(self):
+        tid = self.tournament("free", [])
+        for pid, name in zip(self.players[1:5], ("A1", "B2", "C3", "D4")):
+            store.enroll(self.db, store.get_tournament(self.db, tid), pid, name)
+        t = store.get_tournament(self.db, tid)
+        store.start(self.db, t, random.Random(1))
+        match = self.db.execute("SELECT id FROM tournament_matches LIMIT 1").fetchone()[0]
+        store.set_match_teams(self.db, t, match, ("Brasil", None), ("Brasil", None))
+        self.assertEqual(self.db.execute("SELECT home_team_name FROM tournament_matches WHERE id = ?",
+                                         (match,)).fetchone()[0], "")
+
+    def test_switching_to_round_mode_drops_the_entry_teams(self):
+        tid = self.tournament("free", [])
+        t = store.get_tournament(self.db, tid)
+        store.enroll(self.db, t, self.players[1], "Real Suciedad")
+        store.enroll(self.db, t, self.players[2], "Unidos da Várzea")
+        values = {"name": "T", "game_id": self.game, "format": "league", "max_players": 4, "fee": 0,
+                  "split": t["prize_split"], "config": store.settings_of(t), "starts_on": None, "ends_on": None,
+                  "rules": "", "team_mode": "round", "friends_only": 0, "team_ids": []}
+        notices = store.update_before_start(self.db, t, values, editor_id=self.players[0])
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM tournament_entries WHERE team_name = '' "
+                                         "AND team_id IS NULL").fetchone()[0], 2)
+        self.assertEqual(len(notices), 2)
+        self.assertIn("Real Suciedad", " ".join(n[2] for n in notices))
+        # E de volta para o livre: cada um escolhe o nome do seu time de novo (avisado).
+        t = store.get_tournament(self.db, tid)
+        self.assertEqual(t["team_mode"], "round")
+        notices = store.update_before_start(self.db, t, dict(values, team_mode="free"), editor_id=self.players[0])
+        self.assertEqual(len(notices), 2)
+        self.assertEqual(len(store.entries_without_team(self.db, store.get_tournament(self.db, tid))), 2)
+
+    def test_web_round_mode(self):
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["csrf_token"] = CSRF
+            session["player_id"] = self.players[0]
+        page = client.get("/torneios/novo").get_data(as_text=True)
+        self.assertIn('<option value="round" >Livre: um time diferente a cada rodada</option>', page)
+        self.assertIn('id="round-hint" hidden', page)
+        data = {"csrf_token": CSRF, "name": "Copa Rodada", "starts_on": "2026-12-01", "rules": "Regras",
+                "game_title_id": self.game, "format": "league", "max_players": "4", "entry_fee": "0",
+                "prize_split": "60,30,10", "legs": "1", "team_mode": "round"}
+        self.assertEqual(client.post("/torneios/novo", data=data).status_code, 302)  # sem lista de times
+        tid, slug, mode = self.db.execute("SELECT id, slug, team_mode FROM tournaments").fetchone()
+        self.assertEqual(mode, "round")
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM tournament_teams").fetchone()[0], 0)
+        self.db.execute("UPDATE tournaments SET status = 'registration' WHERE id = ?", (tid,))
+        self.db.commit()
+        page = client.get(f"/torneios/{slug}?aba=geral").get_data(as_text=True)
+        self.assertIn("Um time diferente a cada rodada", page)
+        self.assertIn("a cada partida você escolhe o time no próprio jogo", page)
+        self.assertNotIn('name="team_name"', page)
+        for pid in self.players[0:4]:
+            store.enroll(self.db, store.get_tournament(self.db, tid), pid)
+        store.start(self.db, store.get_tournament(self.db, tid), random.Random(1))
+        self.db.commit()
+        match = self.db.execute("SELECT m.*, ph.username AS home, pa.username AS away FROM tournament_matches m "
+                                "JOIN tournament_entries h ON h.id = m.home_entry_id JOIN players ph ON ph.id = h.player_id "
+                                "JOIN tournament_entries a ON a.id = m.away_entry_id JOIN players pa ON pa.id = a.player_id "
+                                "WHERE h.player_id = ? OR a.player_id = ? LIMIT 1",
+                                (self.players[0], self.players[0])).fetchone()
+        page = client.get(f"/torneios/{slug}/jogos/{match['id']}").get_data(as_text=True)
+        self.assertIn('name="home_team"', page)
+        self.assertIn("Time de %s" % match["home"], page)
+        self.assertIn('<datalist id="round-team-list">', page)
+        reply = client.post(f"/torneios/{slug}/jogos/{match['id']}/reportar", data={
+            "csrf_token": CSRF, "home_goals": "2", "away_goals": "1", "home_team": "brasil", "away_team": " Várzea FC "})
+        self.assertEqual(reply.status_code, 302)
+        row = self.db.execute("SELECT * FROM tournament_matches WHERE id = ?", (match["id"],)).fetchone()
+        self.assertEqual((row["status"], row["home_team_name"], row["away_team_name"]), ("reported", "Brasil", "Várzea FC"))
+        games = client.get(f"/torneios/{slug}?aba=jogos").get_data(as_text=True)
+        self.assertIn("Brasil<small>%s</small>" % match["home"], games)
+        self.assertIn("Várzea FC<small>%s</small>" % match["away"], games)
+        # A classificação é do jogador: sem o time na tabela.
+        table = client.get(f"/torneios/{slug}?aba=tabela").get_data(as_text=True)
+        standings = table[table.index('<table class="standings">'):]
+        self.assertIn('<span class="entry-name">%s</span>' % match["home"], standings)
+        self.assertNotIn("Brasil<small>", standings)
+        self.assertIn("Brasil<small>%s</small>" % match["home"], table)  # nos seus jogos pendentes, o time do jogo
+        # O adversário confirma em Meus jogos: o jogo aparece com os times dele.
+        other = self.app.test_client()
+        opponent = self.db.execute("SELECT id FROM players WHERE username = ?", (match["away"],)).fetchone()[0]
+        with other.session_transaction() as session:
+            session["player_id"] = opponent
+        mine = other.get("/torneios/meus-jogos").get_data(as_text=True)
+        self.assertIn("Várzea FC<small>%s</small>" % match["away"], mine)
+
+
 if __name__ == "__main__":
     unittest.main()

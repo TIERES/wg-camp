@@ -82,9 +82,18 @@ def _teams(db, row, match, names):
     me, other = row["player_id"], row["opponent_id"]
     teams = {me: None, other: None}
     if row["kind"] == "t":
+        # Campeonato com um time diferente a cada rodada: a inscrição não tem time; vale o do
+        # jogo (store.set_match_teams).
+        game = db.execute("SELECT home_entry_id, away_entry_id, home_team_name, away_team_name, home_team_id, "
+                          "away_team_id FROM tournament_matches WHERE id = ?", (row["match_id"],)).fetchone()
         for player_id, entry_id in ((me, row["entry_id"]), (other, row["opponent_entry_id"])):
             entry = db.execute("SELECT e.team_name, t.name, t.logo, t.flag FROM tournament_entries e "
                                "LEFT JOIN teams t ON t.id = e.team_id WHERE e.id = ?", (entry_id,)).fetchone()
+            side = ("home" if game["home_entry_id"] == entry_id else "away") if game else None
+            if entry and not entry["team_name"] and side and game[side + "_team_name"]:
+                entry = db.execute("SELECT ? AS team_name, name, logo, flag FROM (SELECT 1) "
+                                   "LEFT JOIN teams ON id = ?", (game[side + "_team_name"],
+                                                                game[side + "_team_id"])).fetchone()
             if entry and entry["team_name"]:
                 image = team_image(entry) if entry["name"] else generated_badge(entry["team_name"])
                 teams[player_id] = {"name": entry["team_name"], "image": image, "known": True}

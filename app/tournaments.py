@@ -290,27 +290,56 @@ def _crests(names):
     return crests
 
 
+def _entry_html(username, gave_up, team_name="", team=None):
+    """Escudo, time e jogador embaixo (ou só o jogador, sem time). team: a linha
+    de teams (nome, escudo e bandeira) ou None - time digitado fora da base."""
+    if not team_name:
+        return Markup('<span class="entry"><span class="entry-name">{}{}</span></span>').format(username, gave_up)
+    image = team_image(team) if team is not None and team["name"] else generated_badge(team_name)
+    return Markup('<span class="entry"><img class="crest" src="{}" alt="" loading="lazy">'
+                  '<span class="entry-name">{}<small>{}{}</small></span></span>').format(image, team_name, username,
+                                                                                       gave_up)
+
+
 def _names(db, tournament):
     """entry_id -> HTML com escudo, time e jogador (ou só o jogador). Quem
-    desistiu (store.withdraw_running) leva a marca "desistiu"."""
+    desistiu (store.withdraw_running) leva a marca "desistiu".
+    Campeonato com um time diferente a cada rodada (team_mode 'round'): a
+    inscrição é só o jogador, e cada lado de jogo com o time já conhecido
+    (store.set_match_teams) tem o seu, "m<jogo>h"/"m<jogo>a" -> HTML com o time
+    daquele jogo (side_name)."""
     rows = db.execute(
         "SELECT e.id, e.team_name, e.withdrawn_at, p.username, t.name, t.logo, t.flag FROM tournament_entries e "
         "JOIN players p ON p.id = e.player_id LEFT JOIN teams t ON t.id = e.team_id WHERE e.tournament_id = ?",
         (tournament["id"],)).fetchall()
-    names = {}
+    names, players = {}, {}
     for row in rows:
         gave_up = Markup(' <span class="gave-up" title="Desistiu do campeonato">desistiu</span>') \
             if row["withdrawn_at"] else ""
-        if not row["team_name"]:
-            names[row["id"]] = Markup('<span class="entry"><span class="entry-name">{}{}</span></span>').format(
-                row["username"], gave_up)
-            continue
-        image = team_image(row) if row["name"] else generated_badge(row["team_name"])
-        names[row["id"]] = Markup(
-            '<span class="entry"><img class="crest" src="{}" alt="" loading="lazy">'
-            '<span class="entry-name">{}<small>{}{}</small></span></span>').format(image, row["team_name"],
-                                                                                 row["username"], gave_up)
+        players[row["id"]] = (row["username"], gave_up)
+        names[row["id"]] = _entry_html(row["username"], gave_up, row["team_name"], row)
+    if tournament["team_mode"] == "round":
+        for row in db.execute(
+                "SELECT m.id, m.home_entry_id, m.away_entry_id, m.home_team_name, m.away_team_name, "
+                "ht.name AS home_name, ht.logo AS home_logo, ht.flag AS home_flag, "
+                "at.name AS away_name, at.logo AS away_logo, at.flag AS away_flag FROM tournament_matches m "
+                "JOIN tournament_stages s ON s.id = m.stage_id LEFT JOIN teams ht ON ht.id = m.home_team_id "
+                "LEFT JOIN teams at ON at.id = m.away_team_id "
+                "WHERE s.tournament_id = ? AND (m.home_team_name != '' OR m.away_team_name != '')",
+                (tournament["id"],)):
+            for side in ("home", "away"):
+                player = players.get(row[side + "_entry_id"])
+                if player and row[side + "_team_name"]:
+                    team = {key: row[f"{side}_{key}"] for key in ("name", "logo", "flag")}
+                    names[f"m{row['id']}{side[0]}"] = _entry_html(*player, row[side + "_team_name"], team)
     return names
+
+
+@bp.app_template_global()
+def side_name(names, m, side):
+    """Um lado do jogo (side 'home'/'away') como _names o monta: no campeonato
+    com um time diferente a cada rodada, com o time que o jogador usou nele."""
+    return names.get(f"m{m['id']}{side[0]}") or names.get(m[side + "_entry_id"], "")
 
 
 def _provisional(db, tournament, live_table):
@@ -1563,7 +1592,7 @@ def _tournament_form(db, form, games, max_fee, keep_team_ids=()):
     if team_mode not in TEAM_MODES:
         raise TournamentError("Escolha como serão os times.")
     team_ids = []
-    if team_mode != "free":
+    if team_mode not in ("free", "round"):
         wanted = {int(v) for v in form.getlist("team_ids") if v.isdigit()}
         if wanted:
             keep = [i for i in keep_team_ids if i in wanted]
@@ -2268,6 +2297,14 @@ def _score_form():
     return tuple(_int_or_none(request.form.get(key)) for key in ("home_goals", "away_goals", "home_pens", "away_pens"))
 
 
+def _save_match_teams(db, tournament, match_id):
+    """Os times do jogo informados no formulário (campeonato com um time
+    diferente a cada rodada - match.html): campo ausente mantém o que está."""
+    store.set_match_teams(db, tournament, match_id, *(
+        store.match_team(db, request.form[key]) if key in request.form else None
+        for key in ("home_team", "away_team")))
+
+
 @bp.post("/<slug>/partidas/<int:match_id>")
 @manager_required
 def result(tournament, match_id):
@@ -2296,8 +2333,10 @@ def result(tournament, match_id):
         except TournamentError as error:
             flash(str(error), "error")
         else:
-            _run(lambda db, t: reports.resolve(db, t, match_id, score, user_id=user_id, entry=organizer,
-                                               comment=comment), tournament, "Resultado salvo.")
+            def save(db, t):
+                reports.resolve(db, t, match_id, score, user_id=user_id, entry=organizer, comment=comment)
+                _save_match_teams(db, t, match_id)
+            _run(save, tournament, "Resultado salvo.")
     notify.check_completion(db, tournament)
     return redirect(target)
 
@@ -2359,7 +2398,12 @@ def match(slug, match_id):
         confirmed_by=reports.confirmed_by(db, match_id) if m["status"] == "reported" else [],
         dispute=reports.last_dispute(db, match_id) if m["status"] == "disputed" else None,
         deadline=reports.deadline(db, m) if m["status"] == "reported" else None,
-        decisive=store.needs_pens(db, m), pens_agg=store.other_legs_goals(db, m), open=tournament["status"] == "running" and m["stage_status"] == "running")
+        decisive=store.needs_pens(db, m), pens_agg=store.other_legs_goals(db, m), open=tournament["status"] == "running" and m["stage_status"] == "running",
+        # Um time diferente a cada rodada: os campos "Time de ..." no reporte e no resultado do organizador.
+        round_teams=[row["name"] for row in db.execute(
+            "SELECT name FROM teams WHERE is_active = 1 ORDER BY name COLLATE NOCASE")]
+        if tournament["team_mode"] == "round" else None,
+        players=(home["username"] if home else "", away["username"] if away else ""))
 
 
 def _player_action(slug, match_id, action, success, after=None):
@@ -2383,9 +2427,10 @@ def match_report(slug, match_id):
     except TournamentError as error:
         flash(str(error), "error")
         return redirect(url_for("tournaments.match", slug=slug, match_id=match_id))
-    return _player_action(slug, match_id, lambda db, t: reports.report(
-        db, t, match_id, session["player_id"], score, request.form.get("comment", "")),
-        "Placar enviado. Agora o adversário confirma ou contesta.",
+    def action(db, t):
+        reports.report(db, t, match_id, session["player_id"], score, request.form.get("comment", ""))
+        _save_match_teams(db, t, match_id)
+    return _player_action(slug, match_id, action, "Placar enviado. Agora o adversário confirma ou contesta.",
         after=lambda db, t: notify.score_reported(db, t, match_id))
 
 

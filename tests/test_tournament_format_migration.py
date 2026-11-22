@@ -97,5 +97,45 @@ class TournamentFormatMigrationTest(unittest.TestCase):
                 self.assertEqual((values["config"]["groups"], values["config"]["group_legs"]), (2, 2))
 
 
+    def test_old_team_mode_check_gets_round(self):
+        """Banco de antes do "um time diferente a cada rodada": o CHECK de team_mode ganha 'round'."""
+        with tempfile.TemporaryDirectory() as temp:
+            app = make_app(Path(temp))
+            with app.app_context():
+                init_db()
+                db = get_db()
+                sql = db.execute("SELECT sql FROM sqlite_master WHERE name = 'tournaments'").fetchone()[0]
+                self.assertIn("'draw', 'round'", sql)
+                old = (sql.replace("CREATE TABLE tournaments", "CREATE TABLE tournaments_old", 1)
+                       .replace("'draw', 'round'", "'draw'"))
+                db.commit()
+                db.execute("PRAGMA foreign_keys = OFF")
+                db.executescript(f"""{old};
+                    DROP TABLE tournaments;
+                    ALTER TABLE tournaments_old RENAME TO tournaments;""")
+                db.execute("PRAGMA foreign_keys = ON")
+                player = add_player(db, "dono")
+                game = db.execute("SELECT id FROM game_titles ORDER BY id LIMIT 1").fetchone()[0]
+                insert = ("INSERT INTO tournaments (slug, name, game_title_id, organizer_id, format, status, "
+                          "max_players, team_mode, created_at, updated_at) VALUES (?, 'T', ?, ?, 'league', "
+                          "'registration', 4, ?, ?, ?)")
+                with self.assertRaises(Exception):
+                    db.execute(insert, ("antes", game, player, "round", now(), now()))
+                tid = db.execute(insert, ("velho", game, player, "free", now(), now())).lastrowid
+                db.execute("INSERT INTO tournament_entries (tournament_id, player_id, team_name, created_at) "
+                           "VALUES (?, ?, 'Time', ?)", (tid, player, now()))
+                db.commit()
+
+                migrate_db()
+                migrate_db()  # idempotente
+
+                db = get_db()
+                db.execute(insert, ("novo", game, player, "round", now(), now()))
+                self.assertEqual(db.execute("SELECT team_name FROM tournament_entries WHERE tournament_id = ?",
+                                            (tid,)).fetchone()[0], "Time")
+                columns = {c["name"] for c in db.execute("PRAGMA table_info(tournament_matches)")}
+                self.assertTrue({"home_team_name", "home_team_id", "away_team_name", "away_team_id"} <= columns)
+
+
 if __name__ == "__main__":
     unittest.main()

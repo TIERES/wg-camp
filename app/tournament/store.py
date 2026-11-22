@@ -59,8 +59,8 @@ def available_teams(db, tournament_id):
 def _entry_team(db, tournament, team_name, team_id):
     """(team_id, team_name) da inscrição conforme o modo de times do torneio."""
     mode = tournament["team_mode"]
-    if mode == "draw":
-        return None, ""  # sorteado em start()
+    if mode in ("draw", "round"):
+        return None, ""  # sorteado em start() / escolhido no jogo, a cada partida (set_match_teams)
     if mode == "free":
         name = " ".join((team_name or "").split())
         if len(name) < 2:
@@ -78,6 +78,29 @@ def _entry_team(db, tournament, team_name, team_id):
     if team is None:
         raise TournamentError("Escolha um time da lista (ele pode ter acabado de ser escolhido por outro jogador).")
     return team["id"], team["name"]
+
+
+def match_team(db, name):
+    """(nome, team_id) do time informado para um jogo (campeonato com um time
+    diferente a cada rodada): o nome de um time da base (ignorando acentos e
+    maiúsculas) vira esse time - nome oficial e escudo -; sem nome, ('', None)."""
+    name = " ".join((name or "").split())[:40]
+    if not name:
+        return "", None
+    team = find_by_name(db, name)
+    return (team["name"], team["id"]) if team is not None else (name, None)
+
+
+def set_match_teams(db, tournament, match_id, home=None, away=None):
+    """O time que cada um usou no jogo, no campeonato com um time diferente a
+    cada rodada (nos outros modos o time é o da inscrição): home/away =
+    (nome, team_id) - ('', None) tira -, None mantém o que está."""
+    if tournament["team_mode"] != "round":
+        return
+    for side, team in (("home", home), ("away", away)):
+        if team is not None:
+            db.execute(f"UPDATE tournament_matches SET {side}_team_name = ?, {side}_team_id = ? WHERE id = ?",
+                       (team[0], team[1], match_id))
 
 
 def are_friends(db, a, b):
@@ -127,7 +150,7 @@ def withdraw(db, tournament, entry):
 def entries_without_team(db, tournament):
     """Inscritos ainda sem time nos modos em que cada um escolhe o seu (o time
     saiu da lista ou o modo de times mudou: update_before_start)."""
-    if tournament["team_mode"] == "draw":
+    if tournament["team_mode"] in ("draw", "round"):
         return []
     return [e for e in entries_of(db, tournament["id"]) if not e["team_name"]]
 
@@ -138,6 +161,8 @@ def choose_team(db, tournament, entry, team_name="", team_id=None):
         raise TournamentError("O campeonato já começou.")
     if tournament["team_mode"] == "draw":
         raise TournamentError("Neste campeonato os times são sorteados no início.")
+    if tournament["team_mode"] == "round":
+        raise TournamentError("Neste campeonato cada jogador escolhe o time no próprio jogo, a cada partida.")
     if entry["team_name"]:
         raise TournamentError("Você já tem um time neste campeonato.")
     team_id, team_name = _entry_team(db, tournament, team_name, team_id)
@@ -206,12 +231,18 @@ def update_before_start(db, tournament, values, editor_id=None):
         elif mode == "draw" and old_mode != "draw" and entry["team_name"]:
             text = (f'No campeonato "{name}" os times agora são sorteados no início; o seu ({entry["team_name"]}) '
                     "volta para o sorteio. A sua inscrição continua.")
-        elif mode == "free" and old_mode == "draw":
+        elif mode == "free" and old_mode in ("draw", "round"):
             text = (f'No campeonato "{name}" cada jogador agora escolhe o nome do seu time. A sua inscrição '
                     "continua: escolha o seu time na página do campeonato.")
+        elif mode == "round" and old_mode != "round" and entry["team_name"]:
+            text = (f'No campeonato "{name}" ninguém fica mais com um time fixo: cada jogador escolhe o time no '
+                    f'próprio jogo, a cada partida, e os pontos ficam com o jogador. O seu ({entry["team_name"]}) '
+                    "saiu da inscrição, que continua.")
         if text:
             db.execute("UPDATE tournament_entries SET team_id = NULL, team_name = '' WHERE id = ?", (entry["id"],))
-            notice(entry, "escolha o seu time" if mode != "draw" else "os times serão sorteados", text)
+            subject = ("os times serão sorteados" if mode == "draw" else "um time diferente a cada rodada"
+                       if mode == "round" else "escolha o seu time")
+            notice(entry, subject, text)
     db.execute(
         "UPDATE tournaments SET name = ?, game_title_id = ?, format = ?, max_players = ?, entry_fee_cents = ?, "
         "prize_split = ?, settings_json = ?, rules = ?, team_mode = ?, starts_on = ?, ends_on = ?, friends_only = ?, "

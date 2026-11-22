@@ -4,9 +4,9 @@
 <section class="match-head">
   <p class="muted">{{ m.stage_name }} · {% if m.tie_id %}{% if m.leg == 2 %}jogo de volta{% else %}jogo {{ m.leg }}{% endif %}{% else %}rodada {{ m.round }}{% endif %}</p>
   <div class="match-big">
-    <div>{{ names[m.home_entry_id] }}</div>
+    <div>{{ side_name(names, m, 'home') }}</div>
     <div class="big-score">{{ score(m, live_now.score if live_now else none) }}</div>
-    <div>{{ names[m.away_entry_id] }}</div>
+    <div>{{ side_name(names, m, 'away') }}</div>
   </div>
   {# Gols e assistências do card no Ao vivo; em laranja enquanto o placar não foi confirmado. #}
   {% set goals_pending = goals and m.status != 'confirmed' %}
@@ -60,6 +60,7 @@
       <form method="post" action="{{ url_for('tournaments.match_report', slug=t.slug, match_id=m.id) }}" class="form match-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {% set values = none %}{% set required = true %}{% include 'tournaments/_score_inputs.html' %}
+        {% include 'tournaments/_match_team_inputs.html' %}
         <label>Comentário (opcional)<input name="comment" maxlength="500" placeholder="Ex.: jogo com lag no 2º tempo"></label>
         <button>Enviar placar</button>
         <p class="muted">Confira antes de enviar: depois o placar não pode ser alterado por você. O adversário confirma ou contesta; sem resposta no prazo, o placar é confirmado automaticamente.</p>
@@ -111,6 +112,7 @@
     <form method="post" action="{{ url_for('tournaments.result', slug=t.slug, match_id=m.id) }}" class="form match-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="voltar" value="jogo">
       {% set values = m if m.status == 'confirmed' else reported %}{% set required = true %}{% include 'tournaments/_score_inputs.html' %}
+      {% include 'tournaments/_match_team_inputs.html' %}
       <label>Observação (fica no histórico)<input name="comment" maxlength="500"></label>
       <div class="card-actions"><button name="acao" value="salvar">{{ 'Corrigir resultado' if m.status == 'confirmed' else 'Definir resultado' }}</button>
       {% if m.status != 'scheduled' %}<button name="acao" value="apagar" class="secondary" formnovalidate>{{ 'Apagar resultado' if m.status == 'confirmed' else 'Liberar novo reporte' }}</button>{% endif %}</div>
@@ -142,4 +144,5 @@
   {% else %}<p class="muted">Nada ainda.</p>{% endif %}
 </section>
 <script src="{{ url_for('static', filename='js/pens.js') }}"></script>
+{% if round_teams %}<datalist id="round-team-list">{% for name in round_teams %}<option value="{{ name }}">{% endfor %}</datalist>{% endif %}
 {% endblock %}

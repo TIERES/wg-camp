@@ -1,0 +1,10 @@
+{# Campeonato com um time diferente a cada rodada: o time que cada um usou neste jogo
+   (store.set_match_teams; o nome de um time da base vira esse time, com o escudo).
+   Espera: m, players (nick do mandante, do visitante), round_teams (none fora desse modo). #}
+{% if round_teams is not none %}
+<div class="form-row match-teams">
+  <label>Time de {{ players[0] }}<input name="home_team" maxlength="40" list="round-team-list" autocomplete="off" value="{{ m.home_team_name }}" placeholder="Time que ele usou neste jogo"></label>
+  <label>Time de {{ players[1] }}<input name="away_team" maxlength="40" list="round-team-list" autocomplete="off" value="{{ m.away_team_name }}" placeholder="Time que ele usou neste jogo"></label>
+</div>
+<p class="muted">Opcional: o time aparece nos jogos da rodada (os pontos ficam com o jogador).</p>
+{% endif %}

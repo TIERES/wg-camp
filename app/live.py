@@ -703,7 +703,8 @@ def _team_view(db, match, side, team_state, nicks):
         elif row and row["ram_name"]:
             name = row["ram_name"]
     image = team_image(team) if team else generated_badge(name or "?")
-    return {"name": name or UNKNOWN_TEAM, "known": bool(name), "image": image, "goals": team_state.get("goals", 0),
+    return {"name": name or UNKNOWN_TEAM, "known": bool(name), "image": image, "team_id": team["id"] if team else None,
+            "goals": team_state.get("goals", 0),
             "players": list(nicks), "scorers": team_state.get("scorers", []),
             # Os grupos do card, abaixo dos gols: expulsos (vermelho direto e 2º amarelo),
             # amarelos (o 2º também, na linha do jogador: "Casemiro 1',37'") e as contusões
@@ -1629,8 +1630,10 @@ MENU_QUIT_NOTE = "Partida abandonada pelo menu do jogo no RetroArch TIERES (Ao v
 def _report_game(db, tournament, row, score, note, interrupted=False):
     """Reporta o placar lido do jogo de campeonato (reports.report_from_game)
     com quem saiu no meio dele (_game_quitter); devolve a anotação da partida.
-    interrupted: o placar de quando a partida parou (sem prazo, um confirma)."""
-    from .tournament import reports
+    interrupted: o placar de quando a partida parou (sem prazo, um confirma).
+    Campeonato com um time diferente a cada rodada: o time que cada um usou
+    vai para o jogo (store.set_match_teams)."""
+    from .tournament import reports, store
     from .tournament.store import TournamentError
     quitter = _game_quitter(db, (row["home_nick"], row["away_nick"]), row)
     left = ("%s saiu da partida pelo menu do jogo" if row["quit_nick"] else "%s saiu no meio do jogo") % quitter
@@ -1642,7 +1645,29 @@ def _report_game(db, tournament, row, score, note, interrupted=False):
                                  _player_id(db, quitter) if quitter else None, interrupted)
     except TournamentError as error:
         return str(error)[:200]
+    if tournament["team_mode"] == "round":
+        store.set_match_teams(db, tournament, row["tournament_match_id"], *_game_teams(db, row))
     return "reportado" + ("; " + left if quitter else "")
+
+
+def _game_teams(db, row):
+    """(mandante, visitante) = (nome, team_id) do time que cada um usou no jogo
+    de campeonato, como o card os mostra (_team_view: o slot da ISO ou o nome
+    da tela de seleção; o nome que bate com um time da base vira esse time,
+    com o escudo) - para o campeonato com um time diferente a cada rodada;
+    None no lado não identificado."""
+    from .tournament import store
+    sides = _home_side(row)
+    if sides is None:
+        return None, None
+    states = json.loads(row["state_json"] or "{}").get("teams") or []
+    nicks = (json.loads(row["local_players_json"] or "[]"), json.loads(row["visita_players_json"] or "[]"))
+    teams = []
+    for side in sides:
+        view = _team_view(db, row, side, states[side] if side < len(states) else {}, nicks[side])
+        teams.append(None if not view["known"] else (view["name"], view["team_id"]) if view["team_id"]
+                     else store.match_team(db, view["name"]))
+    return teams
 
 
 def _report_abandoned(db):

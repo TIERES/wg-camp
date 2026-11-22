@@ -3,9 +3,9 @@
 {% macro result_forms(ms) %}{% for m in ms %}{% set shown = m if m.status == 'confirmed' else reported_score(m) %}
     <form method="post" action="{{ url_for('tournaments.result', slug=t.slug, match_id=m.id) }}" class="result-form{% if m.status == 'confirmed' %} done{% endif %}" id="jogo-{{ m.id }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <span class="home">{{ names[m.home_entry_id] }}</span>
+      <span class="home">{{ side_name(names, m, 'home') }}</span>
       <span class="goals"><input type="number" name="home_goals" min="0" max="99" value="{{ shown.home_goals if shown and shown.home_goals is not none }}" required aria-label="Gols do mandante" class="score-{{ m.status }}" title="{{ score_tips[m.status] }}"> x <input type="number" name="away_goals" min="0" max="99" value="{{ shown.away_goals if shown and shown.away_goals is not none }}" required aria-label="Gols do visitante" class="score-{{ m.status }}" title="{{ score_tips[m.status] }}"></span>
-      <span class="away">{{ names[m.away_entry_id] }}</span>
+      <span class="away">{{ side_name(names, m, 'away') }}</span>
       {% if m.id in decisive %}<span class="pens" data-agg="{{ decisive[m.id]|join(',') }}">{{ 'Empate no agregado' if decisive[m.id] != (0, 0) else 'Empate' }}, pênaltis: <input type="number" name="home_pens" min="0" max="99" value="{{ m.home_pens if m.home_pens is not none }}" aria-label="Pênaltis mandante"> x <input type="number" name="away_pens" min="0" max="99" value="{{ m.away_pens if m.away_pens is not none }}" aria-label="Pênaltis visitante"></span>{% endif %}
       <span class="result-buttons">
         {% if my_entry_id in (m.home_entry_id, m.away_entry_id) %}<small class="muted">Seu jogo: reporte na <a href="{{ url_for('tournaments.match', slug=t.slug, match_id=m.id) }}">página do jogo</a></small>
@@ -118,7 +118,7 @@
     <div class="t-card no-side">
       <span class="t-body">
         <span class="with-avatar friend-name">{{ avatar_button(e.player_id, e.username) }}<strong class="t-name">{{ e.username }}</strong></span>
-        <span class="t-meta"><span>{{ icon('shield') }}{% if e.team_name %}{{ e.team_name }}{% elif t.team_mode == 'draw' %}<em class="muted">sorteado no início</em>{% else %}<em class="muted">sem time: avisado para escolher</em>{% endif %}</span></span>
+        <span class="t-meta"><span>{{ icon('shield') }}{% if e.team_name %}{{ e.team_name }}{% elif t.team_mode == 'draw' %}<em class="muted">sorteado no início</em>{% elif t.team_mode == 'round' %}<em class="muted">um time diferente a cada rodada</em>{% else %}<em class="muted">sem time: avisado para escolher</em>{% endif %}</span></span>
         <span class="t-meta"><span>{{ icon('clock') }}Inscrito em {{ e.created_at|localtime }}</span></span>
         {# Desistência (store.withdraw_running): quando e o motivo, que também foi por e-mail aos organizadores. #}
         {% if e.withdrawn_at %}<span class="t-meta"><span class="gave-up">Desistiu em {{ e.withdrawn_at|localtime('%d/%m/%Y') }}</span></span>
@@ -292,8 +292,11 @@
       if (lost.length) lines.push('- ' + lost.length + ' inscrito(s) ficam sem time e precisam escolher outro.');
     } else if (mode === 'draw' && before.mode !== 'draw' && kept.length) {
       lines.push('- Os times dos ' + kept.length + ' inscrito(s) voltam para o sorteio do início.');
-    } else if (mode === 'free' && before.mode === 'draw' && kept.length) {
+    } else if (mode === 'free' && (before.mode === 'draw' || before.mode === 'round') && kept.length) {
       lines.push('- Os ' + kept.length + ' inscrito(s) precisam escolher o nome do seu time.');
+    } else if (mode === 'round' && before.mode !== 'round') {
+      var named = kept.filter(function (x) { return x.named; });
+      if (named.length) lines.push('- Os ' + named.length + ' inscrito(s) com time ficam sem ele: o time passa a ser escolhido no jogo, a cada partida.');
     }
     var when = {{ 'true' if needs_confirmation else 'false' }} ? '\n\nIsso acontece quando outro responsável confirmar a alteração.' : '';
     if (lines.length && !window.confirm(lines.join('\n') + '\n\nQuem sai recebe de volta o valor pago, e todos são '

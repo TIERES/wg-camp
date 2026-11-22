@@ -18,7 +18,7 @@
   <div class="my-match mm-{{ kinds[action] }}" id="jogo-{{ row.id }}" title="{{ labels[action] }}">
     <small class="mm-where"><a href="{{ url_for('tournaments.show', slug=row.slug, aba='jogos') }}">{{ row.tournament_name }}</a> · {{ row.stage_name }}{% if row.round %} · Rodada {{ row.round }}{% endif %} · <span class="mm-what">{{ labels[action] }}</span></small>
     <a class="my-match-link" href="{{ url_for('tournaments.match', slug=row.slug, match_id=row.id) }}">
-      <span class="match-line"><span class="home">{{ names[row.home_entry_id] }}</span><span class="score">{{ score(row) }}</span><span class="away">{{ names[row.away_entry_id] }}</span></span>
+      <span class="match-line"><span class="home">{{ side_name(names, row, 'home') }}</span><span class="score">{{ score(row) }}</span><span class="away">{{ side_name(names, row, 'away') }}</span></span>
     </a>
     <div class="my-match-actions">
     {% if action == 'confirm' %}
@@ -35,13 +35,13 @@
     </div>
     {% if action == 'confirm' %}
     {% call form_dialog('contestar-%d' % row.id, url_for('tournaments.match_dispute', slug=row.slug, match_id=row.id), 'Não aceitar o placar', 'Contestar', 'meus-jogos') %}
-      <p class="match-line"><span class="home">{{ names[row.home_entry_id] }}</span><span class="score">{{ score(row) }}</span><span class="away">{{ names[row.away_entry_id] }}</span></p>
+      <p class="match-line"><span class="home">{{ side_name(names, row, 'home') }}</span><span class="score">{{ score(row) }}</span><span class="away">{{ side_name(names, row, 'away') }}</span></p>
       <p class="muted">A contestação vai para o organizador decidir. Se você informar o placar certo, o adversário pode aceitá-lo e o resultado é confirmado na hora.</p>
       <p class="muted">Qual foi o placar certo? (opcional)</p>
       <div class="score-inputs">
-        <span class="home">{{ names[row.home_entry_id] }}</span>
+        <span class="home">{{ side_name(names, row, 'home') }}</span>
         <span class="goals"><input type="number" name="home_goals" min="0" max="99" aria-label="Gols do mandante"> x <input type="number" name="away_goals" min="0" max="99" aria-label="Gols do visitante"></span>
-        <span class="away">{{ names[row.away_entry_id] }}</span>
+        <span class="away">{{ side_name(names, row, 'away') }}</span>
       </div>
       <label>Motivo<textarea name="comment" rows="3" minlength="3" maxlength="500" required placeholder="Explique o que aconteceu; se tiver o replay, diga o horário da partida."></textarea></label>
     {% endcall %}

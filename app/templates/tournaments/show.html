@@ -5,6 +5,8 @@
             <input name="team_name" id="free-team" maxlength="60" minlength="2" required placeholder="Nome do seu time" list="free-team-list" autocomplete="off">
             <datalist id="free-team-list">{% for team in free_teams %}<option value="{{ team.name }}">{% endfor %}</datalist>
             <p class="muted free-team-match" id="free-team-match" hidden><img class="crest" alt=""> <span></span></p>
+          {% elif t.team_mode == 'round' %}
+            <p class="muted">Sem time fixo: a cada partida você escolhe o time no próprio jogo, e os pontos ficam com você.</p>
           {% elif t.team_mode == 'choose' %}
             <p class="muted">Escolha seu time:</p>
             <input type="search" id="pick-filter" placeholder="Digite o nome do time..." autocomplete="off" aria-controls="pick-grid">
@@ -45,7 +47,7 @@
   <div class="t-actions">
     {% if t.status == 'registration' %}
       {% if my_entry %}
-        {% if t.team_mode != 'draw' and not my_entry.team_name %}
+        {% if t.team_mode not in ('draw', 'round') and not my_entry.team_name %}
         {# O time dele saiu da lista ou o organizador mudou como os times são escolhidos. #}
         <form method="post" action="{{ url_for('tournaments.choose_team', slug=t.slug) }}" class="enroll-form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -161,6 +163,7 @@
   <section class="t-info">
     <dl>
       <dt>Formato</dt><dd>{{ summary }}</dd>
+      {% if t.team_mode == 'round' %}<dt>Times</dt><dd>Um time diferente a cada rodada: cada jogador escolhe o time no próprio jogo, a cada partida, e os pontos ficam com o jogador.</dd>{% endif %}
       {% if t.starts_on or t.ends_on %}<dt>Datas prováveis</dt><dd>{% if t.starts_on %}Início {{ t.starts_on|date_br }}{% endif %}{% if t.starts_on and t.ends_on %} · {% endif %}{% if t.ends_on %}Fim {{ t.ends_on|date_br }}{% endif %}</dd>{% endif %}
       <dt>Vagas</dt><dd>{{ entries|length }} de {{ t.max_players }}</dd>
       <dt>Inscrição</dt><dd>{{ t.entry_fee_cents|wcash if t.entry_fee_cents else 'Grátis' }}</dd>
