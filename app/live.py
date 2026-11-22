@@ -493,9 +493,10 @@ def detect_context(db, match, local_nick, visita_nick):
     # Uma partida interrompida não prende o jogo enquanto o placar de quando
     # ela parou não for liberado (um dos dois confirma ou o organizador):
     # voltaram e jogaram de novo - vale a partida nova (_report_abandoned).
-    # A abandonada pelo menu do jogo (quit_nick) prende: a revanche não a substitui.
+    # A abandonada pelo menu do jogo (quit_nick) prende: a revanche não a substitui
+    # (só a exclusão do card pelos jogadores a solta).
     taken = ("SELECT tournament_match_id FROM live_matches WHERE tournament_match_id IS NOT NULL AND id != ? "
-             "AND is_test = ? AND (status != 'abandoned' OR quit_nick IS NOT NULL "
+             "AND is_test = ? AND (status != 'abandoned' OR (quit_nick IS NOT NULL AND deleted_at IS NULL) "
              "OR (game_report LIKE 'reportado%' AND tournament_match_id "
              "NOT IN (SELECT id FROM tournament_matches WHERE status = 'reported' AND interrupted = 1 "
              "AND reported_by_entry_id IS NULL)))")
@@ -1076,12 +1077,15 @@ def _card_players(db, match):
 
 def _pending_score(db, match):
     """O placar de quando a partida parou, ainda sem confirmação, é o do jogo de
-    campeonato dela? (Excluindo o card, ele é retirado.)"""
+    campeonato dela? (Excluindo o card, ele é retirado, e quem saiu não perde
+    mais o triplo de XP.) A interrompida (um confirma) ou a abandonada pelo
+    menu do jogo (quit_nick: os dois confirmam, ou o prazo)."""
     if not match["tournament_match_id"] or not (match["game_report"] or "").startswith("reportado"):
         return False
     game = db.execute("SELECT status, interrupted, reported_by_entry_id FROM tournament_matches WHERE id = ?",
                       (match["tournament_match_id"],)).fetchone()
-    return bool(game and game["status"] == "reported" and game["interrupted"] and not game["reported_by_entry_id"])
+    return bool(game and game["status"] == "reported" and (game["interrupted"] or match["quit_nick"])
+                and not game["reported_by_entry_id"])
 
 
 def undeletable(db, match):
@@ -1095,9 +1099,6 @@ def undeletable(db, match):
         return "Só o card de uma partida interrompida pode ser excluído."
     if match["friendly_id"]:
         return "O card de um jogo de amistoso não pode ser excluído: ele faz parte do placar do amistoso."
-    if match["tournament_match_id"] and match["quit_nick"]:
-        return ("%s saiu desta partida pelo menu do jogo: vale o placar de quando ela parou, e só o organizador "
-                "do campeonato pode mudar o resultado." % match["quit_nick"])
     if match["tournament_match_id"]:
         if (match["game_report"] or "").startswith("reportado") and not _pending_score(db, match):
             game = db.execute("SELECT status FROM tournament_matches WHERE id = ?",
@@ -1147,15 +1148,20 @@ def _deletion(db, match):
     if not people or all(pid != me for pid, _ in people) or undeletable(db, match):
         return None
     done = deletion_requests(db, match["id"])
-    score = None
+    score = quitter = None
     if _pending_score(db, match):
         score = "%d x %d" % (match["local_goals"] or 0, match["visita_goals"] or 0)
+        # Quem saiu (pela queda ou pelo menu do jogo) deixa de perder o triplo de XP.
+        row = db.execute("SELECT p.username FROM tournament_matches m JOIN players p ON p.id = m.quitter_id "
+                         "WHERE m.id = ?", (match["tournament_match_id"],)).fetchone()
+        quitter = row["username"] if row else None
     free_score = None if match["tournament_match_id"] else db.execute(
         "SELECT 1 FROM free_match_scores WHERE live_match_id = ?", (match["id"],)).fetchone()
     return {"state": "done" if me in done else "pending",
             "by": [name for pid, name in people if pid in done and pid != me],
             "waiting": _names_text(name for pid, name in people if pid not in done and pid != me),
-            "url": url_for("live.delete_card", live_id=match["id"]), "score": score, "free": bool(free_score)}
+            "url": url_for("live.delete_card", live_id=match["id"]), "score": score, "quitter": quitter,
+            "free": bool(free_score)}
 
 
 def deletable_cards(db, player_id):
@@ -1186,7 +1192,7 @@ def _delete_card(db, match):
     confirmação: _pending_score) e a partida livre some do perfil (free.py)."""
     from .tournament import reports
     if _pending_score(db, match):
-        reports.withdraw_interrupted(db, match["tournament_match_id"], DELETED_NOTE % match["id"])
+        reports.withdraw_game_report(db, match["tournament_match_id"], DELETED_NOTE % match["id"])
     db.execute("UPDATE live_matches SET deleted_at = ?, hidden = 1, game_report = ? WHERE id = ?",
                (now(), DELETED_OUTCOME, match["id"]))
 

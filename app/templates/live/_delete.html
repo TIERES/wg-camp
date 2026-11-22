@@ -16,7 +16,7 @@
   <p class="match-line"><span class="home">{{ a.name if a.known else a.people|map(attribute='name')|join(', ') }}</span><span class="score">{{ a.goals }} x {{ b.goals }}</span><span class="away">{{ b.name if b.known else b.people|map(attribute='name')|join(', ') }}</span></p>
   <p>{% if d.by %}<strong>{{ d.by|join(', ') }}</strong> já excluiu este card. {% endif %}{% if d.waiting %}Ele só sai do site quando {{ d.waiting }} excluir também: avisamos por e-mail que você excluiu.{% else %}Excluindo, ele sai do site.{% endif %}</p>
   <p class="muted">Use quando a partida parou logo (conexão ruim, desistiram): ela não vale nada e o card some do Ao vivo.</p>
-  {% if d.score %}<p class="muted">O placar de quando a partida parou ({{ d.score }}) deixa de valer no jogo do campeonato: o jogo volta a ficar sem placar, para vocês jogarem de novo.</p>{% endif %}
+  {% if d.score %}<p class="muted">O placar de quando a partida parou ({{ d.score }}) deixa de valer no jogo do campeonato: o jogo volta a ficar sem placar, para vocês jogarem de novo.{% if d.quitter %} E {{ d.quitter }}, que saiu da partida, não perde o triplo de XP.{% endif %}</p>{% endif %}
   {% if d.free %}<p class="muted">O placar final proposto para esta partida sai junto.</p>{% endif %}
 {% endcall %}
 {% endif %}

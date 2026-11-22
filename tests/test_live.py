@@ -1345,7 +1345,7 @@ class LiveMatchesTest(unittest.TestCase):
             db = get_db()
             self.assertIsNotNone(reports.deadline(db, match))  # o prazo normal de confirmação
             game = db.execute("SELECT * FROM live_matches WHERE id = ?", (rows[0]["id"],)).fetchone()
-            self.assertIn("só o organizador do campeonato pode mudar o resultado", undeletable(db, game))
+            self.assertIsNone(undeletable(db, game))  # os dois ainda podem excluir o card (e o placar sai)
             self.assertFalse(_can_reopen(db, game))  # o Reconectar não a reabre
         page =self.app.test_client().get("/torneios/liga-1/jogos/%d" % match["id"]).get_data(as_text=True)
         self.assertIn("TIERES saiu da partida no meio do jogo", page)
@@ -2310,6 +2310,60 @@ class LiveMatchesTest(unittest.TestCase):
         self.post(state(kickoff=90000, frame=95000, goals=(1, 1)))
         self.assertEqual(self.rows("SELECT tournament_match_id FROM live_matches WHERE kickoff_frame = 90000")[0][0],
                          match["id"])
+
+    def test_both_delete_the_card_of_a_game_left_from_the_menu(self):
+        """A abandonada pelo menu do jogo: com os dois excluindo o card (antes de
+        o placar valer), o placar de quando parou sai e quem saiu não perde o
+        triplo de XP - como na interrompida."""
+        self.make_league()  # mandante no campeonato = ANDERSHOW; no jogo o LOCAL é o TIERES (controle 1)
+        self.post(state(kickoff=1000, frame=5000, goals=(0, 2)))
+        self.post(self.quit_state(1, kickoff=1000, frame=5400, goals=(0, 2)))
+        self.stream([])
+        self.abandon(1000)
+        self.cards()
+        match = self.rows("SELECT * FROM tournament_matches")[0]
+        self.assertEqual((match["status"], match["interrupted"], match["quitter_id"]), ("reported", 0, self.tieres))
+        live_id = self.rows("SELECT id FROM live_matches")[0]["id"]
+        tieres, anders = self.player(self.tieres), self.player(self.anders)
+        html = self.cards(anders)
+        self.assertIn('data-dialog="excluir-%d"' % live_id, html)
+        self.assertIn("O placar de quando a partida parou (0 x 2) deixa de valer no jogo do campeonato: o jogo volta a "
+                      "ficar sem placar, para vocês jogarem de novo. E TIERES, que saiu da partida, não perde o "
+                      "triplo de XP.", html)
+        self.delete(tieres, live_id)
+        self.assertEqual(self.rows("SELECT status FROM tournament_matches")[0]["status"], "reported")  # falta um
+        self.delete(anders, live_id)
+        match = self.rows("SELECT * FROM tournament_matches")[0]
+        self.assertEqual((match["status"], match["quitter_id"], match["reported_at"]), ("scheduled", None, None))
+        clear = self.rows("SELECT * FROM match_reports ORDER BY id DESC LIMIT 1")[0]
+        self.assertEqual(clear["action"], "clear")
+        self.assertIn("Os jogadores excluíram o card da partida interrompida no Ao vivo (nº %d)" % live_id, clear["comment"])
+        # Jogam de novo: a partida nova vai para o mesmo jogo do campeonato.
+        self.post(state(kickoff=90000, frame=95000, goals=(1, 1)))
+        self.assertEqual(self.rows("SELECT tournament_match_id FROM live_matches WHERE kickoff_frame = 90000")[0][0],
+                         match["id"])
+
+    def test_confirmed_game_left_from_the_menu_cannot_be_deleted(self):
+        from app.tournament import reports, store
+        self.make_league()
+        self.post(state(kickoff=1000, frame=5000, goals=(0, 2)))
+        self.post(self.quit_state(1, kickoff=1000, frame=5400, goals=(0, 2)))
+        self.stream([])
+        self.abandon(1000)
+        self.cards()
+        match = self.rows("SELECT * FROM tournament_matches")[0]
+        with self.app.app_context():
+            db = get_db()
+            tournament = store.get_tournament(db, self.rows("SELECT id FROM tournaments")[0]["id"])
+            self.assertFalse(reports.confirm(db, tournament, match["id"], self.anders))  # falta o outro
+            self.assertTrue(reports.confirm(db, tournament, match["id"], self.tieres))
+            db.commit()
+        match = self.rows("SELECT * FROM tournament_matches")[0]
+        self.assertEqual((match["status"], match["quitter_id"]), ("confirmed", self.tieres))
+        live_id = self.rows("SELECT id FROM live_matches")[0]["id"]
+        self.assertNotIn("excluir-%d" % live_id, self.cards(self.player(self.anders)))
+        self.delete(self.player(self.tieres), live_id)
+        self.assertEqual(self.rows("SELECT COUNT(*) AS n FROM live_match_deletions")[0]["n"], 0)
 
     def test_cards_that_count_cannot_be_deleted(self):
         from app.tournament import free, reports, store
