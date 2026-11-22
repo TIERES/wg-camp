@@ -143,6 +143,51 @@ class ReplaysTest(unittest.TestCase):
         self.assertEqual(len(lines), 1)
         self.assertEqual(len(lines[0].split("\t")), 7)
 
+    def _replay(self, session_id, players, game="PCSX ReARMed: WE2002.chd", hours_ago=1, duration=1800):
+        with self.app.app_context():
+            at = (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).replace(microsecond=0).isoformat()
+            get_db().execute(
+                "INSERT INTO live_sessions (session_id, game_name, player_names, status, stored_name, started_at, "
+                "updated_at, ended_at, duration_seconds) VALUES (?, ?, ?, 'finished', 'x.krec', ?, ?, ?, ?)",
+                (session_id, game, players, at, at, at, duration))
+            get_db().commit()
+
+    def _listed(self, query):
+        text = self.client.get("/replays/list.txt?" + query).get_data(as_text=True)
+        return [line.split("\t")[0] for line in text.strip("\n").split("\n") if line]
+
+    def test_list_txt_with_players_brings_the_last_replays_between_them(self):
+        """O Reconectar: as 20 últimas partidas entre os jogadores da sala, no
+        jogo da sala, mesmo com muitas outras partidas do servidor depois."""
+        self._replay("old", "ANDERSHOW16, JohBorba", hours_ago=72)
+        self._replay("short", "ANDERSHOW16, JohBorba", hours_ago=50, duration=120)  # menos de 5 min
+        self._replay("iso", "ANDERSHOW16, JohBorba", game="PCSX ReARMed: Outro.bin", hours_ago=48)
+        self._replay("third", "ANDERSHOW16, JohBorba, TIERES", hours_ago=40)  # alguém a mais
+        self._replay("alone", "ANDERSHOW16, luiz", hours_ago=30)  # alguém a menos/outro
+        self._replay("case", "johborba, andershow16", hours_ago=24)
+        for i in range(30):
+            self._replay("n%d" % i, "outro, terceiro", hours_ago=i / 10)
+
+        query = "limit=20&players=ANDERSHOW16,JohBorba&game=PCSX%20ReARMed%3A%20WE2002.chd"
+        self.assertEqual(self._listed(query), ["case", "old"])
+        self.assertEqual(self._listed(query.replace("limit=20", "limit=1")), ["case"])
+        # Sem o jogo, todas as partidas entre os dois (de qualquer ISO).
+        self.assertEqual(self._listed("players=JohBorba,%20ANDERSHOW16"), ["case", "iso", "old"])
+        # Sem os jogadores: as mais novas do servidor, como antes (Replays Online, DLLs antigos).
+        self.assertEqual(self._listed("limit=20"), ["n%d" % i for i in range(20)])
+
+    def test_list_txt_players_with_accents_match_the_recording_header(self):
+        """O DLL manda os bytes da sala (Windows-1252) percent-encoded, os
+        mesmos do cabeçalho do .krec: "José" chega como Jos%E9."""
+        self.client.post("/spectate/ingest", data=build_header(player_slots=(b"Jos\xe9", b"guest")),
+                         headers={"X-Session-Id": "acc-1", "X-Sequence": "0"}, content_type="application/octet-stream")
+        with self.app.app_context():
+            get_db().execute("UPDATE live_sessions SET status = 'finished', duration_seconds = 600 "
+                             "WHERE session_id = 'acc-1'")
+            get_db().commit()
+        self.assertEqual(self._listed("players=Jos%E9,guest&game=Winning%20Eleven%202002"), ["acc-1"])
+        self.assertEqual(self._listed("players=Jose,guest"), [])
+
     def _state_blob(self, frame_index=1234, payload=b"fake-savestate-bytes"):
         return struct.pack("<I", frame_index) + payload
 

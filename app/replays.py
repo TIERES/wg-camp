@@ -1,5 +1,6 @@
 import re
 from pathlib import Path
+from urllib.parse import parse_qsl
 
 from flask import Blueprint, Response, abort, current_app, render_template, request, send_from_directory
 from werkzeug.utils import secure_filename
@@ -26,6 +27,43 @@ MAX_STATE_BYTES = 32 * 1024 * 1024
 def _download_name(entry):
     label = secure_filename(f"{entry['game_name']}_{entry['player_names']}") or entry["session_id"]
     return f"{label}.krec"
+
+
+def _header_query_arg(name):
+    """Um argumento da query como o DLL manda (os bytes da sala percent-encoded)
+    lido como latin-1 - a mesma decodificação dos nomes do cabeçalho do .krec
+    (spectate._decode_cstr), para os dois lados da comparação ficarem iguais
+    mesmo com acento (é o mesmo byte nos dois)."""
+    for key, value in parse_qsl(request.query_string.decode("ascii", "replace"), keep_blank_values=True,
+                                encoding="latin-1"):
+        if key == name:
+            return value
+    return ""
+
+
+def _nickset(names):
+    return {nick.strip().casefold() for nick in names if nick and nick.strip()}
+
+
+def _replays_between(db, players, game, limit):
+    """O Reconectar: os `limit` replays mais novos entre exatamente estes
+    jogadores (ninguém a mais, ninguém a menos) e, com `game`, neste jogo."""
+    from .listing import like
+    sql = "SELECT * FROM live_sessions WHERE status = 'finished' AND duration_seconds >= ?"
+    params = [MIN_REPLAY_DURATION_SECONDS]
+    if game:
+        sql += " AND game_name = ?"
+        params.append(game)
+    for nick in players:
+        sql += " AND player_names LIKE ? ESCAPE '\\'"
+        params.append(like(nick))
+    found = []
+    for row in db.execute(sql + " ORDER BY started_at DESC", params):
+        if _nickset((row["player_names"] or "").split(",")) == players:
+            found.append(row)
+            if len(found) == limit:
+                break
+    return found
 
 
 @bp.get("/")
@@ -69,6 +107,11 @@ def list_txt():
     Tabs/newlines in free-text fields (game_name/player_names, both
     attacker-controlled via the recording header) are stripped so a row
     always has exactly 7 tab-separated fields.
+
+    Com `players` (os nicks da sala separados por vírgula) e `game` (o jogo
+    da sala) - o Reconectar: só as partidas entre exatamente esses jogadores,
+    nesse jogo, as `limit` mais novas (_replays_between). Sem `players`, as
+    mais novas do servidor (Replays Online e os DLLs antigos).
     """
     try:
         limit = int(request.args.get("limit", DEFAULT_LIST_LIMIT))
@@ -78,13 +121,17 @@ def list_txt():
 
     db = get_db()
     reap_stale_live_sessions(db)
-    rows = db.execute(
-        """SELECT * FROM live_sessions
-           WHERE status = 'finished' AND duration_seconds >= ?
-           ORDER BY started_at DESC
-           LIMIT ?""",
-        (MIN_REPLAY_DURATION_SECONDS, limit),
-    ).fetchall()
+    players = _nickset(_header_query_arg("players").split(","))
+    if players:
+        rows = _replays_between(db, players, _header_query_arg("game"), limit)
+    else:
+        rows = db.execute(
+            """SELECT * FROM live_sessions
+               WHERE status = 'finished' AND duration_seconds >= ?
+               ORDER BY started_at DESC
+               LIMIT ?""",
+            (MIN_REPLAY_DURATION_SECONDS, limit),
+        ).fetchall()
 
     def clean(value):
         return (value or "").replace("\t", " ").replace("\r", " ").replace("\n", " ")
