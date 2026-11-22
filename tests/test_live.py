@@ -736,9 +736,15 @@ class LiveMatchesTest(unittest.TestCase):
         self.post(dict_state(state(v=2, period=4, clock=0, goals=(3, 3), pens=(5, 4), frame=30900),
                              pk=[[1, 1, 1, 0, 1, 1], [0, 1, 1, 1, 1]]))
         self.assertEqual(balls(), ["goal"] * 3 + ["miss"] + ["goal"] * 2 + ["miss"] + ["goal"] * 4 + ["todo"])
+        self.assertNotIn("live-win", self.cards())  # ao vivo: ainda sem vencedor
         self.post(dict_state(state(v=2, period=4, clock=0, goals=(3, 3), pens=(5, 4), frame=31000, final=True),
                              pk=[[1, 1, 1, 0, 1, 1], [0, 1, 1, 1, 1, 0]]))
         self.assertEqual(balls(), ["goal"] * 3 + ["miss"] + ["goal"] * 2 + ["miss"] + ["goal"] * 4 + ["miss"])
+        # Encerrada: o placar de quem ganhou a disputa (LOCAL, 5 x 4) em verde, o grande e o dos pênaltis.
+        html = self.cards()
+        self.assertIn('<span class="live-win">3</span><span class="live-x">', html)
+        self.assertIn('<span class="live-pens-n live-win">5</span>', html)
+        self.assertIn('<span class="live-pens-n">4</span>', html)
 
     def test_second_leg_card_shows_the_aggregate(self):
         from app.tournament import store

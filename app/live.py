@@ -1119,7 +1119,8 @@ def card(db, match):
             "iso": {"name": catalog["name"], "image": image_url("torneio", catalog["image"]), "url": iso_url}
             if catalog else None,
             "target": tournament_url or iso_url,
-            "pens": state.get("pens"), "pk": _shootout_view(state), "teams": views, "stats": _stats_view(match, teams),
+            "pens": state.get("pens"), "pk": _shootout_view(state), "pk_winner": _shootout_winner(match, state),
+            "teams": views, "stats": _stats_view(match, teams),
             "tie": _tie_view(db, match, sides, (views[0]["goals"], views[1]["goals"])),
             "final": _free_final(db, match)}
 
@@ -1134,6 +1135,16 @@ def _shootout_view(state):
         return None
     slots = max(PK_ROUND, len(pk[0]), len(pk[1]))
     return [["goal" if kick else "miss" for kick in side] + ["todo"] * (slots - len(side)) for side in pk]
+
+
+def _shootout_winner(match, state):
+    """Partida encerrada nos pênaltis: o lado que ganhou a disputa (0 LOCAL, 1
+    VISITA) - o placar dele vai em verde no card. None sem vencedor (ao vivo,
+    interrompida ou sem disputa)."""
+    pens = state.get("pens")
+    if match["status"] != "finished" or not pens or pens[0] == pens[1]:
+        return None
+    return 0 if pens[0] > pens[1] else 1
 
 
 def _people(db, nicks):

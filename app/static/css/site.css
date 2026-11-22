@@ -706,6 +706,7 @@ button.small,.button.small { padding:.4rem .7rem; font-size:.78rem }
    vermelha a perdida, branca a que falta; a que acabou de mudar cresce e volta (live-cards.js). */
 .live-pens { display:flex; align-items:baseline; gap:.45rem; margin-top:-.1rem; font-size:.8rem; font-weight:600; color:#d1d5db; white-space:nowrap }
 .live-pens-n { font-size:1.05rem; color:#f3f4f6 }
+.live-goals .live-win, .live-pens-n.live-win, .live-card.ended .live-goals .live-win { color:#34d399 }
 .live-pk { display:flex; gap:1.5rem }
 .live-pk-side { display:grid; grid-template-columns:repeat(3,15px); gap:3px 4px; align-content:start }
 .live-pk-ball { width:15px; height:15px; color:#e5e7eb; fill:none; stroke:currentColor; stroke-width:1.8; transform-origin:center }
