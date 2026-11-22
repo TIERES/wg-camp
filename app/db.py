@@ -701,7 +701,7 @@ def ensure_live_columns(database):
         database.execute("ALTER TABLE live_matches ADD COLUMN verified INTEGER NOT NULL DEFAULT 0")
     for column, kind in (("reconnecting_at", "TEXT"), ("reconnect_session", "TEXT"), ("resume_key", "TEXT"),
                          ("frame_base", "INTEGER NOT NULL DEFAULT 0"), ("hidden", "INTEGER NOT NULL DEFAULT 0"),
-                         ("deleted_at", "TEXT")):
+                         ("deleted_at", "TEXT"), ("quit_nick", "TEXT")):
         if columns and column not in columns:
             database.execute(f"ALTER TABLE live_matches ADD COLUMN {column} {kind}")
 
@@ -926,7 +926,11 @@ CREATE TABLE IF NOT EXISTS live_matches (
     -- Partida interrompida que todos os jogadores excluíram (live.delete_card,
     -- live_match_deletions): o card sai do site (hidden = 1) e ela não vale
     -- mais (partida livre, placar de quando parou no jogo de campeonato).
-    deleted_at TEXT
+    deleted_at TEXT,
+    -- Quem saiu da partida pelo menu de pausa do jogo (EXIT MATCH - o fork
+    -- manda "quit", o controle de quem abriu a pausa): vale o placar de quando
+    -- ele saiu, sem "jogar de novo" nem Reconectar, e ele perde o triplo de XP.
+    quit_nick TEXT
 );
 CREATE INDEX IF NOT EXISTS live_matches_status_idx ON live_matches(status, updated_at);
 CREATE INDEX IF NOT EXISTS live_matches_tournament_match_idx ON live_matches(tournament_match_id);

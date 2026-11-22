@@ -127,9 +127,18 @@ def withdraw_interrupted(db, match_id, comment):
     """Retira o placar de quando a partida parou, ainda sem confirmação (os
     dois reconectaram ou jogaram de novo): o jogo volta a ficar sem placar, e
     a partida que eles jogam agora é que vai reportar. True se retirou."""
-    match = db.execute("SELECT status, interrupted, reported_by_entry_id FROM tournament_matches WHERE id = ?",
+    match = db.execute("SELECT interrupted FROM tournament_matches WHERE id = ?", (match_id,)).fetchone()
+    return bool(match and match["interrupted"]) and withdraw_game_report(db, match_id, comment)
+
+
+def withdraw_game_report(db, match_id, comment):
+    """Retira o placar lido do jogo ainda sem confirmação (os jogadores
+    excluíram o card da partida no Ao vivo - a interrompida ou a abandonada
+    pelo menu do jogo): o jogo volta a ficar sem placar, e quem saiu não perde
+    mais o triplo de XP. True se retirou."""
+    match = db.execute("SELECT status, reported_by_entry_id FROM tournament_matches WHERE id = ?",
                        (match_id,)).fetchone()
-    if match is None or match["status"] != "reported" or not match["interrupted"] or match["reported_by_entry_id"]:
+    if match is None or match["status"] != "reported" or match["reported_by_entry_id"]:
         return False
     db.execute("UPDATE tournament_matches SET status = 'scheduled', reported_at = NULL, quitter_id = NULL, "
                "interrupted = 0, updated_at = ? WHERE id = ?", (now(), match_id))

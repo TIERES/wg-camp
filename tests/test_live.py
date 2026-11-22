@@ -1303,6 +1303,90 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertEqual([r["game_report"] for r in self.rows("SELECT game_report FROM live_matches ORDER BY id")],
                          ["jogaram de novo: vale a partida seguinte", "reportado"])
 
+    def quit_state(self, pad, **changes):
+        """O último estado do fork quando a partida foi abandonada pelo menu de
+        pausa do jogo (EXIT MATCH): "quit" = o controle (1-4) de quem abriu a pausa."""
+        return dict_state(state(**changes), quit=pad)
+
+    def test_left_from_the_game_menu_keeps_the_score_and_marks_who_left(self):
+        from app.live import _can_reopen, undeletable
+        from app.tournament import reports
+        self.make_league()  # mandante no campeonato = ANDERSHOW; no jogo o LOCAL é o TIERES (controle 1)
+        self.post(state(kickoff=1000, frame=5000, goals=(0, 2)))
+        # ANDERSHOW ganhava 2 x 0; o TIERES (controle 1) abriu a pausa e saiu da partida pelo menu.
+        self.post(self.quit_state(1, kickoff=1000, frame=5400, goals=(0, 2)))
+        live = self.rows("SELECT * FROM live_matches")[0]
+        self.assertEqual((live["status"], live["quit_nick"]), ("abandoned", "TIERES"))  # na hora, sem esperar o sinal
+        self.assertIsNotNone(live["finished_at"])
+        html = self.cards()
+        self.assertIn(">Interrompido<", html)
+        self.assertIn(">TIERES saiu pelo menu</span>", html)
+        # A revanche logo em seguida (o TIERES ganha) não fica com o jogo do campeonato...
+        self.post(state(kickoff=3000, frame=9000, goals=(3, 0)))
+        rows = self.rows("SELECT id, status, tournament_match_id FROM live_matches ORDER BY id")
+        self.assertIsNotNone(rows[0]["tournament_match_id"])
+        self.assertIsNone(rows[1]["tournament_match_id"])  # (o único jogo entre os dois é o da abandonada)
+        self.stream([])  # a transmissão da sessão, sem queda do Kaillera
+        self.abandon(1000)  # (passou o minuto de espera)
+        self.cards()
+        # ... e o placar de quando ela parou vira o reporte, como um jogo terminado: os dois
+        # confirmam (ou o prazo), sem "jogar de novo" nem Reconectar, e o TIERES perde o triplo de XP.
+        match = self.rows("SELECT * FROM tournament_matches")[0]
+        report = self.last_report()
+        self.assertEqual((match["status"], match["interrupted"], match["quitter_id"], report["home_goals"],
+                          report["away_goals"]), ("reported", 0, self.tieres, 2, 0))
+        self.assertIn("Partida abandonada pelo menu do jogo no RetroArch TIERES (Ao vivo nº %d)" % rows[0]["id"],
+                      report["comment"])
+        self.assertIn("TIERES saiu da partida pelo menu do jogo: perde o triplo de XP se este placar valer.",
+                      report["comment"])
+        self.assertEqual(self.rows("SELECT game_report FROM live_matches WHERE id = ?", rows[0]["id"])[0]["game_report"],
+                         "reportado; TIERES saiu da partida pelo menu do jogo")
+        with self.app.app_context():
+            db = get_db()
+            self.assertIsNotNone(reports.deadline(db, match))  # o prazo normal de confirmação
+            game = db.execute("SELECT * FROM live_matches WHERE id = ?", (rows[0]["id"],)).fetchone()
+            self.assertIsNone(undeletable(db, game))  # os dois ainda podem excluir o card (e o placar sai)
+            self.assertFalse(_can_reopen(db, game))  # o Reconectar não a reabre
+        page =self.app.test_client().get("/torneios/liga-1/jogos/%d" % match["id"]).get_data(as_text=True)
+        self.assertIn("TIERES saiu da partida no meio do jogo", page)
+
+    def test_left_from_the_game_menu_by_the_second_pad(self):
+        self.make_league()
+        # Na sala o ANDERSHOW é o 1P: o controle 2 (quem abriu a pausa) é o TIERES.
+        self.post(self.quit_state(2, kickoff=1000, frame=5400, goals=(1, 1), pads=(1, 0)), players="ANDERSHOW,TIERES")
+        self.assertEqual(self.rows("SELECT quit_nick FROM live_matches")[0]["quit_nick"], "TIERES")
+
+    def test_old_fork_without_quit_still_plays_again(self):
+        # Sem "quit" (fork antigo, ou saiu sem o menu): continua a regra da interrompida.
+        self.make_league()
+        self.post(state(kickoff=1000, frame=5000, goals=(0, 2)))
+        self.post(state(kickoff=3000, frame=9000, goals=(1, 0)))
+        rows = self.rows("SELECT status, tournament_match_id, quit_nick FROM live_matches ORDER BY id")
+        self.assertEqual([r["status"] for r in rows], ["abandoned", "live"])
+        self.assertEqual(rows[0]["tournament_match_id"], rows[1]["tournament_match_id"])
+        self.assertIsNone(rows[0]["quit_nick"])
+
+    def test_friendly_game_left_from_the_game_menu_marks_who_left(self):
+        with self.app.app_context():
+            db = get_db()
+            fid = db.execute("INSERT INTO friendly_matches (home_id, away_id, status, created_at, updated_at) "
+                             "VALUES (?, ?, 'accepted', ?, ?)", (self.tieres, self.anders, now(), now())).lastrowid
+            db.commit()
+        # 1º jogo: o ANDERSHOW (controle 2) saiu pelo menu perdendo de 1 x 0; o 2º foi até o fim.
+        self.post(state(kickoff=1000, goals=(1, 0)))
+        self.post(self.quit_state(2, kickoff=1000, frame=21000, goals=(1, 0)))
+        self.abandon(1000)
+        self.play(40000, (0, 3))
+        self.end_session()
+        self.cards()
+        row = self.rows("SELECT * FROM friendly_matches WHERE id = ?", fid)[0]
+        self.assertEqual((row["status"], row["home_goals"], row["away_goals"], row["quitter_id"]),
+                         ("reported", 1, 3, self.anders))
+        games = self.rows("SELECT number, quit FROM friendly_games WHERE friendly_id = ? ORDER BY number", fid)
+        self.assertEqual([(g["number"], g["quit"]) for g in games], [(1, 1), (2, 0)])  # só no jogo de que ele saiu
+        self.assertEqual({r["game_report"] for r in self.rows("SELECT game_report FROM live_matches")},
+                         {"reportado (soma de 2 jogos); ANDERSHOW saiu de um jogo pelo menu do jogo"})
+
     def test_manual_report_clears_who_left(self):
         from app.tournament import reports, store
         self.make_league()
@@ -2226,6 +2310,60 @@ class LiveMatchesTest(unittest.TestCase):
         self.post(state(kickoff=90000, frame=95000, goals=(1, 1)))
         self.assertEqual(self.rows("SELECT tournament_match_id FROM live_matches WHERE kickoff_frame = 90000")[0][0],
                          match["id"])
+
+    def test_both_delete_the_card_of_a_game_left_from_the_menu(self):
+        """A abandonada pelo menu do jogo: com os dois excluindo o card (antes de
+        o placar valer), o placar de quando parou sai e quem saiu não perde o
+        triplo de XP - como na interrompida."""
+        self.make_league()  # mandante no campeonato = ANDERSHOW; no jogo o LOCAL é o TIERES (controle 1)
+        self.post(state(kickoff=1000, frame=5000, goals=(0, 2)))
+        self.post(self.quit_state(1, kickoff=1000, frame=5400, goals=(0, 2)))
+        self.stream([])
+        self.abandon(1000)
+        self.cards()
+        match = self.rows("SELECT * FROM tournament_matches")[0]
+        self.assertEqual((match["status"], match["interrupted"], match["quitter_id"]), ("reported", 0, self.tieres))
+        live_id = self.rows("SELECT id FROM live_matches")[0]["id"]
+        tieres, anders = self.player(self.tieres), self.player(self.anders)
+        html = self.cards(anders)
+        self.assertIn('data-dialog="excluir-%d"' % live_id, html)
+        self.assertIn("O placar de quando a partida parou (0 x 2) deixa de valer no jogo do campeonato: o jogo volta a "
+                      "ficar sem placar, para vocês jogarem de novo. E TIERES, que saiu da partida, não perde o "
+                      "triplo de XP.", html)
+        self.delete(tieres, live_id)
+        self.assertEqual(self.rows("SELECT status FROM tournament_matches")[0]["status"], "reported")  # falta um
+        self.delete(anders, live_id)
+        match = self.rows("SELECT * FROM tournament_matches")[0]
+        self.assertEqual((match["status"], match["quitter_id"], match["reported_at"]), ("scheduled", None, None))
+        clear = self.rows("SELECT * FROM match_reports ORDER BY id DESC LIMIT 1")[0]
+        self.assertEqual(clear["action"], "clear")
+        self.assertIn("Os jogadores excluíram o card da partida interrompida no Ao vivo (nº %d)" % live_id, clear["comment"])
+        # Jogam de novo: a partida nova vai para o mesmo jogo do campeonato.
+        self.post(state(kickoff=90000, frame=95000, goals=(1, 1)))
+        self.assertEqual(self.rows("SELECT tournament_match_id FROM live_matches WHERE kickoff_frame = 90000")[0][0],
+                         match["id"])
+
+    def test_confirmed_game_left_from_the_menu_cannot_be_deleted(self):
+        from app.tournament import reports, store
+        self.make_league()
+        self.post(state(kickoff=1000, frame=5000, goals=(0, 2)))
+        self.post(self.quit_state(1, kickoff=1000, frame=5400, goals=(0, 2)))
+        self.stream([])
+        self.abandon(1000)
+        self.cards()
+        match = self.rows("SELECT * FROM tournament_matches")[0]
+        with self.app.app_context():
+            db = get_db()
+            tournament = store.get_tournament(db, self.rows("SELECT id FROM tournaments")[0]["id"])
+            self.assertFalse(reports.confirm(db, tournament, match["id"], self.anders))  # falta o outro
+            self.assertTrue(reports.confirm(db, tournament, match["id"], self.tieres))
+            db.commit()
+        match = self.rows("SELECT * FROM tournament_matches")[0]
+        self.assertEqual((match["status"], match["quitter_id"]), ("confirmed", self.tieres))
+        live_id = self.rows("SELECT id FROM live_matches")[0]["id"]
+        self.assertNotIn("excluir-%d" % live_id, self.cards(self.player(self.anders)))
+        self.delete(self.player(self.tieres), live_id)
+        self.assertEqual(self.rows("SELECT COUNT(*) AS n FROM live_match_deletions")[0]["n"], 0)
 
     def test_cards_that_count_cannot_be_deleted(self):
         from app.tournament import free, reports, store

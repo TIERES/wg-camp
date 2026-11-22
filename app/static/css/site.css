@@ -682,8 +682,8 @@ button.small,.button.small { padding:.4rem .7rem; font-size:.78rem }
 .live-act.danger { background:#f87171; color:#2a0b0b } .live-act.danger:hover { background:#fca5a5 }
 @media (max-width:560px) { .live-actions { flex-direction:column; align-items:stretch } .live-act { flex:none; max-width:none; padding:.6rem .8rem; font-size:.875rem } }
 /* Selos embaixo do status: oculto/excluído (cinza, só o administrador vê), quem já confirmou o
-   placar (verde) e quem já excluiu o card (vermelho). */
-.live-deleted-by,.live-confirmed-by,.live-hidden-badge { background:#b91c1c; color:#fff; font-size:.7rem; padding:.05rem .45rem; border-radius:4px; max-width:14rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+   placar (verde), quem já excluiu o card e quem saiu pelo menu do jogo (vermelho). */
+.live-deleted-by,.live-confirmed-by,.live-hidden-badge,.live-quit-badge { background:#b91c1c; color:#fff; font-size:.7rem; padding:.05rem .45rem; border-radius:4px; max-width:14rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
 .live-confirmed-by { background:#15803d } .live-hidden-badge { background:#4b5563; color:#f3f4f6 }
 /* Celular: o card sem as imagens do jogo base e da ISO/campeonato (fica o nome). */
 @media (max-width:560px) { .live-card .live-logos { display:none } }
