@@ -25,13 +25,16 @@
     {# "Reconectando" (o Reconectar do Kaillera, até o host liberar os controles): verde e com
        o risco animado como o tempo de jogo ao vivo, sem o "Ao vivo" em cima. #}
     <span class="live-status">
-      {% if c.status == 'live' and not c.stale and not c.reconnecting %}<span class="live-badge">Ao vivo</span>{% endif %}
+      {# Antes do pontapé ("Aguardando o início/reinício da partida" - a tela de configuração da
+         partida ou o "Repeat" no RetroArch TIERES): sem o "Ao vivo" e sem o risco animado. #}
+      {% if c.status == 'live' and not c.stale and not c.reconnecting and not c.waiting %}<span class="live-badge">Ao vivo</span>{% endif %}
       <span class="live-clock{% if c.status == 'live' and not c.stale and not c.interval %} on{% endif %}">{{ c.clock }}</span>
       {# Selos embaixo do status: em cinza, o card que só o administrador vê (oculto por ele ou
          excluído pelos jogadores - live.hide); um por jogador em verde, quem já confirmou o placar
          (jogo de campeonato ou amistoso - live._confirmation), e em vermelho, na partida
          interrompida, quem já excluiu o card (ele sai do site quando todos excluírem). #}
-      {% if c.deleted %}<span class="badge live-hidden-badge" title="Os jogadores excluíram este card: só o administrador vê">Excluído</span>
+      {% if c.discarded %}<span class="badge live-hidden-badge" title="A partida não chegou a valer (saíram antes do pontapé ou com menos de 2 minutos e 0x0): só o administrador vê">Descartado</span>
+      {% elif c.deleted %}<span class="badge live-hidden-badge" title="Os jogadores excluíram este card: só o administrador vê">Excluído</span>
       {% elif c.hidden %}<span class="badge live-hidden-badge" title="Só o administrador vê este card">Oculto</span>{% endif %}
       {% for name in (c.confirm.confirmed_by if c.confirm else []) %}<span class="badge live-confirmed-by" title="{{ name }} confirmou o placar desta partida">{{ name }} confirmou</span>{% endfor %}
       {% if c.quit %}<span class="badge live-quit-badge" title="{{ c.quit }} saiu da partida pelo menu do jogo: vale o placar de quando ela parou">{{ c.quit }} saiu pelo menu</span>{% endif %}
@@ -50,7 +53,7 @@
         {%- elif pl.id %}{{ avatar(pl.id, pl.name) }}<small>{{ pl.name }}</small>
         {%- else %}<small>{{ pl.name }}</small>{% endif %}</span>{% endfor %}</div>
     </div>
-    {% if loop.first %}<div class="live-mid"><div class="live-goals"><span>{{ a.goals }}</span><span class="live-x">×</span><span>{{ b.goals }}</span></div>
+    {% if loop.first %}<div class="live-mid"><div class="live-goals">{% if c.waiting %}<span class="live-x">×</span>{% else %}<span>{{ a.goals }}</span><span class="live-x">×</span><span>{{ b.goals }}</span>{% endif %}</div>
       {% if c.pens %}<div class="live-pens" title="Disputa de pênaltis">Pênaltis {{ c.pens[0] }} × {{ c.pens[1] }}</div>{% endif %}</div>{% endif %}
     {% endfor %}
   </div>

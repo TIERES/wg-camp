@@ -334,3 +334,60 @@ class BroadcasterTest(unittest.TestCase):
             from app.broadcaster import settings
             self.assertEqual(settings(), {"auto": False, "privacy": "public", "version": "0.14"})
         self.assertIn('<span class="badge">Conectado</span>', admin.get("/admin/transmissoes").get_data(as_text=True))
+
+    # --- O card que começa na tela de configuração (fork novo) ---------------------
+
+    wait_state = base.LiveMatchesTest.wait_state
+    played_state = base.LiveMatchesTest.played_state
+    left = base.LiveMatchesTest.left
+
+    def upload_checkpoint(self, card, body=b"\x01\x00\x00\x00\x40\x00\x00\x00STATE", sid="sess1"):
+        """O PC do host sobe o state save do começo do card (a DLL: n02_stream_upload_checkpoint)."""
+        return self.app.test_client().post("/spectate/%s/checkpoint?card=%d" % (sid, card), data=body,
+                                           headers={"X-Api-Key": base.KEY})
+
+    def test_card_from_the_settings_screen_starts_from_the_hosts_savestate(self):
+        self.make_tournament()
+        self.session()
+        self.post(self.wait_state(setup=900))
+        # A transmissão começa no "Aguardando" - mas o state save do começo do card ainda subindo: espera.
+        self.assertEqual(self.poll()[1]["jobs"], [])
+        self.assertEqual(self.broadcast()[0]["status"], "queued")
+        self.assertEqual(self.upload_checkpoint(900).status_code, 204)
+        job = self.poll()[1]["jobs"][0]
+        self.assertEqual((job["action"], job["start_frame"], job["checkpoint"]), ("start", 900, 900))
+        bid = job["id"]
+        self.poll([{"id": bid, "state": "live"}])
+        # Voltaram ao "Aguardando o reinício" (saíram com 0x0 no 1º minuto): a transmissão segue.
+        self.post(self.played_state(setup=900, kickoff=1000, frame=5000, goals=(0, 0)))
+        self.post(self.wait_state(setup=900, waiting=2, frame=6000))
+        self.assertEqual(self.poll([{"id": bid, "state": "live"}])[1]["jobs"], [])
+        # Saíram da sala antes de a partida valer: o card é descartado e a live acaba com "interrompida".
+        self.left(self.wait_state(setup=900, waiting=2, frame=7000))
+        stop = self.poll([{"id": bid, "state": "live"}])[1]["jobs"]
+        self.assertEqual((stop[0]["action"], stop[0]["ending"]), ("stop", "interrompida"))
+
+    def test_savestate_that_does_not_arrive_falls_back_to_fast_forward(self):
+        self.make_tournament()
+        self.session()
+        self.post(self.wait_state(setup=900))
+        with self.app.app_context():
+            get_db().execute("UPDATE live_matches SET started_at = ?", (_ago(2),))
+            get_db().commit()
+        job = self.poll()[1]["jobs"][0]
+        self.assertEqual((job["start_frame"], job["checkpoint"]), (900, 0))
+
+    def test_checkpoint_upload_and_download(self):
+        self.session()
+        client = self.app.test_client()
+        self.assertEqual(client.get("/spectate/sess1/checkpoint?card=900", headers={"X-Api-Key": base.KEY}).status_code, 404)
+        self.assertEqual(self.upload_checkpoint(900, body=b"\x01\x00\x00\x00\x40\x00\x00\x00ABC").status_code, 204)
+        self.assertEqual(self.upload_checkpoint(5000, body=b"\x02\x00\x00\x00\x50\x00\x00\x00DEF").status_code, 204)
+        self.app.config["SERVE_DOWNLOADS_LOCALLY"] = True
+        reply = client.get("/spectate/sess1/checkpoint?card=900", headers={"X-Api-Key": base.KEY})
+        data = reply.data
+        reply.close()  # (no Windows, o arquivo aberto não deixa apagar a pasta do teste)
+        self.assertEqual(data,b"\x01\x00\x00\x00\x40\x00\x00\x00ABC")  # cada card o seu
+        self.assertEqual(client.get("/spectate/sess1/checkpoint?card=x", headers={"X-Api-Key": base.KEY}).status_code, 400)
+        self.assertEqual(client.post("/spectate/sess1/checkpoint?card=900", data=b"1234").status_code, 401)
+        self.assertEqual(self.upload_checkpoint(900, sid="nao-existe").status_code, 404)

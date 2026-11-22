@@ -1,6 +1,7 @@
 import os
 import re
 import secrets
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import parse_qsl
@@ -448,9 +449,78 @@ def download_state(session_id):
     if not (_live_states_dir() / state_name).exists():
         abort(404)
 
+    return _send_state(state_name)
+
+
+def _send_state(state_name):
     if current_app.config["SERVE_DOWNLOADS_LOCALLY"]:
         return send_from_directory(str(_live_states_dir()), state_name, as_attachment=True, download_name=state_name)
     response = current_app.response_class()
     response.headers["X-Accel-Redirect"] = f"/_protected_live_states/{state_name}"
     response.headers["Content-Disposition"] = f'attachment; filename="{state_name}"'
     return response
+
+
+# O state do começo de um card do Ao vivo (a tela de configuração da partida,
+# o "Repeat" ou o pontapé - live_matches.setup_frame): o broadcaster começa a
+# transmissão dele carregando-o, sem avançar a sessão desde o quadro 0. Cada
+# card tem o seu (o "Ir ao vivo!" não o substitui); só servem enquanto a
+# partida passa - os de mais de CHECKPOINT_KEEP são apagados a cada novo.
+CHECKPOINT_KEEP = timedelta(days=1)
+
+
+def checkpoint_name(session_id, card):
+    return f"{session_id}.c{int(card)}.state"
+
+
+def has_checkpoint(session_id, card):
+    """O host já mandou o state do começo deste card?"""
+    return bool(session_id and card) and (_live_states_dir() / checkpoint_name(session_id, card)).is_file()
+
+
+def _card_arg():
+    card = request.args.get("card", "")
+    if not card.isdigit() or not 0 < int(card) < 2 ** 31:
+        abort(400, "Card inválido.")
+    return int(card)
+
+
+@bp.post("/<session_id>/checkpoint")
+def upload_checkpoint(session_id):
+    """O host (o PC que manda o Stream ao vivo) sobe o state do começo de um
+    card: ?card=<o quadro do começo>, corpo como o de POST .../state abaixo
+    ([quadro:int32][offset no stream:int32][retro_serialize()]) - do mesmo
+    ponto do quadro, então o offset é exato."""
+    _check_api_key()
+    _known_session_or_404(session_id)
+    card = _card_arg()
+    if request.content_length and request.content_length > MAX_STATE_BYTES:
+        abort(413)
+    body = request.get_data(cache=False)
+    if len(body) > MAX_STATE_BYTES:
+        abort(413)
+    if len(body) < 8:
+        abort(400, "Corpo do state save inválido.")
+    folder = _live_states_dir()
+    limit = time.time() - CHECKPOINT_KEEP.total_seconds()
+    for old in folder.glob("*.c*.state"):
+        try:
+            if old.stat().st_mtime < limit:
+                old.unlink()
+        except OSError:
+            pass
+    temp = folder / (checkpoint_name(session_id, card) + ".part")
+    temp.write_bytes(body)
+    temp.replace(folder / checkpoint_name(session_id, card))
+    return ("", 204)
+
+
+@bp.get("/<session_id>/checkpoint")
+def download_checkpoint(session_id):
+    """O broadcaster baixa o state do começo do card (?card=) - 404 enquanto o host não mandou."""
+    _check_api_key()
+    _known_session_or_404(session_id)
+    card = _card_arg()
+    if not has_checkpoint(session_id, card):
+        abort(404)
+    return _send_state(checkpoint_name(session_id, card))

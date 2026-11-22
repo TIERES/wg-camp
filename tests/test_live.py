@@ -2406,5 +2406,153 @@ class LiveMatchesTest(unittest.TestCase):
         self.delete(tieres, championship)
         self.assertEqual(self.rows("SELECT COUNT(*) AS n FROM live_match_deletions")[0]["n"], 0)
 
+    # --- Fork novo: o card começa antes do pontapé (Walter, 2026-11-22) ---------------
+
+    def wait_state(self, setup=900, waiting=1, frame=1200, **changes):
+        """O card "Aguardando" do fork novo: aberto na tela de configuração da
+        partida (ou no "Repeat") - os times escolhidos, sem placar."""
+        return dict_state(state(kickoff=0, frame=frame, clock=0, goals=(0, 0), v=2, **changes), setup=setup, waiting=waiting)
+
+    def played_state(self, setup=900, whistle=1900, **changes):
+        """Um estado da partida do card que começou em `setup`, com o apito em `whistle`."""
+        changes.setdefault("v", 2)
+        return dict_state(state(**changes), setup=setup, whistle=whistle)
+
+    def left(self, st, reporter="TIERES"):
+        """A DLL avisa que o jogador saiu da sala (Leave, fechou o Kaillera) com o último estado."""
+        return self.app.test_client().post("/api/live/match", headers={"Authorization": "Bearer " + self.token(reporter)},
+                                           data={"state": st, "players": "TIERES,ANDERSHOW", "reporter": reporter, "left": "1",
+                                                 "room": "PCSX ReARMed: Euro vs Copa America 2004.bin"})
+
+    def test_card_waits_for_the_kickoff_and_keeps_its_key(self):
+        self.post(self.wait_state())
+        row = self.rows("SELECT * FROM live_matches")[0]
+        self.assertEqual((row["status"], row["waiting"], row["setup_frame"], row["kickoff_frame"]), ("live", 1, 900, 0))
+        html = self.cards()
+        self.assertIn(">Aguardando o início da partida<", html)
+        self.assertNotIn('class="live-badge"', html)  # sem o "Ao vivo" ...
+        self.assertNotIn("live-clock on", html)  # ... nem o risco animado
+        self.assertIn("GRECIA", html)
+        # A partida começa: o mesmo card (a chave é o começo dele), agora ao vivo.
+        self.post(self.played_state(kickoff=1000, frame=20000, goals=(1, 0)))
+        rows = self.rows("SELECT * FROM live_matches")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]["waiting"], rows[0]["kickoff_frame"], rows[0]["whistle_frame"]), (0, 1000, 1900))
+        html = self.cards()
+        self.assertNotIn("Aguardando", html)
+        self.assertIn('class="live-badge"', html)
+
+    def test_restart_within_two_minutes_waits_again_on_the_same_card(self):
+        self.post(self.wait_state())
+        self.post(self.played_state(kickoff=1000, frame=5000, goals=(0, 0)))
+        # Saíram pelo menu com 1 min de jogo e 0x0: o fork devolve o card ao "Aguardando".
+        self.post(self.wait_state(waiting=2, frame=6000))
+        row = self.rows("SELECT * FROM live_matches")[0]
+        self.assertEqual((row["status"], row["waiting"], row["whistle_frame"]), ("live", 2, 0))
+        self.assertIn(">Aguardando o reinício da partida<", self.cards())
+        # O pontapé seguinte continua o mesmo card.
+        self.post(self.played_state(kickoff=8000, whistle=8800, frame=30000, goals=(2, 1)))
+        rows = self.rows("SELECT * FROM live_matches")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]["status"], rows[0]["waiting"], rows[0]["kickoff_frame"], rows[0]["local_goals"]),
+                         ("live", 0, 8000, 2))
+
+    def assert_discarded(self):
+        row = self.rows("SELECT * FROM live_matches")[0]
+        self.assertEqual((row["status"], row["hidden"], row["waiting"]), ("abandoned", 1, 0))
+        self.assertTrue(row["game_report"].startswith("descartada"))
+        self.assertIsNotNone(row["deleted_at"])
+        self.assertIsNone(row["tournament_match_id"])
+        self.assertNotIn("live-card", self.cards())  # sai do site ...
+        self.assertIn(">Descartado<", self.cards(self.admin()))  # ... e o administrador vê
+
+    def test_leaving_the_room_before_the_kickoff_discards_the_card(self):
+        self.post(self.wait_state())
+        self.assertEqual(self.left(self.wait_state(frame=3000)).status_code, 200)
+        self.assert_discarded()
+        # O outro PC ainda mandando o card: fica descartado.
+        self.post(self.wait_state(frame=3300), reporter="ANDERSHOW")
+        self.assert_discarded()
+
+    def test_leaving_in_the_first_two_minutes_at_0x0_discards_the_card(self):
+        self.post(self.wait_state())
+        self.post(self.played_state(kickoff=1000, frame=1900 + 7000, goals=(0, 0)))
+        self.left(self.played_state(kickoff=1000, frame=1900 + 7100, goals=(0, 0)))
+        self.assert_discarded()
+
+    def test_leaving_after_two_minutes_or_with_a_goal_interrupts_the_match(self):
+        for frame, goals in ((1900 + 7300, (0, 0)), (1900 + 3000, (1, 0))):
+            with self.app.app_context():
+                get_db().execute("DELETE FROM live_matches")
+                get_db().commit()
+            self.post(self.wait_state())
+            self.post(self.played_state(kickoff=1000, frame=frame, goals=goals))
+            self.left(self.played_state(kickoff=1000, frame=frame + 30, goals=goals))
+            row = self.rows("SELECT * FROM live_matches")[0]
+            self.assertEqual((row["status"], row["hidden"], row["game_report"]), ("abandoned", 0, None), (frame, goals))
+            self.assertIn(">Interrompido<", self.cards())
+
+    def test_old_fork_left_early_still_interrupts(self):
+        self.post(state(kickoff=1000, frame=2000, goals=(0, 0)))  # sem "setup": a regra de antes
+        self.left(state(kickoff=1000, frame=2030, goals=(0, 0)))
+        row = self.rows("SELECT * FROM live_matches")[0]
+        self.assertEqual((row["status"], row["hidden"]), ("abandoned", 0))
+
+    def test_cancelled_waiting_card_is_discarded(self):
+        self.post(self.wait_state())
+        self.post(dict_state(self.wait_state(frame=60000), cancel=1))
+        self.assert_discarded()
+
+    def test_silent_waiting_card_is_discarded(self):
+        self.post(self.wait_state())
+        old = (datetime.now(timezone.utc) - timedelta(minutes=6)).isoformat(timespec="seconds")
+        with self.app.app_context():
+            get_db().execute("UPDATE live_matches SET updated_at = ?", (old,))
+            get_db().commit()
+        self.cards()  # (o reap)
+        self.assert_discarded()
+
+    def test_new_card_discards_the_waiting_one_and_interrupts_the_played_one(self):
+        self.post(self.wait_state(setup=900))
+        self.post(self.wait_state(setup=5000, frame=5100))  # outro card dos dois (o anterior nem começou)
+        rows = self.rows("SELECT * FROM live_matches ORDER BY id")
+        self.assertTrue(rows[0]["game_report"].startswith("descartada"))
+        self.assertEqual((rows[1]["status"], rows[1]["waiting"]), ("live", 1))
+        self.post(self.played_state(setup=5000, whistle=6000, kickoff=5900, frame=20000, goals=(1, 1)))
+        self.post(self.wait_state(setup=30000, frame=30100))  # o fim não veio: interrompida
+        rows = self.rows("SELECT * FROM live_matches ORDER BY id")
+        self.assertEqual([(r["status"], r["hidden"]) for r in rows], [("abandoned", 1), ("abandoned", 0), ("live", 0)])
+
+    def test_waiting_card_keeps_the_interrupted_score_until_it_counts(self):
+        live_id, match_id = self.interrupted_league_game()
+        self.assertEqual(self.rows("SELECT status FROM tournament_matches WHERE id = ?", match_id)[0]["status"], "reported")
+        # Voltaram: o card novo espera o pontapé no mesmo jogo do campeonato, sem tirar o placar ...
+        self.post(self.wait_state(setup=40000, frame=40100))
+        new = self.rows("SELECT * FROM live_matches WHERE id != ?", live_id)[0]
+        self.assertEqual(new["tournament_match_id"], match_id)
+        self.assertEqual(self.rows("SELECT status FROM tournament_matches WHERE id = ?", match_id)[0]["status"], "reported")
+        # ... nem no primeiro minuto da partida, 0x0 ...
+        self.post(self.played_state(setup=40000, whistle=41000, kickoff=40800, frame=44000, goals=(0, 0)))
+        self.assertEqual(self.rows("SELECT status FROM tournament_matches WHERE id = ?", match_id)[0]["status"], "reported")
+        # ... e, saindo da sala, o card some e o placar de quando a anterior parou continua.
+        self.left(self.played_state(setup=40000, whistle=41000, kickoff=40800, frame=44100, goals=(0, 0)))
+        self.assertTrue(self.rows("SELECT game_report FROM live_matches WHERE id = ?", new["id"])[0]["game_report"]
+                        .startswith("descartada"))
+        self.assertEqual(self.rows("SELECT status FROM tournament_matches WHERE id = ?", match_id)[0]["status"], "reported")
+        # Jogaram de novo, de verdade (gol): agora a partida nova é que vale.
+        self.post(self.wait_state(setup=60000, frame=60100))
+        self.post(self.played_state(setup=60000, whistle=61000, kickoff=60800, frame=63000, goals=(1, 0)))
+        self.assertEqual(self.rows("SELECT status FROM tournament_matches WHERE id = ?", match_id)[0]["status"], "scheduled")
+        self.assertEqual(self.rows("SELECT game_report FROM live_matches WHERE id = ?", live_id)[0]["game_report"],
+                         "jogaram de novo: vale a partida seguinte")
+
+    def test_waiting_card_has_no_provisional_score_in_the_table(self):
+        self.make_league()
+        self.post(self.wait_state())
+        tournament_id = self.rows("SELECT id FROM tournaments")[0]["id"]
+        with self.app.test_request_context():
+            from app import live
+            self.assertFalse(live.tournament_live(get_db(), tournament_id)["matches"])
+
 if __name__ == "__main__":
     unittest.main()

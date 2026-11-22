@@ -15,11 +15,16 @@ descrição daqui (_meta): as credenciais do Google ficam só no PC. Ele devolve
 link, que aparece no card ("Assistir no YouTube").
 
 O card (live_matches) e o Stream ao vivo (live_sessions) são coisas diferentes:
-a sessão começa nos menus, o card no pontapé inicial. A transmissão assiste a
-sessão dos mesmos jogadores e do mesmo jogo (find_session) e começa LEAD_FRAMES
-antes do pontapé (o RetroArch avança rápido até lá, sem transmitir). Quando o
-card termina, ela para TAIL_FRAMES depois do último quadro informado - a sala
-pode seguir com outra partida.
+a sessão começa nos menus, o card na tela de configuração da partida, no
+"Repeat" (a revanche) ou - jogos sem elas, fork antigo - no pontapé inicial. A
+transmissão assiste a sessão dos mesmos jogadores e do mesmo jogo
+(find_session) e começa no começo do card (live_matches.setup_frame): o PC do
+host manda o state save dali (spectate.upload_checkpoint) e o RetroArch do
+broadcaster o carrega, sem avançar a sessão desde o quadro 0 (o agente recebe
+"checkpoint"). Sem ele (fork antigo, ou não chegou em CHECKPOINT_WAIT), avança
+rápido até lá, sem transmitir - LEAD_FRAMES antes do pontapé, no card sem
+começo. Quando o card termina, ela para TAIL_FRAMES depois do último quadro
+informado - a sala pode seguir com outra partida.
 
 Antes do jogo o agente põe no ar um vídeo de espera e, no fim, um de
 encerramento: "fim" quando a partida terminou no apito, "interrompida" quando
@@ -45,6 +50,9 @@ LEAD_FRAMES = 10 * FPS        # a live começa 10 s antes do pontapé
 TAIL_FRAMES = 10 * FPS        # e acaba 10 s depois do último quadro informado (o placar final na tela)
 QUEUE_WINDOW = timedelta(hours=3)  # card de campeonato mais antigo que isso não entra na fila sozinho
 LOST = timedelta(minutes=2)   # dada a um agente que não falou dela por esse tempo: perdida
+# O state do começo do card ainda não chegou (alguns MB subindo do PC do host):
+# a transmissão espera por ele esse tempo, contado do card; depois avança rápido.
+CHECKPOINT_WAIT = timedelta(seconds=90)
 ONLINE = timedelta(seconds=60)
 POLL_SECONDS = 5
 TITLE_MAX = 100
@@ -174,11 +182,24 @@ def find_session(db, match):
 
 
 def start_frame(match):
-    """LEAD_FRAMES antes do pontapé; a partida retomada pelo Reconectar (os
-    quadros recomeçam na sessão nova) desde o começo."""
+    """O começo do card (fork novo: a tela de configuração, o "Repeat" ou o
+    pontapé - o state save do host é dali) ou LEAD_FRAMES antes do pontapé; a
+    partida retomada pelo Reconectar (os quadros recomeçam na sessão nova)
+    desde o começo."""
     if match["frame_base"] or match["reconnect_session"]:
         return 0
+    if match["setup_frame"]:
+        return match["setup_frame"]
     return max(0, (match["kickoff_frame"] or 0) - LEAD_FRAMES)
+
+
+def _checkpoint(broadcast, match):
+    """O state save do começo do card que o broadcaster carrega (o quadro dele,
+    a chave em /spectate/<sessão>/checkpoint) - 0: avança rápido até start_frame."""
+    from .spectate import has_checkpoint
+    if broadcast["replay"] or not match["setup_frame"] or broadcast["start_frame"] != match["setup_frame"]:
+        return 0
+    return match["setup_frame"] if has_checkpoint(broadcast["session_id"], match["setup_frame"]) else 0
 
 
 def _ending(match):
@@ -305,6 +326,8 @@ def _start_job(db, broadcast, match):
     title, description, card_url = _meta(db, match, bool(broadcast["replay"]))
     return {"id": broadcast["id"], "action": "start", "session_id": broadcast["session_id"], "room": match["room"],
             "game_file": _file_name(match), "start_frame": broadcast["start_frame"],
+            # O state save do começo do card (0 = sem ele: avançar até start_frame).
+            "checkpoint": _checkpoint(broadcast, match),
             # Partida que terminou antes de o agente confirmar: o quadro do fim já vem aqui
             # (a reprise não tem: vai até o fim do replay).
             "stop_frame": broadcast["stop_frame"], "replay": bool(broadcast["replay"]), "title": title,
@@ -437,6 +460,8 @@ def _actions(db, agent, reported):
                 db.execute("UPDATE broadcasts SET status = 'failed', error = 'O replay da partida não está mais no "
                            "servidor.', ended_at = ?, updated_at = ? WHERE id = ?", (now(), now(), row["id"]))
             continue  # ao vivo: o Stream ao vivo da partida ainda não chegou - fica na fila
+        if not row["replay"] and _waits_checkpoint(match, session_id):
+            continue  # o state save do começo do card ainda subindo do PC do host
         stamp = now()
         # Reprise: o .krec inteiro, do quadro 0 ao fim (sem avanço rápido nem corte - Walter, 2026-11-18).
         db.execute("UPDATE broadcasts SET status = 'assigned', agent_id = ?, session_id = ?, start_frame = ?, "
@@ -445,6 +470,14 @@ def _actions(db, agent, reported):
         actions.append(_start_job(db, db.execute("SELECT * FROM broadcasts WHERE id = ?", (row["id"],)).fetchone(), match))
         free -= 1
     return actions
+
+
+def _waits_checkpoint(match, session_id):
+    """Card com começo (fork novo) cujo state save ainda não chegou, há menos de CHECKPOINT_WAIT."""
+    from .spectate import has_checkpoint
+    if not match["setup_frame"] or match["frame_base"] or match["reconnect_session"]:
+        return False
+    return not has_checkpoint(session_id, match["setup_frame"]) and match["started_at"] >= _ago(CHECKPOINT_WAIT)
 
 
 @api_bp.post("/poll")

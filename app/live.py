@@ -153,12 +153,62 @@ def parse_state(raw):
         # Saiu pelo menu de pausa do jogo (EXIT MATCH): o controle (1-4) de quem
         # abriu a pausa - o último estado da partida; 0 = não.
         "quit": _int(data.get("quit") or 0, 0, MAX_PLAYERS),
+        # Fork novo: o começo do card (tela de configuração da partida, "Repeat"
+        # ou pontapé - a chave dele), a espera pelo pontapé (1 início, 2 reinício),
+        # o quadro do apito inicial e "cancel" (esperou demais: descartado).
+        "setup": _int(data.get("setup") or 0, 0, 2 ** 31),
+        "waiting": _int(data.get("waiting") or 0, 0, 2),
+        "whistle": _int(data.get("whistle") or 0, 0, 2 ** 31),
+        "cancel": bool(data.get("cancel")),
     }
 
 
 def match_key(content, players, kickoff):
+    """A chave do card: o jogo, os jogadores e o começo dele - o quadro do
+    pontapé (fork antigo) ou o "setup" do fork novo (o mesmo do pontapé
+    quando o card começou nele)."""
     raw = "%s|%s|%d" % (content, ",".join(p.lower() for p in players), kickoff)
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()
+
+
+# Saíram da partida até 2 minutos (tempo real, 60 quadros/s) depois do apito
+# inicial, com 0x0: não é partida interrompida (Walter, 2026-11-22) - o fork
+# devolve o card ao "Aguardando o reinício da partida"; se saíram da sala (a
+# DLL avisa "left") ou o card ficou sem sinal, ele é descartado.
+EARLY_FRAMES = 2 * 60 * 60
+# Card esperando o pontapé sem sinal (o fork manda a cada 15 s): descartado.
+WAITING_GONE = timedelta(minutes=5)
+DISCARDED_PREFIX = "descartada"
+
+
+def is_early(state):
+    """O estado é de um card do fork novo que ainda não vale como partida:
+    esperando o pontapé ou com menos de EARLY_FRAMES desde o apito e 0x0."""
+    if not state.get("setup"):
+        return False  # fork antigo: a regra de antes
+    if state.get("waiting"):
+        return True
+    goals = [team.get("goals") or 0 for team in state.get("teams", [])[:2]]
+    if any(goals):
+        return False
+    whistle = state.get("whistle") or 0
+    return not whistle or (state.get("frame") or 0) - whistle < EARLY_FRAMES
+
+
+def discard(db, live_id, reason):
+    """O card que não valeu (is_early): sai do site e não vale nada - sem
+    campeonato nem amistoso, sem placar, sem quem saiu. Fica para o
+    administrador (oculto, "Descartado"). A transmissão dele, se houver, para
+    com o vídeo "interrompida" (broadcaster: status != live)."""
+    stamp = now()
+    db.execute("UPDATE live_matches SET status = 'abandoned', waiting = 0, hidden = 1, deleted_at = COALESCE(deleted_at, ?), "
+               "game_report = ?, tournament_match_id = NULL, friendly_id = NULL, reconnecting_at = NULL, "
+               "finished_at = COALESCE(finished_at, ?), updated_at = ? WHERE id = ?",
+               (stamp, "%s: %s" % (DISCARDED_PREFIX, reason), stamp, stamp, live_id))
+
+
+def _discarded(match):
+    return (match["game_report"] or "").startswith(DISCARDED_PREFIX)
 
 
 @api_bp.post("/match")
@@ -186,13 +236,18 @@ def api_match():
     # Partida retomada pelo Reconectar: resume = o session_id do replay escolhido pelo host.
     live_id = ingest(db, state, players, reporter, player["id"] if player else None,
                      _text(request.form.get("room"), 120), is_test, _text(request.form.get("resume"), 64))
-    if request.form.get("left") == "1":
+    if request.form.get("left") == "1" and live_id:
         # A DLL avisa que o jogador saiu (Leave, fechou o Kaillera) com o último
         # estado que mandou: a partida que ainda corria fica interrompida na
         # hora (sem esperar o tempo sem sinal) - um fim que chegue depois, do PC
-        # de quem ficou, ainda a encerra.
-        db.execute("UPDATE live_matches SET status = 'abandoned', finished_at = COALESCE(finished_at, ?), "
-                   "updated_at = ? WHERE id = ? AND status = 'live'", (now(), now(), live_id))
+        # de quem ficou, ainda a encerra. A que ainda não valia (esperando o
+        # pontapé, ou menos de 2 minutos com 0x0 - is_early) é descartada.
+        row = db.execute("SELECT status, state_json FROM live_matches WHERE id = ?", (live_id,)).fetchone()
+        if row is not None and row["status"] == "live" and is_early(_match_state(row)):
+            discard(db, live_id, "saíram antes de a partida valer")
+        else:
+            db.execute("UPDATE live_matches SET status = 'abandoned', waiting = 0, finished_at = COALESCE(finished_at, ?), "
+                       "updated_at = ? WHERE id = ? AND status = 'live'", (now(), now(), live_id))
     db.commit()
     return _reply(ok=1, id=live_id)
 
@@ -211,30 +266,46 @@ def ingest(db, state, players, reporter, player_id, room, is_test=False, resume=
             return _store_report(db, row["id"], state, reporter, player_id, row["frame_base"])
     # Retomada sem partida para continuar: um card novo, com a chave da sessão (o
     # pontapé vem 0 - sem ela, todas as retomadas dos dois nesta ISO teriam a mesma).
-    key = resume_key(state["content"], players, resume) if resume else match_key(state["content"], players, state["kickoff"])
+    # Fork novo: a chave é o começo do card ("setup" - a tela de configuração, o
+    # "Repeat" ou o pontapé), o mesmo do "Aguardando" ao fim.
+    start = state["setup"] or state["kickoff"]
+    key = resume_key(state["content"], players, resume) if resume else match_key(state["content"], players, start)
     row = db.execute("SELECT * FROM live_matches WHERE match_key = ?", (key,)).fetchone()
-    if row is None and not state["kickoff"]:
+    if row is None and not start:
         row = db.execute(
             "SELECT * FROM live_matches WHERE content_id = ? AND players_json = ? AND status = 'live' "
             "AND updated_at >= ? ORDER BY updated_at DESC LIMIT 1",
             (state["content"], json.dumps(players), _ago(JOIN_WINDOW))).fetchone()
+    if row is not None and _discarded(row):
+        return row["id"]  # descartado (o outro PC ainda mandando o card): fica como está
+    if state["cancel"]:
+        # O card esperou demais pelo pontapé (o fork desistiu dele).
+        if row is not None:
+            discard(db, row["id"], "esperou o pontapé inicial por muito tempo")
+            return row["id"]
+        return 0
     stamp = now()
-    if row is None and state["kickoff"]:
+    if row is None and start:
         # Partida nova dos mesmos jogadores e ISO: a anterior que ficou aberta foi
         # abandonada (WE4: saíram pelo menu de pausa; o fork não manda o fim dela;
-        # ou um saiu/caiu e voltaram a jogar - com 1P e 2P em qualquer ordem).
+        # ou um saiu/caiu e voltaram a jogar - com 1P e 2P em qualquer ordem). A que
+        # ainda não valia (esperando o pontapé, ou menos de 2 minutos com 0x0) é descartada.
         same = sorted(nick.casefold() for nick in players)
-        for old in db.execute("SELECT id, players_json FROM live_matches WHERE status = 'live' AND content_id = ? "
-                              "AND kickoff_frame != ?", (state["content"], state["kickoff"])).fetchall():
+        for old in db.execute("SELECT id, players_json, state_json FROM live_matches WHERE status = 'live' "
+                              "AND content_id = ? AND match_key != ?", (state["content"], key)).fetchall():
             if sorted(nick.casefold() for nick in json.loads(old["players_json"])) == same:
+                if is_early(_match_state(old)):
+                    discard(db, old["id"], "começaram outra partida antes de esta valer")
+                    continue
                 # (Também a que estava "Reconectando": em vez de retomar, começaram outra.)
-                db.execute("UPDATE live_matches SET status = 'abandoned', reconnecting_at = NULL, "
+                db.execute("UPDATE live_matches SET status = 'abandoned', reconnecting_at = NULL, waiting = 0, "
                            "finished_at = COALESCE(finished_at, ?) WHERE id = ?", (stamp, old["id"]))
     if row is None:
         live_id = db.execute(
-            "INSERT INTO live_matches (match_key, content_id, room, players_json, kickoff_frame, is_test, started_at, "
-            "updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (key, state["content"], room, json.dumps(players), state["kickoff"], int(is_test), stamp, stamp)).lastrowid
+            "INSERT INTO live_matches (match_key, content_id, room, players_json, kickoff_frame, setup_frame, is_test, "
+            "started_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (key, state["content"], room, json.dumps(players), state["kickoff"], state["setup"], int(is_test),
+             stamp, stamp)).lastrowid
     else:
         live_id = row["id"]
     return _store_report(db, live_id, state, reporter, player_id)
@@ -431,16 +502,23 @@ def refresh(db, live_id):
     quit_nick = match["quit_nick"] or (players[pad - 1] if 0 < pad <= len(players) else None)
     stopped = bool(quit_nick) or match["status"] == "abandoned"
     verified = 1 if match["is_test"] else int(_all_logged_in(db, players, reports))
+    # Fork novo: antes do pontapé o card espera (1 início, 2 reinício); o pontapé e o
+    # apito da partida que está valendo (o reinício traz outros).
+    waiting = 0 if finished or stopped else best.get("waiting") or 0
     # Um informe novo: a partida está rolando - a que estava "Reconectando" segue "Ao vivo".
     db.execute(
         "UPDATE live_matches SET status = ?, period = ?, clock_left = ?, half_frames = ?, local_slot = ?, visita_slot = ?, "
         "local_goals = ?, visita_goals = ?, state_json = ?, local_players_json = ?, visita_players_json = ?, "
         "reporters = ?, agreed = ?, verified = ?, updated_at = ?, finished_at = COALESCE(finished_at, ?), "
-        "reconnecting_at = NULL, quit_nick = ? WHERE id = ?",
+        "reconnecting_at = NULL, quit_nick = ?, waiting = ?, "
+        "kickoff_frame = CASE WHEN ? > 0 THEN ? ELSE kickoff_frame END, "
+        "setup_frame = CASE WHEN ? > 0 THEN ? ELSE setup_frame END, whistle_frame = ? WHERE id = ?",
         ("finished" if finished else ("abandoned" if stopped else "live"), best["period"], best["clock"], best["half"], best["teams"][0]["id"],
          best["teams"][1]["id"], best["teams"][0]["goals"], best["teams"][1]["goals"], json.dumps(best),
          json.dumps(local), json.dumps(visita), len(reports), int(len(finals) >= 2 and len(scores) == 1), verified,
-         now(), now() if finished or quit_nick else None, quit_nick, live_id))
+         now(), now() if finished or quit_nick else None, quit_nick, waiting,
+         best.get("kickoff") or 0, best.get("kickoff") or 0, best.get("setup") or 0, best.get("setup") or 0,
+         0 if waiting else best.get("whistle") or 0, live_id))
     for side, team in enumerate(best["teams"]):
         ram_name = team["name"] if NAME_RE.match(team["name"]) else ""
         db.execute("INSERT OR IGNORE INTO iso_team_slots (content_id, slot, updated_at) VALUES (?, ?, ?)",
@@ -452,6 +530,21 @@ def refresh(db, live_id):
     if (verified and match["tournament_match_id"] is None and match["friendly_id"] is None
             and len(local) == 1 and len(visita) == 1):
         detect_context(db, match, local[0], visita[0])
+        match = db.execute("SELECT * FROM live_matches WHERE id = ?", (live_id,)).fetchone()
+    if match["tournament_match_id"] and not match["is_test"] and match["status"] == "live" and not is_early(best):
+        _replace_interrupted(db, match)
+
+
+def _replace_interrupted(db, match):
+    """Jogaram de novo o jogo de campeonato com o placar de quando a partida
+    anterior parou ainda sem liberar: ele sai, e quem reporta é esta partida -
+    só quando ela vale (passou dos 2 minutos ou saiu gol: is_early), para um
+    card que só esperou o pontapé e foi descartado não levar o placar junto."""
+    from .tournament import reports
+    if reports.withdraw_interrupted(db, match["tournament_match_id"], REPLAYED_NOTE % match["id"]):
+        db.execute("UPDATE live_matches SET game_report = ? WHERE tournament_match_id = ? AND id != ? "
+                   "AND status = 'abandoned' AND game_report LIKE 'reportado%'",
+                   (REPLAYED_OUTCOME, match["tournament_match_id"], match["id"]))
 
 
 # --- Campeonato, amistoso ou partida livre ------------------------------------
@@ -516,13 +609,8 @@ def detect_context(db, match, local_nick, visita_nick):
         db.execute("UPDATE live_matches SET tournament_match_id = ? WHERE id = ?", (row["id"], match["id"]))
         if not match["is_test"]:
             learn_slots(db, match["id"])
-            # Jogaram de novo com o placar de quando a anterior parou ainda sem
-            # liberar: ele sai, e quem reporta é esta partida.
-            from .tournament import reports
-            if reports.withdraw_interrupted(db, row["id"], REPLAYED_NOTE % match["id"]):
-                db.execute("UPDATE live_matches SET game_report = ? WHERE tournament_match_id = ? AND id != ? "
-                           "AND status = 'abandoned' AND game_report LIKE 'reportado%'",
-                           (REPLAYED_OUTCOME, row["id"], match["id"]))
+            # (Jogaram de novo com o placar de quando a anterior parou ainda sem
+            # liberar: refresh -> _replace_interrupted, quando esta partida vale.)
 
 
 def _entry_team(db, match, nick):
@@ -571,7 +659,13 @@ CARDS_LIMIT = 10
 def reap(db):
     """Partidas sem informe há muito tempo: encerradas (se paradas no fim do
     2º tempo) ou abandonadas - a "Reconectando", contado do Reconectar (o
-    host não liberou os controles: volta a ser a interrompida)."""
+    host não liberou os controles: volta a ser a interrompida). As que ainda
+    não valiam (is_early: esperando o pontapé - sem sinal há WAITING_GONE -,
+    ou menos de 2 minutos com 0x0) são descartadas."""
+    for row in db.execute("SELECT id, waiting, state_json, updated_at FROM live_matches WHERE status = 'live' "
+                          "AND reconnecting_at IS NULL AND updated_at < ?", (_ago(WAITING_GONE),)).fetchall():
+        if is_early(_match_state(row)) and (row["waiting"] or row["updated_at"] < _ago(GONE)):
+            discard(db, row["id"], "ficou sem sinal antes de a partida valer")
     db.execute("UPDATE live_matches SET status = CASE WHEN period = 1 AND clock_left = 0 THEN 'finished' "
                "ELSE 'abandoned' END, finished_at = COALESCE(finished_at, updated_at), reconnecting_at = NULL "
                "WHERE status = 'live' AND updated_at < ? AND (reconnecting_at IS NULL OR reconnecting_at < ?)",
@@ -665,12 +759,18 @@ def _reconnecting(match):
     return match["status"] == "live" and bool(match["reconnecting_at"])
 
 
+# O card antes do pontapé (fork novo: a tela de configuração da partida ou o "Repeat").
+WAITING_LABELS = {1: "Aguardando o início da partida", 2: "Aguardando o reinício da partida"}
+
+
 def _clock_label(match):
     period, left, half = match["period"], match["clock_left"], match["half_frames"] or 18000
     if match["status"] != "live":
         return "Encerrado" if match["status"] == "finished" else "Interrompido"
     if _reconnecting(match):
         return "Reconectando"
+    if match["waiting"]:
+        return WAITING_LABELS.get(match["waiting"], WAITING_LABELS[1])
     if period >= 4:
         return "Pênaltis"
     if _interval(match):
@@ -979,10 +1079,13 @@ def card(db, match):
     from .broadcaster import card_view as broadcast_view
     return {"id": match["id"], "status": match["status"], "stale": stale, "is_test": match["is_test"],
             "reconnecting": reconnecting,
+            # Antes do pontapé ("Aguardando o início/reinício da partida"): sem placar nem o risco animado.
+            "waiting": bool(match["waiting"]),
             # Transmissão no YouTube (app/broadcaster.py): o link e, para o administrador, Transmitir/Parar.
             "broadcast": broadcast_view(db, match["id"]),
             "hidden": bool(match["hidden"]),  # ocultado pelo administrador (só ele vê, com "Mostrar")
             "deleted": bool(match["deleted_at"]),  # excluído pelos jogadores (só o administrador vê)
+            "discarded": _discarded(match),  # não chegou a valer (discard - só o administrador vê)
             # "Excluir" o card da partida interrompida, para quem a jogou (_deletion).
             "delete": _deletion(db, match),
             # Quem já excluiu (o selo embaixo do "Interrompido", para todos).
@@ -991,7 +1094,7 @@ def card(db, match):
             "quit": match["quit_nick"],
             "clock": "Sem sinal" if stale else _clock_label(match),
             # sem o risco animado (no "Reconectando", com ele)
-            "interval": not reconnecting and (_interval(match) or _period_over(match)),
+            "interval": not reconnecting and (bool(match["waiting"]) or _interval(match) or _period_over(match)),
             "context": label, "link": link,
             # Confirmar/Contestar no card, para quem joga a partida e ainda precisa responder.
             "confirm": _confirmation(db, match, views),
@@ -1428,7 +1531,8 @@ def tournament_live(db, tournament_id):
     link da partida no Ao vivo (aba Jogos).
     As simulações só aparecem para o admin, como nos cards."""
     rows = db.execute(
-        _TOURNAMENT_LIVE_SQL + "WHERE s.tournament_id = ? AND m.status = 'live' AND m.verified = 1 AND m.updated_at >= ?"
+        _TOURNAMENT_LIVE_SQL + "WHERE s.tournament_id = ? AND m.status = 'live' AND m.waiting = 0 AND m.verified = 1 "
+        "AND m.updated_at >= ?"
         + ("" if _is_admin() else " AND m.is_test = 0 AND m.hidden = 0"), (tournament_id, _ago(STALE))).fetchall()
     groups, entries, matches, match_urls, live_ids = set(), {}, {}, {}, {}
     for row in rows:

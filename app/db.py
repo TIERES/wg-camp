@@ -701,7 +701,9 @@ def ensure_live_columns(database):
         database.execute("ALTER TABLE live_matches ADD COLUMN verified INTEGER NOT NULL DEFAULT 0")
     for column, kind in (("reconnecting_at", "TEXT"), ("reconnect_session", "TEXT"), ("resume_key", "TEXT"),
                          ("frame_base", "INTEGER NOT NULL DEFAULT 0"), ("hidden", "INTEGER NOT NULL DEFAULT 0"),
-                         ("deleted_at", "TEXT"), ("quit_nick", "TEXT")):
+                         ("deleted_at", "TEXT"), ("quit_nick", "TEXT"),
+                         ("setup_frame", "INTEGER NOT NULL DEFAULT 0"), ("waiting", "INTEGER NOT NULL DEFAULT 0"),
+                         ("whistle_frame", "INTEGER NOT NULL DEFAULT 0")):
         if columns and column not in columns:
             database.execute(f"ALTER TABLE live_matches ADD COLUMN {column} {kind}")
 
@@ -930,7 +932,17 @@ CREATE TABLE IF NOT EXISTS live_matches (
     -- Quem saiu da partida pelo menu de pausa do jogo (EXIT MATCH - o fork
     -- manda "quit", o controle de quem abriu a pausa): vale o placar de quando
     -- ele saiu, sem "jogar de novo" nem Reconectar, e ele perde o triplo de XP.
-    quit_nick TEXT
+    quit_nick TEXT,
+    -- O começo do card (fork novo, "setup"): o quadro da tela de configuração da
+    -- partida, do "Repeat" ou do pontapé - a chave dele (match_key) e o ponto de
+    -- partida do broadcaster (o state save do host, /spectate/<id>/checkpoint).
+    setup_frame INTEGER NOT NULL DEFAULT 0,
+    -- Antes do pontapé: 1 = "Aguardando o início da partida", 2 = "Aguardando o
+    -- reinício da partida" (saíram com menos de 2 minutos e 0x0 - live.EARLY_FRAMES);
+    -- 0 = jogando (ou terminada).
+    waiting INTEGER NOT NULL DEFAULT 0,
+    -- O quadro do apito inicial (os 2 minutos contam dele); 0 = ainda não.
+    whistle_frame INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS live_matches_status_idx ON live_matches(status, updated_at);
 CREATE INDEX IF NOT EXISTS live_matches_tournament_match_idx ON live_matches(tournament_match_id);
