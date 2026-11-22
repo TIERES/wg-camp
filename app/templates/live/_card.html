@@ -54,7 +54,13 @@
         {%- else %}<small>{{ pl.name }}</small>{% endif %}</span>{% endfor %}</div>
     </div>
     {% if loop.first %}<div class="live-mid"><div class="live-goals">{% if c.waiting %}<span class="live-x">×</span>{% else %}<span>{{ a.goals }}</span><span class="live-x">×</span><span>{{ b.goals }}</span>{% endif %}</div>
-      {% if c.pens %}<div class="live-pens" title="Disputa de pênaltis">Pênaltis {{ c.pens[0] }} × {{ c.pens[1] }}</div>{% endif %}</div>{% endif %}
+      {# Disputa de pênaltis: o placar dela embaixo do de cada lado e, do fork novo
+         (live._shootout_view), uma bola por cobrança, até 3 por linha - verde a
+         convertida, vermelha a perdida, branca a que falta; a cor muda a cada
+         cobrança (live-cards.js destaca a que acabou de mudar). #}
+      {% if c.pens %}<div class="live-pens" title="Disputa de pênaltis: {{ c.pens[0] }} × {{ c.pens[1] }}"><span class="live-pens-n">{{ c.pens[0] }}</span><span class="live-pens-label">Pênaltis</span><span class="live-pens-n">{{ c.pens[1] }}</span></div>
+      {% if c.pk %}{% set kick_label = {'goal': 'convertida', 'miss': 'perdida', 'todo': 'ainda não cobrada'} %}
+      <div class="live-pk" data-live-pk="{{ c.id }}">{% for side in c.pk %}{% set team = c.teams[loop.index0].name %}<span class="live-pk-side">{% for kick in side %}<svg class="live-pk-ball {{ kick }}" viewBox="0 0 24 24" role="img" aria-label="{{ team }}: {{ loop.index }}ª cobrança {{ kick_label[kick] }}"><title>{{ team }}: {{ loop.index }}ª cobrança {{ kick_label[kick] }}</title><circle cx="12" cy="12" r="9"/><path class="live-pk-patch" d="m12 7 4 3-1.5 4.5h-5L8 10z"/><path d="M12 3v4M21 10h-5M3 10h5M7 20l2.5-5.5M17 20l-2.5-5.5"/></svg>{% endfor %}</span>{% endfor %}</div>{% endif %}{% endif %}</div>{% endif %}
     {% endfor %}
   </div>
   {% if c.tie %}

@@ -699,8 +699,22 @@ button.small,.button.small { padding:.4rem .7rem; font-size:.78rem }
 .live-crest { width:56px; height:42px; object-fit:contain; border-radius:4px }
 .live-goals { display:flex; align-items:center; gap:1.25rem; font-size:2.6rem; font-weight:600; line-height:1 } .live-x { font-size:1.4rem; color:#9ca3af }
 .live-mid { display:grid; justify-items:center; gap:.35rem }
-.live-tie { display:grid; justify-items:center; gap:.15rem; margin-top:-.35rem; color:#d1d5db; font-size:.9rem; text-align:center } .live-tie small { color:#fdba74 } .live-pens { font-size:.85rem; font-weight:600; color:#d1d5db; white-space:nowrap }
+.live-tie { display:grid; justify-items:center; gap:.15rem; margin-top:-.35rem; color:#d1d5db; font-size:.9rem; text-align:center } .live-tie small { color:#fdba74 }
 .live-card.ended .live-goals { color:#d1d5db }
+/* Disputa de pênaltis (live/_card.html): o placar dela embaixo do de cada lado e uma bola por
+   cobrança, 3 por linha, cada grupo centrado embaixo do número do seu lado. Verde a convertida,
+   vermelha a perdida, branca a que falta; a que acabou de mudar cresce e volta (live-cards.js). */
+.live-pens { display:flex; align-items:baseline; gap:.45rem; margin-top:-.1rem; font-size:.8rem; font-weight:600; color:#d1d5db; white-space:nowrap }
+.live-pens-n { font-size:1.05rem; color:#f3f4f6 }
+.live-pk { display:flex; gap:1.5rem }
+.live-pk-side { display:grid; grid-template-columns:repeat(3,15px); gap:3px 4px; align-content:start }
+.live-pk-ball { width:15px; height:15px; color:#e5e7eb; fill:none; stroke:currentColor; stroke-width:1.8; transform-origin:center }
+.live-pk-ball circle { fill:currentColor; fill-opacity:0 } .live-pk-ball .live-pk-patch { fill:currentColor }
+.live-pk-ball.goal { color:#34d399 } .live-pk-ball.miss { color:#f87171 }
+.live-pk-ball.goal circle, .live-pk-ball.miss circle { fill-opacity:.22 }
+.live-pk-ball.pk-new { animation:live-pk-pop .7s ease-out }
+@keyframes live-pk-pop { 0% { transform:scale(.5) } 55% { transform:scale(1.45) } 100% { transform:scale(1) } }
+@media (prefers-reduced-motion:reduce) { .live-pk-ball.pk-new { animation:none } }
 .live-scorers { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); gap:.6rem .75rem; align-items:start; border-top:1px solid #374151; padding-top:.75rem; font-size:.875rem }
 .live-scorers ul { list-style:none; margin:0; padding:0; display:grid; gap:.15rem; min-width:0 } .live-scorers ul.right { text-align:right }
 .live-ball { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:1.6; color:#d1d5db; margin-top:.1rem }
@@ -732,7 +746,8 @@ button.small,.button.small { padding:.4rem .7rem; font-size:.78rem }
 .live-actions .live-hide-form { display:contents }
 .badge.live-test { background:#92400e; color:#fde68a; font-size:.7rem; padding:.05rem .4rem; border-radius:4px; text-transform:uppercase }
 .live-admin { display:flex; flex-wrap:wrap; gap:.75rem; align-items:center }
-@media(max-width:420px){ .live-goals { font-size:2rem; gap:.75rem } .live-crest { width:44px; height:33px } }
+@media(max-width:420px){ .live-goals { font-size:2rem; gap:.75rem } .live-crest { width:44px; height:33px }
+  .live-pens { gap:.3rem } .live-pk { gap:.75rem } .live-pk-side { grid-template-columns:repeat(3,12px); gap:3px } .live-pk-ball { width:12px; height:12px } }
 .live-team.unknown strong { color:#9ca3af; font-weight:600; font-style:italic }
 .live-filters { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.75rem; margin:1rem 0 } .live-filters label { font-size:.875rem; color:#9ca3af; min-width:0 } .live-filters label input,.live-filters label select { width:100%; min-width:0 }
 .live-filters .user-picker > label { font-size:.875rem; color:#9ca3af }

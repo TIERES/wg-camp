@@ -67,6 +67,31 @@
       if (shown[faces.dataset.liveFaces]) showFace(faces, true, false);
     });
   }
+  // Disputa de pênaltis (live/_card.html [data-live-pk]): na recarga, a bola que mudou
+  // desde a anterior (a cobrança que acabou de sair: branca -> verde/vermelha) ganha o
+  // pk-new do site.css, que a faz crescer e voltar.
+  function kicks(root) {
+    var seen = {};
+    root.querySelectorAll('[data-live-pk]').forEach(function (pk) {
+      seen[pk.dataset.livePk] = Array.prototype.map.call(pk.querySelectorAll('.live-pk-side'), function (side) {
+        return Array.prototype.map.call(side.children, function (ball) { return ball.getAttribute('class'); });
+      });
+    });
+    return seen;
+  }
+  function markKicks(root, before) {
+    root.querySelectorAll('[data-live-pk]').forEach(function (pk) {
+      var old = before[pk.dataset.livePk];
+      if (!old) return;  // card novo na página: nada a destacar
+      pk.querySelectorAll('.live-pk-side').forEach(function (side, s) {
+        Array.prototype.forEach.call(side.children, function (ball, i) {
+          if (!/\btodo\b/.test(ball.getAttribute('class')) && (old[s] || [])[i] !== ball.getAttribute('class')) {
+            ball.classList.add('pk-new');
+          }
+        });
+      });
+    });
+  }
   document.addEventListener('click', function (e) {
     var button = e.target.closest('.live-toggle button');
     if (!button) return;
@@ -82,7 +107,9 @@
     function show(html) {
       var x = box.scrollLeft;  // no carrossel (_carousel.html), continua no mesmo card
       if (watcher) watcher.disconnect();  // os cards antigos saem da página
+      var before = kicks(box);
       box.innerHTML = html;
+      markKicks(box, before);
       restoreFaces(box);
       watcher = watchTeams(box);
       box.scrollLeft = x;

@@ -716,8 +716,29 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertIn("Prorrogação · 1º tempo", self.cards())
         self.post(state(period=4, clock=0, goals=(5, 5), pens=(2, 1), frame=30000))
         html = self.cards()
-        self.assertIn("Pênaltis 2 × 1", html)
+        self.assertIn('title="Disputa de pênaltis: 2 × 1"', html)
         self.assertIn('live-clock on">Pênaltis<', html)
+        self.assertNotIn("live-pk-ball", html)  # fork sem a lista de cobranças: só o placar
+
+    def test_shootout_kicks_as_balls_on_the_card(self):
+        def balls():
+            return re.findall(r'live-pk-ball (\w+)', self.cards())
+        # Fork novo: cada cobrança (1 convertida, 0 perdida); 5 bolas de cada lado, as que faltam brancas.
+        self.post(dict_state(state(v=2, period=4, clock=0, goals=(3, 3), pens=(2, 1), frame=30000), pk=[[1, 1], [0, 1]]))
+        self.assertEqual(balls(), ["goal", "goal"] + ["todo"] * 3 + ["miss", "goal"] + ["todo"] * 3)
+        html = self.cards()
+        self.assertIn("GRECIA: 1ª cobrança convertida", html)
+        self.assertIn("CROACIA: 1ª cobrança perdida", html)
+        # Lista que não serve (3 lados): só o placar.
+        self.post(dict_state(state(v=2, period=4, clock=0, goals=(3, 3), pens=(3, 1), frame=30100), pk=[[1, 1, 1], [0, 1], [1]]))
+        self.assertEqual(balls(), [])
+        # Alternadas: uma bola a mais por rodada, nos dois lados - a 6ª do VISITA, branca até a vez dele.
+        self.post(dict_state(state(v=2, period=4, clock=0, goals=(3, 3), pens=(5, 4), frame=30900),
+                             pk=[[1, 1, 1, 0, 1, 1], [0, 1, 1, 1, 1]]))
+        self.assertEqual(balls(), ["goal"] * 3 + ["miss"] + ["goal"] * 2 + ["miss"] + ["goal"] * 4 + ["todo"])
+        self.post(dict_state(state(v=2, period=4, clock=0, goals=(3, 3), pens=(5, 4), frame=31000, final=True),
+                             pk=[[1, 1, 1, 0, 1, 1], [0, 1, 1, 1, 1, 0]]))
+        self.assertEqual(balls(), ["goal"] * 3 + ["miss"] + ["goal"] * 2 + ["miss"] + ["goal"] * 4 + ["miss"])
 
     def test_second_leg_card_shows_the_aggregate(self):
         from app.tournament import store
@@ -756,7 +777,7 @@ class LiveMatchesTest(unittest.TestCase):
             db.execute("UPDATE live_matches SET finished_at = ?",
                        ((datetime.now(timezone.utc) - timedelta(minutes=2)).replace(microsecond=0).isoformat(),))
             db.commit()
-        self.assertIn("Pênaltis 4 × 3", self.cards())
+        self.assertIn('title="Disputa de pênaltis: 4 × 3"', self.cards())
         report = self.rows("SELECT * FROM match_reports WHERE match_id = ? AND action = 'report'", volta)[0]
         self.assertEqual((report["home_goals"], report["away_goals"], report["home_pens"], report["away_pens"]), (2, 2, 4, 3))
 

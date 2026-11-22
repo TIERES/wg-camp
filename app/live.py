@@ -55,6 +55,10 @@ RECENT = timedelta(hours=6)
 # partida ao vivo dos mesmos jogadores/ISO atualizada há menos que isso.
 JOIN_WINDOW = timedelta(minutes=10)
 MAX_PLAYERS = 8
+# Disputa de pênaltis no card: as cobranças de cada lado antes das alternadas
+# (as bolas brancas que esperam a vez) e o máximo guardado de um lado.
+PK_ROUND = 5
+PK_MAX = 30
 # Motor do jogo (executável que o fork lê na RAM) -> jogo base (game_titles.code):
 # o logo do jogo base mesmo com uma ISO que o site não conhece.
 ENGINE_GAMES = {"SLPM_870.56": "we2002", "SLPM_862.91": "we4", "SLPM_861.62": "we3fv",
@@ -133,6 +137,10 @@ def parse_state(raw):
         raise ValueError("teams")
     pens = data.get("pens")
     pens = [_int(pens[0], 0, 99), _int(pens[1], 0, 99)] if isinstance(pens, list) and len(pens) == 2 else None
+    # Cada cobrança da disputa, na ordem, por lado (fork novo): 1 convertida, 0 perdida.
+    pk = data.get("pk")
+    pk = ([[1 if kick else 0 for kick in side[:PK_MAX]] for side in pk]
+          if pens and isinstance(pk, list) and len(pk) == 2 and all(isinstance(side, list) for side in pk) else None)
     return {
         "v": version,
         "engine": _text(data.get("engine"), 16),
@@ -147,6 +155,7 @@ def parse_state(raw):
         "pads": [_int(p, 0, 255) for p in data.get("pads", [])[:MAX_PLAYERS]],
         # Disputa de pênaltis (LOCAL, VISITA): o período vem 4; prorrogação = 2 e 3.
         "pens": pens,
+        "pk": pk,
         # O juiz encerrou o tempo (fim do 1º/2º tempo, da prorrogação...): None
         # para o fork que não manda - aí o "Intervalo" vem do relógio em 0.
         "over": bool(data["over"]) if "over" in data else None,
@@ -1110,9 +1119,21 @@ def card(db, match):
             "iso": {"name": catalog["name"], "image": image_url("torneio", catalog["image"]), "url": iso_url}
             if catalog else None,
             "target": tournament_url or iso_url,
-            "pens": state.get("pens"), "teams": views, "stats": _stats_view(match, teams),
+            "pens": state.get("pens"), "pk": _shootout_view(state), "teams": views, "stats": _stats_view(match, teams),
             "tie": _tie_view(db, match, sides, (views[0]["goals"], views[1]["goals"])),
             "final": _free_final(db, match)}
+
+
+def _shootout_view(state):
+    """As bolas da disputa de pênaltis no card, por lado (LOCAL, VISITA):
+    "goal" (verde), "miss" (vermelha) e, as que ainda faltam, "todo" (branca)
+    - 5 de cada lado e, nas alternadas, uma a mais por rodada (os dois lados
+    com o mesmo número). Fork sem a lista de cobranças: None (só o placar)."""
+    pk = state.get("pk")
+    if not state.get("pens") or not pk:
+        return None
+    slots = max(PK_ROUND, len(pk[0]), len(pk[1]))
+    return [["goal" if kick else "miss" for kick in side] + ["todo"] * (slots - len(side)) for side in pk]
 
 
 def _people(db, nicks):
