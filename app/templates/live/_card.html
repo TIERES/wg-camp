@@ -34,6 +34,7 @@
       {% if c.deleted %}<span class="badge live-hidden-badge" title="Os jogadores excluíram este card: só o administrador vê">Excluído</span>
       {% elif c.hidden %}<span class="badge live-hidden-badge" title="Só o administrador vê este card">Oculto</span>{% endif %}
       {% for name in (c.confirm.confirmed_by if c.confirm else []) %}<span class="badge live-confirmed-by" title="{{ name }} confirmou o placar desta partida">{{ name }} confirmou</span>{% endfor %}
+      {% if c.quit %}<span class="badge live-quit-badge" title="{{ c.quit }} saiu da partida pelo menu do jogo: vale o placar de quando ela parou">{{ c.quit }} saiu pelo menu</span>{% endif %}
       {% for name in c.deleted_by %}<span class="badge live-deleted-by" title="{% if c.delete and c.delete.state == 'done' %}Você excluiu este card: ele sai do site quando {{ c.delete.waiting }} excluir também{% else %}O card sai do site quando todos os jogadores excluírem{% endif %}">{{ name }} excluiu</span>{% endfor %}
     </span>
   </div>
