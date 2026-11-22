@@ -58,6 +58,11 @@ http://:8080 {
     handle /spectate/*/state {
         import gunicorn
     }
+    # WE Camp broadcaster: o state do começo de cada card do Ao vivo (o PC do
+    # host sobe, o broadcaster baixa) - wg-camp spectate.upload_checkpoint.
+    handle /spectate/*/checkpoint {
+        import gunicorn
+    }
     handle /replays/* {
         import gunicorn
     }
