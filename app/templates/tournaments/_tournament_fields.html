@@ -1,6 +1,7 @@
 {# Os campos de criar campeonato (new.html) e de editar antes do início (manage.html, editing):
    form = os valores (o formulário enviado, ou tournaments._form_values). O JavaScript fica em
    _tournament_fields_js.html. #}
+{% from 'tournaments/_iso_picker.html' import iso_choice %}
   <div class="form-row">
     <label class="wide"><span>Nome do campeonato <span class="req">*</span></span><input name="name" maxlength="80" minlength="3" required value="{{ form.get('name', '') }}" placeholder="Copa WE Camp de Inverno"></label>
     <label><span>Início provável <span class="req">*</span></span><input type="date" name="starts_on" required value="{{ form.get('starts_on', '') }}"></label>
@@ -26,7 +27,16 @@
         <img src="{{ game_cover(g.code) }}" alt="" width="200" height="250"><span>{{ g.name }}{% if g.year %} <small class="muted">({{ g.year }})</small>{% endif %}</span></label>
     {% endfor %}
     </div>
-    {% if not editing %}<p class="muted">A ISO com o patch do campeonato é enviada depois de criar, em Gerenciar.</p>{% endif %}
+    {% if not editing %}
+    {% if iso_options %}
+    {# A ISO já enviada (as dos amistosos e as dos campeonatos - iso_catalog.tournament_options); a janela
+       fica fora do formulário (new.html). Escolher uma marca o jogo base dela (script em new.html). #}
+    <div class="t-iso-choice">
+      {{ iso_choice('iso-picker', label='ISO do campeonato (opcional)', value=iso_value) }}
+      <p class="muted">Escolha uma ISO já enviada (as dos amistosos e as dos outros campeonatos): o jogo base fica o dela. Ou, depois de criar, envie a ISO com o patch do campeonato em Gerenciar.</p>
+    </div>
+    {% else %}<p class="muted">A ISO com o patch do campeonato é enviada depois de criar, em Gerenciar.</p>{% endif %}
+    {% endif %}
   </fieldset>
   <div class="form-row">
     <label class="wide">Formato

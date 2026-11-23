@@ -1,0 +1,62 @@
+{# Escolher ISO: as ISOs já enviadas (iso_catalog.options - as do cadastro dos amistosos e
+   as dos campeonatos) num carrossel dentro de uma janela, com filtro. Usado no convite do
+   amistoso, ao criar campeonato e no Gerenciar (a ISO do campeonato).
+   - iso_choice: o campo do formulário (name="iso": "c:<cadastro>" ou "t:<campeonato>"), o
+     card da escolhida e os botões. picker = o id da janela; value = a já escolhida (o
+     formulário voltou com erro); param = parâmetro da URL que já abre com uma escolhida.
+   - iso_picker: a janela; o conteúdo do {% call %} vai no rodapé dela.
+   O JavaScript é o static/js/iso-picker.js. #}
+{% from '_carousel.html' import carousel_arrow, carousel_count %}
+
+{% macro iso_choice(picker='iso-picker', label='ISO (opcional)', value='', upload=false, param='') -%}
+<div class="iso-choice" data-iso-choice="{{ picker }}"{% if value %} data-iso-preset="{{ value }}"{% endif %}{% if param %} data-iso-param="{{ param }}"{% endif %}>
+  <span class="iso-choice-label">{{ label }}</span>
+  <input type="hidden" name="iso" value="" data-iso-value>
+  <div class="iso-chosen" data-iso-chosen hidden></div>
+  <div class="iso-choice-actions">
+    <button type="button" class="secondary" data-iso-open aria-haspopup="dialog">Escolher ISO</button>
+    {% if upload %}<button type="button" class="secondary" data-iso-upload aria-haspopup="dialog">Enviar ISO</button>{% endif %}
+  </div>
+</div>
+{%- endmacro %}
+
+{% macro iso_picker(options, id='iso-picker') -%}
+<dialog class="iso-picker" id="{{ id }}" aria-labelledby="{{ id }}-title">
+  <div class="iso-picker-head">
+    <h2 id="{{ id }}-title">Escolher a ISO</h2>
+    <form method="dialog"><button class="secondary" aria-label="Fechar">&times;</button></form>
+  </div>
+  <input type="search" data-iso-filter placeholder="Filtrar pelo nome do campeonato ou da ISO..." autocomplete="off" aria-label="Filtrar ISOs">
+  {% if options %}
+  <div class="carousel iso-carousel" data-carousel>
+    <div class="carousel-head carousel-top">
+      <p class="muted iso-shown" data-iso-shown aria-live="polite"></p>
+      {{ carousel_count() }}
+    </div>
+    <div class="carousel-stage">
+    {{ carousel_arrow('prev', 'ISOs anteriores') }}
+    <div class="carousel-track iso-track" data-carousel-track>
+      {% for o in options %}
+      <button type="button" class="t-card iso-option" data-value="{{ o.value }}" data-order="{{ loop.index0 }}" data-game="{{ o.game_id }}" data-search="{{ o.title }} {{ o.filename }} {{ o.game }}">
+        <span class="t-side"><span class="t-side-images">
+          {% if o.image %}<img class="t-cover t-image" src="{{ image_url('torneio', o.image) }}" alt="" loading="lazy">{% endif %}
+          <img class="t-cover" src="{{ game_cover(o.game_code, mini=True) }}" alt="{{ o.game }}" width="200" height="250" loading="lazy">
+        </span></span>
+        <span class="t-body">
+          <span class="badge {{ 'iso-catalog' if o.kind == 'catalog' else '' }}">{{ 'ISO do WE Camp' if o.kind == 'catalog' else 'ISO de campeonato' }}</span>
+          <strong class="t-name">{{ o.title }}</strong>
+          <span class="muted">{{ o.game }}</span>
+          {% if o.filename %}<small class="muted iso-file">{{ o.filename|fit }}</small>{% endif %}
+          <small class="iso-selected-tag">Selecionada · clique para tirar</small>
+        </span>
+      </button>
+      {% endfor %}
+    </div>
+    {{ carousel_arrow('next', 'Próximas ISOs') }}
+    </div>
+  </div>
+  {% endif %}
+  <p class="muted" data-iso-empty {% if options %}hidden{% endif %}>Nenhuma ISO encontrada.</p>
+  {% if caller %}{{ caller() }}{% endif %}
+</dialog>
+{%- endmacro %}

@@ -756,6 +756,13 @@ def ensure_tournament_columns(database):
         table_columns = {column["name"] for column in database.execute(f"PRAGMA table_info({table})")}
         if table_columns and "archive_progress" not in table_columns:
             database.execute(f"ALTER TABLE {table} ADD COLUMN archive_progress INTEGER")
+    # ISO do campeonato escolhida na lista dos amistosos ("c:<cadastro>" ou "t:<campeonato>" -
+    # iso_catalog.chosen_file): o arquivo é o daquela ISO, nunca apagado nem enviado por aqui.
+    # Na alteração que espera confirmação (tournament_changes), o mesmo valor em iso_source.
+    for table, column in (("tournament_isos", "source"), ("tournament_changes", "iso_source")):
+        table_columns = {row["name"] for row in database.execute(f"PRAGMA table_info({table})")}
+        if table_columns and column not in table_columns:
+            database.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
     catalog_columns = {column["name"] for column in database.execute("PRAGMA table_info(catalog_isos)")}
     for column, kind in (("requested_by", "INTEGER REFERENCES players(id) ON DELETE SET NULL"),
                          ("approved_at", "TEXT"), ("share_image", "TEXT")):

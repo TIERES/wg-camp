@@ -7,6 +7,12 @@ Vai para o mesmo item das ISOs dos campeonatos (app/admin.py), numa pasta
 por torneio. As ISOs do cadastro da administração (catalog_isos -
 iso_catalog.py) usam o mesmo envio: as funções recebem a tabela. Se o item já tem um arquivo com o mesmo MD5 (a ISO de um
 campeonato ou de outro torneio), nada é enviado: o torneio aponta para ele.
+
+O organizador também pode escolher uma ISO já enviada (a lista do "Escolher ISO"
+dos amistosos - iso_catalog.chosen_file) em vez de enviar o arquivo: link()
+copia os dados do arquivo para tournament_isos com source = "c:<cadastro>" ou
+"t:<campeonato>". O arquivo continua sendo daquela ISO: nada aqui o apaga ou o
+manda para o archive.org; quando o envio dela termina, _finish atualiza a cópia.
 """
 import sqlite3
 import threading
@@ -35,6 +41,17 @@ THREAD_BUSY_TIMEOUT_MS = 120_000
 
 def get(db, tournament_id):
     return db.execute("SELECT * FROM tournament_isos WHERE tournament_id = ?", (tournament_id,)).fetchone()
+
+
+def chosen(row):
+    """A ISO do campeonato foi escolhida na lista (o arquivo é de outra ISO - link)?"""
+    return bool(row is not None and "source" in row.keys() and row["source"])
+
+
+def _drop_previous(previous):
+    """Apaga a cópia local da ISO que saiu - só se o arquivo era do campeonato."""
+    if previous is not None and not previous["local_removed_at"] and not chosen(previous):
+        delete_stored_file(previous["stored_name"])
 
 
 def check_upload(upload):
@@ -151,8 +168,25 @@ def save(db, tournament, upload, player_id):
         (tournament["id"], stored["stored_name"], stored["original_filename"], stored["file_size"], stored["md5"],
          content_id_of(stored), f"torneios/{tournament['slug']}/{stored['original_filename']}", player_id, now(),
          now()))
-    if previous and not previous["local_removed_at"]:
-        delete_stored_file(previous["stored_name"])
+    _drop_previous(previous)
+
+
+def link(db, tournament_id, file, player_id, drop_previous=True):
+    """A ISO escolhida na lista (file = iso_catalog.chosen_file / source_file)
+    passa a ser a do campeonato, no lugar da anterior (drop_previous=False: quem
+    chama apaga a cópia local dela depois). O commit fica com quem chama."""
+    previous = get(db, tournament_id)
+    if uploading(previous):
+        raise TournamentError("A ISO anterior ainda está sendo enviada para o archive.org. Tente de novo em alguns minutos.")
+    db.execute(
+        "INSERT OR REPLACE INTO tournament_isos (tournament_id, stored_name, original_filename, file_size, md5, "
+        "content_id, archive_name, archive_status, archive_url, archive_updated_at, local_removed_at, source, "
+        "uploaded_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (tournament_id, file["stored_name"], file["original_filename"], file["file_size"] or 0, file["md5"] or "",
+         file["content_id"], file["archive_name"] or "", file["archive_status"] or "pending", file["archive_url"],
+         now(), file["local_removed_at"], file["source"], player_id, now(), now()))
+    if drop_previous and previous is not None and previous["stored_name"] != file["stored_name"]:
+        _drop_previous(previous)
 
 
 def archive_configured(app):
@@ -167,7 +201,7 @@ def start_archive(app, key, table="tournament_isos"):
     """Manda a ISO para o archive.org em segundo plano (na hora, em testes).
     Sem as chaves (ambiente local), a ISO fica só neste servidor."""
     row = _row(get_db(), table, key)
-    if row is None or not row["stored_name"] or row["local_removed_at"] or not archive_configured(app):
+    if row is None or not row["stored_name"] or row["local_removed_at"] or chosen(row) or not archive_configured(app):
         return
     _set(get_db(), row, table, archive_status="uploading", archive_error=None, archive_progress=0)
     get_db().commit()
@@ -195,7 +229,7 @@ def heal(app, table, row):
     'uploading' sem progresso há mais que STALE é enviado de novo (o _archive vê
     antes se o archive.org já tem o arquivo). Chamada pelas consultas da situação
     do envio (barras de progresso). Devolve a linha como ficou."""
-    if row is None or not row["stored_name"] or row["local_removed_at"] or not archive_configured(app):
+    if row is None or not row["stored_name"] or row["local_removed_at"] or chosen(row) or not archive_configured(app):
         return row
     current, stamp = row["archive_status"], row["archive_updated_at"]
     if current not in ("verifying", "uploading") or not stamp:
@@ -279,6 +313,11 @@ def _finish(db, row, table, remote_name, verified):
         return
     _set(db, row, table, archive_status="done", archive_name=remote_name,
          archive_url=download_url(ARCHIVE_ITEM, remote_name), archive_error=None, local_removed_at=now())
+    # Os campeonatos que escolheram esta ISO (link) passam a baixar do archive.org também.
+    db.execute("UPDATE tournament_isos SET archive_status = 'done', archive_name = ?, archive_url = ?, "
+               "archive_error = NULL, local_removed_at = ?, archive_updated_at = ?, updated_at = ? "
+               "WHERE source IS NOT NULL AND stored_name = ? AND local_removed_at IS NULL",
+               (remote_name, download_url(ARCHIVE_ITEM, remote_name), now(), now(), now(), row["stored_name"]))
     db.commit()
     try:
         delete_stored_file(row["stored_name"])

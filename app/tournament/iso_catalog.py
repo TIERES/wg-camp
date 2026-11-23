@@ -59,7 +59,8 @@ def get(db, catalog_id):
     return db.execute(
         "SELECT c.*, g.name AS game_name, g.code AS game_code, f.original_filename AS file_filename, "
         "f.display_name AS file_display_name, f.stored_name AS file_stored_name, f.archive_url AS file_archive_url, "
-        "f.local_removed_at AS file_local_removed_at, f.file_size AS file_file_size, "
+        "f.local_removed_at AS file_local_removed_at, f.file_size AS file_file_size, f.md5 AS file_md5, "
+        "f.content_id AS file_content_id, "
         "rp.username AS requester_name, rp.email AS requester_email, "
         f"{_REVISION_COLUMNS} "
         "FROM catalog_isos c JOIN game_titles g ON g.id = c.game_title_id LEFT JOIN files f ON f.id = c.file_id "
@@ -70,7 +71,10 @@ def get(db, catalog_id):
 def all_rows(db):
     return db.execute(
         "SELECT c.*, g.name AS game_name, g.code AS game_code, f.original_filename AS file_filename, "
-        f"f.display_name AS file_display_name, rp.username AS requester_name, {_REVISION_COLUMNS} FROM catalog_isos c "
+        "f.display_name AS file_display_name, f.stored_name AS file_stored_name, f.archive_url AS file_archive_url, "
+        "f.local_removed_at AS file_local_removed_at, f.file_size AS file_file_size, f.md5 AS file_md5, "
+        "f.content_id AS file_content_id, "
+        f"rp.username AS requester_name, {_REVISION_COLUMNS} FROM catalog_isos c "
         "JOIN game_titles g ON g.id = c.game_title_id LEFT JOIN files f ON f.id = c.file_id "
         f"LEFT JOIN players rp ON rp.id = c.requested_by {_REVISION_JOIN} "
         "ORDER BY c.approved_at IS NOT NULL, c.is_active DESC, c.name COLLATE NOCASE").fetchall()
@@ -568,23 +572,128 @@ def _visible(db, me, tournament):
 def options(db, me):
     """As ISOs que o jogador pode escolher no convite (do cadastro e dos
     torneios), as cadastradas mais recentemente primeiro: a do cadastro conta
-    da liberação (ou do envio, sem liberação), a do torneio, do envio."""
+    da liberação (ou do envio, sem liberação), a do torneio, do envio. Cada uma
+    leva o arquivo ("file", nas colunas de tournament_isos - para a lista do
+    campeonato, tournament_options). Um campeonato que escolheu a ISO na lista
+    (tournament_isos.source) não aparece de novo quando a original já está nela."""
     result = [{
         "value": f"c:{row['id']}", "kind": "catalog", "title": row["name"], "game": row["game_name"],
-        "game_code": row["game_code"], "image": row["image"], "filename": filename(row),
-        "registered_at": row["approved_at"] or row["created_at"] or "",
+        "game_id": row["game_title_id"], "game_code": row["game_code"], "image": row["image"],
+        "filename": filename(row), "registered_at": row["approved_at"] or row["created_at"] or "",
+        "file": _catalog_file(row),
     } for row in all_rows(db) if row["is_active"] and (row["stored_name"] or row["file_id"])]
     rows = db.execute(
-        "SELECT t.id, t.name, t.image, t.friends_only, t.organizer_id, g.name AS game_name, g.code AS game_code, "
-        "i.original_filename, i.created_at FROM tournament_isos i JOIN tournaments t ON t.id = i.tournament_id "
+        "SELECT i.*, t.id, t.name, t.image, t.friends_only, t.organizer_id, t.game_title_id, g.name AS game_name, "
+        "g.code AS game_code FROM tournament_isos i JOIN tournaments t ON t.id = i.tournament_id "
         "JOIN game_titles g ON g.id = t.game_title_id WHERE t.status != 'cancelled' ORDER BY t.id DESC").fetchall()
+    rows = [row for row in rows if _visible(db, me, row)]
+    # As que já estão na lista (pela origem ou, quando há, pelo MD5 do arquivo).
+    listed = {o["value"] for o in result} | {f"t:{row['id']}" for row in rows if not row["source"]}
+    seen = {o["file"]["md5"] for o in result if o["file"]["md5"]}
+    seen |= {row["md5"] for row in rows if not row["source"] and row["md5"]}
     result += [{
         "value": f"t:{row['id']}", "kind": "tournament", "title": row["name"], "game": row["game_name"],
-        "game_code": row["game_code"], "image": row["image"], "filename": row["original_filename"],
-        "registered_at": row["created_at"] or "",
-    } for row in rows if _visible(db, me, row)]
+        "game_id": row["game_title_id"], "game_code": row["game_code"], "image": row["image"],
+        "filename": row["original_filename"], "registered_at": row["created_at"] or "",
+        "file": _tournament_file(row),
+    } for row in rows if not (row["source"] and (row["source"] in listed or (row["md5"] and row["md5"] in seen)))]
     result.sort(key=lambda o: o["registered_at"], reverse=True)  # sort estável: empate fica na ordem acima
     return result
+
+
+# --- A ISO do campeonato escolhida na lista (iso.link) -----------------------
+
+# O arquivo da ISO, nas colunas de tournament_isos.
+_FILE_KEYS = ("stored_name", "original_filename", "file_size", "md5", "content_id", "archive_name", "archive_status",
+              "archive_url", "local_removed_at")
+
+
+def _catalog_file(row):
+    """O arquivo de uma ISO do cadastro (get/all_rows): o enviado no cadastro
+    ou o da ISO de Campeonato (file_id)."""
+    if row["file_id"] and not row["stored_name"]:
+        return {"stored_name": row["file_stored_name"], "original_filename": row["file_filename"],
+                "file_size": row["file_file_size"], "md5": row["file_md5"], "content_id": row["file_content_id"],
+                "archive_name": "", "archive_status": "done" if row["file_archive_url"] else "pending",
+                "archive_url": row["file_archive_url"], "local_removed_at": row["file_local_removed_at"],
+                "source": f"c:{row['id']}"}
+    return dict({key: row[key] for key in _FILE_KEYS}, source=f"c:{row['id']}")
+
+
+def _tournament_file(row):
+    """O arquivo da ISO de um campeonato (tournament_isos). Se ela também foi
+    escolhida na lista, a origem continua sendo a ISO original."""
+    return dict({key: row[key] for key in _FILE_KEYS}, source=row["source"] or f"t:{row['tournament_id']}")
+
+
+def source_file(db, source):
+    """O arquivo atual da ISO de origem ("c:<cadastro>" ou "t:<campeonato>"),
+    com "title" e "game_id" - None se ela não existe mais (ou ficou sem arquivo).
+    Não confere quem pode vê-la: isso é com chosen_file."""
+    kind, _, raw = (source or "").strip().partition(":")
+    if not raw.isdigit():
+        return None
+    if kind == "c":
+        row = get(db, int(raw))
+        if row is None or not row["is_active"] or not (row["stored_name"] or row["file_id"]):
+            return None
+        return dict(_catalog_file(row), title=row["name"], game_id=row["game_title_id"])
+    if kind == "t":
+        row = db.execute("SELECT i.*, t.name, t.game_title_id FROM tournament_isos i JOIN tournaments t "
+                         "ON t.id = i.tournament_id WHERE t.id = ? AND t.status != 'cancelled'", (int(raw),)).fetchone()
+        if row is None:
+            return None
+        return dict(_tournament_file(row), title=row["name"], game_id=row["game_title_id"])
+    return None
+
+
+def ready(file, app):
+    """Já dá para baixar a ISO (a mesma regra do download - iso.downloadable)?
+    Só essas podem ser a de um campeonato: ainda indo para o archive.org, não."""
+    return bool(file and file["stored_name"] and iso.downloadable(file, app))
+
+
+def chosen_file(db, me, value, app, game_id=None, exclude_tournament=None):
+    """A ISO escolhida na lista ("c:<cadastro>" ou "t:<campeonato>", o valor do
+    Escolher ISO) para ser a de um campeonato: o arquivo (source_file).
+    TournamentError se o jogador não a vê, ainda não dá para baixar ou é de
+    outro jogo base (game_id: o do campeonato)."""
+    tournament_id, _, _ = resolve(db, me, value)
+    if exclude_tournament is not None and tournament_id == exclude_tournament:
+        raise TournamentError("Esta já é a ISO do campeonato.")
+    file = source_file(db, value)
+    if file is None:
+        raise TournamentError("ISO não encontrada.")
+    if not ready(file, app):
+        raise TournamentError(f"A ISO \"{file['title']}\" ainda está indo para o archive.org: escolha de novo daqui "
+                              "a alguns minutos.")
+    if game_id is not None and file["game_id"] != game_id:
+        game = db.execute("SELECT name FROM game_titles WHERE id = ?", (file["game_id"],)).fetchone()
+        raise TournamentError(f"A ISO \"{file['title']}\" é do {game['name'] if game else 'outro jogo'}: escolha "
+                              "esse jogo base ou outra ISO.")
+    return file
+
+
+def tournament_options(db, me, app, game_ids=None, exclude_tournament=None):
+    """A lista do Escolher ISO de um campeonato: as mesmas do convite do amistoso
+    (options) que já dá para baixar, dos jogos base de campeonato (game_ids),
+    sem a do próprio campeonato."""
+    return [o for o in options(db, me)
+            if ready(o["file"], app) and (game_ids is None or o["game_id"] in game_ids)
+            and o["value"] != f"t:{exclude_tournament}"]
+
+
+def source_view(db, source):
+    """De onde veio a ISO escolhida na lista, para a tela: {"title", "kind"
+    ("catalog" ou "tournament"), "catalog_id" ou "slug"} - None sem origem."""
+    kind, _, raw = (source or "").partition(":")
+    if not raw.isdigit():
+        return None
+    if kind == "c":
+        row = db.execute("SELECT id, name FROM catalog_isos WHERE id = ?", (int(raw),)).fetchone()
+        return {"title": row["name"], "kind": "catalog", "catalog_id": row["id"]} if row else None
+    row = db.execute("SELECT name, slug FROM tournaments WHERE id = ?", (int(raw),)).fetchone()
+    return {"title": row["name"], "kind": "tournament", "slug": row["slug"]} if row else None
 
 
 def resolve(db, me, value):
