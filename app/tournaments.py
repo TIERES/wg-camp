@@ -1645,6 +1645,10 @@ def new():
                                           "Encerre ou cancele um antes de criar outro.")
             helper_ids, _ = editors.check(db, "tournament", session["player_id"],
                                           editors.parse_ids(form.getlist("helper_ids")))
+            # A ISO já enviada, escolhida na lista dos amistosos (opcional): do mesmo jogo base.
+            iso_value = form.get("iso", "").strip()
+            chosen_iso = iso_catalog.chosen_file(db, session["player_id"], iso_value, current_app,
+                                                 game_id=game_id) if iso_value else None
             # Por último: só grava o arquivo quando o resto do formulário passou.
             upload = request.files.get("image")
             image_name = images.save("torneio", upload) if upload and upload.filename else None
@@ -1665,13 +1669,20 @@ def new():
                            [(tournament_id, team_id) for team_id in team_ids])
             helpers, _ = editors.set_helpers(db, "tournament", tournament_id, session["player_id"], helper_ids,
                                              session["player_id"])
+            if chosen_iso:
+                iso.link(db, tournament_id, chosen_iso, session["player_id"])
             db.commit()
             notify.helpers_changed(db, "tournament", store.get_tournament(db, tournament_id), session["player_id"],
                                    helpers, [])
             invited = _send_invites(db, store.get_tournament(db, tournament_id), _invite_ids())
-            flash("Campeonato criado com inscrições abertas" + (f" e {invited} convite(s) enviado(s)" if invited else "")
-                  + ". Agora envie a ISO do jogo (com o patch do campeonato) aqui em Gerenciar; dá para trocar quando "
-                  "quiser.", "success")
+            created = "Campeonato criado com inscrições abertas" + (
+                f" e {invited} convite(s) enviado(s)" if invited else "")
+            if chosen_iso:
+                flash(f"{created}. A ISO \"{chosen_iso['title']}\" já está na página do campeonato; dá para trocar "
+                      "quando quiser, aqui em Gerenciar.", "success")
+            else:
+                flash(f"{created}. Agora envie a ISO do jogo (com o patch do campeonato) ou escolha uma já enviada, "
+                      "aqui em Gerenciar; dá para trocar quando quiser.", "success")
             return redirect(url_for("tournaments.manage", slug=slug, _anchor="iso"))
     selected = {int(v) for v in form.getlist("team_ids") if v.isdigit()} if form else set()
     return render_template("tournaments/new.html", games=games, form=form, max_fee=max_fee,
@@ -1680,7 +1691,10 @@ def new():
                            team_modes=TEAM_MODES, catalog=_team_catalog(db), selected=selected,
                            friends=friends.friends(db, session["player_id"]), max_helpers=editors.MAX_HELPERS,
                            helper_selected=set(editors.parse_ids(form.getlist("helper_ids"))) if form else set(),
-                           candidates=friends.candidates(db, session["player_id"]), invite_selected=set(_invite_ids()))
+                           candidates=friends.candidates(db, session["player_id"]), invite_selected=set(_invite_ids()),
+                           iso_options=iso_catalog.tournament_options(db, session["player_id"], current_app,
+                                                                      game_ids={g["id"] for g in games}),
+                           iso_value=form.get("iso", "") if form else "")
 
 
 @bp.post("/<slug>/inscrever")
@@ -1937,6 +1951,10 @@ def manage(slug):
                            auto_finish_at=notify.auto_finish_at(tournament),
                            can_advance=can_advance, can_finish=can_finish, is_admin=is_admin(),
                            status_labels=STATUS_LABELS, iso=iso_row, iso_uploading=iso.uploading(iso_row),
+                           iso_source=iso_catalog.source_view(db, iso_row["source"]) if iso.chosen(iso_row) else None,
+                           iso_options=iso_catalog.tournament_options(db, me, current_app,
+                                                                      game_ids={tournament["game_title_id"]},
+                                                                      exclude_tournament=tournament["id"]),
                            archive_configured=iso.archive_configured(current_app), **_iso_limits(),
                            candidates=friends.candidates(db, tournament["organizer_id"], tournament["id"],
                                                          tournament["friends_only"])
@@ -2025,10 +2043,16 @@ def change_action(tournament, acao):
 def change_file(tournament):
     """A ISO nova da alteração que espera confirmação, para os responsáveis
     conferirem antes de confirmar (ela ainda está só neste servidor)."""
-    change = changes.get(get_db(), tournament["id"])
+    db = get_db()
+    change = changes.get(db, tournament["id"])
     if change is None or not change["stored_name"]:
         abort(404)
-    response = _send_iso_file(change["stored_name"], change["original_filename"], None, None, protected=True)
+    source = iso_catalog.source_file(db, change["iso_source"]) if change["iso_source"] else None
+    if source is not None:
+        response = _send_iso_file(source["stored_name"], source["original_filename"], source["archive_url"],
+                                  source["local_removed_at"], protected=True)
+    else:
+        response = _send_iso_file(change["stored_name"], change["original_filename"], None, None, protected=True)
     if response is None:
         abort(404)
     return response
@@ -2216,11 +2240,40 @@ def iso_upload(slug):
     return redirect(url_for("tournaments.manage", slug=slug, _anchor=anchor))
 
 
+@bp.post("/<slug>/iso/escolher")
+@editor_required
+def iso_choose(tournament):
+    """A ISO do campeonato escolhida na lista dos amistosos (as já enviadas -
+    iso_catalog.chosen_file), em vez de enviar o arquivo. Com ajudantes, ela
+    espera a confirmação de outro responsável, como a ISO enviada."""
+    db = get_db()
+    me = session.get("player_id")
+    pending = _needs_confirmation(db, tournament)
+    try:
+        file = iso_catalog.chosen_file(db, me, request.form.get("iso", ""), current_app,
+                                       game_id=tournament["game_title_id"], exclude_tournament=tournament["id"])
+        if pending:
+            change = changes.propose_iso_choice(db, store.get_tournament(db, tournament["id"]), me, file)
+        else:
+            iso.link(db, tournament["id"], file, me)
+        db.commit()
+    except TournamentError as error:
+        db.rollback()
+        flash(f"A ISO não foi trocada: {error}", "error")
+        return redirect(url_for("tournaments.manage", slug=tournament["slug"], _anchor="iso"))
+    if pending:
+        _change_proposed(db, tournament, change)
+        return redirect(url_for("tournaments.manage", slug=tournament["slug"],
+                                _anchor="alteracao" if change else "iso"))
+    flash(f"Pronto: a ISO do campeonato agora é \"{file['title']}\" ({file['original_filename']}).", "success")
+    return redirect(url_for("tournaments.manage", slug=tournament["slug"], _anchor="iso"))
+
+
 @bp.post("/<slug>/iso/archive-org")
 @editor_required
 def iso_retry(tournament):
     row = iso.get(get_db(), tournament["id"])
-    if row is None or row["local_removed_at"]:
+    if row is None or row["local_removed_at"] or iso.chosen(row):
         flash("A ISO já está no archive.org.", "error")
     elif iso.uploading(row):
         flash("O envio para o archive.org já está em andamento.", "error")

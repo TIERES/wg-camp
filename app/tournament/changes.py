@@ -10,7 +10,9 @@ Uma alteração por campeonato, com partes opcionais (dados, imagem, ISO):
 enviar de novo uma parte substitui a que estava guardada, e quem enviou por
 último passa a ser o autor - quem confirma é sempre outro responsável
 (editors.can_confirm). A ISO nova fica só neste servidor até a confirmação:
-só então substitui a atual e vai para o archive.org.
+só então substitui a atual e vai para o archive.org. A ISO escolhida na lista
+dos amistosos (propose_iso_choice) guarda a origem em iso_source: o arquivo é
+daquela ISO e nunca é apagado daqui.
 
 Não faz commit: a view confirma ou desfaz, como no store.py.
 """
@@ -20,7 +22,7 @@ from .. import images
 from ..db import now
 from ..storage import delete_stored_file, human_size, store_upload
 from ..wallet import format_cents
-from . import editors, formats, iso, store
+from . import editors, formats, iso, iso_catalog, store
 from .store import TournamentError
 from .teams import TEAM_MODES
 
@@ -163,8 +165,11 @@ def diff(db, tournament, change):
     if change["stored_name"]:
         current = iso.get(db, tournament["id"])
         before = f"{current['original_filename']} ({human_size(current['file_size'])})" if current else "nenhuma ISO"
-        items.append({"field": "file", "label": "ISO", "before": before,
-                      "after": f"{change['original_filename']} ({human_size(change['file_size'])})"})
+        after = f"{change['original_filename']} ({human_size(change['file_size'])})"
+        source = iso_catalog.source_view(db, change["iso_source"]) if change["iso_source"] else None
+        if source:
+            after = f"{source['title']} - {after}"
+        items.append({"field": "file", "label": "ISO", "before": before, "after": after})
     return items
 
 
@@ -219,6 +224,13 @@ def propose_image(db, tournament, player_id, image):
     return change
 
 
+def _drop_change_file(change):
+    """Apaga o arquivo da ISO que a alteração guardava - só o enviado nela (o
+    da ISO escolhida na lista é daquela ISO)."""
+    if change is not None and change["stored_name"] and not change["iso_source"]:
+        _drop_file(change["stored_name"])
+
+
 def propose_iso(db, tournament, player_id, upload):
     """Guarda a ISO nova só neste servidor, até a confirmação. Igual à atual,
     essa parte é descartada."""
@@ -235,16 +247,32 @@ def propose_iso(db, tournament, player_id, upload):
         if current is not None and current["md5"] == stored["md5"]:
             _drop_file(stored["stored_name"])
             change = _save_part(db, tournament, player_id, stored_name=None, original_filename=None, file_size=None,
-                                md5=None, content_id=None)
+                                md5=None, content_id=None, iso_source=None)
         else:
             change = _save_part(db, tournament, player_id, stored_name=stored["stored_name"],
                                 original_filename=stored["original_filename"], file_size=stored["file_size"],
-                                md5=stored["md5"], content_id=iso.content_id_of(stored))
+                                md5=stored["md5"], content_id=iso.content_id_of(stored), iso_source=None)
     except BaseException:
         _drop_file(stored["stored_name"])
         raise
-    if previous is not None and previous["stored_name"]:
-        _drop_file(previous["stored_name"])
+    _drop_change_file(previous)
+    return change
+
+
+def propose_iso_choice(db, tournament, player_id, file):
+    """Guarda a ISO escolhida na lista (file = iso_catalog.chosen_file) até a
+    confirmação. A mesma que o campeonato já tem: essa parte é descartada."""
+    previous = get(db, tournament["id"])
+    current = iso.get(db, tournament["id"])
+    if current is not None and current["stored_name"] == file["stored_name"]:
+        change = _save_part(db, tournament, player_id, stored_name=None, original_filename=None, file_size=None,
+                            md5=None, content_id=None, iso_source=None)
+    else:
+        change = _save_part(db, tournament, player_id, stored_name=file["stored_name"],
+                            original_filename=file["original_filename"], file_size=file["file_size"],
+                            md5=file["md5"], content_id=file["content_id"], iso_source=file["source"])
+    if previous is not None and previous["stored_name"] != (change["stored_name"] if change else None):
+        _drop_change_file(previous)
     return change
 
 
@@ -253,7 +281,7 @@ def discard(db, change):
     if change is None:
         return
     db.execute("DELETE FROM tournament_changes WHERE id = ?", (change["id"],))
-    _drop_file(change["stored_name"])
+    _drop_change_file(change)
     if change["image_change"]:
         images.delete("torneio", change["image"])
 
@@ -300,10 +328,16 @@ def confirm(db, tournament, change):
                    (values["name"], values["rules"], values["starts_on"], values["ends_on"],
                     1 if values["friends_only"] else 0, now(), tournament["id"]))
     previous_iso = iso.get(db, tournament["id"]) if change["stored_name"] else None
-    if change["stored_name"]:
-        if iso.uploading(previous_iso):
-            raise TournamentError("A ISO atual ainda está sendo enviada para o archive.org. Confirme de novo em alguns "
-                                  "minutos.")
+    if change["stored_name"] and iso.uploading(previous_iso):
+        raise TournamentError("A ISO atual ainda está sendo enviada para o archive.org. Confirme de novo em alguns "
+                              "minutos.")
+    if change["iso_source"]:
+        # A ISO escolhida na lista, como ela está agora (o envio dela pode ter terminado).
+        file = iso_catalog.source_file(db, change["iso_source"])
+        if file is None:
+            raise TournamentError("A ISO escolhida não está mais disponível: escolha outra.")
+        iso.link(db, tournament["id"], file, change["requested_by"], drop_previous=False)
+    elif change["stored_name"]:
         db.execute(
             "INSERT OR REPLACE INTO tournament_isos (tournament_id, stored_name, original_filename, file_size, md5, "
             "content_id, archive_name, archive_status, uploaded_by, created_at, updated_at) "
@@ -316,7 +350,7 @@ def confirm(db, tournament, change):
         db.execute("UPDATE tournaments SET image = ?, share_image = NULL, updated_at = ? WHERE id = ?",
                    (change["image"], now(), tournament["id"]))
     db.execute("DELETE FROM tournament_changes WHERE id = ?", (change["id"],))
-    if previous_iso is not None and not previous_iso["local_removed_at"]:
+    if previous_iso is not None and not previous_iso["local_removed_at"] and not iso.chosen(previous_iso):
         _drop_file(previous_iso["stored_name"])
     if change["image_change"]:
         images.delete("torneio", tournament["image"])

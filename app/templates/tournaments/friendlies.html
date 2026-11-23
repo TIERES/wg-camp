@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'tournaments/_friendly.html' import friendly_carousel %}{% from '_carousel.html' import carousel, carousel_arrow, carousel_count %}{% from '_dialog.html' import info_button, info_dialog %}{% from '_icons.html' import icon %}{% from '_user_picker.html' import user_picker %}{% from '_helpers_picker.html' import helpers_picker %}{% from '_share.html' import share_button %}{% block title %}Amistosos · WE Camp{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from 'tournaments/_friendly.html' import friendly_carousel %}{% from '_carousel.html' import carousel, carousel_arrow, carousel_count %}{% from '_dialog.html' import info_button, info_dialog %}{% from '_icons.html' import icon %}{% from '_user_picker.html' import user_picker %}{% from '_helpers_picker.html' import helpers_picker %}{% from '_share.html' import share_button %}{% from 'tournaments/_iso_picker.html' import iso_choice, iso_picker %}{% block title %}Amistosos · WE Camp{% endblock %}{% block content %}
 <h1 class="title-info">Amistosos {{ info_button('amistoso-regras', 'Quando o amistoso vale para o Ranking e o XP') }}</h1>
 <p class="muted">Jogos com seus amigos, fora dos campeonatos. Quem é chamado aceita o convite. Depois do jogo, um informa o placar e o outro confirma.</p>
 {% call info_dialog('amistoso-regras', 'Quando o amistoso vale para o Ranking e o XP') %}
@@ -72,57 +72,14 @@
     <label class="check friendly-rank-choice"><input type="checkbox" name="rankeado" value="1" id="amistoso-rankeado"
         data-ranked-ids="{{ ranked_ids|tojson|forceescape }}" data-me-unlocked="{{ 1 if me_unlocked else 0 }}"{% if ranked_on %} checked{% else %} disabled{% endif %}>
       <span>Rankeado <small class="muted" id="amistoso-rankeado-nota">{% if not me_unlocked %}Liberado quando os dois jogadores chegarem ao Rank {{ rules.rank }} ({{ rules.min_xp }} XP) em campeonatos: você ainda não chegou. Sem ele, os jogos contam só no card Amistosos do perfil.{% elif ranked_on %}Vale para o Ranking e o XP. Desmarcado, os jogos contam só no card Amistosos do perfil.{% elif chosen_friend %}{{ chosen_friend.username }} ainda não chegou ao Rank {{ rules.rank }} em campeonatos: os jogos contam só no card Amistosos do perfil.{% else %}Escolha o amigo: fica liberado quando os dois já chegaram ao Rank {{ rules.rank }} ({{ rules.min_xp }} XP) em campeonatos.{% endif %}</small></span></label>
-    <div class="iso-choice">
-      <span class="iso-choice-label">ISO (opcional)</span>
-      <input type="hidden" name="iso" id="iso-value" value="">
-      <div class="iso-chosen" id="iso-chosen" hidden></div>
-      <div class="iso-choice-actions">
-        <button type="button" class="secondary" id="iso-open" aria-haspopup="dialog">Escolher ISO</button>
-        <button type="button" class="secondary" data-iso-upload aria-haspopup="dialog">Enviar ISO</button>
-      </div>
-    </div>
+    {{ iso_choice('iso-picker', upload=true, param='iso') }}
     <p class="muted iso-hint">Escolha a ISO que vocês vão jogar: o convite leva o botão de download, para quem ainda não tem.</p>
     <div class="card-actions"><button>Enviar convite</button></div>
   </form>
 
-  <dialog class="iso-picker" id="iso-picker" aria-labelledby="iso-picker-title">
-    <div class="iso-picker-head">
-      <h2 id="iso-picker-title">Escolher a ISO</h2>
-      <form method="dialog"><button class="secondary" aria-label="Fechar">&times;</button></form>
-    </div>
-    <input type="search" id="iso-filter" placeholder="Filtrar pelo nome do campeonato ou da ISO..." autocomplete="off" aria-label="Filtrar ISOs">
-    {% if iso_options %}
-    <div class="carousel iso-carousel" data-carousel id="iso-carousel">
-      <div class="carousel-head carousel-top">
-        <p class="muted iso-shown" id="iso-shown" aria-live="polite"></p>
-        {{ carousel_count() }}
-      </div>
-      <div class="carousel-stage">
-      {{ carousel_arrow('prev', 'ISOs anteriores') }}
-      <div class="carousel-track iso-track" data-carousel-track>
-        {% for o in iso_options %}
-        <button type="button" class="t-card iso-option" data-value="{{ o.value }}" data-order="{{ loop.index0 }}" data-search="{{ o.title }} {{ o.filename }} {{ o.game }}">
-          <span class="t-side"><span class="t-side-images">
-            {% if o.image %}<img class="t-cover t-image" src="{{ image_url('torneio', o.image) }}" alt="" loading="lazy">{% endif %}
-            <img class="t-cover" src="{{ game_cover(o.game_code, mini=True) }}" alt="{{ o.game }}" width="200" height="250" loading="lazy">
-          </span></span>
-          <span class="t-body">
-            <span class="badge {{ 'iso-catalog' if o.kind == 'catalog' else '' }}">{{ 'ISO do WE Camp' if o.kind == 'catalog' else 'ISO de campeonato' }}</span>
-            <strong class="t-name">{{ o.title }}</strong>
-            <span class="muted">{{ o.game }}</span>
-            {% if o.filename %}<small class="muted iso-file">{{ o.filename|fit }}</small>{% endif %}
-            <small class="iso-selected-tag">Selecionada · clique para tirar</small>
-          </span>
-        </button>
-        {% endfor %}
-      </div>
-      {{ carousel_arrow('next', 'Próximas ISOs') }}
-      </div>
-    </div>
-    {% endif %}
-    <p class="muted" id="iso-empty" {% if iso_options %}hidden{% endif %}>Nenhuma ISO encontrada.</p>
+  {% call iso_picker(iso_options, 'iso-picker') %}
     <p class="muted iso-request">Não encontrou a ISO? <button type="button" class="secondary" data-iso-upload aria-haspopup="dialog">Enviar ISO</button></p>
-  </dialog>
+  {% endcall %}
 
   <dialog class="iso-picker iso-upload" id="iso-upload" aria-labelledby="iso-upload-title">
     <div class="iso-picker-head">
@@ -182,83 +139,11 @@
     typed.addEventListener('blur', later);
   })();
   </script>
+  <script src="{{ url_for('static', filename='js/iso-picker.js', v='20261122a') }}" defer></script>
   <script>
   (function () {
-    // Escolha da ISO do convite: popup com os cards num carrossel (as 20 cadastradas
-    // mais recentes; o filtro procura em todas, sem acento/maiúscula). A escolhida
-    // fica com a borda verde e em primeiro; clicar nela de novo tira a escolha.
-    var LIMIT = 20;
+    // "Enviar ISO" (no convite e na janela de escolha - static/js/iso-picker.js): a janela com o formulário.
     var dialog = document.getElementById('iso-picker'), upload = document.getElementById('iso-upload');
-    var value = document.getElementById('iso-value'), chosen = document.getElementById('iso-chosen');
-    var open = document.getElementById('iso-open'), filter = document.getElementById('iso-filter');
-    var empty = document.getElementById('iso-empty'), shownNote = document.getElementById('iso-shown');
-    var carousel = document.getElementById('iso-carousel');
-    var track = carousel ? carousel.querySelector('[data-carousel-track]') : null;
-    var options = Array.prototype.slice.call(dialog.querySelectorAll('.iso-option'));
-    var selected = null;
-    function plain(s) { return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
-    function render() {
-      var words = plain(filter.value).split(/\s+/).filter(Boolean), shown = 0, found = 0;
-      var ordered = options.slice().sort(function (a, b) {
-        return (b === selected) - (a === selected) || a.dataset.order - b.dataset.order;
-      });
-      ordered.forEach(function (o) {
-        var text = plain(o.dataset.search);
-        var match = words.every(function (w) { return text.indexOf(w) >= 0; });
-        if (match) found++;
-        o.hidden = !match || (!words.length && shown >= LIMIT);
-        if (!o.hidden) shown++;
-        o.classList.toggle('is-selected', o === selected);
-        o.setAttribute('aria-pressed', o === selected ? 'true' : 'false');
-        o.title = o === selected ? 'Clique para tirar a escolha desta ISO' : 'Escolher esta ISO';
-        if (track) track.appendChild(o);
-      });
-      empty.hidden = shown > 0;
-      if (shownNote) {
-        shownNote.textContent = words.length ? (found ? found + (found === 1 ? ' ISO encontrada' : ' ISOs encontradas') : '')
-          : (found > LIMIT ? 'As ' + LIMIT + ' ISOs cadastradas mais recentes (de ' + found + '): use o filtro para achar as outras.'
-                           : 'ISOs cadastradas, das mais recentes para as mais antigas.');
-      }
-      if (carousel) carousel.dispatchEvent(new Event('carousel:refresh'));
-    }
-    function show(option) {
-      selected = option;
-      value.value = option ? option.dataset.value : '';
-      chosen.innerHTML = '';
-      if (option) {
-        var copy = option.cloneNode(true);
-        copy.removeAttribute('data-value');
-        copy.removeAttribute('title');
-        copy.removeAttribute('aria-pressed');
-        copy.classList.remove('is-selected');
-        copy.classList.add('iso-chosen-card');
-        copy.hidden = false;
-        copy.addEventListener('click', function () { open.click(); });
-        chosen.appendChild(copy);
-      }
-      chosen.hidden = !option;
-      open.textContent = option ? 'Trocar ISO' : 'Escolher ISO';
-    }
-    open.addEventListener('click', function () {
-      filter.value = '';
-      dialog.showModal();
-      render();
-      filter.focus();
-    });
-    filter.addEventListener('keydown', function (e) { if (e.key === 'Enter') e.preventDefault(); });
-    filter.addEventListener('input', render);
-    options.forEach(function (o) {
-      o.addEventListener('click', function () {
-        if (o === selected) { show(null); render(); return; }  // tira a escolha; a janela fica aberta
-        show(o);
-        dialog.close();
-      });
-    });
-    // ?iso=c:12 (o "Chamar um amigo" da página da ISO): o convite já abre com ela escolhida.
-    var wanted = new URLSearchParams(location.search).get('iso');
-    var preset = wanted ? options.filter(function (o) { return o.dataset.value === wanted; })[0] : null;
-    if (preset) show(preset);
-    // "Enviar ISO" (no convite e na janela de escolha): a janela com o formulário.
     document.querySelectorAll('[data-iso-upload]').forEach(function (button) {
       button.addEventListener('click', function () {
         if (dialog.open) dialog.close();
@@ -267,9 +152,7 @@
       });
     });
     // Fecha clicando fora do conteúdo.
-    [dialog, upload].forEach(function (d) {
-      d.addEventListener('click', function (e) { if (e.target === d) d.close(); });
-    });
+    upload.addEventListener('click', function (e) { if (e.target === upload) upload.close(); });
   })();
   </script>
   {% else %}<p class="muted">Você ainda não tem amigos. <a href="{{ url_for('tournaments.friends_page') }}">Adicione amigos</a> para marcar amistosos.</p>{% endif %}

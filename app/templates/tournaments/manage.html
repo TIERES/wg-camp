@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'tournaments/_macros.html' import match_line, status_chip, leg_flip, stage_rounds %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% from '_avatar.html' import avatar_button %}{% from '_carousel.html' import carousel %}{% from '_icons.html' import icon %}{% from '_dialog.html' import form_dialog %}{% from '_helpers_picker.html' import helpers_picker, people_line %}{% from 'tournaments/_changes.html' import change_list %}{% block title %}Gerenciar {{ t.name }} · Campeonatos WE Camp{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from 'tournaments/_macros.html' import match_line, status_chip, leg_flip, stage_rounds %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% from '_avatar.html' import avatar_button %}{% from '_carousel.html' import carousel %}{% from '_icons.html' import icon %}{% from '_dialog.html' import form_dialog %}{% from '_helpers_picker.html' import helpers_picker, people_line %}{% from 'tournaments/_changes.html' import change_list %}{% from 'tournaments/_iso_picker.html' import iso_choice, iso_picker %}{% block title %}Gerenciar {{ t.name }} · Campeonatos WE Camp{% endblock %}{% block content %}
 {# Formulários de resultado de uma lista de jogos (com ou sem Ida/Volta). #}
 {% macro result_forms(ms) %}{% for m in ms %}{% set shown = m if m.status == 'confirmed' else reported_score(m) %}
     <form method="post" action="{{ url_for('tournaments.result', slug=t.slug, match_id=m.id) }}" class="result-form{% if m.status == 'confirmed' %} done{% endif %}" id="jogo-{{ m.id }}">
@@ -45,13 +45,13 @@
 </section>
 {% if change.can_confirm and not change.mine %}
 {% call form_dialog('recusar-alteracao', url_for('tournaments.change_action', slug=t.slug, acao='recusar'), 'Recusar a alteração?', 'Recusar alteração') %}
-  <p>O campeonato continua como está{% if change.row.stored_name %} e a ISO nova enviada é apagada{% endif %}. {{ change.row.requester_name or 'Quem fez a alteração' }} recebe um e-mail.</p>
+  <p>O campeonato continua como está{% if change.row.stored_name and not change.row.iso_source %} e a ISO nova enviada é apagada{% endif %}. {{ change.row.requester_name or 'Quem fez a alteração' }} recebe um e-mail.</p>
   <label>Motivo (opcional, vai no e-mail)<input name="motivo" maxlength="300"></label>
 {% endcall %}
 {% endif %}
 {% if change.mine %}
 {% call form_dialog('cancelar-alteracao', url_for('tournaments.change_action', slug=t.slug, acao='cancelar'), 'Cancelar a alteração?', 'Cancelar alteração') %}
-  <p>O campeonato continua como está{% if change.row.stored_name %} e a ISO nova enviada é apagada{% endif %}.</p>
+  <p>O campeonato continua como está{% if change.row.stored_name and not change.row.iso_source %} e a ISO nova enviada é apagada{% endif %}.</p>
 {% endcall %}
 {% endif %}
 {% endif %}
@@ -218,9 +218,16 @@
 
 <section id="iso">
   <h2>ISO do campeonato</h2>
-  <p class="muted">A ISO do {{ t.game_name }} com o patch deste campeonato. Dá para trocar a qualquer momento.</p>
+  <p class="muted">A ISO do {{ t.game_name }} com o patch deste campeonato: envie o arquivo ou escolha uma já enviada (as dos amistosos e as dos outros campeonatos). Dá para trocar a qualquer momento.</p>
   {% if needs_confirmation %}<p class="notice helper-note">Com ajudantes, a ISO nova fica guardada e só substitui a atual depois que outro responsável confirmar.</p>{% endif %}
-  {% if iso %}
+  {% if iso and iso.source %}
+    {# Escolhida na lista (iso.link): o arquivo é o da ISO de origem, que cuida do archive.org. #}
+    <p><strong>{{ iso.original_filename }}</strong> <small>({{ iso.file_size|filesize }})</small><br>
+    Escolhida da lista: {% if iso_source and iso_source.kind == 'catalog' %}<a href="{{ url_for('tournaments.iso_page', catalog_id=iso_source.catalog_id) }}">{{ iso_source.title }}</a> <small class="muted">(ISO do WE Camp)</small>
+    {% elif iso_source %}<a href="{{ url_for('tournaments.show', slug=iso_source.slug) }}">{{ iso_source.title }}</a> <small class="muted">(ISO de campeonato)</small>
+    {% else %}uma ISO já enviada{% endif %}<br>
+    {% if iso.archive_url %}No archive.org: <a href="{{ iso.archive_url }}" rel="noopener">{{ iso.archive_url }}</a>{% else %}Só neste servidor.{% endif %}</p>
+  {% elif iso %}
     <p><strong>{{ iso.original_filename }}</strong> <small>({{ iso.file_size|filesize }})</small><br>
     {% if iso.local_removed_at %}No archive.org: <a href="{{ iso.archive_url }}" rel="noopener">{{ iso.archive_url }}</a>
     {% elif iso.archive_status == 'uploading' %}Enviando para o archive.org...
@@ -241,6 +248,26 @@
     {% include 'tournaments/_upload_progress.html' %}
     <button>Enviar ISO</button>
   </form>
+  {% if iso_options %}
+  {# Ou uma ISO já enviada (iso_catalog.tournament_options: do mesmo jogo base, que já dá para baixar). #}
+  <form method="post" action="{{ url_for('tournaments.iso_choose', slug=t.slug) }}" class="form iso-choose-form" id="iso-escolher">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {{ iso_choice('iso-picker', label='Ou escolha uma ISO já enviada') }}
+    <p class="muted">As ISOs dos amistosos e as dos outros campeonatos, do {{ t.game_name }}. O download continua vindo de onde ela já está.</p>
+    <button id="iso-choose-button" hidden>Usar esta ISO</button>
+  </form>
+  {% call iso_picker(iso_options, 'iso-picker') %}
+    <p class="muted iso-request">Não encontrou a ISO? Envie o arquivo acima, em "{{ 'Trocar a ISO' if iso else 'Enviar a ISO' }}".</p>
+  {% endcall %}
+  <script src="{{ url_for('static', filename='js/iso-picker.js', v='20261122a') }}" defer></script>
+  <script>
+  (function () {
+    // "Usar esta ISO" só depois de escolher uma (static/js/iso-picker.js).
+    var form = document.getElementById('iso-escolher'), button = document.getElementById('iso-choose-button');
+    form.addEventListener('iso:change', function (e) { button.hidden = !e.detail.option; });
+  })();
+  </script>
+  {% endif %}
   {% endif %}
 </section>
 {% endif %}

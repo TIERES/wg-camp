@@ -906,9 +906,10 @@ def _profile(db, match):
                                      (row["catalog_iso_id"],)).fetchone()
                 game_id = catalog["game_title_id"] if catalog else None
     if game_id is None:
-        # A ISO exata (CRC32:TAMANHO) de um campeonato ou do cadastro de amistosos.
+        # A ISO exata (CRC32:TAMANHO) de um campeonato ou do cadastro de amistosos. A de um
+        # campeonato que a escolheu na lista dos amistosos (i.source) fica com a original.
         row = db.execute("SELECT t.id, t.game_title_id FROM tournament_isos i JOIN tournaments t ON t.id = i.tournament_id "
-                         "WHERE i.content_id = ? COLLATE NOCASE AND t.status != 'cancelled' "
+                         "WHERE i.content_id = ? COLLATE NOCASE AND t.status != 'cancelled' AND i.source IS NULL "
                          "ORDER BY t.updated_at DESC LIMIT 1", (match["content_id"],)).fetchone()
         if row:
             game_id, tournament_id = row["game_title_id"], row["id"]
@@ -923,7 +924,7 @@ def _profile(db, match):
     file_name = _file_name(match)
     if game_id is None and file_name:
         row = db.execute("SELECT t.id, t.game_title_id FROM tournament_isos i JOIN tournaments t ON t.id = i.tournament_id "
-                         "WHERE i.original_filename = ? COLLATE NOCASE AND t.status != 'cancelled' "
+                         "WHERE i.original_filename = ? COLLATE NOCASE AND t.status != 'cancelled' AND i.source IS NULL "
                          "ORDER BY t.updated_at DESC LIMIT 1", (file_name,)).fetchone()
         if row:
             game_id, tournament_id = row["game_title_id"], row["id"]

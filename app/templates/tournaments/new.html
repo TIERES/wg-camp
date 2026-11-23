@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% from '_helpers_picker.html' import helpers_picker %}{% block title %}Criar campeonato · WE Camp{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% from '_helpers_picker.html' import helpers_picker %}{% from 'tournaments/_iso_picker.html' import iso_picker %}{% block title %}Criar campeonato · WE Camp{% endblock %}{% block content %}
 <h1>Criar campeonato</h1>
 {% if not games %}<p class="notice error">Nenhum jogo cadastrado para campeonatos ainda. Peça à administração do WE Camp.</p>{% else %}
 <form method="post" class="form t-form" id="new-tournament" enctype="multipart/form-data">
@@ -33,6 +33,39 @@
   </script>
   <div class="card-actions"><button id="create-button">Criar campeonato</button><span class="muted" id="create-hint" hidden>Preencha os campos obrigatórios para criar o campeonato.</span></div>
 </form>
+{% if iso_options %}
+{% call iso_picker(iso_options, 'iso-picker') %}
+  <p class="muted iso-request">Não encontrou a ISO? Depois de criar o campeonato, envie a ISO com o patch dele em Gerenciar.</p>
+{% endcall %}
+<script src="{{ url_for('static', filename='js/iso-picker.js', v='20261122a') }}" defer></script>
+<script>
+(function () {
+  // A ISO escolhida (static/js/iso-picker.js) marca o jogo base dela; trocar o jogo base
+  // para outro tira a ISO (o servidor também confere que são do mesmo jogo).
+  var form = document.getElementById('new-tournament');
+  var choice = form.querySelector('[data-iso-choice]');
+  if (!choice) return;
+  function gameOf(value) {
+    var option = value ? document.querySelector('#iso-picker .iso-option[data-value="' + value + '"]') : null;
+    return option ? option.dataset.game : null;
+  }
+  form.addEventListener('iso:change', function (e) {
+    var option = e.detail.option;
+    var radio = option ? form.querySelector('input[name="game_title_id"][value="' + option.dataset.game + '"]') : null;
+    if (radio && !radio.checked) {
+      radio.checked = true;
+      radio.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  });
+  form.querySelectorAll('input[name="game_title_id"]').forEach(function (radio) {
+    radio.addEventListener('change', function () {
+      var game = gameOf(choice.querySelector('[data-iso-value]').value);
+      if (game && game !== radio.value && choice.isoChoose) choice.isoChoose(null);
+    });
+  });
+})();
+</script>
+{% endif %}
 {% include 'tournaments/_tournament_fields_js.html' %}
 <script src="{{ url_for('static', filename='js/wcash-mask.js') }}"></script>
 <script src="{{ url_for('static', filename='js/image-resize.js') }}" defer></script>
