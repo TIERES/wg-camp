@@ -77,7 +77,9 @@
       <label>Grupos<input type="number" name="groups" min="1" max="16" value="2"></label>
       <label>Classificados por grupo<input type="number" name="qualifiers" min="1" max="8" value="2"></label>
       <label>Jogos nos grupos<select name="group_legs"><option value="1">Jogo único</option><option value="2">Ida e volta</option></select></label>
+      <label class="wide"><span>Confronto na fase de grupos <span class="req">*</span></span><select name="group_matchups" required>{% for key, label in matchup_labels.items() %}<option value="{{ key }}">{{ label }}{% if loop.first %} (padrão){% endif %}</option>{% endfor %}</select></label>
     </div>
+    <p class="muted"><strong>Entre o grupo:</strong> cada um joga contra os do seu grupo. <strong>Entre outros grupos:</strong> cada um joga contra os jogadores dos outros grupos, e não contra os do seu. <strong>Entre todos os grupos:</strong> cada um joga contra todos os inscritos. Em todos, a classificação é por grupo e os primeiros de cada grupo vão ao mata-mata; os jogos são montados ao fechar as inscrições e sortear.</p>
     {# Grupos dinâmicos: um nome por grupo (os campos group_name, montados pelo _tournament_fields_js.html
        conforme o número de grupos). #}
     {% set typed_names = form.getlist('group_name') if form.getlist is defined else (form.get('group_names') or []) %}

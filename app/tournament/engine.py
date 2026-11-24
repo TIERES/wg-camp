@@ -62,14 +62,19 @@ def _blank_row(entry_id):
             "goals_for": 0, "goals_against": 0, "goal_diff": 0, "points": 0, "form": []}
 
 
-def _table(entry_ids, results):
+def _table(entry_ids, results, partial=False):
+    """Linhas da classificação. partial: o jogo contra quem não está na tabela
+    (fase de grupos com confronto entre outros grupos ou entre todos) conta para
+    o lado que está; sem ele, só valem os jogos entre os da tabela."""
     rows = {entry_id: _blank_row(entry_id) for entry_id in entry_ids}
     for result in results:
         home, away = rows.get(result.home), rows.get(result.away)
-        if home is None or away is None:
+        if (home is None and away is None) or (not partial and (home is None or away is None)):
             continue
         for row, scored, conceded in ((home, result.home_goals, result.away_goals),
                                       (away, result.away_goals, result.home_goals)):
+            if row is None:
+                continue
             row["played"] += 1
             row["goals_for"] += scored
             row["goals_against"] += conceded
@@ -105,17 +110,18 @@ def card_points(kinds):
     return sum(CARD_POINTS.get(kind, 0) for kind in kinds)
 
 
-def standings(entry_ids, results, discipline=None):
+def standings(entry_ids, results, discipline=None, partial=False):
     """Classificação. Desempate: pontos, vitórias, saldo, gols pró, confronto
     direto (pontos, saldo e gols só entre os empatados), cartões (menos pontos
     de cartão fica à frente - `discipline` = {inscrição: pontos}, card_points)
     e, por fim, a ordem do sorteio (a ordem de entry_ids). `results` em ordem
-    cronológica (a coluna "últimos jogos" usa essa ordem)."""
+    cronológica (a coluna "últimos jogos" usa essa ordem). partial: os jogos
+    contra quem não está na tabela também contam (_table)."""
     entry_ids = list(entry_ids)
     discipline = discipline or {}
     draw_order = {entry_id: index for index, entry_id in enumerate(entry_ids)}
     results = list(results)
-    rows = _table(entry_ids, results)
+    rows = _table(entry_ids, results, partial)
     ordered = sorted(rows.values(), key=lambda row: (_base_key(row), draw_order[row["entry_id"]]))
     table = []
     i = 0
@@ -136,6 +142,70 @@ def standings(entry_ids, results, discipline=None):
         row["position"] = position
         row["discipline"] = discipline.get(row["entry_id"], 0)
     return table
+
+
+def cross_group_pairs(groups):
+    """Os confrontos de cada um contra os jogadores dos outros grupos (nunca do
+    próprio): [(a, b)], um por par."""
+    return [(a, b) for index, group in enumerate(groups) for other in groups[index + 1:]
+            for a in group for b in other]
+
+
+def _greedy_rounds(pairs):
+    """Uma tentativa de dividir os confrontos em rodadas: a cada rodada entram
+    primeiro os de quem tem mais jogos por fazer (assim ninguém sobra para o fim)."""
+    remaining, rounds = list(pairs), []
+    while remaining:
+        load = {}
+        for pair in remaining:
+            for entry in pair:
+                load[entry] = load.get(entry, 0) + 1
+        busy, chosen, rest = set(), [], []
+        for a, b in sorted(remaining, key=lambda pair: -(load[pair[0]] + load[pair[1]])):
+            if a in busy or b in busy:
+                rest.append((a, b))
+            else:
+                busy.update((a, b))
+                chosen.append((a, b))
+        rounds.append(chosen)
+        remaining = rest
+    return rounds
+
+
+def schedule(pairs, legs=1):
+    """Rodadas para uma lista de confrontos, sem ninguém jogar duas vezes na
+    mesma rodada: [(rodada, mandante, visitante)], rodadas a partir de 1.
+    Tenta algumas ordens (sorteio com semente fixa: sempre o mesmo resultado)
+    e fica com a de menos rodadas, parando no mínimo possível (o maior número
+    de jogos de alguém, ou os jogos divididos pelos que cabem numa rodada). O
+    mando fica com quem jogou menos em casa. Com legs=2 o returno repete o
+    turno com o mando invertido."""
+    pairs = [tuple(pair) for pair in pairs]
+    if not pairs:
+        return []
+    degree = {}
+    for pair in pairs:
+        for entry in pair:
+            degree[entry] = degree.get(entry, 0) + 1
+    least = max(max(degree.values()), -(-len(pairs) // (len(degree) // 2)))
+    best, order, rng = _greedy_rounds(pairs), list(pairs), random.Random(len(pairs))
+    for _ in range(min(300, max(10, 40000 // len(pairs)))):
+        if len(best) <= least:
+            break
+        rng.shuffle(order)
+        candidate = _greedy_rounds(order)
+        if len(candidate) < len(best):
+            best = candidate
+    homes, first_leg = {}, []
+    for rnd, matches in enumerate(best, 1):
+        for a, b in matches:
+            home, away = (a, b) if homes.get(a, 0) <= homes.get(b, 0) else (b, a)
+            homes[home] = homes.get(home, 0) + 1
+            first_leg.append((rnd, home, away))
+    fixtures = list(first_leg)
+    if legs == 2:
+        fixtures += [(rnd + len(best), away, home) for rnd, home, away in first_leg]
+    return fixtures
 
 
 # --- Sorteio de grupos e potes -----------------------------------------------

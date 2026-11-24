@@ -624,6 +624,29 @@ def _round_robin_stage(db, tournament, seq, kind, name, groups, legs, names=None
     return stage_id
 
 
+def _group_stage(db, tournament, groups, config, names=None):
+    """Fase de grupos (Copa e Grupos dinâmicos). A classificação é sempre por
+    grupo; os jogos seguem group_matchups (formats.MATCHUPS):
+      - within: cada grupo é um todos contra todos (_round_robin_stage);
+      - others: cada um enfrenta os jogadores dos outros grupos (engine.schedule);
+      - all: todos contra todos os inscritos.
+    Nos dois últimos os jogos não são de um grupo (group_id NULL): cada um conta
+    na tabela do grupo de cada lado (group_tables)."""
+    mode, legs = config.get("group_matchups", "within"), config["group_legs"]
+    if mode == "within":
+        return _round_robin_stage(db, tournament, 1, "groups", "Fase de grupos", groups, legs, names)
+    stage_id = _new_stage(db, tournament, 1, "groups", "Fase de grupos", {"legs": legs, "matchups": mode})
+    for index, members in enumerate(groups):
+        _new_group(db, stage_id, index, names[index] if names else f"Grupo {engine.group_name(index)}", members)
+    if mode == "all":
+        fixtures = engine.round_robin([entry for group in groups for entry in group], legs)
+    else:
+        fixtures = engine.schedule(engine.cross_group_pairs(groups), legs)
+    for round_no, home, away in fixtures:
+        _new_match(db, stage_id, round_no, home, away)
+    return stage_id
+
+
 def _swiss_stage(db, tournament, seq, entries, config, rng):
     pots_count = config["pots"]
     size = len(entries) // pots_count
@@ -710,8 +733,7 @@ def start(db, tournament, rng=random):
     if fmt in ("league", "league_knockout"):
         _round_robin_stage(db, tournament, 1, "league", "Pontos corridos", [entries], config["legs"])
     elif fmt == "world_cup":
-        _round_robin_stage(db, tournament, 1, "groups", "Fase de grupos",
-                           engine.draw_groups(entries, config["groups"], rng), config["group_legs"])
+        _group_stage(db, tournament, engine.draw_groups(entries, config["groups"], rng), config)
     elif fmt == "dynamic_groups":
         # Os grupos que os jogadores escolheram (a ordem dentro de cada um, sorteada, monta as rodadas).
         views, _ = group_views(db, tournament)
@@ -722,8 +744,7 @@ def start(db, tournament, rng=random):
         if short:
             raise TournamentError(f"Cada grupo precisa de pelo menos {needed} jogadores: " + ", ".join(short) +
                                   ". Mude os jogadores de grupo em Grupos, aqui em Gerenciar.")
-        _round_robin_stage(db, tournament, 1, "groups", "Fase de grupos", members, config["group_legs"],
-                           [view["name"] for view in views])
+        _group_stage(db, tournament, members, config, [view["name"] for view in views])
     elif fmt == "ucl":
         _swiss_stage(db, tournament, 1, entries, config, rng)
     else:
@@ -929,19 +950,24 @@ def group_tables(db, stage_id, provisional=None):
     cards = stage_cards(db, stage_id)
     discipline = {entry: total["points"] for entry, total in cards.items()}
     tables = []
+    # Os jogos da fase em que um dos lados é do grupo: dentro do grupo e, com o
+    # confronto entre outros grupos ou entre todos, também os contra os outros
+    # grupos (que contam só para o lado do grupo - engine.standings partial).
+    confirmed = db.execute("SELECT * FROM tournament_matches WHERE stage_id = ? AND status = 'confirmed' "
+                           "ORDER BY round, confirmed_at", (stage_id,)).fetchall()
+    open_matches = db.execute("SELECT * FROM tournament_matches WHERE stage_id = ? AND status != 'confirmed' "
+                              "ORDER BY round, id", (stage_id,)).fetchall() if provisional else []
     for group in db.execute("SELECT * FROM tournament_groups WHERE stage_id = ? ORDER BY seq", (stage_id,)):
         members = [row["entry_id"] for row in db.execute(
             "SELECT entry_id FROM tournament_group_members WHERE group_id = ? ORDER BY draw_order", (group["id"],))]
-        played = db.execute("SELECT * FROM tournament_matches WHERE group_id = ? AND status = 'confirmed' "
-                            "ORDER BY round, confirmed_at", (group["id"],)).fetchall()
+        ids = set(members)
+        played = [m for m in confirmed if m["home_entry_id"] in ids or m["away_entry_id"] in ids]
         extra = []
-        if provisional:
-            for match in db.execute("SELECT * FROM tournament_matches WHERE group_id = ? AND status != 'confirmed' "
-                                    "ORDER BY round, id", (group["id"],)):
-                if match["id"] in provisional:
-                    home_goals, away_goals = provisional[match["id"]]
-                    extra.append(engine.Result(match["home_entry_id"], match["away_entry_id"], home_goals, away_goals))
-        table = engine.standings(members, _results(played) + extra, discipline)
+        for match in open_matches:
+            if match["id"] in provisional and (match["home_entry_id"] in ids or match["away_entry_id"] in ids):
+                home_goals, away_goals = provisional[match["id"]]
+                extra.append(engine.Result(match["home_entry_id"], match["away_entry_id"], home_goals, away_goals))
+        table = engine.standings(members, _results(played) + extra, discipline, partial=True)
         for row in table:
             row["provisional"] = sum(row["entry_id"] in (r.home, r.away) for r in extra)
             total = cards.get(row["entry_id"], {})
