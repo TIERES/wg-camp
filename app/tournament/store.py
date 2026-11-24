@@ -108,7 +108,7 @@ def are_friends(db, a, b):
                       "OR (requester_id = ? AND addressee_id = ?))", (a, b, b, a)).fetchone() is not None
 
 
-def enroll(db, tournament, player_id, team_name="", team_id=None):
+def enroll(db, tournament, player_id, team_name="", team_id=None, group_slot=None):
     if tournament["status"] != "registration":
         raise TournamentError("As inscrições deste campeonato não estão abertas.")
     if (tournament["friends_only"] and player_id != tournament["organizer_id"]
@@ -121,6 +121,10 @@ def enroll(db, tournament, player_id, team_name="", team_id=None):
     if db.execute("SELECT 1 FROM tournament_entries WHERE tournament_id = ? AND player_id = ?",
                   (tournament["id"], player_id)).fetchone():
         raise TournamentError("Você já está inscrito neste campeonato.")
+    if is_dynamic(tournament):
+        _check_group(db, tournament, group_slot)
+    else:
+        group_slot = None
     team_id, team_name = _entry_team(db, tournament, team_name, team_id)
     ensure_wallet(db, player_id)
     fee_ref = None
@@ -128,8 +132,105 @@ def enroll(db, tournament, player_id, team_name="", team_id=None):
         fee_ref = f"inscricao:{tournament['id']}:{player_id}:{secrets.token_hex(6)}"
         post(db, player_id, -tournament["entry_fee_cents"], "inscricao", fee_ref, tournament_id=tournament["id"],
              note=tournament["name"])
-    db.execute("INSERT INTO tournament_entries (tournament_id, player_id, team_name, team_id, fee_ref, created_at) "
-               "VALUES (?, ?, ?, ?, ?, ?)", (tournament["id"], player_id, team_name, team_id, fee_ref, now()))
+    db.execute("INSERT INTO tournament_entries (tournament_id, player_id, team_name, team_id, fee_ref, group_slot, "
+               "created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+               (tournament["id"], player_id, team_name, team_id, fee_ref, group_slot, now()))
+
+
+# --- Grupos dinâmicos ---------------------------------------------------------
+#
+# O organizador nomeia os grupos (settings_json: groups, group_names) e cada
+# jogador escolhe o seu na inscrição (tournament_entries.group_slot, o índice em
+# group_names). Cada grupo aceita até vagas / grupos jogadores (arredondado para
+# cima); o jogador troca de grupo enquanto houver vaga, e o organizador move
+# quem quiser (sem esse limite) até o início. Quem fica sem grupo (o grupo dele
+# saiu ao editar os dados) é avisado e escolhe outro; o sorteio espera.
+
+def is_dynamic(tournament):
+    return tournament["format"] == "dynamic_groups"
+
+
+def group_names(tournament):
+    return formats.normalize("dynamic_groups", settings_of(tournament))["group_names"]
+
+
+def group_capacity(tournament, groups=None):
+    groups = groups or len(group_names(tournament))
+    return -(-tournament["max_players"] // groups) if groups else 0
+
+
+def group_views(db, tournament, entries=None):
+    """Os grupos com os inscritos de cada um: ([{"slot", "name", "entries",
+    "count", "capacity", "full"}], inscritos sem grupo)."""
+    names = group_names(tournament)
+    capacity = group_capacity(tournament, len(names))
+    entries = entries_of(db, tournament["id"]) if entries is None else entries
+    views = [{"slot": slot, "name": name, "entries": [], "capacity": capacity} for slot, name in enumerate(names)]
+    loose = []
+    for entry in entries:
+        slot = entry["group_slot"]
+        (views[slot]["entries"] if slot is not None and 0 <= slot < len(views) else loose).append(entry)
+    for view in views:
+        view["count"] = len(view["entries"])
+        view["full"] = view["count"] >= capacity
+    return views, loose
+
+
+def _check_group(db, tournament, slot, entry_id=None):
+    """O grupo `slot` existe e tem vaga (sem contar a própria inscrição `entry_id`)."""
+    names = group_names(tournament)
+    if slot is None:
+        raise TournamentError("Escolha o seu grupo.")
+    if not 0 <= slot < len(names):
+        raise TournamentError("Esse grupo não existe neste campeonato.")
+    taken = db.execute("SELECT COUNT(*) FROM tournament_entries WHERE tournament_id = ? AND group_slot = ? "
+                       "AND id != ?", (tournament["id"], slot, entry_id or 0)).fetchone()[0]
+    if taken >= group_capacity(tournament, len(names)):
+        raise TournamentError(f"O grupo {names[slot]} está cheio: escolha outro.")
+
+
+def choose_group(db, tournament, entry, slot):
+    """O inscrito escolhe (ou troca) o seu grupo antes do início, se houver vaga."""
+    if tournament["status"] != "registration":
+        raise TournamentError("O campeonato já começou: os grupos não mudam mais.")
+    if not is_dynamic(tournament):
+        raise TournamentError("Neste campeonato os grupos são sorteados no início.")
+    if slot == entry["group_slot"]:
+        return
+    _check_group(db, tournament, slot, entry["id"])
+    db.execute("UPDATE tournament_entries SET group_slot = ? WHERE id = ?", (slot, entry["id"]))
+
+
+def arrange_groups(db, tournament, slots, editor_id=None):
+    """O organizador põe os inscritos nos grupos antes do início (slots:
+    {entry_id: grupo}), sem o limite de vagas por grupo. Devolve os avisos
+    [(player_id, assunto, texto)] a quem mudou de grupo (menos quem editou),
+    para os e-mails (notify.entry_notices, depois do commit)."""
+    if tournament["status"] != "registration":
+        raise TournamentError("O campeonato já começou: os grupos não mudam mais.")
+    if not is_dynamic(tournament):
+        raise TournamentError("Neste campeonato os grupos são sorteados no início.")
+    names, notices = group_names(tournament), []
+    for entry in entries_of(db, tournament["id"]):
+        slot = slots.get(entry["id"], entry["group_slot"])
+        if slot == entry["group_slot"]:
+            continue
+        if slot is None or not 0 <= slot < len(names):
+            raise TournamentError(f"Escolha um grupo para {entry['username']}.")
+        db.execute("UPDATE tournament_entries SET group_slot = ? WHERE id = ?", (slot, entry["id"]))
+        if entry["player_id"] != editor_id:
+            before = entry["group_slot"]
+            was = f"no grupo {names[before]}" if before is not None and 0 <= before < len(names) else "sem grupo"
+            notices.append((entry["player_id"], f"{tournament['name']}: você está no grupo {names[slot]}",
+                            f'O organizador do campeonato "{tournament["name"]}" mudou você de grupo: você '
+                            f"estava {was} e agora está no grupo {names[slot]}."))
+    return notices
+
+
+def entries_without_group(db, tournament):
+    if not is_dynamic(tournament):
+        return []
+    return group_views(db, tournament)[1]
 
 
 def _refund(db, tournament, entry):
@@ -243,6 +344,24 @@ def update_before_start(db, tournament, values, editor_id=None):
             subject = ("os times serão sorteados" if mode == "draw" else "um time diferente a cada rodada"
                        if mode == "round" else "escolha o seu time")
             notice(entry, subject, text)
+    # Grupos dinâmicos: virou esse formato, todos escolhem o grupo; o grupo de alguém
+    # saiu (menos grupos), ele escolhe outro; deixou de ser, os grupos somem.
+    if values["format"] != "dynamic_groups":
+        db.execute("UPDATE tournament_entries SET group_slot = NULL WHERE tournament_id = ?", (tournament["id"],))
+    else:
+        old_names = group_names(tournament) if is_dynamic(tournament) else []
+        groups = values["config"]["groups"]
+        for entry in kept:
+            slot = entry["group_slot"] if old_names else None
+            if slot is not None and slot < groups:
+                continue
+            if old_names and slot is None:
+                continue  # já estava sem grupo, e foi avisado
+            db.execute("UPDATE tournament_entries SET group_slot = NULL WHERE id = ?", (entry["id"],))
+            text = (f'O grupo {old_names[slot]} saiu do campeonato "{name}". ' if slot is not None
+                    and slot < len(old_names) else f'No campeonato "{name}" cada jogador agora escolhe o seu grupo. ')
+            notice(entry, "escolha o seu grupo",
+                   text + "A sua inscrição continua: escolha o seu grupo na página do campeonato.")
     db.execute(
         "UPDATE tournaments SET name = ?, game_title_id = ?, format = ?, max_players = ?, entry_fee_cents = ?, "
         "prize_split = ?, settings_json = ?, rules = ?, team_mode = ?, starts_on = ?, ends_on = ?, friends_only = ?, "
@@ -494,10 +613,11 @@ def _new_match(db, stage_id, round_no, home, away, group_id=None, tie_id=None, l
         (stage_id, group_id, tie_id, round_no, leg, home, away, now(), now()))
 
 
-def _round_robin_stage(db, tournament, seq, kind, name, groups, legs):
+def _round_robin_stage(db, tournament, seq, kind, name, groups, legs, names=None):
     stage_id = _new_stage(db, tournament, seq, kind, name, {"legs": legs})
     for index, members in enumerate(groups):
-        label = "Tabela" if kind == "league" else f"Grupo {engine.group_name(index)}"
+        label = ("Tabela" if kind == "league" else names[index] if names
+                 else f"Grupo {engine.group_name(index)}")
         group_id = _new_group(db, stage_id, index, label, members)
         for round_no, home, away in engine.round_robin(members, legs):
             _new_match(db, stage_id, round_no, home, away, group_id=group_id)
@@ -567,6 +687,10 @@ def start(db, tournament, rng=random):
         raise TournamentError("Ainda sem time: " + ", ".join(e["username"] for e in missing) + ". Eles foram avisados "
                               "por e-mail para escolher; o campeonato começa quando todos tiverem time (ou remova "
                               "a inscrição deles).")
+    missing = entries_without_group(db, tournament)
+    if missing:
+        raise TournamentError("Ainda sem grupo: " + ", ".join(e["username"] for e in missing) + ". Escolha o grupo "
+                              "deles em Grupos, aqui em Gerenciar (eles também foram avisados por e-mail).")
     entries = [row["id"] for row in entries_of(db, tournament["id"])]
     config = settings_of(tournament)
     error = formats.config_error(tournament["format"], config, len(entries))
@@ -588,6 +712,18 @@ def start(db, tournament, rng=random):
     elif fmt == "world_cup":
         _round_robin_stage(db, tournament, 1, "groups", "Fase de grupos",
                            engine.draw_groups(entries, config["groups"], rng), config["group_legs"])
+    elif fmt == "dynamic_groups":
+        # Os grupos que os jogadores escolheram (a ordem dentro de cada um, sorteada, monta as rodadas).
+        views, _ = group_views(db, tournament)
+        slot_of = {entry["id"]: view["slot"] for view in views for entry in view["entries"]}
+        members = [[entry_id for entry_id in entries if slot_of[entry_id] == view["slot"]] for view in views]
+        needed = max(2, config["qualifiers"])
+        short = [f"{view['name']} ({len(group)})" for view, group in zip(views, members) if len(group) < needed]
+        if short:
+            raise TournamentError(f"Cada grupo precisa de pelo menos {needed} jogadores: " + ", ".join(short) +
+                                  ". Mude os jogadores de grupo em Grupos, aqui em Gerenciar.")
+        _round_robin_stage(db, tournament, 1, "groups", "Fase de grupos", members, config["group_legs"],
+                           [view["name"] for view in views])
     elif fmt == "ucl":
         _swiss_stage(db, tournament, 1, entries, config, rng)
     else:
@@ -824,7 +960,7 @@ def stage_complete(db, stage):
 
 
 def has_next_stage(tournament, stage):
-    return (tournament["format"] in ("world_cup", "ucl", "league_knockout")
+    return (tournament["format"] in (*formats.GROUPED, "ucl", "league_knockout")
             and stage["kind"] != "knockout")
 
 
@@ -855,7 +991,8 @@ def advance(db, tournament):
         groups = len(tables)
         # Grupos em jogo único: cruzamento da Copa do Mundo quando a chave fecha.
         # Em ida e volta (ou sem fechar a chave), pela campanha, como na Libertadores.
-        if (tournament["format"] == "world_cup" and config.get("group_legs", 1) == 1 and qualifiers == 2 and groups >= 2
+        if (tournament["format"] in formats.GROUPED and config.get("group_legs", 1) == 1 and qualifiers == 2
+                and groups >= 2
                 and groups & (groups - 1) == 0 and all(len(table) >= 2 for _, table in tables)):
             pairs = engine.cross_pairs([[row["entry_id"] for row in table] for _, table in tables])
         else:

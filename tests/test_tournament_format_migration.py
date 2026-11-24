@@ -46,8 +46,9 @@ class TournamentFormatMigrationTest(unittest.TestCase):
                 migrate_db()  # idempotente
 
                 db = get_db()
-                self.assertIn("league_knockout", db.execute(
-                    "SELECT sql FROM sqlite_master WHERE name = 'tournaments'").fetchone()[0])
+                sql = db.execute("SELECT sql FROM sqlite_master WHERE name = 'tournaments'").fetchone()[0]
+                self.assertIn("league_knockout", sql)
+                self.assertIn("dynamic_groups", sql)
                 row = db.execute("SELECT * FROM tournaments WHERE id = ?", (tid,)).fetchone()
                 self.assertEqual((row["slug"], row["format"], row["all_played_at"]), ("velho", "league", None))
                 self.assertEqual(db.execute("SELECT tournament_id FROM tournament_entries").fetchone()[0], tid)

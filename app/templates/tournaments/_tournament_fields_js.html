@@ -24,6 +24,30 @@
   select.addEventListener('change', function () { apply(true); });
   apply(!posted.format);
 
+  // Grupos dinâmicos: um campo de nome por grupo (o número de grupos manda); o que já
+  // foi digitado volta se o número de grupos diminuir e aumentar de novo.
+  var namesBox = document.getElementById('group-names');
+  if (namesBox) {
+    var typed = JSON.parse(namesBox.dataset.names || '[]');
+    var letter = function (i) { return i < 26 ? String.fromCharCode(65 + i) : String(i + 1); };
+    var syncNames = function () {
+      namesBox.querySelectorAll('input').forEach(function (el, i) { typed[i] = el.value; });
+      var n = Math.max(0, Math.min(16, parseInt(form.elements.groups.value, 10) || 0));
+      var off = select.value !== 'dynamic_groups';
+      namesBox.textContent = '';
+      for (var i = 0; i < n; i++) {
+        var label = document.createElement('label'), input = document.createElement('input');
+        input.name = 'group_name'; input.maxLength = 30; input.placeholder = 'Grupo ' + letter(i);
+        input.value = typed[i] || ''; input.disabled = off;
+        label.append((i + 1) + 'º grupo', input);
+        namesBox.appendChild(label);
+      }
+    };
+    form.elements.groups.addEventListener('input', syncNames);
+    select.addEventListener('change', syncNames);
+    syncNames();
+  }
+
   // Classificados para o mata-mata: menos que as vagas.
   var slots = form.elements.max_players, playoff = document.getElementById('playoff-qualifiers');
   function limitPlayoff() {

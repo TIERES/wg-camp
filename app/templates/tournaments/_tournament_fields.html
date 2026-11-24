@@ -71,13 +71,21 @@
     <p class="muted">Os primeiros da tabela vão ao mata-mata (1º contra o último classificado, 2º contra o penúltimo...). Precisa ser menor que o número de vagas. Se não fechar uma chave (2, 4, 8, 16...), os melhores colocados esperam na repescagem.</p>
   </fieldset>
 
-  <fieldset data-formats="world_cup">
+  <fieldset data-formats="world_cup dynamic_groups">
     <legend>Fase de grupos</legend>
     <div class="form-row">
       <label>Grupos<input type="number" name="groups" min="1" max="16" value="2"></label>
       <label>Classificados por grupo<input type="number" name="qualifiers" min="1" max="8" value="2"></label>
       <label>Jogos nos grupos<select name="group_legs"><option value="1">Jogo único</option><option value="2">Ida e volta</option></select></label>
     </div>
+    {# Grupos dinâmicos: um nome por grupo (os campos group_name, montados pelo _tournament_fields_js.html
+       conforme o número de grupos). #}
+    {% set typed_names = form.getlist('group_name') if form.getlist is defined else (form.get('group_names') or []) %}
+    <fieldset data-formats="dynamic_groups" class="group-names-box">
+      <legend>Nomes dos grupos</legend>
+      <div class="group-names" id="group-names" data-names="{{ typed_names|tojson|forceescape }}"></div>
+      <p class="muted">Cada jogador escolhe o seu grupo na inscrição, e cada grupo aceita até Vagas ÷ Grupos jogadores. Até o início, o jogador pode trocar de grupo (se houver vaga) e você pode mudar qualquer um de grupo em Gerenciar. Nome em branco vira "Grupo A", "Grupo B"...</p>
+    </fieldset>
     <p class="muted">Grupos em jogo único: o mata-mata é cruzado como na Copa do Mundo (1º do grupo A contra o 2º do B...), com 2 classificados por grupo e 2, 4, 8 ou 16 grupos. Grupos em ida e volta (ou nos outros casos): os 1ºs enfrentam os 2ºs pela campanha, como na Libertadores. Se não fechar uma chave, os melhores colocados esperam na repescagem.</p>
   </fieldset>
 
@@ -91,7 +99,7 @@
     </div>
   </fieldset>
 
-  <fieldset data-formats="world_cup ucl knockout league_knockout">
+  <fieldset data-formats="world_cup dynamic_groups ucl knockout league_knockout">
     <legend>Mata-mata</legend>
     <div class="form-row">
       <label>Confrontos<select name="ko_legs"><option value="1">Jogo único</option><option value="2">Ida e volta</option></select></label>

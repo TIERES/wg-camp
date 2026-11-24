@@ -24,6 +24,15 @@
             <p class="muted">Seu time será sorteado quando o organizador fechar as inscrições.</p>
           {% endif %}
 {% endmacro %}
+{# Grupos dinâmicos: a escolha do grupo na inscrição e no "escolha o seu grupo" (store.choose_group). #}
+{% macro group_fields() %}
+          <p class="muted">Escolha o seu grupo:</p>
+          <div class="group-pick">
+          {% for g in groups[0] %}
+            <label class="group-option{% if g.full %} taken{% endif %}"{% if g.full %} title="Grupo cheio"{% endif %}><input type="radio" name="group_slot" value="{{ g.slot }}" required {% if g.full %}disabled{% endif %}><strong>{{ g.name }}</strong><small>{{ g.count }} de {{ g.capacity }}{% if g.full %} · cheio{% endif %}</small></label>
+          {% endfor %}
+          </div>
+{% endmacro %}
 {% block title %}{{ t.name }} · Campeonatos WE Camp{% endblock %}{% block share %}{{ share_tags(share) }}{% endblock %}{% block content %}
 <section class="t-header">
   <div class="t-header-images">
@@ -56,12 +65,34 @@
           <button>Escolher este time</button>
         </form>
         {% endif %}
+        {% if groups %}
+          {% if my_entry.group_slot is none or my_entry.group_slot >= groups[0]|length %}
+        {# O grupo dele saiu ao editar os dados, ou o campeonato passou a ter grupos dinâmicos. #}
+        <form method="post" action="{{ url_for('tournaments.choose_group', slug=t.slug) }}" class="enroll-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <p class="notice">Você está inscrito, mas ainda sem grupo. Escolha o seu grupo para o campeonato poder começar.</p>
+          {{ group_fields() }}
+          <button>Escolher este grupo</button>
+        </form>
+          {% else %}
+          {% set others = groups[0]|rejectattr('slot', 'equalto', my_entry.group_slot)|rejectattr('full')|list %}
+        <form method="post" action="{{ url_for('tournaments.choose_group', slug=t.slug) }}" class="group-change">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <span>Seu grupo: <strong>{{ groups[0][my_entry.group_slot].name }}</strong></span>
+          {% if others %}
+          <select name="group_slot" aria-label="Trocar para o grupo">{% for g in others %}<option value="{{ g.slot }}">{{ g.name }} ({{ g.count }} de {{ g.capacity }})</option>{% endfor %}</select>
+          <button class="secondary">Trocar de grupo</button>
+          {% else %}<span class="muted">(os outros grupos estão cheios)</span>{% endif %}
+        </form>
+          {% endif %}
+        {% endif %}
         <form method="post" action="{{ url_for('tournaments.leave', slug=t.slug) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Sair do campeonato{% if t.entry_fee_cents %} (devolve {{ t.entry_fee_cents|wcash }}){% endif %}</button></form>
       {% elif session.player_id %}
         {% if outsider %}{# privado e ele não é amigo: sem inscrição (o aviso acima explica) #}
         {% elif entries|length < t.max_players %}
         <form method="post" action="{{ url_for('tournaments.enroll', slug=t.slug) }}" class="enroll-form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% if groups %}{{ group_fields() }}{% endif %}
           {{ team_fields() }}
           <button>Inscrever-se{% if t.entry_fee_cents %} por {{ t.entry_fee_cents|wcash }}{% else %} (grátis){% endif %}</button>
         </form>
@@ -178,7 +209,18 @@
   </section>
   <section>
     <h2>Inscritos ({{ entries|length }})</h2>
-    {% if entries %}<ol class="entry-list">{% for e in entries %}<li><span class="entry-pos">{{ loop.index }}.</span><span class="with-avatar">{{ avatar_button(e.player_id, e.username) }}<span>{{ names[e.id] }}</span></span></li>{% endfor %}</ol>
+    {% if groups %}
+    {# Grupos dinâmicos: cada grupo com os inscritos que o escolheram e as vagas. #}
+    {% for g in groups[0] %}
+    <h3 class="group-title">{{ g.name }} <small class="muted">{{ g.count }} de {{ g.capacity }}</small></h3>
+    {% if g.entries %}<ol class="entry-list">{% for e in g.entries %}<li><span class="entry-pos">{{ loop.index }}.</span><span class="with-avatar">{{ avatar_button(e.player_id, e.username) }}<span>{{ names[e.id] }}</span></span></li>{% endfor %}</ol>
+    {% else %}<p class="muted">Ninguém neste grupo ainda.</p>{% endif %}
+    {% endfor %}
+    {% if groups[1] %}
+    <h3 class="group-title">Sem grupo <small class="muted">precisam escolher</small></h3>
+    <ol class="entry-list">{% for e in groups[1] %}<li><span class="entry-pos">{{ loop.index }}.</span><span class="with-avatar">{{ avatar_button(e.player_id, e.username) }}<span>{{ names[e.id] }}</span></span></li>{% endfor %}</ol>
+    {% endif %}
+    {% elif entries %}<ol class="entry-list">{% for e in entries %}<li><span class="entry-pos">{{ loop.index }}.</span><span class="with-avatar">{{ avatar_button(e.player_id, e.username) }}<span>{{ names[e.id] }}</span></span></li>{% endfor %}</ol>
     {% else %}<p class="muted">Ninguém inscrito ainda.</p>{% endif %}
   </section>
   {% if team_list %}
