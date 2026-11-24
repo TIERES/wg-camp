@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'tournaments/_macros.html' import match_line, status_chip, leg_flip, stage_rounds %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% from '_avatar.html' import avatar_button %}{% from '_carousel.html' import carousel %}{% from '_icons.html' import icon %}{% from '_dialog.html' import form_dialog %}{% from '_helpers_picker.html' import helpers_picker, people_line %}{% from 'tournaments/_changes.html' import change_list %}{% from 'tournaments/_iso_picker.html' import iso_choice, iso_picker %}{% block title %}Gerenciar {{ t.name }} · Campeonatos WE Camp{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from 'tournaments/_macros.html' import match_line, status_chip, leg_flip, stage_rounds %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% from '_avatar.html' import avatar, avatar_button %}{% from '_carousel.html' import carousel %}{% from '_icons.html' import icon %}{% from '_dialog.html' import form_dialog %}{% from '_helpers_picker.html' import helpers_picker, people_line %}{% from 'tournaments/_changes.html' import change_list %}{% from 'tournaments/_iso_picker.html' import iso_choice, iso_picker %}{% block title %}Gerenciar {{ t.name }} · Campeonatos WE Camp{% endblock %}{% block content %}
 {# Formulários de resultado de uma lista de jogos (com ou sem Ida/Volta). #}
 {% macro result_forms(ms) %}{% for m in ms %}{% set shown = m if m.status == 'confirmed' else reported_score(m) %}
     <form method="post" action="{{ url_for('tournaments.result', slug=t.slug, match_id=m.id) }}" class="result-form{% if m.status == 'confirmed' %} done{% endif %}" id="jogo-{{ m.id }}">
@@ -61,7 +61,7 @@
   {% if t.status == 'registration' %}
     <form method="post" action="{{ url_for('tournaments.start', slug=t.slug) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button {% if entries|length < 2 %}disabled{% endif %}>Fechar inscrições e sortear ({{ entries|length }} inscritos)</button></form>
-    <p class="muted">O sorteio monta a tabela, os grupos, os potes ou a chave com os inscritos atuais. Depois disso ninguém mais entra nem sai.</p>
+    <p class="muted">{% if groups %}Os grupos ficam como estão em <a href="#grupos">Grupos</a>; o sorteio define a ordem dos jogos dentro de cada um.{% else %}O sorteio monta a tabela, os grupos, os potes ou a chave com os inscritos atuais.{% endif %} Depois disso ninguém mais entra nem sai.</p>
   {% endif %}
   {% if can_advance %}
     <form method="post" action="{{ url_for('tournaments.advance', slug=t.slug) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Gerar próxima fase (mata-mata)</button></form>
@@ -119,6 +119,7 @@
       <span class="t-body">
         <span class="with-avatar friend-name">{{ avatar_button(e.player_id, e.username) }}<strong class="t-name">{{ e.username }}</strong></span>
         <span class="t-meta"><span>{{ icon('shield') }}{% if e.team_name %}{{ e.team_name }}{% elif t.team_mode == 'draw' %}<em class="muted">sorteado no início</em>{% elif t.team_mode == 'round' %}<em class="muted">um time diferente a cada rodada</em>{% else %}<em class="muted">sem time: avisado para escolher</em>{% endif %}</span></span>
+        {% if groups %}<span class="t-meta"><span>{% if e.group_slot is not none and e.group_slot < groups[0]|length %}Grupo: {{ groups[0][e.group_slot].name }}{% else %}<em class="muted">sem grupo: avisado para escolher</em>{% endif %}</span></span>{% endif %}
         <span class="t-meta"><span>{{ icon('clock') }}Inscrito em {{ e.created_at|localtime }}</span></span>
         {# Desistência (store.withdraw_running): quando e o motivo, que também foi por e-mail aos organizadores. #}
         {% if e.withdrawn_at %}<span class="t-meta"><span class="gave-up">Desistiu em {{ e.withdrawn_at|localtime('%d/%m/%Y') }}</span></span>
@@ -131,6 +132,51 @@
   {% else %}<p class="muted list-note">Nenhum inscrito com esse filtro.</p>{% endif %}
   {% else %}<p class="muted">Ninguém inscrito ainda.</p>{% endif %}
 </section>
+
+{% if groups and full and t.status == 'registration' %}
+{# Grupos dinâmicos (store.arrange_groups): o organizador muda qualquer inscrito de grupo, sem o limite de vagas por
+   grupo, até o início. Os nomes e o número de grupos mudam em Dados do campeonato. #}
+<section id="grupos">
+  <h2>Grupos</h2>
+  <p class="muted">Os jogadores escolhem o grupo na inscrição (até {{ groups[0][0].capacity }} por grupo) e podem trocar enquanto houver vaga. Aqui você arrasta qualquer um para outro grupo, sem esse limite, até o início, e depois salva; quem mudar de grupo recebe um e-mail. No celular, arraste pela alça <span aria-hidden="true">⠿</span>; no teclado, use as setas ← →. Os nomes e o número de grupos mudam em <a href="#dados">Dados do campeonato</a>.</p>
+  {% if entries %}
+  {% macro group_chip(e, slot, group_name) %}
+        <li class="group-chip" tabindex="0" data-entry="{{ e.id }}" data-name="{{ e.username }}" aria-label="{{ e.username }}, {{ group_name }}. Arraste ou use as setas para mudar de grupo.">
+          <span class="group-grip" aria-hidden="true">⠿</span>
+          <span class="with-avatar">{{ avatar(e.player_id, e.username) }}<span>{{ e.username }}</span></span>
+          <input type="hidden" name="grupo_{{ e.id }}" value="{{ slot }}">
+        </li>
+  {% endmacro %}
+  <form method="post" action="{{ url_for('tournaments.arrange_groups', slug=t.slug) }}" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="group-columns" id="group-board">
+    {% for g in groups[0] %}
+      <div class="group-column" data-capacity="{{ g.capacity }}">
+        <h3>{{ g.name }} <small class="muted" data-count>{{ g.count }} de {{ g.capacity }}</small></h3>
+        <ul class="group-drop{% if not g.entries %} empty{% endif %}" data-slot="{{ g.slot }}" data-name="{{ g.name }}" aria-label="Grupo {{ g.name }}">
+        {% for e in g.entries %}{{ group_chip(e, g.slot, g.name) }}{% endfor %}
+        </ul>
+      </div>
+    {% endfor %}
+    {% if groups[1] %}
+      <div class="group-column loose">
+        <h3>Sem grupo <small class="muted">precisam de um grupo para o campeonato começar</small></h3>
+        <ul class="group-drop" data-slot="" data-name="sem grupo" aria-label="Sem grupo">
+        {% for e in groups[1] %}{{ group_chip(e, '', 'sem grupo') }}{% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+    </div>
+    <div class="card-actions">
+      <button type="button" class="secondary btn-left" data-undo hidden>Desfazer</button>
+      <button data-save>Salvar grupos</button>
+      <span class="muted" data-dirty hidden>Há mudanças não salvas.</span>
+    </div>
+  </form>
+  <script src="{{ url_for('static', filename='js/group-board.js', v='20261124a') }}" defer></script>
+  {% else %}<p class="muted">Ninguém inscrito ainda.</p>{% endif %}
+</section>
+{% endif %}
 
 {% if candidates is not none %}
 <section id="convidar">

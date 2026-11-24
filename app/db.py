@@ -169,7 +169,8 @@ CREATE TABLE IF NOT EXISTS tournaments (
     organizer_id INTEGER NOT NULL REFERENCES players(id) ON DELETE RESTRICT,
     -- 'libertadores': só de bancos antigos - virou a Copa, world_cup (merge_cup_formats).
     format TEXT NOT NULL
-        CHECK (format IN ('league', 'league_knockout', 'ucl', 'world_cup', 'libertadores', 'knockout')),
+        CHECK (format IN ('league', 'league_knockout', 'ucl', 'world_cup', 'dynamic_groups', 'libertadores',
+                          'knockout')),
     status TEXT NOT NULL DEFAULT 'draft'
         CHECK (status IN ('draft', 'registration', 'running', 'finished', 'cancelled')),
     max_players INTEGER NOT NULL,
@@ -273,6 +274,9 @@ CREATE TABLE IF NOT EXISTS tournament_entries (
     withdrawn_at TEXT,
     withdraw_reason TEXT NOT NULL DEFAULT '',
     replaced_by_entry_id INTEGER REFERENCES tournament_entries(id) ON DELETE SET NULL,
+    -- Grupos dinâmicos: o grupo que ele escolheu (índice em group_names do settings_json;
+    -- NULL = sem grupo, ainda precisa escolher). Fora desse formato, sempre NULL.
+    group_slot INTEGER,
     created_at TEXT NOT NULL,
     UNIQUE (tournament_id, player_id)
 );
@@ -732,7 +736,8 @@ def ensure_tournament_columns(database):
     # Desistência com o campeonato em andamento e o WO (store.withdraw_running).
     entry_columns = {column["name"] for column in database.execute("PRAGMA table_info(tournament_entries)")}
     for column, kind in (("withdrawn_at", "TEXT"), ("withdraw_reason", "TEXT NOT NULL DEFAULT ''"),
-                         ("replaced_by_entry_id", "INTEGER REFERENCES tournament_entries(id) ON DELETE SET NULL")):
+                         ("replaced_by_entry_id", "INTEGER REFERENCES tournament_entries(id) ON DELETE SET NULL"),
+                         ("group_slot", "INTEGER")):
         if entry_columns and column not in entry_columns:
             database.execute(f"ALTER TABLE tournament_entries ADD COLUMN {column} {kind}")
     match_columns = {column["name"] for column in database.execute("PRAGMA table_info(tournament_matches)")}
@@ -777,13 +782,13 @@ def ensure_tournament_columns(database):
 
 
 def allow_tournament_formats(database):
-    """Bancos de antes do formato "Pontos corridos + mata-mata" têm o CHECK de
-    tournaments.format sem ele (e os de antes do "um time diferente a cada
-    rodada", o de tournaments.team_mode sem 'round'). Como em allow_iso_memcards,
+    """Bancos de antes dos formatos "Pontos corridos + mata-mata" e "Grupos
+    dinâmicos" têm o CHECK de tournaments.format sem eles (e os de antes do "um
+    time diferente a cada rodada", o de tournaments.team_mode sem 'round'). Como em allow_iso_memcards,
     a tabela é refeita (mesmos ids e colunas) com a definição atual do
     TOURNAMENTS_DDL; as outras tabelas continuam apontando para ela pelo nome."""
     row = database.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tournaments'").fetchone()
-    if row is None or ("league_knockout" in row["sql"] and "'draw', 'round'" in row["sql"]):
+    if row is None or ("dynamic_groups" in row["sql"] and "'draw', 'round'" in row["sql"]):
         return
     start = TOURNAMENTS_DDL.index("CREATE TABLE IF NOT EXISTS tournaments (")
     ddl = TOURNAMENTS_DDL[start:TOURNAMENTS_DDL.index(");", start) + 2]

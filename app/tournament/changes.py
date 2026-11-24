@@ -306,6 +306,7 @@ def preview(db, tournament, change):
         counts[key] = counts.get(key, 0) + 1
     texts = {"sua inscrição foi cancelada": "{} inscrito(s) saem do campeonato e recebem de volta o valor pago",
              "escolha o seu time": "{} inscrito(s) ficam sem time e precisam escolher outro",
+             "escolha o seu grupo": "{} inscrito(s) ficam sem grupo e precisam escolher um",
              "os times serão sorteados": "os times de {} inscrito(s) voltam para o sorteio do início"}
     return {"error": None, "effects": [texts[key].format(count) for key, count in counts.items() if key in texts]}
 

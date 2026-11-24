@@ -1450,8 +1450,11 @@ def show(slug):
     withdraw = None
     if my_entry and store.withdraw_error(db, tournament, my_entry) is None:
         withdraw = _withdraw_view(db, tournament, my_entry)
+    # Grupos dinâmicos: os grupos com os inscritos e as vagas (escolha na inscrição e troca).
+    groups = store.group_views(db, tournament, entries) if store.is_dynamic(tournament) else None
     return render_template(
         "tournaments/show.html", t=tournament, entries=entries, my_entry=my_entry, stages=stages, tab=tab,
+        groups=groups,
         live_table=live_table, confirm_hours=setting(db, "torneios_confirmacao_horas"), scorers=scorers,
         team_list=team_list, free_teams=free_teams, team_modes=TEAM_MODES, crests=_crests(names), my_pending=my_pending,
         names=names, can_manage=can_manage(tournament), can_edit=can_edit(tournament), iso=iso_row,
@@ -1547,6 +1550,9 @@ def loose_team_new():
 
 def _form_config(form, fmt):
     raw = {key: form.get(key) for key in formats.DEFAULTS[fmt] if form.get(key) is not None}
+    if fmt == "dynamic_groups":
+        # Um campo "group_name" por grupo (_tournament_fields.html).
+        raw["group_names"] = form.getlist("group_name") if hasattr(form, "getlist") else form.get("group_names", [])
     raw["_form"] = "1"
     return formats.normalize(fmt, raw)
 
@@ -1617,8 +1623,16 @@ def _form_values(db, tournament):
               "team_mode": tournament["team_mode"], "rules": tournament["rules"] or "",
               "friends_only": "on" if tournament["friends_only"] else ""}
     for key, value in store.settings_of(tournament).items():
-        values[key] = ("on" if value else "") if isinstance(value, bool) else str(value)
+        values[key] = _form_value(value)
     return values
+
+
+def _form_value(value):
+    """Um valor da configuração do formato como o formulário o manda: checkbox
+    "on"/"", lista (os nomes dos grupos dinâmicos) como lista, o resto texto."""
+    if isinstance(value, bool):
+        return "on" if value else ""
+    return list(value) if isinstance(value, list) else str(value)
 
 
 @bp.route("/novo", methods=("GET", "POST"))
@@ -1703,8 +1717,23 @@ def enroll(slug):
     validate_csrf()
     tournament = _load(slug)
     team_id = request.form.get("team_id", type=int)
-    _run(lambda db, t: store.enroll(db, t, session["player_id"], request.form.get("team_name", ""), team_id),
-         tournament, "Inscrição feita!")
+    group_slot = request.form.get("group_slot", type=int)
+    _run(lambda db, t: store.enroll(db, t, session["player_id"], request.form.get("team_name", ""), team_id,
+                                    group_slot), tournament, "Inscrição feita!")
+    return redirect(url_for("tournaments.show", slug=slug, aba="geral"))
+
+
+@bp.post("/<slug>/meu-grupo")
+@player_required
+def choose_group(slug):
+    """Grupos dinâmicos: o inscrito escolhe (ou troca) o seu grupo antes do início, se houver vaga."""
+    validate_csrf()
+    tournament = _load(slug)
+    entry = get_db().execute("SELECT * FROM tournament_entries WHERE tournament_id = ? AND player_id = ?",
+                             (tournament["id"], session["player_id"])).fetchone()
+    if entry:
+        slot = request.form.get("group_slot", type=int)
+        _run(lambda db, t: store.choose_group(db, t, entry, slot), tournament, "Grupo escolhido!")
     return redirect(url_for("tournaments.show", slug=slug, aba="geral"))
 
 
@@ -1832,7 +1861,7 @@ def _pending_form_values(values):
             "prize_split": values["split"], "team_mode": values["team_mode"], "rules": values["rules"] or "",
             "friends_only": "on" if values["friends_only"] else ""}
     for key, value in values["config"].items():
-        form[key] = ("on" if value else "") if isinstance(value, bool) else str(value)
+        form[key] = _form_value(value)
     return form
 
 
@@ -1938,7 +1967,9 @@ def manage(slug):
     entry_search = request.args.get("inscrito", "").strip()
     shown_entries = [e for e in entries if entry_search.lower() in " ".join(
         str(e[key] or "") for key in ("username", "team_name")).lower()] if entry_search else entries
+    groups = store.group_views(db, tournament, entries) if store.is_dynamic(tournament) else None
     return render_template("tournaments/manage.html", t=tournament, entries=entries, shown_entries=shown_entries,
+                           groups=groups,
                            entry_search=entry_search, editing=edit_form is not None, **(edit_form or {}),
                            full=full, helpers=helpers, helper_options=helper_options,
                            max_helpers=editors.MAX_HELPERS, change=change_view, basic=basic,
@@ -2329,6 +2360,27 @@ def start(tournament):
         notify.tournament_started(get_db(), store.get_tournament(get_db(), tournament["id"]))
     return redirect(url_for("tournaments.show", slug=tournament["slug"]) if ok
                     else url_for("tournaments.manage", slug=tournament["slug"]))
+
+
+@bp.post("/<slug>/grupos")
+@manager_required
+def arrange_groups(tournament):
+    """Grupos dinâmicos: o organizador põe os inscritos nos grupos antes do início
+    (um campo grupo_<inscrição> por inscrito); quem mudou de grupo é avisado por e-mail."""
+    slots = {}
+    for key, value in request.form.items():
+        if key.startswith("grupo_") and key[6:].isdigit() and value.lstrip("-").isdigit():
+            slots[int(key[6:])] = int(value)
+    db = get_db()
+    notices = []
+
+    def arrange(db, t):
+        notices.extend(store.arrange_groups(db, t, slots, session.get("player_id")))
+    if _run(arrange, tournament, None):
+        notify.entry_notices(db, store.get_tournament(db, tournament["id"]), notices)
+        moved = len(notices)
+        flash("Grupos salvos." + (f" {moved} jogador(es) avisado(s) por e-mail." if moved else ""), "success")
+    return redirect(url_for("tournaments.manage", slug=tournament["slug"], _anchor="grupos"))
 
 
 @bp.post("/<slug>/inscritos/<int:entry_id>/remover")
