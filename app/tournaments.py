@@ -1701,6 +1701,7 @@ def new():
     selected = {int(v) for v in form.getlist("team_ids") if v.isdigit()} if form else set()
     return render_template("tournaments/new.html", games=games, form=form, max_fee=max_fee,
                            format_labels=formats.FORMATS, defaults=formats.DEFAULTS, splits=PRIZE_SPLITS,
+                           matchup_labels=formats.MATCHUPS,
                            min_players=formats.MIN_PLAYERS, max_players=formats.MAX_PLAYERS,
                            team_modes=TEAM_MODES, catalog=_team_catalog(db), selected=selected,
                            friends=friends.friends(db, session["player_id"]), max_helpers=editors.MAX_HELPERS,
@@ -1974,7 +1975,7 @@ def manage(slug):
                            full=full, helpers=helpers, helper_options=helper_options,
                            max_helpers=editors.MAX_HELPERS, change=change_view, basic=basic,
                            needs_confirmation=_needs_confirmation(db, tournament),
-                           format_labels=formats.FORMATS,
+                           format_labels=formats.FORMATS, matchup_labels=formats.MATCHUPS,
                            defaults=formats.DEFAULTS, splits=PRIZE_SPLITS, min_players=formats.MIN_PLAYERS,
                            max_players=formats.MAX_PLAYERS, team_modes=TEAM_MODES,
                            open_reports=open_reports, my_entry_id=None if is_admin() or not my_entry else my_entry[0],

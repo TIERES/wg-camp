@@ -1531,7 +1531,7 @@ def list_cards(db, tournament_id=None, kind=None, tournament_query="", only_live
 
 
 _TOURNAMENT_LIVE_SQL = (
-    "SELECT m.*, tm.group_id, tm.home_entry_id, tm.away_entry_id, hp.username AS home_nick, "
+    "SELECT m.*, tm.group_id, tm.stage_id AS tm_stage_id, tm.home_entry_id, tm.away_entry_id, hp.username AS home_nick, "
     "ap.username AS away_nick, s.tournament_id FROM live_matches m "
     "JOIN tournament_matches tm ON tm.id = m.tournament_match_id JOIN tournament_stages s ON s.id = tm.stage_id "
     "JOIN tournament_entries he ON he.id = tm.home_entry_id JOIN players hp ON hp.id = he.player_id "
@@ -1580,8 +1580,11 @@ def tournament_live(db, tournament_id):
         for entry, mine, theirs in ((row["home_entry_id"], score[0], score[1]), (row["away_entry_id"], score[1], score[0])):
             entries[entry] = {"score": "%d-%d" % (mine, theirs), "url": link,
                               "result": "win" if mine > theirs else "loss" if mine < theirs else "draw"}
-        if row["group_id"]:
-            groups.add(row["group_id"])
+        # Os grupos dos dois lados (o jogo pode ser entre grupos: confronto entre outros grupos ou entre todos).
+        groups.update(r[0] for r in db.execute(
+            "SELECT gm.group_id FROM tournament_group_members gm JOIN tournament_groups g ON g.id = gm.group_id "
+            "WHERE g.stage_id = ? AND gm.entry_id IN (?, ?)",
+            (row["tm_stage_id"], row["home_entry_id"], row["away_entry_id"])))
     return {"groups": groups, "entries": entries, "matches": matches, "match_urls": match_urls, "live_ids": live_ids}
 
 

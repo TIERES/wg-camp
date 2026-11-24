@@ -3,8 +3,8 @@
 A configuração fica em tournaments.settings_json. Chaves usadas:
   league:       legs
   league_knockout: legs, playoff_qualifiers, ko_legs, final_legs, third_place
-  world_cup:    groups, group_legs, qualifiers, ko_legs, final_legs, third_place
-  dynamic_groups: groups, group_names, group_legs, qualifiers, ko_legs, final_legs, third_place
+  world_cup:    groups, group_legs, group_matchups, qualifiers, ko_legs, final_legs, third_place
+  dynamic_groups: groups, group_names, group_legs, group_matchups, qualifiers, ko_legs, final_legs, third_place
   ucl:          pots, per_pot, direct, ko_legs, final_legs, third_place
   knockout:     ko_legs, final_legs, third_place
 
@@ -17,6 +17,10 @@ Grupos dinâmicos (dynamic_groups) é a Copa com os grupos que o organizador
 nomeia e que cada jogador escolhe na inscrição (tournament_entries.group_slot,
 o índice em group_names); cada grupo aceita até vagas / grupos (arredondado
 para cima) e o organizador reorganiza os grupos até o início (store).
+
+Nos dois, group_matchups diz quem joga com quem na fase de grupos (MATCHUPS):
+dentro do grupo (padrão), contra os jogadores dos outros grupos ou contra
+todos; a classificação é sempre por grupo (store._group_stage, group_tables).
 """
 FORMATS = {
     "league": "Pontos corridos",
@@ -30,9 +34,10 @@ FORMATS = {
 DEFAULTS = {
     "league": {"legs": 2},
     "league_knockout": {"legs": 1, "playoff_qualifiers": 4, "ko_legs": 1, "final_legs": 1, "third_place": False},
-    "world_cup": {"groups": 2, "group_legs": 1, "qualifiers": 2, "ko_legs": 1, "final_legs": 1, "third_place": True},
-    "dynamic_groups": {"groups": 2, "group_names": [], "group_legs": 1, "qualifiers": 2, "ko_legs": 1,
-                       "final_legs": 1, "third_place": True},
+    "world_cup": {"groups": 2, "group_legs": 1, "group_matchups": "within", "qualifiers": 2, "ko_legs": 1,
+                  "final_legs": 1, "third_place": True},
+    "dynamic_groups": {"groups": 2, "group_names": [], "group_legs": 1, "group_matchups": "within", "qualifiers": 2,
+                       "ko_legs": 1, "final_legs": 1, "third_place": True},
     "ucl": {"pots": 4, "per_pot": 1, "direct": 2, "ko_legs": 2, "final_legs": 1, "third_place": False},
     "knockout": {"ko_legs": 1, "final_legs": 1, "third_place": False},
 }
@@ -41,6 +46,12 @@ MIN_PLAYERS, MAX_PLAYERS = 2, 64
 # Grupos dinâmicos: quantos grupos e o tamanho do nome de cada um.
 MAX_GROUPS, GROUP_NAME_MAX = 16, 30
 GROUPED = ("world_cup", "dynamic_groups")  # fase de grupos + mata-mata
+# Quem joga com quem na fase de grupos (o primeiro é o padrão).
+MATCHUPS = {
+    "within": "Confronto entre o grupo",
+    "others": "Confronto entre outros grupos",
+    "all": "Confronto entre todos os grupos",
+}
 
 
 def _int(value, default):
@@ -63,6 +74,8 @@ def normalize(fmt, raw):
             config[key] = raw[key] in (True, "1", "on", "true", 1)
         elif isinstance(default, list):
             config[key] = list(raw[key]) if isinstance(raw[key], (list, tuple)) else []
+        elif isinstance(default, str):
+            config[key] = raw[key] if raw[key] in MATCHUPS else default
         else:
             config[key] = _int(raw[key], default)
     if fmt == "dynamic_groups":
@@ -119,6 +132,8 @@ def config_error(fmt, config, players):
             return f"Classificados por grupo: entre 1 e {players // groups}."
         if groups * qualifiers < 2:
             return "A fase de grupos precisa classificar pelo menos 2 jogadores."
+        if config.get("group_matchups") == "others" and groups < 2:
+            return "Confronto entre outros grupos precisa de pelo menos 2 grupos."
     if fmt == "ucl":
         pots, per_pot, direct = config["pots"], config["per_pot"], config["direct"]
         if pots < 1 or players % pots:
@@ -149,13 +164,16 @@ def describe(fmt, config):
     if fmt == "league_knockout":
         return (f"Pontos corridos em {turns(config['legs'])}; os {config['playoff_qualifiers']} primeiros vão ao "
                 f"mata-mata em {legs(config['ko_legs'])}{final}{third}.")
+    # Quem joga com quem (o padrão, dentro do grupo, não precisa dizer).
+    against = {"others": ", cada um contra os jogadores dos outros grupos",
+               "all": ", cada um contra todos os inscritos"}.get(config.get("group_matchups"), "")
     if fmt == "world_cup":
-        return (f"{config['groups']} grupo(s) em {legs(config['group_legs'])}, {config['qualifiers']} classificado(s) "
-                f"por grupo; mata-mata em {legs(config['ko_legs'])}{final}{third}.")
+        return (f"{config['groups']} grupo(s) em {legs(config['group_legs'])}{against}, {config['qualifiers']} "
+                f"classificado(s) por grupo; mata-mata em {legs(config['ko_legs'])}{final}{third}.")
     if fmt == "dynamic_groups":
         return (f"{config['groups']} grupos escolhidos pelos jogadores na inscrição "
-                f"({', '.join(config['group_names'])}), em {legs(config['group_legs'])}; {config['qualifiers']} "
-                f"classificado(s) por grupo; mata-mata em {legs(config['ko_legs'])}{final}{third}.")
+                f"({', '.join(config['group_names'])}), em {legs(config['group_legs'])}{against}; "
+                f"{config['qualifiers']} classificado(s) por grupo; mata-mata em {legs(config['ko_legs'])}{final}{third}.")
     if fmt == "ucl":
         return (f"Fase de liga com {config['pots']} potes e {config['per_pot']} adversário(s) de cada pote; "
                 f"os {config['direct']} primeiros vão direto ao mata-mata e os {config['direct'] * 2} seguintes "
