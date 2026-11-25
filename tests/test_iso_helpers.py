@@ -281,8 +281,8 @@ class IsoHelpersTest(unittest.TestCase):
         self.upload(self.p0, [self.p1], PNG)
         row = self.iso()
         url = f"/torneios/isos/{row['id']}"
-        # Aguardando liberação: só os responsáveis e a administração veem.
-        self.assertEqual(self.client().get(url).status_code, 404)
+        # Aguardando liberação: só os responsáveis e a administração veem (sem login, pede o login).
+        self.assertEqual(self.client().get(url).headers["Location"], f"/conta/entrar?next={url}")
         self.assertEqual(self.client(self.p2).get(url).status_code, 404)
         self.assertIn("aguarda a liberação", self.client(self.p1).get(url).get_data(as_text=True))
         self.assertEqual(self.client(admin=True).get(url).status_code, 200)
@@ -311,7 +311,7 @@ class IsoHelpersTest(unittest.TestCase):
         # Desativada pela administração: some para quem não é responsável.
         self.client(admin=True).post(f"/admin/torneios/isos/{row['id']}", data={
             "csrf_token": CSRF, "name": row["name"], "game_title_id": self.game})
-        self.assertEqual(self.client().get(url).status_code, 404)
+        self.assertEqual(self.client().get(url).headers["Location"], f"/conta/entrar?next={url}")
         self.assertEqual(self.client(self.p2).get(url + "/baixar").status_code, 404)
         self.assertEqual(self.client(self.p0).get(url).status_code, 200)
 

@@ -40,7 +40,7 @@ from markupsafe import Markup
 
 from .db import get_db, now
 from .memcards import _api_key_ok, _api_player, _error, _reply
-from .security import login_required, validate_csrf
+from .security import login_redirect, login_required, validate_csrf
 from .tournament.teams import generated_badge
 
 api_bp = Blueprint("live_api", __name__, url_prefix="/api/live")
@@ -1033,7 +1033,9 @@ def confirm(live_id):
     from .tournament import friendly, notify, reports, store
     from .tournament.store import TournamentError
     if "player_id" not in session:
-        return jsonify(ok=0, message="Entre na sua conta para confirmar."), 401
+        # live-confirm.js leva para o login (e volta para esta página).
+        return jsonify(ok=0, message="Entre na sua conta para confirmar.",
+                       login=login_redirect().location), 401
     validate_csrf()
     db = get_db()
     match = db.execute("SELECT * FROM live_matches WHERE id = ?", (live_id,)).fetchone()
@@ -2257,7 +2259,7 @@ def delete_card(live_id):
     from .tournament import notify
     if "player_id" not in session:
         flash("Entre na sua conta para excluir o card.", "error")
-        return redirect(url_for("players.login"))
+        return login_redirect()
     validate_csrf()
     db = get_db()
     match = db.execute("SELECT * FROM live_matches WHERE id = ?", (live_id,)).fetchone()

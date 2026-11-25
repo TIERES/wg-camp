@@ -21,6 +21,11 @@
     }).then(function (response) {
       return response.json().catch(function () { return { ok: 0, message: 'Não deu para confirmar agora: recarregue a página.' }; });
     }).then(function (data) {
+      if (data.login) {
+        // Saiu da conta (sessão expirada): entra e volta para esta página.
+        window.location.href = data.login;
+        return;
+      }
       if (!data.ok) {
         button.disabled = false;
         say(data.message || 'Não deu para confirmar agora.', 'error');
