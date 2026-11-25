@@ -301,7 +301,7 @@ def _entry_html(username, gave_up, team_name="", team=None):
         return Markup('<span class="entry"><span class="entry-name">{}{}</span></span>').format(username, gave_up)
     image = team_image(team) if team is not None and team["name"] else generated_badge(team_name)
     return Markup('<span class="entry"><img class="crest" src="{}" alt="" loading="lazy">'
-                  '<span class="entry-name">{}<small>{}{}</small></span></span>').format(image, team_name, username,
+                  '<span class="entry-name"><span>{}</span><small>{}{}</small></span></span>').format(image, team_name, username,
                                                                                        gave_up)
 
 
