@@ -274,7 +274,7 @@ class TeamsTest(unittest.TestCase):
                                    "WHERE e.id = ?", (m1["home_entry_id"],)).fetchone()[0]
             # A inscrição é só o jogador; o lado do jogo tem o time daquele jogo, com o jogador embaixo.
             self.assertNotIn("crest", names[m1["home_entry_id"]])
-            self.assertIn("Brasil<small>%s</small>" % home, tournaments.side_name(names, m1, "home"))
+            self.assertIn("<span>Brasil</span><small>%s</small>" % home, tournaments.side_name(names, m1, "home"))
             self.assertIn("/static/flags/br.svg", tournaments.side_name(names, m1, "home"))
             self.assertIn("Unidos da Várzea", tournaments.side_name(names, m1, "away"))
             self.assertEqual(tournaments.side_name(names, m2, "home"), names[m2["home_entry_id"]])
@@ -356,21 +356,21 @@ class TeamsTest(unittest.TestCase):
         row = self.db.execute("SELECT * FROM tournament_matches WHERE id = ?", (match["id"],)).fetchone()
         self.assertEqual((row["status"], row["home_team_name"], row["away_team_name"]), ("reported", "Brasil", "Várzea FC"))
         games = client.get(f"/torneios/{slug}?aba=jogos").get_data(as_text=True)
-        self.assertIn("Brasil<small>%s</small>" % match["home"], games)
-        self.assertIn("Várzea FC<small>%s</small>" % match["away"], games)
+        self.assertIn("<span>Brasil</span><small>%s</small>" % match["home"], games)
+        self.assertIn("<span>Várzea FC</span><small>%s</small>" % match["away"], games)
         # A classificação é do jogador: sem o time na tabela.
         table = client.get(f"/torneios/{slug}?aba=tabela").get_data(as_text=True)
         standings = table[table.index('<table class="standings">'):]
         self.assertIn('<span class="entry-name">%s</span>' % match["home"], standings)
-        self.assertNotIn("Brasil<small>", standings)
-        self.assertIn("Brasil<small>%s</small>" % match["home"], table)  # nos seus jogos pendentes, o time do jogo
+        self.assertNotIn("<span>Brasil</span><small>", standings)
+        self.assertIn("<span>Brasil</span><small>%s</small>" % match["home"], table)  # nos seus jogos pendentes, o time do jogo
         # O adversário confirma em Meus jogos: o jogo aparece com os times dele.
         other = self.app.test_client()
         opponent = self.db.execute("SELECT id FROM players WHERE username = ?", (match["away"],)).fetchone()[0]
         with other.session_transaction() as session:
             session["player_id"] = opponent
         mine = other.get("/torneios/meus-jogos").get_data(as_text=True)
-        self.assertIn("Várzea FC<small>%s</small>" % match["away"], mine)
+        self.assertIn("<span>Várzea FC</span><small>%s</small>" % match["away"], mine)
 
 
 if __name__ == "__main__":

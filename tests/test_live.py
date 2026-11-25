@@ -2601,8 +2601,8 @@ class LiveMatchesTest(unittest.TestCase):
                          ("reported", "Croácia", "Grécia"))
         self.assertIsNotNone(match["home_team_id"])
         games = self.app.test_client().get("/torneios/liga-1?aba=jogos").get_data(as_text=True)
-        self.assertIn("Croácia<small>ANDERSHOW</small>", games)
-        self.assertIn("Grécia<small>TIERES</small>", games)
+        self.assertIn("<span>Croácia</span><small>ANDERSHOW</small>", games)
+        self.assertIn("<span>Grécia</span><small>TIERES</small>", games)
 
 
 if __name__ == "__main__":
