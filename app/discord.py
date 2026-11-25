@@ -175,9 +175,10 @@ def _player_required():
 
 @bp.post("/conta/discord/vincular")
 def link():
-    validate_csrf()
+    # Primeiro o login: sem a sessão, o CSRF também não confere (erro 400).
     if (response := _player_required()):
         return response
+    validate_csrf()
     if not oauth_enabled():
         flash("O Discord ainda não está configurado no WE Camp.", "error")
         return redirect(url_for("players.account"))
@@ -244,9 +245,9 @@ def callback():
 
 @bp.post("/conta/discord/desvincular")
 def unlink():
-    validate_csrf()
     if (response := _player_required()):
         return response
+    validate_csrf()
     db = get_db()
     db.execute("UPDATE players SET discord_id = NULL, discord_name = NULL, discord_linked_at = NULL, updated_at = ? "
                "WHERE id = ?", (now(), session["player_id"]))

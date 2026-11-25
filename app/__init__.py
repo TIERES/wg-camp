@@ -165,4 +165,10 @@ def create_app(test_config=None):
     from .tournament.announce import bp as announce_bp  # aviso de campeonato liberado
     app.register_blueprint(announce_bp)
     app.jinja_env.filters["wcash"] = format_cents
+
+    @app.errorhandler(403)
+    def forbidden(error):
+        """Logado sem acesso (sem login, security.deny já pediu o login)."""
+        from flask import render_template
+        return render_template("forbidden.html"), 403
     return app

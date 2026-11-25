@@ -1,0 +1,16 @@
+{# Erro 403 (app/__init__.py): quem entrou mas não tem acesso, ex. o Gerenciar de um
+   campeonato de outro organizador. Sem login, essas páginas pedem o login antes
+   (security.deny). #}
+{% extends 'base.html' %}{% from '_icons.html' import icon %}{% block title %}Sem acesso · WE Camp{% endblock %}{% block content %}
+<section class="login account-form login-card">
+  <div class="login-head">
+    <span class="login-badge" aria-hidden="true">{{ icon('lock') }}</span>
+    <h1>Sem acesso</h1>
+    <p class="muted">{% if player_name %}Você entrou como <strong>{{ player_name }}</strong>, e esta{% else %}Esta{% endif %} página é só de quem organiza (ou ajuda a organizar) o campeonato.</p>
+  </div>
+  <a class="button login-submit" href="{{ url_for('players.login', next=request.full_path.rstrip('?')) }}">{{ icon('login') }}Entrar com outra conta</a>
+  <ul class="login-links">
+    <li><a href="{{ url_for('tournaments.index') }}">{{ icon('history') }}Voltar para os campeonatos</a></li>
+  </ul>
+</section>
+{% endblock %}

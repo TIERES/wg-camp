@@ -23,7 +23,7 @@ from .db import get_db, now
 from .mailer import MailError, send_mail
 from .memcards import (add_version, card_error, card_path, championship_isos, get_or_create_game,
                        get_or_create_memcard, normalize_content_id, srm_basename)
-from .security import validate_csrf
+from .security import login_redirect, safe_next, validate_csrf
 
 bp = Blueprint("players", __name__, url_prefix="/conta")
 
@@ -38,7 +38,7 @@ def player_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         if "player_id" not in session:
-            return redirect(url_for("players.login", next=request.path))
+            return login_redirect()
         return view(*args, **kwargs)
     return wrapped
 
@@ -216,10 +216,8 @@ def login():
                 session["first_login"] = True
             db.execute("UPDATE players SET last_login_at = ? WHERE id = ?", (now(), player["id"]))
             db.commit()
-            target = request.args.get("next", "")
-            if not (target.startswith("/conta") or target.startswith("/torneios")):
-                target = url_for("tournaments.my_tournaments")
-            return redirect(target)
+            # Volta para a página que pediu o login (security.login_redirect).
+            return redirect(safe_next(request.args.get("next")) or url_for("tournaments.my_tournaments"))
     return render_template("players/login.html")
 
 

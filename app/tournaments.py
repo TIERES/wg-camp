@@ -28,7 +28,7 @@ from .accounts import absolute_url
 from .db import get_db, now
 from .players import player_required
 from .public import SHARE_IMAGE
-from .security import login_required, validate_csrf
+from .security import deny, login_required, validate_csrf
 from .storage import attachment_header
 from .timeutil import format_local
 from .tournament import (changes, editors, engine, formats, free, friendly, friends, games as game_catalog, iso,
@@ -195,10 +195,14 @@ def _load(slug, private_ok=False):
         "FROM tournaments t "
         "JOIN game_titles g ON g.id = t.game_title_id JOIN players p ON p.id = t.organizer_id WHERE t.slug = ?",
         (slug,)).fetchone()
-    if tournament is None or (tournament["status"] == "draft" and not can_manage(tournament)):
+    if tournament is None:
         abort(404)
+    # Escondido (rascunho de outro, "Somente para amigos" de quem não é amigo):
+    # sem login, pede o login (o organizador ou o amigo pode só não ter entrado).
+    if tournament["status"] == "draft" and not can_manage(tournament):
+        deny(404)
     if tournament["friends_only"] and not private_ok and not can_view(db, tournament):
-        abort(404)
+        deny(404)
     return tournament
 
 
@@ -226,7 +230,7 @@ def manager_required(view):
     def wrapped(slug, *args, **kwargs):
         tournament = _load(slug)
         if not can_manage(tournament):
-            abort(403)
+            deny(403)
         if request.method == "POST":
             validate_csrf()
         return view(tournament, *args, **kwargs)
@@ -239,7 +243,7 @@ def editor_required(view):
     def wrapped(slug, *args, **kwargs):
         tournament = _load(slug)
         if not can_edit(tournament):
-            abort(403)
+            deny(403)
         if request.method == "POST":
             validate_csrf()
         return view(tournament, *args, **kwargs)
@@ -765,9 +769,10 @@ def friendly_show(friendly_id):
     db = get_db()
     row = friendly.get(db, friendly_id)
     me = session.get("player_id")
-    if row is None or (row["status"] != "confirmed" and me not in (row["home_id"], row["away_id"])
-                       and not is_admin()):
+    if row is None:
         abort(404)
+    if row["status"] != "confirmed" and me not in (row["home_id"], row["away_id"]) and not is_admin():
+        deny(404)
     # Os artilheiros ficam no verso do card (a bola do título).
     return render_template("tournaments/friendly.html", f=row, labels=friendly.STATUS_LABELS,
                            needs_me=friendly.needs_me, card_games=_friendly_card_games(db, row))
@@ -1068,8 +1073,10 @@ def iso_page(catalog_id):
     antes e o depois, para confirmar ou recusar."""
     db = get_db()
     row = iso_catalog.get(db, catalog_id)
-    if not _iso_visible(row):
+    if row is None:
         abort(404)
+    if not _iso_visible(row):
+        deny(404)
     me = session.get("player_id")
     responsible = iso_catalog.can_edit(db, row, me)
     return render_template(
@@ -1088,8 +1095,10 @@ def iso_page_download(catalog_id):
     """O download da página da ISO: só para quem está logado (cadastrado)."""
     page = url_for("tournaments.iso_page", catalog_id=catalog_id)
     row = iso_catalog.get(get_db(), catalog_id)
-    if not _iso_visible(row):
+    if row is None:
         abort(404)
+    if not _iso_visible(row):
+        deny(404)
     if "player_id" not in session and not is_admin():
         return redirect(url_for("players.login", next=page))
     response = _catalog_iso_response(row)
@@ -1891,7 +1900,7 @@ def _change_proposed(db, tournament, change):
 def manage(slug):
     tournament = _load(slug)
     if not can_edit(tournament):
-        abort(403)
+        deny(403)
     db = get_db()
     me = session.get("player_id")
     # Os ajudantes (tournament/editors.py) só veem os dados, a imagem e a ISO.
@@ -2256,7 +2265,7 @@ def iso_upload(slug):
     # (o CSRF lê o corpo inteiro, que pode ter centenas de MB).
     tournament = _load(slug)
     if not can_edit(tournament):
-        abort(403)
+        deny(403)
     anchor = None
     try:
         iso.check_size(request, current_app.config["TOURNAMENT_ISO_MAX_BYTES"])
