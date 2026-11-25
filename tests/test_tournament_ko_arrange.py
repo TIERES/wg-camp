@@ -108,20 +108,104 @@ class KnockoutArrangeStoreTest(unittest.TestCase):
             store.arrange_bracket(self.db, self.t(tid), self.slots(tid))
 
     def test_byes_moved_by_the_organizer(self):
-        # 3 jogadores: (1º, vaga) e (2º, 3º); o organizador dá a vaga ao 3º.
+        # 3 jogadores: (1º, vaga) e (2º, 3º); o organizador dá a vaga ao 3º, que passa direto (sem repescagem).
         tid = self.tournament(3, ko_arrange="on")
         store.start(self.db, self.t(tid), self.rng)
         a, bye, b, c = self.slots(tid)
         self.assertIsNone(bye)
         store.arrange_bracket(self.db, self.t(tid), [a, b, None, c], confirm=True)
         stage = self.stage(tid)
-        ties = self.db.execute("SELECT * FROM tournament_ties WHERE stage_id = ? AND round = 1 ORDER BY position",
+        self.assertFalse(store.settings_of(stage)["repechage"])
+        ties = self.db.execute("SELECT * FROM tournament_ties WHERE stage_id = ? ORDER BY round, position",
                                (stage["id"],)).fetchall()
         self.assertEqual((ties[0]["entry_a"], ties[0]["entry_b"]), (a, b))
-        # Repescagem: o 3º, sem adversário, espera o perdedor do confronto vizinho.
-        self.assertEqual(ties[1]["entry_a"], c)
-        self.assertEqual(ties[0]["loser_next_tie_id"], ties[1]["id"])
+        self.assertEqual((ties[1]["entry_a"], ties[1]["winner_entry_id"]), (c, c))
+        self.assertIsNone(ties[0]["loser_next_tie_id"])
+        self.assertEqual(ties[2]["entry_b"], c)  # já na final, esperando o vencedor de a x b
         self.assertEqual(len(self.matches(stage["id"])), 1)
+
+    def play(self, tid, home_wins=True):
+        """Confirma os jogos abertos do campeonato (o mandante vence); devolve quantos."""
+        open_ = self.db.execute("SELECT m.id FROM tournament_matches m JOIN tournament_stages s ON s.id = m.stage_id "
+                                "WHERE s.tournament_id = ? AND m.status != 'confirmed' ORDER BY m.id", (tid,)).fetchall()
+        for match in open_:
+            store.record_result(self.db, self.t(tid), match["id"], *((2, 0) if home_wins else (0, 2)))
+        return len(open_)
+
+    def tie(self, stage_id, round_no, position):
+        return self.db.execute("SELECT * FROM tournament_ties WHERE stage_id = ? AND round = ? AND position = ? "
+                               "AND is_third_place = 0", (stage_id, round_no, position)).fetchone()
+
+    def finished_ranking(self, tid):
+        return [e["id"] for e in sorted((e for e in store.entries_of(self.db, tid) if e["final_position"]),
+                                        key=lambda e: e["final_position"])]
+
+    def test_empty_matchup_lets_the_neighbor_winner_pass(self):
+        # 6 jogadores numa chave de 8: o confronto 2 vazio - quem vencer o 1 vai direto para a final
+        # (a semifinal 1 só tem esse lado e passa direto, sem jogo).
+        tid = self.tournament(6, ko_arrange="on", third_place="on")
+        store.start(self.db, self.t(tid), self.rng)
+        p = [e for e in self.slots(tid) if e]
+        store.arrange_bracket(self.db, self.t(tid), [p[0], p[1], None, None, p[2], p[3], p[4], p[5]], confirm=True)
+        stage = self.stage(tid)
+        empty, semi = self.tie(stage["id"], 1, 1), self.tie(stage["id"], 2, 0)
+        self.assertEqual((empty["is_bye"], empty["entry_a"], empty["winner_entry_id"]), (1, None, None))
+        self.assertEqual(semi["is_bye"], 1)
+        # Semifinal sem jogo: sem disputa de 3º (o 3º é o semifinalista eliminado).
+        self.assertIsNone(self.db.execute("SELECT 1 FROM tournament_ties WHERE stage_id = ? AND is_third_place = 1",
+                                          (stage["id"],)).fetchone())
+        self.assertEqual(len(self.matches(stage["id"])), 3)  # as 3 quartas com jogadores
+        self.play(tid)
+        semi = self.tie(stage["id"], 2, 0)
+        self.assertEqual(semi["winner_entry_id"], p[0])  # o mandante do confronto 1 venceu
+        self.assertEqual(self.tie(stage["id"], 3, 0)["entry_a"], p[0])
+        self.assertIsNone(self.db.execute("SELECT 1 FROM tournament_matches WHERE tie_id = ?",
+                                          (semi["id"],)).fetchone())
+        while self.play(tid):
+            pass
+        self.assertTrue(store.stage_complete(self.db, stage))
+        store.finish(self.db, self.t(tid))
+        ranking = self.finished_ranking(tid)
+        self.assertEqual(ranking[0], p[0])
+        self.assertEqual(len(ranking), 3)
+
+    def test_empty_quarter_of_the_bracket_chains(self):
+        # 10 jogadores numa chave de 16 (oitavas): os confrontos 3 e 4 vazios - a quartas 2 fica vazia
+        # e quem vencer a quartas 1 passa a semifinal 1 sem jogo.
+        tid = self.tournament(10, ko_arrange="on", third_place="on")
+        store.start(self.db, self.t(tid), self.rng)
+        p = [e for e in self.slots(tid) if e]
+        slots = [p[0], p[1], p[2], p[3], None, None, None, None,
+                 p[4], p[5], p[6], p[7], p[8], None, p[9], None]
+        store.arrange_bracket(self.db, self.t(tid), slots, confirm=True)
+        stage = self.stage(tid)
+        self.assertEqual(self.tie(stage["id"], 2, 1)["is_bye"], 1)  # quartas 2: vazia (3 e 4 vazios)
+        self.assertEqual(self.tie(stage["id"], 3, 0)["is_bye"], 1)  # semifinal 1: só um lado
+        self.assertIsNone(self.db.execute("SELECT 1 FROM tournament_ties WHERE stage_id = ? AND is_third_place = 1",
+                                          (stage["id"],)).fetchone())
+        while self.play(tid):
+            pass
+        self.assertTrue(store.stage_complete(self.db, stage))
+        store.finish(self.db, self.t(tid))
+        self.assertEqual(self.t(tid)["status"], "finished")
+        self.assertEqual(len(self.finished_ranking(tid)), 3)
+
+    def test_correcting_a_result_moves_who_passed_through(self):
+        tid = self.tournament(6, ko_arrange="on")
+        store.start(self.db, self.t(tid), self.rng)
+        p = [e for e in self.slots(tid) if e]
+        store.arrange_bracket(self.db, self.t(tid), [p[0], p[1], None, None, p[2], p[3], p[4], p[5]], confirm=True)
+        stage = self.stage(tid)
+        first = self.db.execute("SELECT * FROM tournament_matches WHERE tie_id = ?",
+                                (self.tie(stage["id"], 1, 0)["id"],)).fetchone()
+        store.record_result(self.db, self.t(tid), first["id"], 2, 0)
+        self.assertEqual(self.tie(stage["id"], 3, 0)["entry_a"], first["home_entry_id"])
+        store.record_result(self.db, self.t(tid), first["id"], 0, 2)  # corrigido: o visitante venceu
+        self.assertEqual(self.tie(stage["id"], 2, 0)["winner_entry_id"], first["away_entry_id"])
+        self.assertEqual(self.tie(stage["id"], 3, 0)["entry_a"], first["away_entry_id"])
+        store.clear_result(self.db, self.t(tid), first["id"])
+        self.assertIsNone(self.tie(stage["id"], 2, 0)["winner_entry_id"])
+        self.assertIsNone(self.tie(stage["id"], 3, 0)["entry_a"])
 
     def test_invalid_arrangements(self):
         tid = self.tournament(5, ko_arrange="on")
@@ -133,12 +217,16 @@ class KnockoutArrangeStoreTest(unittest.TestCase):
         outsider[outsider.index(next(e for e in slots if e))] = 999999
         with self.assertRaisesRegex(TournamentError, "exatamente os jogadores"):
             store.arrange_bracket(self.db, self.t(tid), outsider)
-        # Duas vagas vazias no mesmo confronto (e um confronto com 3 jogadores... não cabe: é a mesma lista).
-        players = [e for e in slots if e]
-        empty_pair = [None, None] + players + [None] * (len(slots) - 2 - len(players))
-        with self.assertRaisesRegex(TournamentError, "pelo menos um jogador"):
-            store.arrange_bracket(self.db, self.t(tid), empty_pair)
+        # A chave é a menor potência de 2 que cabe todos: uma metade nunca comporta todos os jogadores,
+        # então a final sempre acontece (deixar de fora alguém para esvaziar uma metade não pode).
+        p = [e for e in slots if e]
+        with self.assertRaisesRegex(TournamentError, "exatamente os jogadores"):
+            store.arrange_bracket(self.db, self.t(tid), p[:4] + [None] * 4)
         self.assertEqual(self.slots(tid), slots)
+        # Confronto vazio pode.
+        empty_pair = [None, None, p[0], p[1], p[2], None, p[3], p[4]]
+        store.arrange_bracket(self.db, self.t(tid), empty_pair)
+        self.assertEqual(self.slots(tid), empty_pair)
 
     def test_no_draft_without_the_flag_or_with_two_players(self):
         tid = self.tournament(4)

@@ -79,7 +79,7 @@
    quem estava nela - e salva; ao confirmar, os jogos saem e as posições não mudam mais (static/js/bracket-board.js). #}
 <section id="chaveamento">
   <h2>Chaveamento do mata-mata</h2>
-  <p class="muted">Ordem dinâmica do mata-mata: arraste um jogador para outra posição e os dois trocam de lugar. A vaga <em>Sem adversário</em> também pode ser arrastada: quem fica com ela passa direto{% if bracket_board.repechage %} (ou espera na repescagem o perdedor do confronto vizinho){% endif %}. Salve quantas vezes quiser; os jogos só são liberados quando você <strong>confirmar o chaveamento</strong>, e depois disso as posições não mudam mais. No celular, arraste pela alça <span aria-hidden="true">⠿</span>; no teclado, ↑ e ↓ trocam o jogador com a posição de cima ou de baixo.</p>
+  <p class="muted">Ordem dinâmica do mata-mata: arraste um jogador para outra posição e os dois trocam de lugar. A vaga <em>Sem adversário</em> também pode ser arrastada: quem fica com ela passa direto{% if bracket_board.repechage %} (ou espera na repescagem o perdedor do confronto vizinho){% endif %}. Um confronto pode ficar vazio, com as duas vagas sem jogador: quem passar do confronto vizinho segue direto para a fase seguinte (só cada metade da chave precisa de pelo menos um jogador). Salve quantas vezes quiser; os jogos só são liberados quando você <strong>confirmar o chaveamento</strong>, e depois disso as posições não mudam mais. No celular, arraste pela alça <span aria-hidden="true">⠿</span>; no teclado, ↑ e ↓ trocam o jogador com a posição de cima ou de baixo.</p>
   {% macro bracket_chip(e) %}{% if e %}
             <div class="group-chip bracket-chip" tabindex="0" data-entry="{{ e.id }}" data-name="{{ e.username }}">
               <span class="group-grip" aria-hidden="true">⠿</span>
@@ -122,7 +122,7 @@
       <div class="card-actions dialog-actions"><button type="button" class="secondary" data-dialog-close>Voltar</button><button form="bracket-form" name="acao" value="confirmar">Confirmar chaveamento</button></div>
     </div>
   </dialog>
-  <script src="{{ url_for('static', filename='js/bracket-board.js', v='20261125a') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/bracket-board.js', v='20261125b') }}" defer></script>
 </section>
 {% endif %}
 

@@ -130,6 +130,7 @@ button:disabled { opacity:.5; cursor:not-allowed }
 .bracket-slot.drop-over .bracket-chip { border-color:var(--accent); background:#064e3b }
 .bracket-vs { text-align:center; color:#6b7280; font-size:.8rem; line-height:1 }
 .bracket-chip.bye-chip { border-style:dashed; color:#9ca3af; font-style:italic }
+.bracket-pair.empty-pair { border-style:dashed }
 .bracket-summary { margin:.5rem 0 1rem; padding-left:1.5rem; max-height:40vh; overflow:auto }
 .game-cover-option { position:relative; display:grid; gap:.4rem; padding:.4rem; border:2px solid transparent; border-radius:8px; cursor:pointer; text-align:center; font-size:.9rem }
 .game-cover-option input { position:absolute; opacity:0; pointer-events:none }

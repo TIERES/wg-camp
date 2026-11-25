@@ -4,8 +4,10 @@
    que vai no "Salvar chaveamento" / "Confirmar chaveamento" (tournaments.arrange_bracket).
 
    - Soltar um jogador numa posição troca os dois de lugar (o "Sem adversário" também
-     se arrasta: quem fica com ele passa direto ou espera na repescagem).
-   - Confronto sem nenhum jogador não pode: a troca é desfeita, com o aviso.
+     se arrasta: quem fica com ele passa direto).
+   - Confronto vazio (as duas vagas sem ninguém) pode: quem passar do confronto vizinho
+     segue direto para a fase seguinte (store._build_bracket). Metade da chave vazia
+     não pode (a final não aconteceria): a troca é desfeita, com o aviso.
    - Mouse: arrasta pelo cartão inteiro. Toque: pela alça (⠿), para o resto do
      cartão continuar rolando a página. Perto da borda da tela, a página rola.
    - Teclado: com o cartão em foco, ↑ e ↓ trocam com a posição de cima/de baixo. */
@@ -37,8 +39,12 @@
     pairs.forEach(function (pair, index) {
       var state = pairState(index), note = pair.querySelector('[data-pair-note]');
       var neighbor = pairs[index ^ 1] ? pairState(index ^ 1) : null;
+      pair.classList.toggle('empty-pair', state.empty);
       if (!note) return;
-      if (state.bye) {
+      if (state.empty) {
+        note.textContent = 'Confronto vazio.' + (neighbor && !neighbor.empty
+          ? ' Quem passar do confronto ' + ((index ^ 1) + 1) + ' segue direto para a fase seguinte.' : '');
+      } else if (state.bye) {
         var who = isBye(state.a) ? state.b.dataset.name : state.a.dataset.name;
         note.textContent = repechage && neighbor && !neighbor.bye && !neighbor.empty
           ? who + ' espera na repescagem o perdedor do confronto ' + ((index ^ 1) + 1) + '.'
@@ -57,18 +63,24 @@
     errorBox.hidden = !text;
   }
 
-  // Troca o cartão com o da posição `target`; desfaz se algum confronto ficar sem jogador.
+  // Metade da chave sem nenhum jogador: a final não aconteceria.
+  function emptyHalf() {
+    var half = slots.length / 2;
+    var filled = function (list) { return list.some(function (slot) { return !isBye(chipOf(slot)); }); };
+    return !filled(slots.slice(0, half)) || !filled(slots.slice(half));
+  }
+
+  // Troca o cartão com o da posição `target`; desfaz se uma metade da chave ficar sem jogador.
   function swap(chip, target) {
     var from = chip.parentElement;
     if (!target || target === from) return false;
     var other = chipOf(target);
     place(target, chip);
     place(from, other);
-    var a = Math.floor(slots.indexOf(from) / 2), b = Math.floor(slots.indexOf(target) / 2);
-    if (pairState(a).empty || pairState(b).empty) {
+    if (emptyHalf()) {
       place(from, chip);
       place(target, other);
-      showError('Cada confronto precisa ter pelo menos um jogador: essa troca deixaria um confronto sem ninguém.');
+      showError('Cada metade da chave precisa de pelo menos um jogador: senão a final não acontece.');
       return false;
     }
     showError('');
@@ -164,7 +176,8 @@
     summary.textContent = '';
     pairs.forEach(function (pair, index) {
       var state = pairState(index), li = document.createElement('li');
-      li.textContent = state.bye ? (isBye(state.a) ? state.b : state.a).dataset.name + ' (sem adversário)'
+      li.textContent = state.empty ? 'Confronto vazio'
+        : state.bye ? (isBye(state.a) ? state.b : state.a).dataset.name + ' (sem adversário, passa direto)'
         : state.a.dataset.name + ' x ' + state.b.dataset.name;
       summary.appendChild(li);
     });

@@ -401,6 +401,20 @@ def _stage_views(db, tournament, provisional=None):
                                 view["match_trophies"][match["id"]] = won
             # Repescagem: confronto que recebe o perdedor de outro (fora a disputa de 3º).
             feeders = {t["loser_next_tie_id"]: t for t in ties if t["loser_next_tie_id"]}
+            # Confrontos vazios (Ordem dinâmica do mata-mata - store._build_bracket): os da 1ª rodada
+            # sem ninguém e os que só eles alimentam; o lado que vem de um deles é "vaga vazia".
+            empty, empty_slots = set(), {}
+            for tie in sorted((t for t in ties if not t["is_third_place"]), key=lambda t: t["round"]):
+                if tie["round"] == 1:
+                    if tie["is_bye"] and not tie["entry_a"] and not tie["entry_b"]:
+                        empty.add(tie["id"])
+                        empty_slots[tie["id"]] = {"a", "b"}
+                    continue
+                sides = {t["next_slot"] for t in ties if t["next_tie_id"] == tie["id"] and t["id"] in empty}
+                if sides:
+                    empty_slots[tie["id"]] = sides
+                    if sides == {"a", "b"}:
+                        empty.add(tie["id"])
             per_round = {}
             for tie in ties:
                 per_round.setdefault(tie["round"], []).append(tie)
@@ -418,8 +432,9 @@ def _stage_views(db, tournament, provisional=None):
                             aggregate[m["away_entry_id"]] += m["away_goals"]
                     feeder = None if tie["is_third_place"] else feeders.get(tie["id"])
                     items.append({"tie": tie, "legs": legs, "aggregate": aggregate,
+                                  "empty_slots": empty_slots.get(tie["id"], set()),
                                   "label": "Disputa de 3º lugar" if tie["is_third_place"] else
-                                  "Repescagem" if feeder else None,
+                                  "Repescagem" if feeder else "Confronto vazio" if tie["id"] in empty else None,
                                   "waits_for": None if not feeder else "perdedor do confronto " + (
                                       "abaixo" if feeder["position"] > tie["position"] else "acima")})
                 view["bracket"].append({"name": name, "round": round_no, "items": items, "is_last": round_no == last})
