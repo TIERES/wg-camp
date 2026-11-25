@@ -121,7 +121,7 @@
             <div class="tie-slot{% if tie.winner_entry_id and tie.winner_entry_id == s.entry %} winner{% endif %}">
               <span class="tie-team">{% if s.entry %}{{ side_name(names, m, 'home' if s.entry == m.home_entry_id else 'away') }}{% set place = (view.tie_trophies or {}).get(tie.id, {}).get(s.entry) %}{% if place %}{{ trophy_badge(place) }}{% endif %}{% elif item.waits_for and s.slot == 'b' %}<em class="muted">aguarda o {{ item.waits_for }}</em>{% else %}<em class="muted">a definir</em>{% endif %}</span>
               <span class="leg-score">{% if g %}<span class="score-val score-{{ g.status }}" title="{{ score_tips[g.status] }}"><strong>{{ g.goals }}</strong>{% if g.pens is not none %} <small>({{ g.pens }} pên.)</small>{% endif %}</span>{% elif s.entry %}<span class="muted" title="{{ score_tips.scheduled }}">–</span>{% endif %}</span>
-              {% if s.goals %}<span class="tie-score score-val score-{{ s.agg }}" title="{{ score_tips[s.agg] }}"><small>Agregado:</small> <strong>{{ s.goals|sum }}</strong></span>{% endif %}
+              {% if s.goals %}<span class="tie-score score-val score-{{ s.agg }}" title="Agregado · {{ score_tips[s.agg] }}"><small aria-hidden="true">Agr.</small><span class="visually-hidden">Agregado:</span> <strong>{{ s.goals|sum }}</strong></span>{% endif %}
             </div>
             {% endfor %}
           </{{ 'a' if mine else 'div' }}>
@@ -135,8 +135,8 @@
       {% if item.label %}<div class="tie-label">{{ item.label }}</div>{% endif %}
       {% for s in slots %}
       <div class="tie-slot{% if tie.winner_entry_id and tie.winner_entry_id == s.entry %} winner{% endif %}">
-        <span>{% if s.entry %}{{ side_name(names, only, 'home' if s.entry == only.home_entry_id else 'away') if only else names[s.entry] }}{% set place = (view.tie_trophies or {}).get(tie.id, {}).get(s.entry) %}{% if place %}{{ trophy_badge(place) }}{% endif %}{% elif tie.is_bye and s.slot == 'b' %}<em class="muted">passa direto</em>{% elif item.waits_for and s.slot == 'b' %}<em class="muted">aguarda o {{ item.waits_for }}</em>{% else %}<em class="muted">a definir</em>{% endif %}</span>
-        {% if s.goals %}<span class="tie-score score-val score-{{ s.status }}" title="{{ score_tips[s.status] }}">{% if tie.legs == 2 %}<small>Agregado:</small> {% endif %}<strong>{{ s.goals|sum }}</strong>{% if s.pens is not none %} <small>({{ s.pens }} pên.)</small>{% endif %}</span>{% endif %}
+        <span>{% if s.entry %}{{ side_name(names, only, 'home' if s.entry == only.home_entry_id else 'away') if only else names[s.entry] }}{% set place = (view.tie_trophies or {}).get(tie.id, {}).get(s.entry) %}{% if place %}{{ trophy_badge(place) }}{% endif %}{% elif s.slot in item.empty_slots %}<em class="muted">vaga vazia</em>{% elif tie.is_bye and s.slot == 'b' %}<em class="muted">passa direto</em>{% elif item.waits_for and s.slot == 'b' %}<em class="muted">aguarda o {{ item.waits_for }}</em>{% else %}<em class="muted">a definir</em>{% endif %}</span>
+        {% if s.goals %}<span class="tie-score score-val score-{{ s.status }}" title="{{ score_tips[s.status] }}">{% if tie.legs == 2 %}<small aria-hidden="true">Agr.</small><span class="visually-hidden">Agregado:</span> {% endif %}<strong>{{ s.goals|sum }}</strong>{% if s.pens is not none %} <small>({{ s.pens }} pên.)</small>{% endif %}</span>{% endif %}
       </div>
       {% endfor %}
     {% if target %}</a>{% else %}</div>{% endif %}

@@ -329,6 +329,7 @@ CREATE TABLE IF NOT EXISTS tournament_stages (
     status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'done')),
     settings_json TEXT NOT NULL DEFAULT '{}',
     all_played_at TEXT,
+    arranging INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     UNIQUE (tournament_id, seq)
 );
@@ -733,6 +734,9 @@ def ensure_tournament_columns(database):
     stage_columns = {column["name"] for column in database.execute("PRAGMA table_info(tournament_stages)")}
     if stage_columns and "all_played_at" not in stage_columns:
         database.execute("ALTER TABLE tournament_stages ADD COLUMN all_played_at TEXT")
+    # Ordem dinâmica do mata-mata: chaveamento esperando o organizador confirmar (store.arrange_bracket).
+    if stage_columns and "arranging" not in stage_columns:
+        database.execute("ALTER TABLE tournament_stages ADD COLUMN arranging INTEGER NOT NULL DEFAULT 0")
     # Desistência com o campeonato em andamento e o WO (store.withdraw_running).
     entry_columns = {column["name"] for column in database.execute("PRAGMA table_info(tournament_entries)")}
     for column, kind in (("withdrawn_at", "TEXT"), ("withdraw_reason", "TEXT NOT NULL DEFAULT ''"),

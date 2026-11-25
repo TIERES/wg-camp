@@ -73,6 +73,59 @@
   {% endif %}
 </section>
 
+{% if bracket_board %}
+{# Ordem dinâmica do mata-mata (store.arrange_bracket): a chave em rascunho, sem jogos. O organizador arrasta
+   os jogadores (e as vagas sem adversário) entre as posições - quem é solto numa posição troca de lugar com
+   quem estava nela - e salva; ao confirmar, os jogos saem e as posições não mudam mais (static/js/bracket-board.js). #}
+<section id="chaveamento">
+  <h2>Chaveamento do mata-mata</h2>
+  <p class="muted">Ordem dinâmica do mata-mata: arraste um jogador para outra posição e os dois trocam de lugar. A vaga <em>Sem adversário</em> também pode ser arrastada: quem fica com ela passa direto{% if bracket_board.repechage %} (ou espera na repescagem o perdedor do confronto vizinho){% endif %}. Um confronto pode ficar vazio, com as duas vagas sem jogador: quem passar do confronto vizinho segue direto para a fase seguinte (só cada metade da chave precisa de pelo menos um jogador). Salve quantas vezes quiser; os jogos só são liberados quando você <strong>confirmar o chaveamento</strong>, e depois disso as posições não mudam mais. No celular, arraste pela alça <span aria-hidden="true">⠿</span>; no teclado, ↑ e ↓ trocam o jogador com a posição de cima ou de baixo.</p>
+  {% macro bracket_chip(e) %}{% if e %}
+            <div class="group-chip bracket-chip" tabindex="0" data-entry="{{ e.id }}" data-name="{{ e.username }}">
+              <span class="group-grip" aria-hidden="true">⠿</span>
+              <span class="with-avatar">{{ avatar(e.player_id, e.username) }}<span>{{ e.username }}{% if e.team_name %} <small class="muted">{{ e.team_name }}</small>{% endif %}</span></span>
+            </div>{% else %}
+            <div class="group-chip bracket-chip bye-chip" tabindex="0" data-entry="" data-name="Sem adversário">
+              <span class="group-grip" aria-hidden="true">⠿</span><span>Sem adversário</span>
+            </div>{% endif %}
+  {% endmacro %}
+  <form method="post" action="{{ url_for('tournaments.arrange_bracket', slug=t.slug) }}" class="form" id="bracket-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="bracket-board" id="bracket-board" data-repechage="{{ 1 if bracket_board.repechage else 0 }}">
+    {% for pair in bracket_board.pairs %}{% set p = loop.index0 %}
+      <div class="bracket-pair" data-pair="{{ p }}">
+        <h3>{{ bracket_board.round_name }} · Confronto {{ loop.index }}</h3>
+        <ul class="bracket-slots">
+        {% for e in pair %}{% set i = p * 2 + loop.index0 %}
+          <li class="bracket-slot" data-slot="{{ i }}">{{ bracket_chip(e) }}
+            <input type="hidden" name="posicao_{{ i }}" value="{{ e.id if e else '' }}">
+          </li>{% if loop.first %}<li class="bracket-vs" aria-hidden="true">x</li>{% endif %}
+        {% endfor %}
+        </ul>
+        <small class="muted" data-pair-note></small>
+      </div>
+    {% endfor %}
+    </div>
+    <p class="notice error" data-bracket-error role="alert" hidden></p>
+    <div class="card-actions">
+      <button type="button" class="secondary btn-left" data-undo hidden>Desfazer</button>
+      <button name="acao" value="salvar" class="secondary" data-save>Salvar chaveamento</button>
+      <button type="button" data-dialog="confirmar-chaveamento" aria-haspopup="dialog" data-confirm-open>Confirmar chaveamento</button>
+      <span class="muted" data-dirty hidden>Há mudanças não salvas.</span>
+    </div>
+  </form>
+  <dialog class="form-dialog" id="confirmar-chaveamento" aria-labelledby="confirmar-chaveamento-titulo">
+    <div class="form-dialog-body">
+      <h2 id="confirmar-chaveamento-titulo">Confirmar o chaveamento?</h2>
+      <p>Os jogos do mata-mata são liberados com estes confrontos e os jogadores recebem os jogos por e-mail. <strong>Depois de confirmado, o chaveamento não pode mais ser editado.</strong></p>
+      <ol class="bracket-summary" data-bracket-summary></ol>
+      <div class="card-actions dialog-actions"><button type="button" class="secondary" data-dialog-close>Voltar</button><button form="bracket-form" name="acao" value="confirmar">Confirmar chaveamento</button></div>
+    </div>
+  </dialog>
+  <script src="{{ url_for('static', filename='js/bracket-board.js', v='20261125b') }}" defer></script>
+</section>
+{% endif %}
+
 {% if open_reports %}
 <section class="my-pending">
   <h2>Placares para acompanhar</h2>
@@ -81,7 +134,7 @@
 </section>
 {% endif %}
 
-{% if current and t.status == 'running' %}
+{% if current and t.status == 'running' and not bracket_board %}
 <section>
   <h2>Resultados: {{ current.stage.name }}</h2>
   <p class="muted">Os próprios jogadores reportam e confirmam os placares; aqui você pode definir ou corrigir qualquer um. Lance o placar do tempo normal. No mata-mata, se o confronto terminar empatado (no agregado, no caso de ida e volta), informe também os pênaltis do último jogo. Corrigir um placar já lançado estorna o W$ do resultado anterior.</p>
