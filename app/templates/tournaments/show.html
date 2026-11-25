@@ -237,6 +237,7 @@
   {% for view in stages %}
   <section class="stage">
     <h2>{{ view.stage.name }}</h2>
+    {% if view.stage.kind == 'knockout' and view.stage.arranging %}<p class="notice">O organizador está definindo o chaveamento: os confrontos abaixo ainda podem mudar. Os jogos são liberados quando ele confirmar.</p>{% endif %}
     {% if view.stage.kind == 'knockout' %}{{ bracket(view, names, crests, t.slug, my_entry.id if my_entry else none) }}
     {% else %}
       {% if view.highlight %}<p class="legend"><span class="qualified-dot"></span> classificado{% if view.playoff %} direto · <span class="playoff-dot"></span> playoff{% endif %}</p>{% endif %}
@@ -266,6 +267,7 @@
   {% for view in stages %}
   <section class="stage">
     <h2>{{ view.stage.name }}</h2>
+    {% if view.stage.kind == 'knockout' and view.stage.arranging %}<p class="notice">O organizador está definindo o chaveamento do mata-mata: os jogos aparecem aqui quando ele confirmar.</p>{% endif %}
     {{ stage_rounds(view, names, t.slug, live_table, confirm_hours) }}
   </section>
   {% endfor %}

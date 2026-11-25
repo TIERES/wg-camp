@@ -2,11 +2,16 @@
 
 A configuração fica em tournaments.settings_json. Chaves usadas:
   league:       legs
-  league_knockout: legs, playoff_qualifiers, ko_legs, final_legs, third_place
-  world_cup:    groups, group_legs, group_matchups, qualifiers, ko_legs, final_legs, third_place
-  dynamic_groups: groups, group_names, group_legs, group_matchups, qualifiers, ko_legs, final_legs, third_place
-  ucl:          pots, per_pot, direct, ko_legs, final_legs, third_place
-  knockout:     ko_legs, final_legs, third_place
+  league_knockout: legs, playoff_qualifiers, ko_legs, final_legs, third_place, ko_arrange
+  world_cup:    groups, group_legs, group_matchups, qualifiers, ko_legs, final_legs, third_place, ko_arrange
+  dynamic_groups: groups, group_names, group_legs, group_matchups, qualifiers, ko_legs, final_legs, third_place,
+                ko_arrange
+  ucl:          pots, per_pot, direct, ko_legs, final_legs, third_place, ko_arrange
+  knockout:     ko_legs, final_legs, third_place, ko_arrange
+
+ko_arrange (Ordem dinâmica do mata-mata): o mata-mata sorteado/montado fica em
+rascunho, sem jogos, e o organizador arrasta os jogadores nas chaves iniciais
+até confirmar (store.arrange_bracket); só com 3 ou mais jogadores no mata-mata.
 
 A Copa (world_cup) é a antiga Copa do Mundo e também a antiga Libertadores,
 que era a mesma coisa com ida e volta - opção dos grupos e do mata-mata. O
@@ -33,13 +38,15 @@ FORMATS = {
 
 DEFAULTS = {
     "league": {"legs": 2},
-    "league_knockout": {"legs": 1, "playoff_qualifiers": 4, "ko_legs": 1, "final_legs": 1, "third_place": False},
+    "league_knockout": {"legs": 1, "playoff_qualifiers": 4, "ko_legs": 1, "final_legs": 1, "third_place": False,
+                        "ko_arrange": False},
     "world_cup": {"groups": 2, "group_legs": 1, "group_matchups": "within", "qualifiers": 2, "ko_legs": 1,
-                  "final_legs": 1, "third_place": True},
+                  "final_legs": 1, "third_place": True, "ko_arrange": False},
     "dynamic_groups": {"groups": 2, "group_names": [], "group_legs": 1, "group_matchups": "within", "qualifiers": 2,
-                       "ko_legs": 1, "final_legs": 1, "third_place": True},
-    "ucl": {"pots": 4, "per_pot": 1, "direct": 2, "ko_legs": 2, "final_legs": 1, "third_place": False},
-    "knockout": {"ko_legs": 1, "final_legs": 1, "third_place": False},
+                       "ko_legs": 1, "final_legs": 1, "third_place": True, "ko_arrange": False},
+    "ucl": {"pots": 4, "per_pot": 1, "direct": 2, "ko_legs": 2, "final_legs": 1, "third_place": False,
+            "ko_arrange": False},
+    "knockout": {"ko_legs": 1, "final_legs": 1, "third_place": False, "ko_arrange": False},
 }
 
 MIN_PLAYERS, MAX_PLAYERS = 2, 64
@@ -159,6 +166,8 @@ def describe(fmt, config):
     final = f"; final em {legs(config.get('final_legs', 1))}" if fmt != "league" else ""
     turns = lambda n: "turno e returno" if n == 2 else "turno único"
     third = "; com disputa de 3º lugar" if config.get("third_place") else ""
+    if config.get("ko_arrange"):
+        third += "; chaves iniciais do mata-mata definidas pelo organizador"
     if fmt == "league":
         return f"Pontos corridos em {turns(config['legs'])}."
     if fmt == "league_knockout":

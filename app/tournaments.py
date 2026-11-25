@@ -1978,8 +1978,16 @@ def manage(slug):
     shown_entries = [e for e in entries if entry_search.lower() in " ".join(
         str(e[key] or "") for key in ("username", "team_name")).lower()] if entry_search else entries
     groups = store.group_views(db, tournament, entries) if store.is_dynamic(tournament) else None
+    # Ordem dinâmica do mata-mata: a chave em rascunho, para o organizador arrastar e confirmar.
+    bracket_board = None
+    arranging = store.arranging_stage(db, tournament) if full else None
+    if arranging is not None and current and current["bracket"]:
+        by_id = {e["id"]: e for e in entries}
+        bracket_board = {"round_name": current["bracket"][0]["name"],
+                         "repechage": store.settings_of(arranging).get("repechage", True),
+                         "pairs": [[by_id.get(a), by_id.get(b)] for a, b in store.bracket_pairs(db, arranging["id"])]}
     return render_template("tournaments/manage.html", t=tournament, entries=entries, shown_entries=shown_entries,
-                           groups=groups,
+                           groups=groups, bracket_board=bracket_board,
                            entry_search=entry_search, editing=edit_form is not None, **(edit_form or {}),
                            full=full, helpers=helpers, helper_options=helper_options,
                            max_helpers=editors.MAX_HELPERS, change=change_view, basic=basic,
@@ -2365,11 +2373,46 @@ def start(tournament):
         flash("Há uma alteração dos dados do campeonato esperando confirmação: confirme, recuse ou cancele antes "
               "de sortear.", "error")
         return redirect(url_for("tournaments.manage", slug=tournament["slug"], _anchor="alteracao"))
-    ok = _run(store.start, tournament, "Sorteio feito: o campeonato começou!")
+    ok = _run(store.start, tournament, None)
     if ok:
-        notify.tournament_started(get_db(), store.get_tournament(get_db(), tournament["id"]))
+        db = get_db()
+        started = store.get_tournament(db, tournament["id"])
+        if store.arranging_stage(db, started):
+            # Ordem dinâmica do mata-mata: os e-mails dos jogos saem quando a chave for confirmada.
+            flash("Sorteio feito: o campeonato começou! Confira as chaves do mata-mata, arraste os jogadores se "
+                  "quiser e confirme o chaveamento para liberar os jogos.", "success")
+            return redirect(url_for("tournaments.manage", slug=tournament["slug"], _anchor="chaveamento"))
+        flash("Sorteio feito: o campeonato começou!", "success")
+        notify.tournament_started(db, started)
     return redirect(url_for("tournaments.show", slug=tournament["slug"]) if ok
                     else url_for("tournaments.manage", slug=tournament["slug"]))
+
+
+@bp.post("/<slug>/chaveamento")
+@manager_required
+def arrange_bracket(tournament):
+    """Ordem dinâmica do mata-mata (store.arrange_bracket): as posições das chaves
+    iniciais (um campo posicao_<n> por posição, com a inscrição ou vazio) salvas
+    ou confirmadas (acao=confirmar). Na confirmação os jogos saem e os jogadores
+    recebem os e-mails, como no sorteio/geração da fase."""
+    db = get_db()
+    stage = store.arranging_stage(db, tournament)
+    slots = None
+    if stage is not None:
+        slots = [int(value) if value.isdigit() else None for value in (
+            request.form.get(f"posicao_{index}", "").strip()
+            for index in range(len(store.bracket_pairs(db, stage["id"])) * 2))]
+    confirm = request.form.get("acao") == "confirmar"
+    ok = _run(store.arrange_bracket, tournament, "Chaveamento confirmado: os jogos do mata-mata foram liberados e "
+              "os jogadores avisados por e-mail." if confirm else "Chaveamento salvo.", slots, confirm)
+    if ok and confirm:
+        updated = store.get_tournament(db, tournament["id"])
+        if stage["seq"] == 1:
+            notify.tournament_started(db, updated)  # Eliminatórias: o campeonato começa de verdade agora
+        else:
+            notify.stage_started(db, updated)
+        return redirect(url_for("tournaments.show", slug=tournament["slug"], aba="tabela"))
+    return redirect(url_for("tournaments.manage", slug=tournament["slug"], _anchor="chaveamento"))
 
 
 @bp.post("/<slug>/grupos")
@@ -2918,8 +2961,16 @@ def _auto_confirm_reports():
 @bp.post("/<slug>/proxima-fase")
 @manager_required
 def advance(tournament):
-    if _run(store.advance, tournament, "Próxima fase gerada."):
-        notify.stage_started(get_db(), store.get_tournament(get_db(), tournament["id"]))
+    if _run(store.advance, tournament, None):
+        db = get_db()
+        updated = store.get_tournament(db, tournament["id"])
+        if store.arranging_stage(db, updated):
+            # Ordem dinâmica do mata-mata: os e-mails dos jogos saem quando a chave for confirmada.
+            flash("Mata-mata montado: confira as chaves, arraste os jogadores se quiser e confirme o chaveamento "
+                  "para liberar os jogos.", "success")
+            return redirect(url_for("tournaments.manage", slug=tournament["slug"], _anchor="chaveamento"))
+        flash("Próxima fase gerada.", "success")
+        notify.stage_started(db, updated)
     return redirect(url_for("tournaments.manage", slug=tournament["slug"]))
 
 

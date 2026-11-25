@@ -659,10 +659,22 @@ def _swiss_stage(db, tournament, seq, entries, config, rng):
 
 
 def _knockout_stage(db, tournament, seq, pairs, legs, final_legs, third_place, first_round_name=None,
-                    repechage=True):
+                    repechage=True, arrange=False):
+    """O mata-mata a partir dos confrontos da primeira rodada (pairs, na ordem da
+    chave). arrange (Ordem dinâmica do mata-mata, com 3 ou mais jogadores): a
+    chave fica em rascunho, sem jogos, até o organizador confirmar (arrange_bracket)."""
     stage_id = _new_stage(db, tournament, seq, "knockout", "Mata-mata", {
         "legs": legs, "final_legs": final_legs, "third_place": bool(third_place),
-        "first_round_name": first_round_name})
+        "first_round_name": first_round_name, "repechage": bool(repechage)})
+    if arrange and sum(1 for pair in pairs for entry_id in pair if entry_id) >= ARRANGE_MIN:
+        db.execute("UPDATE tournament_stages SET arranging = 1 WHERE id = ?", (stage_id,))
+    _build_bracket(db, stage_id, pairs, legs, final_legs, third_place, repechage)
+    return stage_id
+
+
+def _build_bracket(db, stage_id, pairs, legs, final_legs, third_place, repechage=True):
+    """Os confrontos (tournament_ties) da chave inteira e os jogos dos que já
+    têm os dois lados (_fill_slot; com a chave em rascunho, sem os jogos)."""
     rounds = (len(pairs) * 2).bit_length() - 1
     ties = {}
     for round_no in range(rounds, 0, -1):
@@ -699,7 +711,70 @@ def _knockout_stage(db, tournament, seq, pairs, legs, final_legs, third_place, f
         else:
             _fill_slot(db, tie_id, "a", entry_a)
             _fill_slot(db, tie_id, "b", entry_b)
-    return stage_id
+
+
+# --- Ordem dinâmica do mata-mata ----------------------------------------------
+#
+# Com a opção (settings_json ko_arrange) e 3 ou mais jogadores no mata-mata, o
+# mata-mata sorteado no início (Eliminatórias) ou montado em advance (depois dos
+# grupos, dos pontos corridos ou da fase de liga) fica em rascunho
+# (tournament_stages.arranging = 1): os confrontos existem, mas sem jogos - não
+# há o que reportar nem jogo do Ao vivo para ligar. O organizador arrasta os
+# jogadores (e as vagas sem adversário) entre as posições das chaves iniciais e
+# salva quantas vezes quiser; ao confirmar, a chave é montada de vez, com os
+# jogos, e não muda mais. Os e-mails dos jogos saem na confirmação.
+
+ARRANGE_MIN = 3
+
+
+def arranging_stage(db, tournament):
+    """A fase de mata-mata em rascunho (esperando o organizador confirmar a
+    chave), ou None."""
+    stages = stages_of(db, tournament["id"])
+    if stages and stages[-1]["kind"] == "knockout" and stages[-1]["arranging"]:
+        return stages[-1]
+    return None
+
+
+def bracket_pairs(db, stage_id):
+    """Os confrontos da primeira rodada, na ordem da chave: [(entry_a, entry_b)],
+    com None na vaga sem adversário."""
+    return [(row["entry_a"], row["entry_b"]) for row in db.execute(
+        "SELECT entry_a, entry_b FROM tournament_ties WHERE stage_id = ? AND round = 1 AND is_third_place = 0 "
+        "ORDER BY position", (stage_id,))]
+
+
+def arrange_bracket(db, tournament, slots, confirm=False):
+    """O organizador muda as posições das chaves iniciais do mata-mata em
+    rascunho. slots: as inscrições nas posições, na ordem da chave (2 por
+    confronto, None na vaga sem adversário) - os mesmos jogadores, sem confronto
+    com as duas vagas vazias; None mantém como está. confirm: a chave fica
+    assim de vez, com os jogos."""
+    stage = arranging_stage(db, tournament)
+    if tournament["status"] != "running" or stage is None:
+        raise TournamentError("O chaveamento deste mata-mata já foi confirmado: as posições não mudam mais.")
+    current = bracket_pairs(db, stage["id"])
+    if slots is None:
+        pairs = current
+    else:
+        if len(slots) != len(current) * 2:
+            raise TournamentError("O chaveamento mudou enquanto você editava: abra o Gerenciar de novo.")
+        placed = sorted(entry_id for entry_id in slots if entry_id is not None)
+        if placed != sorted(entry_id for pair in current for entry_id in pair if entry_id is not None):
+            raise TournamentError("O chaveamento precisa ter exatamente os jogadores classificados para o mata-mata.")
+        pairs = [(slots[i], slots[i + 1]) for i in range(0, len(slots), 2)]
+        if any(a is None and b is None for a, b in pairs):
+            raise TournamentError("Cada confronto precisa ter pelo menos um jogador.")
+    if pairs == current and not confirm:
+        return
+    config = settings_of(stage)
+    if confirm:
+        db.execute("UPDATE tournament_stages SET arranging = 0 WHERE id = ?", (stage["id"],))
+    db.execute("DELETE FROM tournament_matches WHERE stage_id = ?", (stage["id"],))
+    db.execute("DELETE FROM tournament_ties WHERE stage_id = ?", (stage["id"],))
+    _build_bracket(db, stage["id"], pairs, config.get("legs", 1), config.get("final_legs", 1),
+                   config.get("third_place"), config.get("repechage", True))
+    db.execute("UPDATE tournaments SET updated_at = ? WHERE id = ?", (now(), tournament["id"]))
 
 
 def start(db, tournament, rng=random):
@@ -749,7 +824,7 @@ def start(db, tournament, rng=random):
         _swiss_stage(db, tournament, 1, entries, config, rng)
     else:
         _knockout_stage(db, tournament, 1, engine.seeded_pairs(entries), config["ko_legs"],
-                        config["final_legs"], config["third_place"])
+                        config["final_legs"], config["third_place"], arrange=config.get("ko_arrange"))
     db.execute("UPDATE tournaments SET status = 'running', started_at = ?, updated_at = ? WHERE id = ?",
                (now(), now(), tournament["id"]))
 
@@ -763,7 +838,9 @@ def _tie(db, tie_id):
 def _fill_slot(db, tie_id, slot, entry_id):
     db.execute(f"UPDATE tournament_ties SET entry_{slot} = ? WHERE id = ?", (entry_id, tie_id))
     tie = _tie(db, tie_id)
-    if tie["entry_a"] and tie["entry_b"]:
+    # Chave em rascunho (Ordem dinâmica do mata-mata): sem jogos até a confirmação.
+    arranging = db.execute("SELECT arranging FROM tournament_stages WHERE id = ?", (tie["stage_id"],)).fetchone()[0]
+    if tie["entry_a"] and tie["entry_b"] and not arranging:
         a, b = tie["entry_a"], tie["entry_b"]
         if tie["legs"] == 1:
             _new_match(db, tie["stage_id"], tie["round"], a, b, tie_id=tie_id)
@@ -1033,7 +1110,8 @@ def advance(db, tournament):
     db.execute("UPDATE tournament_stages SET status = 'done' WHERE id = ?", (stage["id"],))
     # Na Liga dos Campeões os primeiros passam direto por mérito (não há repescagem).
     _knockout_stage(db, tournament, stage["seq"] + 1, pairs, config["ko_legs"], config["final_legs"],
-                    config["third_place"], first_round_name, repechage=stage["kind"] != "swiss")
+                    config["third_place"], first_round_name, repechage=stage["kind"] != "swiss",
+                    arrange=config.get("ko_arrange"))
 
 
 def final_ranking(db, tournament):
