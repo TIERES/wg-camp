@@ -2,7 +2,9 @@
 {# A página de uma ISO dos amistosos (tournaments.iso_page), com o link para compartilhar:
    as imagens - a da ISO no maior tamanho que couber, a capa do jogo base ao lado do nome -,
    as informações e o download, só para quem está logado. Os responsáveis (quem enviou e os
-   ajudantes) veem aqui a alteração que espera confirmação, com o antes e o depois. #}
+   ajudantes) veem aqui a alteração que espera confirmação, com o antes e o depois.
+   iso_only: ISO de um jogo base só de ISO (Jogo de Playstation - games.ISO_ONLY), para jogar no
+   emulador: sem o convite de amistoso. #}
 {% block title %}{{ iso.name }} · ISO · WE Camp{% endblock %}{% block share %}{{ share_tags(share) }}{% endblock %}{% block content %}
 {% set public = iso.approved_at and iso.is_active %}
 {% set logged = session.player_id or session.user_id %}
@@ -59,7 +61,7 @@
         {# O botão de compartilhar vai colado na última palavra do nome, como no campeonato. #}
         {% set words = iso.name.split() %}
         <h1>{{ words[:-1]|join(' ') }} <span class="t-title-end">{{ words[-1] }} {{ share_button(share.url, 'Compartilhar a ISO (copia o link)', 'Link da ISO copiado, você pode compartilhar utilizando o CTRL + V!') }}</span></h1>
-        <p class="muted">{{ iso.game_name }} · para os amistosos do WE Camp</p>
+        <p class="muted">{{ iso.game_name }} · {{ 'para jogar no emulador do WE Camp' if iso_only else 'para os amistosos do WE Camp' }}</p>
       </div>
     </div>
 
@@ -89,7 +91,7 @@
     </section>
 
     <div class="t-actions">
-      {% if session.player_id and public %}<a class="button secondary" href="{{ url_for('tournaments.friendlies', iso='c:%d' % iso.id) }}">Chamar um amigo para um amistoso com esta ISO</a>{% endif %}
+      {% if session.player_id and public and not iso_only %}<a class="button secondary" href="{{ url_for('tournaments.friendlies', iso='c:%d' % iso.id) }}">Chamar um amigo para um amistoso com esta ISO</a>{% endif %}
       {% if responsible %}<a class="button secondary icon-button" href="{{ url_for('tournaments.friendlies', _anchor='minhas-isos') }}">{{ icon('edit') }}Editar em Minhas ISOs</a>{% endif %}
       {% if session.user_id %}<a class="button secondary icon-button" href="{{ url_for('tournaments_admin.admin_iso_edit', catalog_id=iso.id) }}">{{ icon('edit') }}Editar na administração</a>{% endif %}
     </div>

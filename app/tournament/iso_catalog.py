@@ -29,7 +29,7 @@ from datetime import datetime, timedelta, timezone
 from .. import images
 from ..db import now
 from ..storage import delete_stored_file, human_size, store_upload
-from . import editors, iso
+from . import editors, games, iso
 from .store import TournamentError, are_friends
 
 ARCHIVE_FOLDER = "isos"
@@ -205,7 +205,10 @@ def save(db, catalog_id, name, game_id, file_id=None, upload=None, active=True):
 
 
 def _check_game(db, game_id):
-    if not db.execute("SELECT 1 FROM game_titles WHERE id = ? AND is_active = 1", (game_id,)).fetchone():
+    """Um jogo base de campeonato ou um só de ISO (games.ISO_ONLY)."""
+    marks = ",".join("?" * len(games.ISO_ONLY_CODES))
+    if not db.execute(f"SELECT 1 FROM game_titles WHERE id = ? AND (is_active = 1 OR code IN ({marks}))",
+                      (game_id, *games.ISO_ONLY_CODES)).fetchone():
         raise TournamentError("Escolha o jogo base da ISO.")
 
 
@@ -581,7 +584,8 @@ def options(db, me):
         "game_id": row["game_title_id"], "game_code": row["game_code"], "image": row["image"],
         "filename": filename(row), "registered_at": row["approved_at"] or row["created_at"] or "",
         "file": _catalog_file(row),
-    } for row in all_rows(db) if row["is_active"] and (row["stored_name"] or row["file_id"])]
+    } for row in all_rows(db) if row["is_active"] and (row["stored_name"] or row["file_id"])
+        and not games.is_iso_only(row["game_code"])]
     rows = db.execute(
         "SELECT i.*, t.id, t.name, t.image, t.friends_only, t.organizer_id, t.game_title_id, g.name AS game_name, "
         "g.code AS game_code FROM tournament_isos i JOIN tournaments t ON t.id = i.tournament_id "
@@ -715,5 +719,8 @@ def resolve(db, me, value):
         row = get(db, key)
         if row is None or not row["is_active"] or not (row["stored_name"] or row["file_id"]):
             raise TournamentError("ISO não encontrada.")
+        if games.is_iso_only(row["game_code"]):
+            raise TournamentError(f"A ISO \"{row['name']}\" é de {row['game_name']}: ela não vale para amistosos "
+                                  "nem campeonatos.")
         return None, key, row["game_title_id"]
     raise TournamentError("ISO inválida.")

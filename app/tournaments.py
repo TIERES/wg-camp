@@ -725,8 +725,7 @@ def friendlies():  # noqa: C901 - a lista, os filtros e as partidas de cada amis
                            max_helpers=editors.MAX_HELPERS,
                            auto_approve_at=iso_catalog.auto_approve_at,
                            auto_approve_hours=iso_catalog.AUTO_APPROVE_HOURS,
-                           games=db.execute("SELECT id, name FROM game_titles WHERE is_active = 1 "
-                                            "ORDER BY year, name").fetchall(), **_iso_limits(),
+                           games=game_catalog.iso_games(db), **_iso_limits(),
                            rules={"min_xp": friendly.MIN_XP, "limit": friendly.PAIR_DAILY_LIMIT,
                                   "rank": xp.RANKS[xp.level(friendly.MIN_XP)],
                                   "my_peak": xp.tournament_peaks(db).get(me, 0)},
@@ -1087,7 +1086,8 @@ def iso_page(catalog_id):
         changes=iso_catalog.pending_changes(row) if responsible or is_admin() else [],
         can_confirm=iso_catalog.can_confirm(db, row, me),
         my_change=bool(row["rev_id"]) and row["rev_requested_by"] == me,
-        auto_approve_at=iso_catalog.auto_approve_at(row["rev_submitted_at"]) if row["rev_id"] else None)
+        auto_approve_at=iso_catalog.auto_approve_at(row["rev_submitted_at"]) if row["rev_id"] else None,
+        iso_only=game_catalog.is_iso_only(row["game_code"]))
 
 
 @bp.get("/isos/<int:catalog_id>/baixar")
@@ -3189,7 +3189,7 @@ def admin_isos():
 
 def _iso_form_context(db, row=None):
     revision = iso_catalog.revision(db, row["id"]) if row else None
-    return {"games": db.execute("SELECT id, name FROM game_titles WHERE is_active = 1 ORDER BY year, name").fetchall(),
+    return {"games": game_catalog.iso_games(db),
             "files": iso_catalog.championship_files(db), "revision": revision,
             "helpers": editors.helpers(db, "iso", row["id"]) if row else [],
             "changes": iso_catalog.pending_changes(row) if row else [],

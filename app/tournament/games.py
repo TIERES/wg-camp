@@ -29,6 +29,17 @@ GAMES = (
     ("we2001", "J.League Winning Eleven 2001", 2001),
     ("we2002", "Winning Eleven 2002", 2002),
 )
+# Jogos base só para o cadastro de ISO (code, nome): a ISO que não é de Winning
+# Eleven, para jogar no emulador. Ficam com is_active = 0 (is_active = liberado
+# para campeonato e amistoso): não aparecem para criar campeonato nem amistoso,
+# nos filtros, no ranking nem no Ao vivo - só na página da ISO, no Enviar/Editar
+# ISO (Minhas ISOs) e no cadastro de ISOs da administração (iso_games). As ISOs
+# deles também não entram na escolha do convite nem do campeonato
+# (iso_catalog.options / resolve).
+ISO_ONLY = (
+    ("playstation", "Jogo de Playstation"),
+)
+ISO_ONLY_CODES = tuple(code for code, _name in ISO_ONLY)
 COVER_DIR = "images/games"
 COVER_EXTENSIONS = ("webp", "jpg", "png", "svg")
 
@@ -52,6 +63,27 @@ def seed_games(db):
     codes = [code for code, _name, _year in GAMES]
     db.execute(f"UPDATE game_titles SET is_active = 0, updated_at = ? WHERE is_active = 1 "
                f"AND (code IS NULL OR code NOT IN ({','.join('?' * len(codes))}))", (now(), *codes))
+    for code, name in ISO_ONLY:
+        found = db.execute("SELECT id FROM game_titles WHERE code = ?", (code,)).fetchone()
+        if found:
+            db.execute("UPDATE game_titles SET name = ?, year = NULL, platform = 'PS1', is_active = 0, updated_at = ? "
+                       "WHERE id = ?", (name, now(), found["id"]))
+        else:
+            db.execute("INSERT INTO game_titles (code, name, year, platform, is_active, created_at, updated_at) "
+                       "VALUES (?, ?, NULL, 'PS1', 0, ?, ?)", (code, name, now(), now()))
+
+
+def is_iso_only(code):
+    """Jogo base só de ISO (ISO_ONLY): não vale para campeonato nem amistoso."""
+    return code in ISO_ONLY_CODES
+
+
+def iso_games(db):
+    """Os jogos base do cadastro de ISO: os de campeonato, na ordem de
+    lançamento, e no fim os só de ISO (ISO_ONLY)."""
+    marks = ",".join("?" * len(ISO_ONLY_CODES))
+    return db.execute(f"SELECT id, name, code FROM game_titles WHERE is_active = 1 OR code IN ({marks}) "
+                      f"ORDER BY code IN ({marks}), year, name", (*ISO_ONLY_CODES, *ISO_ONLY_CODES)).fetchall()
 
 
 def cover_url(code, mini=False):
