@@ -1,20 +1,66 @@
-{% extends 'base.html' %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% from '_helpers_picker.html' import helpers_picker %}{% from 'tournaments/_iso_picker.html' import iso_picker %}{% block title %}Criar campeonato · WE Camp{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% from '_helpers_picker.html' import helpers_picker %}{% from 'tournaments/_iso_picker.html' import iso_picker %}{% from '_dialog.html' import info_button, info_dialog %}{% import 'tournaments/_tournament_fields.html' as fields with context %}{% block title %}Criar campeonato · WE Camp{% endblock %}{% block content %}
 <h1>Criar campeonato</h1>
 {% if not games %}<p class="notice error">Nenhum jogo cadastrado para campeonatos ainda. Peça à administração do WE Camp.</p>{% else %}
-<form method="post" class="form t-form" id="new-tournament" enctype="multipart/form-data">
+{# Em etapas (static/js/steps.js): Avançar confere os campos da etapa; o formulário é um só e vai inteiro em
+   "Criar campeonato". Com o arquivo da ISO (etapa Patch), o envio mostra o progresso (static/js/upload-progress.js). #}
+<form method="post" class="form t-form" id="new-tournament" enctype="multipart/form-data" novalidate data-step-validate data-upload="{{ iso_max_bytes }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <p class="muted">Os campos com <span class="req">*</span> são obrigatórios.</p>
-  {% include 'tournaments/_tournament_fields.html' %}
-  <fieldset id="convidar">
-    <legend>Convidar jogadores <small class="muted">(opcional)</small></legend>
-    <p class="muted">Os marcados recebem um e-mail com o convite e o aviso em "Meus campeonatos". Dá para convidar mais depois, em Gerenciar.</p>
-    {{ invite_picker(candidates, selected=invite_selected) }}
-  </fieldset>
-  <fieldset id="ajudantes">
-    <legend>Ajudantes <small class="muted">(opcional)</small></legend>
-    <p class="muted">Amigos que ajudam a editar os dados, a imagem e a ISO do campeonato. Com ajudantes, o que um responsável alterar só entra depois que outro responsável confirmar: ele recebe um e-mail com o antes e o depois. Dá para escolher ou trocar depois, em Gerenciar.</p>
-    {{ helpers_picker(friends, friends|selectattr('id', 'in', helper_selected)|list, field_id='t-ajudantes', max=max_helpers, label='Amigos que ajudam a editar') }}
-  </fieldset>
+  <div class="t-steps" data-steps="wizard"{% if form %} data-reached="all"{% endif %}>
+    <ol class="t-steps-nav" role="tablist">
+      {% for key, label in (('basico', 'Básico'), ('patch', 'Patch'), ('formato', 'Formato'), ('participantes', 'Participantes'), ('premiacao', 'Premiação'), ('administradores', 'Administradores')) %}
+      <li><button type="button" role="tab" data-step-go="{{ key }}" aria-controls="etapa-{{ key }}"><span class="t-step-number">{{ loop.index }}</span><span class="t-step-label">{{ label }}</span></button></li>
+      {% endfor %}
+    </ol>
+
+    <section class="t-step" data-step="basico" id="etapa-basico" role="tabpanel">
+      {{ fields.basico() }}
+    </section>
+
+    <section class="t-step" data-step="patch" id="etapa-patch" role="tabpanel" hidden>
+      {{ fields.patch() }}
+    </section>
+
+    <section class="t-step" data-step="formato" id="etapa-formato" role="tabpanel" hidden>
+      {{ fields.formato() }}
+    </section>
+
+    <section class="t-step" data-step="participantes" id="etapa-participantes" role="tabpanel" hidden>
+      {{ fields.amigos() }}
+      <fieldset id="convidar">
+        <legend>Convites <small class="muted">(opcional)</small> {{ info_button('ajuda-convites', 'Sobre os convites') }}</legend>
+        {{ invite_picker(candidates, selected=invite_selected) }}
+      </fieldset>
+      {% call info_dialog('ajuda-convites', 'Convites') %}
+        <p>Seus amigos e quem já jogou campeonatos criados por você. Os marcados recebem um e-mail com o convite e o aviso em "Meus campeonatos"; a inscrição continua sendo feita por eles.</p>
+        <p>Dá para convidar mais depois, em Gerenciar.</p>
+      {% endcall %}
+      {{ fields.times() }}
+    </section>
+
+    <section class="t-step" data-step="premiacao" id="etapa-premiacao" role="tabpanel" hidden>
+      {{ fields.premiacao() }}
+    </section>
+
+    <section class="t-step" data-step="administradores" id="etapa-administradores" role="tabpanel" hidden>
+      <fieldset id="ajudantes">
+        <legend>Amigos que ajudam a editar <small class="muted">(opcional)</small> {{ info_button('ajuda-ajudantes', 'Sobre os ajudantes') }}</legend>
+        {{ helpers_picker(friends, friends|selectattr('id', 'in', helper_selected)|list, field_id='t-ajudantes', max=max_helpers, label='Amigos que ajudam a editar') }}
+      </fieldset>
+      {% call info_dialog('ajuda-ajudantes', 'Amigos que ajudam a editar') %}
+        <p>Amigos que ajudam a editar os dados, a imagem e a ISO do campeonato; o resto do Gerenciar continua só com você.</p>
+        <p>Com ajudantes, o que um responsável alterar só entra depois que outro responsável confirmar: ele recebe um e-mail com o antes e o depois.</p>
+        <p>Dá para escolher ou trocar depois, em Gerenciar.</p>
+      {% endcall %}
+    </section>
+
+    <p class="muted t-step-required">Os campos com <span class="req">*</span> são obrigatórios.</p>
+    {% include 'tournaments/_upload_progress.html' %}
+    <div class="card-actions t-step-actions">
+      <button type="button" class="secondary btn-left" data-step-prev hidden>Voltar</button>
+      <button type="button" data-step-next>Avançar</button>
+      <button id="create-button" data-step-finish hidden>Criar campeonato</button>
+    </div>
+  </div>
   <script>
   (function () {
     // Somente para amigos: a lista de convite mostra só os amigos (o servidor também só convida amigos).
@@ -31,44 +77,51 @@
     sync();
   })();
   </script>
-  <div class="card-actions"><button id="create-button">Criar campeonato</button><span class="muted" id="create-hint" hidden>Preencha os campos obrigatórios para criar o campeonato.</span></div>
 </form>
 {% if iso_options %}
 {% call iso_picker(iso_options, 'iso-picker') %}
-  <p class="muted iso-request">Não encontrou a ISO? Depois de criar o campeonato, envie a ISO com o patch dele em Gerenciar.</p>
+  <p class="muted iso-request">Não encontrou a ISO? Feche esta janela e envie o arquivo da ISO, logo abaixo da escolha.</p>
 {% endcall %}
 <script src="{{ url_for('static', filename='js/iso-picker.js', v='20261122a') }}" defer></script>
+{% endif %}
 <script>
 (function () {
-  // A ISO escolhida (static/js/iso-picker.js) marca o jogo base dela; trocar o jogo base
-  // para outro tira a ISO (o servidor também confere que são do mesmo jogo).
+  // A ISO escolhida na lista (static/js/iso-picker.js) marca o jogo base dela e tira o arquivo escolhido;
+  // escolher o arquivo tira a da lista; trocar o jogo base para outro tira a da lista (o servidor também
+  // confere que são do mesmo jogo e que não vêm as duas).
   var form = document.getElementById('new-tournament');
-  var choice = form.querySelector('[data-iso-choice]');
-  if (!choice) return;
+  var choice = form.querySelector('[data-iso-choice]'), file = document.getElementById('iso-file');
   function gameOf(value) {
     var option = value ? document.querySelector('#iso-picker .iso-option[data-value="' + value + '"]') : null;
     return option ? option.dataset.game : null;
   }
-  form.addEventListener('iso:change', function (e) {
-    var option = e.detail.option;
-    var radio = option ? form.querySelector('input[name="game_title_id"][value="' + option.dataset.game + '"]') : null;
-    if (radio && !radio.checked) {
-      radio.checked = true;
-      radio.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-  });
-  form.querySelectorAll('input[name="game_title_id"]').forEach(function (radio) {
-    radio.addEventListener('change', function () {
-      var game = gameOf(choice.querySelector('[data-iso-value]').value);
-      if (game && game !== radio.value && choice.isoChoose) choice.isoChoose(null);
+  if (choice) {
+    form.addEventListener('iso:change', function (e) {
+      var option = e.detail.option;
+      if (option && file) file.value = '';
+      var radio = option ? form.querySelector('input[name="game_title_id"][value="' + option.dataset.game + '"]') : null;
+      if (radio && !radio.checked) {
+        radio.checked = true;
+        radio.dispatchEvent(new Event('change', { bubbles: true }));
+      }
     });
+    form.querySelectorAll('input[name="game_title_id"]').forEach(function (radio) {
+      radio.addEventListener('change', function () {
+        var game = gameOf(choice.querySelector('[data-iso-value]').value);
+        if (game && game !== radio.value && choice.isoChoose) choice.isoChoose(null);
+      });
+    });
+  }
+  if (file) file.addEventListener('change', function () {
+    if (file.files.length && choice && choice.isoChoose) choice.isoChoose(null);
   });
 })();
 </script>
-{% endif %}
 {% include 'tournaments/_tournament_fields_js.html' %}
+<script src="{{ url_for('static', filename='js/steps.js', v='20261126a') }}"></script>
+<script src="{{ url_for('static', filename='js/upload-progress.js', v='20261126a') }}"></script>
 <script src="{{ url_for('static', filename='js/wcash-mask.js') }}"></script>
-<script src="{{ url_for('static', filename='js/image-resize.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/image-resize.js', v='20261126b') }}" defer></script>
 {% endif %}
 {% include 'tournaments/_credits.html' %}
 {% endblock %}

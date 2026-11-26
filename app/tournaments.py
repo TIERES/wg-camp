@@ -1667,6 +1667,13 @@ def new():
     max_fee = setting(db, "torneios_inscricao_max")
     form = request.form if request.method == "POST" else {}
     if request.method == "POST":
+        # A ISO pode vir junto (etapa Patch): o tamanho é conferido antes de ler o
+        # corpo, como no envio em Gerenciar (iso_upload); a imagem vai junto.
+        try:
+            iso.check_size(request, current_app.config["TOURNAMENT_ISO_MAX_BYTES"], extra=8 * 1024 ** 2)
+        except TournamentError as error:
+            flash(str(error), "error")
+            return redirect(url_for("tournaments.new"))
         validate_csrf()
         try:
             values = _tournament_form(db, form, games, max_fee)
@@ -1687,6 +1694,14 @@ def new():
             iso_value = form.get("iso", "").strip()
             chosen_iso = iso_catalog.chosen_file(db, session["player_id"], iso_value, current_app,
                                                  game_id=game_id) if iso_value else None
+            # Ou o arquivo da ISO, enviado agora (vai para o archive.org depois de criar).
+            iso_upload = request.files.get("iso")
+            if iso_upload is not None and not iso_upload.filename:
+                iso_upload = None
+            if iso_upload is not None:
+                if chosen_iso:
+                    raise TournamentError("Escolha uma ISO da lista ou envie o arquivo da ISO, não os dois.")
+                iso.check_upload(iso_upload)
             # Por último: só grava o arquivo quando o resto do formulário passou.
             upload = request.files.get("image")
             image_name = images.save("torneio", upload) if upload and upload.filename else None
@@ -1709,13 +1724,22 @@ def new():
                                              session["player_id"])
             if chosen_iso:
                 iso.link(db, tournament_id, chosen_iso, session["player_id"])
+            if iso_upload is not None:
+                iso.save(db, store.get_tournament(db, tournament_id), iso_upload, session["player_id"])
             db.commit()
+            if iso_upload is not None:
+                iso.start_archive(current_app._get_current_object(), tournament_id)
             notify.helpers_changed(db, "tournament", store.get_tournament(db, tournament_id), session["player_id"],
                                    helpers, [])
             invited = _send_invites(db, store.get_tournament(db, tournament_id), _invite_ids())
             created = "Campeonato criado com inscrições abertas" + (
                 f" e {invited} convite(s) enviado(s)" if invited else "")
-            if chosen_iso:
+            if iso_upload is not None:
+                where = ("está sendo enviada para o archive.org; o download fica disponível quando o envio terminar"
+                         if iso.archive_configured(current_app) else "fica só neste servidor (o archive.org não está "
+                         "configurado aqui)")
+                flash(f"{created}. A ISO foi recebida e {where}.", "success")
+            elif chosen_iso:
                 flash(f"{created}. A ISO \"{chosen_iso['title']}\" já está na página do campeonato; dá para trocar "
                       "quando quiser, aqui em Gerenciar.", "success")
             else:
@@ -1733,7 +1757,7 @@ def new():
                            candidates=friends.candidates(db, session["player_id"]), invite_selected=set(_invite_ids()),
                            iso_options=iso_catalog.tournament_options(db, session["player_id"], current_app,
                                                                       game_ids={g["id"] for g in games}),
-                           iso_value=form.get("iso", "") if form else "")
+                           iso_value=form.get("iso", "") if form else "", **_iso_limits())
 
 
 @bp.post("/<slug>/inscrever")
@@ -2001,8 +2025,23 @@ def manage(slug):
         bracket_board = {"round_name": current["bracket"][0]["name"],
                          "repechage": store.settings_of(arranging).get("repechage", True),
                          "pairs": [[by_id.get(a), by_id.get(b)] for a, b in store.bracket_pairs(db, arranging["id"])]}
+
+    # Times dos inscritos por arrastar e soltar (store.assign_teams): antes do início, quem criou;
+    # nos modos com lista, os times sem dono ficam à parte para arrastar.
+    team_board = None
+    if full and tournament["status"] == "registration" and tournament["team_mode"] != "round":
+        def crest(team_id, name):
+            row = db.execute("SELECT * FROM teams WHERE id = ?", (team_id,)).fetchone() if team_id else None
+            return team_image(row) if row is not None else generated_badge(name or "?")
+        team_board = {
+            "pool": [dict(row, image=team_image(row)) for row in store.available_teams(db, tournament["id"])]
+            if tournament["team_mode"] in ("choose", "draw") else None,
+            "crests": {e["id"]: crest(e["team_id"], e["team_name"]) for e in entries if e["team_name"]}}
     return render_template("tournaments/manage.html", t=tournament, entries=entries, shown_entries=shown_entries,
-                           groups=groups, bracket_board=bracket_board,
+                           groups=groups, bracket_board=bracket_board, team_board=team_board, steps=STEPS,
+                           format_label=formats.FORMATS.get(tournament["format"], tournament["format"]),
+                           summary=formats.describe(tournament["format"], store.settings_of(tournament))
+                           if tournament["format"] in formats.FORMATS else "",
                            entry_search=entry_search, editing=edit_form is not None, **(edit_form or {}),
                            full=full, helpers=helpers, helper_options=helper_options,
                            max_helpers=editors.MAX_HELPERS, change=change_view, basic=basic,
@@ -2122,6 +2161,16 @@ def change_file(tournament):
     return response
 
 
+# As abas do Gerenciar (as etapas do cadastro - tournaments/manage.html, static/js/steps.js).
+STEPS = ("basico", "patch", "formato", "participantes", "premiacao", "administradores")
+
+
+def _step_anchor(default="dados"):
+    """A aba de onde o formulário foi salvo (campo "etapa"), para voltar a ela."""
+    step = request.form.get("etapa", "")
+    return f"etapa-{step}" if step in STEPS else default
+
+
 @bp.post("/<slug>/editar")
 @editor_required
 def edit(tournament):
@@ -2145,7 +2194,7 @@ def edit(tournament):
         except (TournamentError, InsufficientFunds, ValueError) as error:
             db.rollback()
             flash(str(error), "error")
-            return redirect(url_for("tournaments.manage", slug=tournament["slug"], _anchor="dados"))
+            return redirect(url_for("tournaments.manage", slug=tournament["slug"], _anchor=_step_anchor()))
         db.commit()
         if pending:
             _change_proposed(db, tournament, change)
@@ -2154,7 +2203,7 @@ def edit(tournament):
         players = len({player for player, _, _ in notices})
         flash("Campeonato atualizado." + (f" {players} inscrito(s) avisado(s) por e-mail." if players else ""),
               "success")
-        return redirect(url_for("tournaments.manage", slug=tournament["slug"], _anchor="dados"))
+        return redirect(url_for("tournaments.manage", slug=tournament["slug"], _anchor=_step_anchor()))
     name = request.form.get("name", "").strip()
     try:
         if not 3 <= len(name) <= 80:
@@ -2178,7 +2227,7 @@ def edit(tournament):
                     tournament["id"]))
         db.commit()
         flash("Campeonato atualizado.", "success")
-    return redirect(url_for("tournaments.manage", slug=tournament["slug"]))
+    return redirect(url_for("tournaments.manage", slug=tournament["slug"], _anchor=_step_anchor(None)))
 
 
 @bp.post("/<slug>/imagem")
@@ -2449,6 +2498,26 @@ def arrange_groups(tournament):
         moved = len(notices)
         flash("Grupos salvos." + (f" {moved} jogador(es) avisado(s) por e-mail." if moved else ""), "success")
     return redirect(url_for("tournaments.manage", slug=tournament["slug"], _anchor="grupos"))
+
+
+@bp.post("/<slug>/times")
+@manager_required
+def assign_teams(tournament):
+    """O organizador põe os times nos inscritos antes do início (um campo
+    time_<inscrição> por inscrito - store.assign_teams); quem teve o time
+    mudado é avisado por e-mail."""
+    tokens = {int(key[5:]): value for key, value in request.form.items()
+              if key.startswith("time_") and key[5:].isdigit()}
+    db = get_db()
+    notices = []
+
+    def assign(db, t):
+        notices.extend(store.assign_teams(db, t, tokens, session.get("player_id")))
+    if _run(assign, tournament, None):
+        notify.entry_notices(db, store.get_tournament(db, tournament["id"]), notices)
+        warned = len({player for player, _, _ in notices})
+        flash("Times salvos." + (f" {warned} jogador(es) avisado(s) por e-mail." if warned else ""), "success")
+    return redirect(url_for("tournaments.manage", slug=tournament["slug"], _anchor="inscritos"))
 
 
 @bp.post("/<slug>/inscritos/<int:entry_id>/remover")

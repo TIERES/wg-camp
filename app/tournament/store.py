@@ -80,6 +80,74 @@ def _entry_team(db, tournament, team_name, team_id):
     return team["id"], team["name"]
 
 
+# --- Times dos inscritos pelo organizador (Gerenciar > Participantes) ---------
+#
+# Antes do início, o organizador arrasta os times para os inscritos e troca os
+# times entre eles. Nos modos com lista (choose/draw) os times vêm da lista do
+# campeonato; no livre, ele só troca os times que os inscritos já têm. No
+# sorteio, quem já tem time fica com ele e só os outros são sorteados (start).
+
+def assign_teams(db, tournament, tokens, editor_id=None):
+    """tokens: {inscrição: "" (sem time) | "t<id>" (um time da lista) | "e<id>"
+    (o time que essa inscrição tem agora)}; as inscrições fora de tokens ficam
+    como estão. Devolve os avisos [(player_id, assunto, texto)] a quem teve o
+    time mudado (menos quem editou), para os e-mails (notify.entry_notices)."""
+    if tournament["status"] != "registration":
+        raise TournamentError("O campeonato já começou: os times não mudam mais.")
+    mode = tournament["team_mode"]
+    if mode == "round":
+        raise TournamentError("Neste campeonato cada jogador escolhe o time no próprio jogo, a cada partida.")
+    entries = {entry["id"]: entry for entry in entries_of(db, tournament["id"])}
+    listed = {team["id"]: team for team in db.execute(
+        "SELECT t.* FROM tournament_teams tt JOIN teams t ON t.id = tt.team_id WHERE tt.tournament_id = ?",
+        (tournament["id"],))}
+    current = {entry_id: (entry["team_id"], entry["team_name"]) for entry_id, entry in entries.items()}
+    new = dict(current)
+    for entry_id, token in tokens.items():
+        if entry_id not in entries:
+            continue
+        token = (token or "").strip()
+        if not token:
+            new[entry_id] = (None, "")
+        elif token[0] == "e" and token[1:].isdigit() and int(token[1:]) in entries:
+            new[entry_id] = current[int(token[1:])]
+        elif token[0] == "t" and token[1:].isdigit() and mode != "free" and int(token[1:]) in listed:
+            team = listed[int(token[1:])]
+            new[entry_id] = (team["id"], team["name"])
+        else:
+            raise TournamentError("Esse time não está na lista deste campeonato.")
+    seen = set()
+    for team_id, name in new.values():
+        if not name:
+            continue
+        if plain_name(name) in seen:
+            raise TournamentError(f"O time {name} ficou com dois inscritos: cada time só pode ter um dono.")
+        seen.add(plain_name(name))
+    changed = [entry_id for entry_id in entries if new[entry_id] != current[entry_id]]
+    # Primeiro todos sem time, depois os novos: a troca entre dois não esbarra no time único.
+    for entry_id in changed:
+        db.execute("UPDATE tournament_entries SET team_id = NULL, team_name = '' WHERE id = ?", (entry_id,))
+    for entry_id in changed:
+        db.execute("UPDATE tournament_entries SET team_id = ?, team_name = ? WHERE id = ?", (*new[entry_id], entry_id))
+    title, notices = tournament["name"], []
+    for entry_id in changed:
+        entry, before, after = entries[entry_id], current[entry_id][1], new[entry_id][1]
+        if entry["player_id"] == editor_id:
+            continue
+        if after and before:
+            subject, text = (f"seu time agora é {after}",
+                             f'O organizador trocou o seu time no campeonato "{title}": era {before} e agora é {after}.')
+        elif after:
+            subject, text = f"seu time é {after}", f'O organizador definiu o seu time no campeonato "{title}": {after}.'
+        else:
+            subject = "escolha o seu time" if mode != "draw" else "os times serão sorteados"
+            text = f'O organizador tirou o seu time ({before}) no campeonato "{title}". ' + (
+                "O seu time será sorteado no início." if mode == "draw" else
+                "A sua inscrição continua: escolha o seu time na página do campeonato.")
+        notices.append((entry["player_id"], f"{title}: {subject}", text))
+    return notices
+
+
 def match_team(db, name):
     """(nome, team_id) do time informado para um jogo (campeonato com um time
     diferente a cada rodada): o nome de um time da base (ignorando acentos e
@@ -329,6 +397,9 @@ def update_before_start(db, tournament, values, editor_id=None):
             text = (f'O time {entry["team_name"]}, que você escolheu, saiu da lista do campeonato "{name}". '
                     if old_mode == "choose" else f'No campeonato "{name}" cada jogador agora escolhe o time da lista. ')
             text += "A sua inscrição continua: escolha o seu time na página do campeonato."
+        elif mode == "draw" and old_mode == "draw" and entry["team_id"] and entry["team_id"] not in listed:
+            text = (f'O time {entry["team_name"]}, que o organizador tinha definido para você no campeonato "{name}", '
+                    "saiu da lista: o seu time será sorteado no início. A sua inscrição continua.")
         elif mode == "draw" and old_mode != "draw" and entry["team_name"]:
             text = (f'No campeonato "{name}" os times agora são sorteados no início; o seu ({entry["team_name"]}) '
                     "volta para o sorteio. A sua inscrição continua.")
@@ -819,12 +890,13 @@ def start(db, tournament, rng=random):
     if error:
         raise TournamentError(error)
     if tournament["team_mode"] == "draw":
-        teams = available_teams(db, tournament["id"])
-        if len(teams) < len(entries):
-            raise TournamentError(f"A lista tem {len(teams)} times para {len(entries)} jogadores.")
-        teams = list(teams)
+        # Quem já tem time (definido pelo organizador - assign_teams) fica com ele.
+        without = [row["id"] for row in entries_of(db, tournament["id"]) if not row["team_name"]]
+        teams = list(available_teams(db, tournament["id"]))
+        if len(teams) < len(without):
+            raise TournamentError(f"A lista tem {len(teams)} times livres para {len(without)} jogadores sem time.")
         rng.shuffle(teams)
-        for entry_id, team in zip(entries, teams):
+        for entry_id, team in zip(without, teams):
             db.execute("UPDATE tournament_entries SET team_id = ?, team_name = ? WHERE id = ?",
                        (team["id"], team["name"], entry_id))
     rng.shuffle(entries)  # o sorteio: ordem da tabela, grupos, potes e chave

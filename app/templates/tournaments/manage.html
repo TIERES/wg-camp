@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'tournaments/_macros.html' import match_line, status_chip, leg_flip, stage_rounds %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% from '_avatar.html' import avatar, avatar_button %}{% from '_carousel.html' import carousel %}{% from '_icons.html' import icon %}{% from '_dialog.html' import form_dialog %}{% from '_helpers_picker.html' import helpers_picker, people_line %}{% from 'tournaments/_changes.html' import change_list %}{% from 'tournaments/_iso_picker.html' import iso_choice, iso_picker %}{% block title %}Gerenciar {{ t.name }} · Campeonatos WE Camp{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from 'tournaments/_macros.html' import match_line, status_chip, leg_flip, stage_rounds %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% from '_avatar.html' import avatar, avatar_button %}{% from '_carousel.html' import carousel %}{% from '_icons.html' import icon %}{% from '_dialog.html' import form_dialog %}{% from '_helpers_picker.html' import helpers_picker, people_line %}{% from 'tournaments/_changes.html' import change_list %}{% from 'tournaments/_iso_picker.html' import iso_choice, iso_picker %}{% from '_dialog.html' import info_button, info_dialog %}{% import 'tournaments/_tournament_fields.html' as fields with context %}{% block title %}Gerenciar {{ t.name }} · Campeonatos WE Camp{% endblock %}{% block content %}
 {# Formulários de resultado de uma lista de jogos (com ou sem Ida/Volta). #}
 {% macro result_forms(ms) %}{% for m in ms %}{% set shown = m if m.status == 'confirmed' else reported_score(m) %}
     <form method="post" action="{{ url_for('tournaments.result', slug=t.slug, match_id=m.id) }}" class="result-form{% if m.status == 'confirmed' %} done{% endif %}" id="jogo-{{ m.id }}">
@@ -158,218 +158,347 @@
 </section>
 {% endfor %}
 
-<section id="inscritos">
-  <h2>Inscritos ({{ entries|length }}/{{ t.max_players }})</h2>
-  {% if entries %}
-  <form method="get" action="{{ url_for('tournaments.manage', slug=t.slug) }}#inscritos" class="live-filters">
-    <label class="filter-wide">Jogador ou time<input name="inscrito" value="{{ entry_search }}"></label>
-    <div class="live-filter-actions"><a class="button secondary" href="{{ url_for('tournaments.manage', slug=t.slug) }}#inscritos">Limpar filtro</a><button>Filtrar</button></div>
-  </form>
-  {% if shown_entries %}
-  {% call carousel('Inscritos anteriores', 'Próximos inscritos', 't-cards per-3', fit=false) %}
-    {% for e in shown_entries %}
-    <div class="t-card no-side">
-      <span class="t-body">
-        <span class="with-avatar friend-name">{{ avatar_button(e.player_id, e.username) }}<strong class="t-name">{{ e.username }}</strong></span>
-        <span class="t-meta"><span>{{ icon('shield') }}{% if e.team_name %}{{ e.team_name }}{% elif t.team_mode == 'draw' %}<em class="muted">sorteado no início</em>{% elif t.team_mode == 'round' %}<em class="muted">um time diferente a cada rodada</em>{% else %}<em class="muted">sem time: avisado para escolher</em>{% endif %}</span></span>
-        {% if groups %}<span class="t-meta"><span>{% if e.group_slot is not none and e.group_slot < groups[0]|length %}Grupo: {{ groups[0][e.group_slot].name }}{% else %}<em class="muted">sem grupo: avisado para escolher</em>{% endif %}</span></span>{% endif %}
-        <span class="t-meta"><span>{{ icon('clock') }}Inscrito em {{ e.created_at|localtime }}</span></span>
-        {# Desistência (store.withdraw_running): quando e o motivo, que também foi por e-mail aos organizadores. #}
-        {% if e.withdrawn_at %}<span class="t-meta"><span class="gave-up">Desistiu em {{ e.withdrawn_at|localtime('%d/%m/%Y') }}</span></span>
-        <span class="quote">“{{ e.withdraw_reason }}”</span>{% endif %}
-      </span>
-      {% if t.status == 'registration' %}<div class="t-foot"><form method="post" action="{{ url_for('tournaments.remove_entry', slug=t.slug, entry_id=e.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Remover</button></form></div>{% endif %}
-    </div>
-    {% endfor %}
-  {% endcall %}
-  {% else %}<p class="muted list-note">Nenhum inscrito com esse filtro.</p>{% endif %}
-  {% else %}<p class="muted">Ninguém inscrito ainda.</p>{% endif %}
-</section>
-
-{% if groups and full and t.status == 'registration' %}
-{# Grupos dinâmicos (store.arrange_groups): o organizador muda qualquer inscrito de grupo, sem o limite de vagas por
-   grupo, até o início. Os nomes e o número de grupos mudam em Dados do campeonato. #}
-<section id="grupos">
-  <h2>Grupos</h2>
-  <p class="muted">Os jogadores escolhem o grupo na inscrição (até {{ groups[0][0].capacity }} por grupo) e podem trocar enquanto houver vaga. Aqui você arrasta qualquer um para outro grupo, sem esse limite, até o início, e depois salva; quem mudar de grupo recebe um e-mail. No celular, arraste pela alça <span aria-hidden="true">⠿</span>; no teclado, use as setas ← →. Os nomes e o número de grupos mudam em <a href="#dados">Dados do campeonato</a>.</p>
-  {% if entries %}
-  {% macro group_chip(e, slot, group_name) %}
-        <li class="group-chip" tabindex="0" data-entry="{{ e.id }}" data-name="{{ e.username }}" aria-label="{{ e.username }}, {{ group_name }}. Arraste ou use as setas para mudar de grupo.">
-          <span class="group-grip" aria-hidden="true">⠿</span>
-          <span class="with-avatar">{{ avatar(e.player_id, e.username) }}<span>{{ e.username }}</span></span>
-          <input type="hidden" name="grupo_{{ e.id }}" value="{{ slot }}">
-        </li>
-  {% endmacro %}
-  <form method="post" action="{{ url_for('tournaments.arrange_groups', slug=t.slug) }}" class="form">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="group-columns" id="group-board">
-    {% for g in groups[0] %}
-      <div class="group-column" data-capacity="{{ g.capacity }}">
-        <h3>{{ g.name }} <small class="muted" data-count>{{ g.count }} de {{ g.capacity }}</small></h3>
-        <ul class="group-drop{% if not g.entries %} empty{% endif %}" data-slot="{{ g.slot }}" data-name="{{ g.name }}" aria-label="Grupo {{ g.name }}">
-        {% for e in g.entries %}{{ group_chip(e, g.slot, g.name) }}{% endfor %}
-        </ul>
-      </div>
-    {% endfor %}
-    {% if groups[1] %}
-      <div class="group-column loose">
-        <h3>Sem grupo <small class="muted">precisam de um grupo para o campeonato começar</small></h3>
-        <ul class="group-drop" data-slot="" data-name="sem grupo" aria-label="Sem grupo">
-        {% for e in groups[1] %}{{ group_chip(e, '', 'sem grupo') }}{% endfor %}
-        </ul>
-      </div>
-    {% endif %}
-    </div>
-    <div class="card-actions">
-      <button type="button" class="secondary btn-left" data-undo hidden>Desfazer</button>
-      <button data-save>Salvar grupos</button>
-      <span class="muted" data-dirty hidden>Há mudanças não salvas.</span>
-    </div>
-  </form>
-  <script src="{{ url_for('static', filename='js/group-board.js', v='20261124a') }}" defer></script>
-  {% else %}<p class="muted">Ninguém inscrito ainda.</p>{% endif %}
-</section>
-{% endif %}
-
-{% if candidates is not none %}
-<section id="convidar">
-  <h2>Convidar jogadores</h2>
-  <p class="muted">Seus amigos e quem já jogou campeonatos criados por você. Os convidados recebem um e-mail e o convite em "Meus campeonatos"; a inscrição continua sendo feita por eles.</p>
-  <form method="post" action="{{ url_for('tournaments.invite', slug=t.slug) }}" class="form">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    {{ invite_picker(candidates, invited, invite_labels, submit_label='Enviar convites') }}
-  </form>
-</section>
-{% endif %}
 {% endif %}{# full #}
 
-{% if t.status != 'cancelled' %}
-{# Ajudantes (tournament/editors.py): quem criou escolhe; o ajudante só vê quem são os responsáveis. #}
-<section id="ajudantes">
-  <h2>Ajudantes</h2>
-  {% if full %}
-  <p class="muted">Amigos {{ 'seus' if session.player_id == t.organizer_id else 'de ' ~ t.organizer_name }} que ajudam a editar os dados, a imagem e a ISO do campeonato; o resto do Gerenciar continua só com quem criou. Com ajudantes, o que um responsável alterar só entra depois que outro responsável confirmar: ele recebe um e-mail com o antes e o depois.</p>
-  <form method="post" action="{{ url_for('tournaments.helpers_save', slug=t.slug) }}" class="form helpers-form">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    {{ helpers_picker(helper_options, helpers, field_id='t-ajudantes', max=max_helpers, label='Amigos que ajudam a editar') }}
-    <div class="card-actions"><button>Salvar ajudantes</button></div>
-  </form>
-  {% else %}
-  <p>Responsáveis por este campeonato: {{ people_line(t.organizer_name, helpers, 'criou') }}.</p>
-  <p class="muted">O que um responsável alterar nos dados, na imagem ou na ISO só entra depois que outro responsável confirmar: ele recebe um e-mail com o antes e o depois.</p>
+{# As etapas do cadastro, como abas (static/js/steps.js). Antes do início, os campos de cada aba entram no
+   <form id="edit-tournament"> pelo atributo form (_tournament_fields.html) e cada aba tem o seu "Salvar
+   alterações" (o formulário vai inteiro, com o campo "etapa" para voltar à mesma aba). Depois do início, só o
+   nome, as datas, o regulamento e o "Somente para amigos" (form id="basic-tournament"). #}
+{% if needs_confirmation and t.status not in ('finished', 'cancelled') %}<p class="notice helper-note">Este campeonato tem ajudantes: o que você salvar fica guardado até outro responsável confirmar.{% if change and change.row.values_json %} As abas já estão com os dados da alteração que espera confirmação.{% endif %}</p>{% endif %}
+<div class="t-steps t-manage t-form" data-steps="tabs" id="dados">
+  {% if editing %}
+  <form method="post" action="{{ url_for('tournaments.edit', slug=t.slug) }}" id="edit-tournament" novalidate data-step-validate><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="etapa" value="basico"></form>
+  {% set save_edit %}<div class="card-actions"><button form="edit-tournament">Salvar alterações</button></div>{% endset %}
+  {% elif t.status not in ('finished', 'cancelled') %}
+  <form method="post" action="{{ url_for('tournaments.edit', slug=t.slug) }}" id="basic-tournament" novalidate data-step-validate><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="etapa" value="basico"></form>
+  {% set save_basic %}<div class="card-actions"><button form="basic-tournament">Salvar alterações</button></div>{% endset %}
   {% endif %}
-</section>
-{% endif %}
+  <ol class="t-steps-nav" role="tablist">
+    {% for key, label in (('basico', 'Básico'), ('patch', 'Patch'), ('formato', 'Formato'), ('participantes', 'Participantes'), ('premiacao', 'Premiação'), ('administradores', 'Administradores')) %}
+    <li><button type="button" role="tab" data-step-go="{{ key }}" aria-controls="etapa-{{ key }}"><span class="t-step-number">{{ loop.index }}</span><span class="t-step-label">{{ label }}</span></button></li>
+    {% endfor %}
+  </ol>
 
-{% if editing %}
-{# Antes do início: o formulário de criar com os dados atuais (tournaments.edit / store.update_before_start). #}
-<section id="dados">
-  <h2>Dados do campeonato</h2>
-  <p class="muted">Até o início do campeonato dá para mudar tudo o que foi escolhido ao criar. Depois que ele começar, só o nome, as datas e o regulamento.</p>
-  {% if needs_confirmation %}<p class="notice helper-note">Este campeonato tem ajudantes: o que você salvar fica guardado até outro responsável confirmar.{% if change and change.row.values_json %} O formulário já está com os dados da alteração que espera confirmação.{% endif %}</p>{% endif %}
-  <form method="post" action="{{ url_for('tournaments.edit', slug=t.slug) }}" class="form t-form" id="edit-tournament">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <p class="muted">Os campos com <span class="req">*</span> são obrigatórios.</p>
-    {% include 'tournaments/_tournament_fields.html' %}
-    <div class="card-actions"><button id="create-button">Salvar alterações</button><span class="muted" id="create-hint" hidden>Preencha os campos obrigatórios para salvar.</span></div>
-  </form>
-</section>
-{% elif t.status not in ('finished', 'cancelled') %}
-<section id="dados">
-  <h2>Dados do campeonato</h2>
-  {% if needs_confirmation %}<p class="notice helper-note">Este campeonato tem ajudantes: o que você salvar fica guardado até outro responsável confirmar.{% if change and change.row.values_json %} O formulário já está com os dados da alteração que espera confirmação.{% endif %}</p>{% endif %}
-  <form method="post" action="{{ url_for('tournaments.edit', slug=t.slug) }}" class="form">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="form-row">
-      <label class="wide">Nome<input name="name" value="{{ basic.name }}" maxlength="80" minlength="3" required></label>
-      <label>Início provável<input type="date" name="starts_on" value="{{ basic.starts_on or '' }}"></label>
-      <label>Fim provável<input type="date" name="ends_on" value="{{ basic.ends_on or '' }}"></label>
-    </div>
-    <label>Regulamento / observações<textarea name="rules" rows="5" maxlength="5000">{{ basic.rules }}</textarea></label>
-    <label class="check"><input type="checkbox" name="friends_only" {% if basic.friends_only %}checked{% endif %}> <span><strong>Somente para amigos</strong> <small class="muted">— campeonato privado: fora das listas para quem não é amigo de quem criou, e só os amigos se inscrevem (quem já está inscrito continua). Quem recebe o link vê os dados do campeonato, sem poder se inscrever.</small></span></label>
-    <button>Salvar</button>
-  </form>
-</section>
+  {# --- Básico: nome, datas, regulamento e a imagem --- #}
+  <section class="t-step" data-step="basico" id="etapa-basico" role="tabpanel">
+    {% if editing %}
+      {{ fields.basico() }}
+      {{ save_edit }}
+    {% elif t.status not in ('finished', 'cancelled') %}
+      <div class="form-row">
+        <label class="wide">Nome<input name="name" form="basic-tournament" value="{{ basic.name }}" maxlength="80" minlength="3" required></label>
+        <label>Início provável<input type="date" name="starts_on" form="basic-tournament" value="{{ basic.starts_on or '' }}"></label>
+        <label>Fim provável<input type="date" name="ends_on" form="basic-tournament" value="{{ basic.ends_on or '' }}"></label>
+      </div>
+      <label>Regulamento / observações<textarea name="rules" form="basic-tournament" rows="5" maxlength="5000">{{ basic.rules }}</textarea></label>
+      <p class="muted">Com o campeonato em andamento, só o nome, as datas, o regulamento e o "Somente para amigos" mudam.</p>
+      {{ save_basic }}
+    {% else %}
+      <dl class="t-readonly"><dt>Nome</dt><dd>{{ t.name }}</dd>
+        {% if t.starts_on or t.ends_on %}<dt>Datas prováveis</dt><dd>{% if t.starts_on %}Início {{ t.starts_on|date_br }}{% endif %}{% if t.starts_on and t.ends_on %} · {% endif %}{% if t.ends_on %}Fim {{ t.ends_on|date_br }}{% endif %}</dd>{% endif %}
+        {% if t.rules %}<dt>Regulamento</dt><dd class="description">{{ t.rules }}</dd>{% endif %}</dl>
+    {% endif %}
+    {% if t.status != 'cancelled' %}
+    <section id="imagem" class="t-sub">
+      <h3>Imagem do campeonato {{ info_button('ajuda-imagem-gerenciar', 'Sobre a imagem do campeonato') }}</h3>
+      <div class="t-image-edit">
+        <img id="t-image-preview" class="t-image-thumb" src="{{ image_url('torneio', t.image) or '' }}" alt="" {% if not t.image %}hidden{% endif %}>
+        <div>
+          {% if needs_confirmation %}<p class="notice helper-note">Com ajudantes, a imagem nova só entra depois que outro responsável confirmar.</p>{% endif %}
+          <form method="post" action="{{ url_for('tournaments.tournament_image', slug=t.slug) }}" enctype="multipart/form-data" class="image-upload-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="file" name="image" accept="image/png,image/jpeg,image/webp" required data-crop="480x600" data-preview="t-image-preview" aria-label="Escolher imagem do campeonato">
+            <div class="card-actions">
+              {% if t.image %}<button class="secondary btn-left" name="acao" value="remover" formnovalidate>Remover imagem</button>{% endif %}
+              <button>{{ 'Trocar imagem' if t.image else 'Salvar imagem' }}</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      {% call info_dialog('ajuda-imagem-gerenciar', 'Imagem do campeonato') %}
+        <p>Logo ou arte do campeonato; aparece ao lado da capa do jogo, na página e nos cards.</p>
+        <p><strong>Tamanho final: 480 × 600 px</strong> (em pé, proporção 4:5, igual à capa). Ao escolher a imagem, você arrasta para ajustar o recorte dentro do quadro e usa o zoom para aproximar.</p>
+        <p>PNG, JPG ou WebP (PNG/WebP com fundo transparente ficam melhor).</p>
+      {% endcall %}
+      <script src="{{ url_for('static', filename='js/image-resize.js', v='20261126b') }}" defer></script>
+      {% include 'tournaments/_share_image.html' %}
+    </section>
+    {% endif %}
+  </section>
 
-{% endif %}
-
-{% if t.status != 'cancelled' %}
-<section id="imagem">
-  <h2>Imagem do campeonato</h2>
-  <div class="t-image-edit">
-    <img id="t-image-preview" class="t-image-thumb" src="{{ image_url('torneio', t.image) or '' }}" alt="" {% if not t.image %}hidden{% endif %}>
-    <div>
-      {% if needs_confirmation %}<p class="notice helper-note">Com ajudantes, a imagem nova só entra depois que outro responsável confirmar.</p>{% endif %}
-      <p class="muted">Logo ou arte do campeonato; aparece ao lado da capa do jogo na página e nos cards. <strong>Tamanho ideal: 480 × 600 px</strong> (em pé, proporção 4:5, igual à capa); outras proporções aparecem inteiras, com sobra nas laterais ou em cima e embaixo. PNG, JPG ou WebP (PNG/WebP com fundo transparente ficam melhor).</p>
-      <form method="post" action="{{ url_for('tournaments.tournament_image', slug=t.slug) }}" enctype="multipart/form-data" class="image-upload-form">
+  {# --- Patch: o jogo base e a ISO --- #}
+  <section class="t-step" data-step="patch" id="etapa-patch" role="tabpanel" hidden>
+    {% if editing %}
+      {{ fields.patch() }}
+      {{ save_edit }}
+    {% else %}
+      <dl class="t-readonly"><dt>Jogo base</dt><dd>{{ t.game_name }}</dd></dl>
+    {% endif %}
+    {% if t.status != 'cancelled' %}
+    <section id="iso" class="t-sub">
+      <h3>ISO do campeonato {{ info_button('ajuda-iso-gerenciar', 'Sobre a ISO do campeonato') }}</h3>
+      {% if needs_confirmation %}<p class="notice helper-note">Com ajudantes, a ISO nova fica guardada e só substitui a atual depois que outro responsável confirmar.</p>{% endif %}
+      {% if iso and iso.source %}
+        {# Escolhida na lista (iso.link): o arquivo é o da ISO de origem, que cuida do archive.org. #}
+        <p><strong>{{ iso.original_filename }}</strong> <small>({{ iso.file_size|filesize }})</small><br>
+        Escolhida da lista: {% if iso_source and iso_source.kind == 'catalog' %}<a href="{{ url_for('tournaments.iso_page', catalog_id=iso_source.catalog_id) }}">{{ iso_source.title }}</a> <small class="muted">(ISO do WE Camp)</small>
+        {% elif iso_source %}<a href="{{ url_for('tournaments.show', slug=iso_source.slug) }}">{{ iso_source.title }}</a> <small class="muted">(ISO de campeonato)</small>
+        {% else %}uma ISO já enviada{% endif %}<br>
+        {% if iso.archive_url %}No archive.org: <a href="{{ iso.archive_url }}" rel="noopener">{{ iso.archive_url }}</a>{% else %}Só neste servidor.{% endif %}</p>
+      {% elif iso %}
+        <p><strong>{{ iso.original_filename }}</strong> <small>({{ iso.file_size|filesize }})</small><br>
+        {% if iso.local_removed_at %}No archive.org: <a href="{{ iso.archive_url }}" rel="noopener">{{ iso.archive_url }}</a>
+        {% elif iso.archive_status == 'uploading' %}Enviando para o archive.org...
+        {% elif iso.archive_status == 'verifying' %}Enviada; esperando o archive.org confirmar a cópia (pode levar alguns minutos).
+        {% elif iso.archive_status == 'error' %}<span class="notice error">Não foi para o archive.org: {{ iso.archive_error }}</span>
+        {% elif archive_configured %}Ainda não foi enviada para o archive.org.
+        {% else %}Só neste servidor (o archive.org não está configurado aqui).{% endif %}</p>
+        {% if not iso.local_removed_at and iso.archive_status in ('uploading', 'verifying') %}<div class="archive-progress" data-archive-status="{{ url_for('tournaments.iso_status', slug=t.slug) }}"></div>{% endif %}
+        {% if not iso.local_removed_at and archive_configured and iso.archive_status in ('pending', 'error') %}
+        <form method="post" action="{{ url_for('tournaments.iso_retry', slug=t.slug) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Enviar para o archive.org de novo</button></form>
+        {% endif %}
+      {% else %}<p class="muted">Nenhuma ISO enviada.</p>{% endif %}
+      {% if not iso_uploading %}
+      <form method="post" action="{{ url_for('tournaments.iso_upload', slug=t.slug) }}" class="form" enctype="multipart/form-data" data-upload="{{ iso_max_bytes }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="file" name="image" accept="image/png,image/jpeg,image/webp" required data-resize="max:600" data-preview="t-image-preview" aria-label="Escolher imagem do campeonato">
+        <label>{{ 'Trocar a ISO' if iso else 'Enviar a ISO' }}<input type="file" name="iso" accept="{{ iso_accept }}" required></label>
+        {% include 'tournaments/_upload_progress.html' %}
+        <div class="card-actions"><button>Enviar ISO</button></div>
+      </form>
+      {% if iso_options %}
+      {# Ou uma ISO já enviada (iso_catalog.tournament_options: do mesmo jogo base, que já dá para baixar). #}
+      <form method="post" action="{{ url_for('tournaments.iso_choose', slug=t.slug) }}" class="form iso-choose-form" id="iso-escolher">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {{ iso_choice('iso-picker', label='Ou escolha uma ISO já enviada') }}
+        <button id="iso-choose-button" hidden>Usar esta ISO</button>
+      </form>
+      {% call iso_picker(iso_options, 'iso-picker') %}
+        <p class="muted iso-request">Não encontrou a ISO? Envie o arquivo, em "{{ 'Trocar a ISO' if iso else 'Enviar a ISO' }}".</p>
+      {% endcall %}
+      <script src="{{ url_for('static', filename='js/iso-picker.js', v='20261122a') }}" defer></script>
+      <script>
+      (function () {
+        // "Usar esta ISO" só depois de escolher uma (static/js/iso-picker.js).
+        var form = document.getElementById('iso-escolher'), button = document.getElementById('iso-choose-button');
+        form.addEventListener('iso:change', function (e) { button.hidden = !e.detail.option; });
+      })();
+      </script>
+      {% endif %}
+      {% endif %}
+      {% call info_dialog('ajuda-iso-gerenciar', 'ISO do campeonato') %}
+        <p>A ISO do {{ t.game_name }} com o patch deste campeonato: envie o arquivo ou escolha uma já enviada (as dos amistosos e as dos outros campeonatos, do mesmo jogo base). Dá para trocar a qualquer momento.</p>
+        <p>O arquivo enviado vai para o archive.org e fica disponível para download, na página do campeonato, para quem estiver logado. Até {{ iso_max_bytes|filesize }} ({{ iso_accept.replace(',', ', ') }}). A ISO escolhida da lista continua vindo de onde ela já está.</p>
+      {% endcall %}
+    </section>
+    {% endif %}
+  </section>
+
+  {# --- Formato: formato, vagas e as fases --- #}
+  <section class="t-step" data-step="formato" id="etapa-formato" role="tabpanel" hidden>
+    {% if editing %}
+      {{ fields.formato() }}
+      {{ save_edit }}
+    {% else %}
+      <dl class="t-readonly"><dt>Formato</dt><dd>{{ format_label }}</dd><dt>Como funciona</dt><dd>{{ summary }}</dd><dt>Vagas</dt><dd>{{ t.max_players }}</dd></dl>
+      <p class="muted">O formato não muda depois do início do campeonato.</p>
+    {% endif %}
+  </section>
+
+  {# --- Participantes: Somente para amigos, times, inscritos, grupos e convites --- #}
+  <section class="t-step" data-step="participantes" id="etapa-participantes" role="tabpanel" hidden>
+    {% if editing %}
+      {{ fields.amigos() }}
+      {{ fields.times() }}
+      {{ save_edit }}
+    {% elif t.status not in ('finished', 'cancelled') %}
+      <label class="check"><input type="checkbox" name="friends_only" form="basic-tournament" {% if basic.friends_only %}checked{% endif %}> <span><strong>Somente para amigos</strong> {{ info_button('ajuda-amigos-andamento', 'Sobre o Somente para amigos') }}</span></label>
+      {% call info_dialog('ajuda-amigos-andamento', 'Somente para amigos') %}
+        <p>Campeonato privado: fora das listas para quem não é amigo de quem criou, e só os amigos se inscrevem (quem já está inscrito continua). Quem recebe o link vê os dados do campeonato, sem poder se inscrever.</p>
+      {% endcall %}
+      <dl class="t-readonly"><dt>Times</dt><dd>{{ team_modes[t.team_mode] }}</dd></dl>
+      {{ save_basic }}
+    {% else %}
+      <dl class="t-readonly"><dt>Somente para amigos</dt><dd>{{ 'Sim' if t.friends_only else 'Não' }}</dd><dt>Times</dt><dd>{{ team_modes[t.team_mode] }}</dd></dl>
+    {% endif %}
+
+    {% if full %}
+    <section id="inscritos" class="t-sub">
+      <h3>Inscritos ({{ entries|length }}/{{ t.max_players }}){% if team_board %} {{ info_button('ajuda-times-inscritos', 'Sobre os times dos inscritos') }}{% endif %}</h3>
+      {% if team_board and entries %}
+      {# Os times dos inscritos por arrastar e soltar (store.assign_teams, static/js/team-board.js): cada inscrito
+         tem uma vaga de time; nos modos com lista, os times sem dono ficam à parte. O campo time_<inscrição> leva
+         "e<inscrição>" (o time que ela tem agora), "t<time>" (da lista) ou vazio (sem time). #}
+      {% macro team_chip(token, name, image) %}
+            <div class="team-chip" tabindex="0" data-token="{{ token }}" data-name="{{ name }}">
+              <span class="group-grip" aria-hidden="true">⠿</span><img class="crest" src="{{ image }}" alt="" loading="lazy"><span class="team-chip-name">{{ name }}</span>
+            </div>
+      {% endmacro %}
+      <form method="post" action="{{ url_for('tournaments.assign_teams', slug=t.slug) }}" class="form" id="team-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="team-board{% if team_board.pool is none %} no-pool{% endif %}" id="team-board">
+          <div class="team-rows-box">
+            <input type="search" class="team-board-filter" data-row-filter placeholder="Buscar jogador ou time..." autocomplete="off" aria-label="Buscar inscrito">
+            <ul class="team-rows">
+            {% for e in entries %}
+              <li class="team-row" data-entry="{{ e.id }}" data-search="{{ (e.username ~ ' ' ~ (e.team_name or ''))|lower }}">
+                <span class="with-avatar team-row-player">{{ avatar_button(e.player_id, e.username) }}<span><strong>{{ e.username }}</strong>
+                  <small class="muted">{% if groups %}{% if e.group_slot is not none and e.group_slot < groups[0]|length %}{{ groups[0][e.group_slot].name }}{% else %}sem grupo{% endif %} · {% endif %}inscrito em {{ e.created_at|localtime('%d/%m %H:%M') }}{% if not e.team_name and t.team_mode in ('choose', 'free') %} · sem time: avisado para escolher{% endif %}</small></span></span>
+                <div class="team-slot{% if not e.team_name %} empty{% endif %}" data-slot="{{ e.id }}" data-empty="{{ 'Sorteado no início' if t.team_mode == 'draw' else 'Sem time' }}" aria-label="Time de {{ e.username }}">
+                  {% if e.team_name %}{{ team_chip('e%d' % e.id, e.team_name, team_board.crests[e.id]) }}{% endif %}
+                </div>
+                <input type="hidden" name="time_{{ e.id }}" value="{{ 'e%d' % e.id if e.team_name else '' }}">
+                <button class="secondary team-row-remove" formaction="{{ url_for('tournaments.remove_entry', slug=t.slug, entry_id=e.id) }}" formnovalidate title="Remove a inscrição e devolve o valor pago">Remover</button>
+              </li>
+            {% endfor %}
+            </ul>
+          </div>
+          {% if team_board.pool is not none %}
+          <div class="team-pool" data-pool aria-label="Times da lista sem dono">
+            <h4>Times sem dono <small class="muted" data-pool-count>{{ team_board.pool|length }}</small></h4>
+            <input type="search" class="team-board-filter" data-pool-filter placeholder="Buscar time..." autocomplete="off" aria-label="Buscar time da lista">
+            <div class="team-pool-chips">{% for team in team_board.pool %}{{ team_chip('t%d' % team.id, team.name, team.image) }}{% endfor %}</div>
+          </div>
+          {% endif %}
+        </div>
         <div class="card-actions">
-          <button>{{ 'Trocar imagem' if t.image else 'Salvar imagem' }}</button>
-          {% if t.image %}<button class="secondary btn-left" name="acao" value="remover" formnovalidate>Remover imagem</button>{% endif %}
+          <button type="button" class="secondary btn-left" data-undo hidden>Desfazer</button>
+          <button data-save>Salvar times</button>
+          <span class="muted" data-dirty hidden>Há mudanças não salvas.</span>
         </div>
       </form>
-    </div>
-  </div>
-  <script src="{{ url_for('static', filename='js/image-resize.js') }}" defer></script>
-  {% include 'tournaments/_share_image.html' %}
-</section>
+      {% call info_dialog('ajuda-times-inscritos', 'Times dos inscritos') %}
+        <p>Arraste um time {% if team_board.pool is not none %}da lista "Times sem dono" {% endif %}para a vaga de um inscrito, ou de um inscrito para outro: os dois trocam de time.{% if team_board.pool is not none %} Arrastar o time de volta para a lista deixa o inscrito sem time.{% endif %}</p>
+        {% if t.team_mode == 'draw' %}<p>No sorteio, quem já tiver time fica com ele e só os outros são sorteados quando você fechar as inscrições.</p>
+        {% elif t.team_mode == 'choose' %}<p>Quem ficar sem time recebe um e-mail para escolher um da lista.</p>
+        {% else %}<p>No modo livre, dá para trocar os times entre os inscritos (cada um digitou o seu na inscrição).</p>{% endif %}
+        <p>Nada muda até você salvar; quem teve o time mudado recebe um e-mail. No celular, arraste pela alça <span aria-hidden="true">⠿</span>; no teclado, ↑ e ↓ trocam o time com o inscrito de cima ou de baixo{% if team_board.pool is not none %}, Delete devolve o time para a lista e Enter num time da lista o leva ao primeiro inscrito sem time{% endif %}.</p>
+        <p>"Remover" tira a inscrição e devolve o valor pago ao jogador.</p>
+      {% endcall %}
+      <script src="{{ url_for('static', filename='js/team-board.js', v='20261126a') }}" defer></script>
+      {% elif entries %}
+      <form method="get" action="{{ url_for('tournaments.manage', slug=t.slug) }}#inscritos" class="live-filters">
+        <label class="filter-wide">Jogador ou time<input name="inscrito" value="{{ entry_search }}"></label>
+        <div class="live-filter-actions"><a class="button secondary" href="{{ url_for('tournaments.manage', slug=t.slug) }}#inscritos">Limpar filtro</a><button>Filtrar</button></div>
+      </form>
+      {% if shown_entries %}
+      {% call carousel('Inscritos anteriores', 'Próximos inscritos', 't-cards per-3', fit=false) %}
+        {% for e in shown_entries %}
+        <div class="t-card no-side">
+          <span class="t-body">
+            <span class="with-avatar friend-name">{{ avatar_button(e.player_id, e.username) }}<strong class="t-name">{{ e.username }}</strong></span>
+            <span class="t-meta"><span>{{ icon('shield') }}{% if e.team_name %}{{ e.team_name }}{% elif t.team_mode == 'draw' %}<em class="muted">sorteado no início</em>{% elif t.team_mode == 'round' %}<em class="muted">um time diferente a cada rodada</em>{% else %}<em class="muted">sem time: avisado para escolher</em>{% endif %}</span></span>
+            {% if groups %}<span class="t-meta"><span>{% if e.group_slot is not none and e.group_slot < groups[0]|length %}Grupo: {{ groups[0][e.group_slot].name }}{% else %}<em class="muted">sem grupo: avisado para escolher</em>{% endif %}</span></span>{% endif %}
+            <span class="t-meta"><span>{{ icon('clock') }}Inscrito em {{ e.created_at|localtime }}</span></span>
+            {# Desistência (store.withdraw_running): quando e o motivo, que também foi por e-mail aos organizadores. #}
+            {% if e.withdrawn_at %}<span class="t-meta"><span class="gave-up">Desistiu em {{ e.withdrawn_at|localtime('%d/%m/%Y') }}</span></span>
+            <span class="quote">“{{ e.withdraw_reason }}”</span>{% endif %}
+          </span>
+          {% if t.status == 'registration' %}<div class="t-foot"><form method="post" action="{{ url_for('tournaments.remove_entry', slug=t.slug, entry_id=e.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Remover</button></form></div>{% endif %}
+        </div>
+        {% endfor %}
+      {% endcall %}
+      {% else %}<p class="muted list-note">Nenhum inscrito com esse filtro.</p>{% endif %}
+      {% else %}<p class="muted">Ninguém inscrito ainda.</p>{% endif %}
+    </section>
 
-<section id="iso">
-  <h2>ISO do campeonato</h2>
-  <p class="muted">A ISO do {{ t.game_name }} com o patch deste campeonato: envie o arquivo ou escolha uma já enviada (as dos amistosos e as dos outros campeonatos). Dá para trocar a qualquer momento.</p>
-  {% if needs_confirmation %}<p class="notice helper-note">Com ajudantes, a ISO nova fica guardada e só substitui a atual depois que outro responsável confirmar.</p>{% endif %}
-  {% if iso and iso.source %}
-    {# Escolhida na lista (iso.link): o arquivo é o da ISO de origem, que cuida do archive.org. #}
-    <p><strong>{{ iso.original_filename }}</strong> <small>({{ iso.file_size|filesize }})</small><br>
-    Escolhida da lista: {% if iso_source and iso_source.kind == 'catalog' %}<a href="{{ url_for('tournaments.iso_page', catalog_id=iso_source.catalog_id) }}">{{ iso_source.title }}</a> <small class="muted">(ISO do WE Camp)</small>
-    {% elif iso_source %}<a href="{{ url_for('tournaments.show', slug=iso_source.slug) }}">{{ iso_source.title }}</a> <small class="muted">(ISO de campeonato)</small>
-    {% else %}uma ISO já enviada{% endif %}<br>
-    {% if iso.archive_url %}No archive.org: <a href="{{ iso.archive_url }}" rel="noopener">{{ iso.archive_url }}</a>{% else %}Só neste servidor.{% endif %}</p>
-  {% elif iso %}
-    <p><strong>{{ iso.original_filename }}</strong> <small>({{ iso.file_size|filesize }})</small><br>
-    {% if iso.local_removed_at %}No archive.org: <a href="{{ iso.archive_url }}" rel="noopener">{{ iso.archive_url }}</a>
-    {% elif iso.archive_status == 'uploading' %}Enviando para o archive.org...
-    {% elif iso.archive_status == 'verifying' %}Enviada; esperando o archive.org confirmar a cópia (pode levar alguns minutos).
-    {% elif iso.archive_status == 'error' %}<span class="notice error">Não foi para o archive.org: {{ iso.archive_error }}</span>
-    {% elif archive_configured %}Ainda não foi enviada para o archive.org.
-    {% else %}Só neste servidor (o archive.org não está configurado aqui).{% endif %}</p>
-    {% if not iso.local_removed_at and iso.archive_status in ('uploading', 'verifying') %}<div class="archive-progress" data-archive-status="{{ url_for('tournaments.iso_status', slug=t.slug) }}"></div>{% endif %}
-    {% if not iso.local_removed_at and archive_configured and iso.archive_status in ('pending', 'error') %}
-    <form method="post" action="{{ url_for('tournaments.iso_retry', slug=t.slug) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary">Enviar para o archive.org de novo</button></form>
+    {% if groups and t.status == 'registration' %}
+    {# Grupos dinâmicos (store.arrange_groups): o organizador muda qualquer inscrito de grupo, sem o limite de vagas por
+       grupo, até o início. Os nomes e o número de grupos mudam na aba Formato. #}
+    <section id="grupos" class="t-sub">
+      <h3>Grupos {{ info_button('ajuda-grupos-gerenciar', 'Sobre a organização dos grupos') }}</h3>
+      {% if entries %}
+      {% macro group_chip(e, slot, group_name) %}
+            <li class="group-chip" tabindex="0" data-entry="{{ e.id }}" data-name="{{ e.username }}" aria-label="{{ e.username }}, {{ group_name }}. Arraste ou use as setas para mudar de grupo.">
+              <span class="group-grip" aria-hidden="true">⠿</span>
+              <span class="with-avatar">{{ avatar(e.player_id, e.username) }}<span>{{ e.username }}</span></span>
+              <input type="hidden" name="grupo_{{ e.id }}" value="{{ slot }}">
+            </li>
+      {% endmacro %}
+      <form method="post" action="{{ url_for('tournaments.arrange_groups', slug=t.slug) }}" class="form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="group-columns" id="group-board">
+        {% for g in groups[0] %}
+          <div class="group-column" data-capacity="{{ g.capacity }}">
+            <h3>{{ g.name }} <small class="muted" data-count>{{ g.count }} de {{ g.capacity }}</small></h3>
+            <ul class="group-drop{% if not g.entries %} empty{% endif %}" data-slot="{{ g.slot }}" data-name="{{ g.name }}" aria-label="Grupo {{ g.name }}">
+            {% for e in g.entries %}{{ group_chip(e, g.slot, g.name) }}{% endfor %}
+            </ul>
+          </div>
+        {% endfor %}
+        {% if groups[1] %}
+          <div class="group-column loose">
+            <h3>Sem grupo <small class="muted">precisam de um grupo para o campeonato começar</small></h3>
+            <ul class="group-drop" data-slot="" data-name="sem grupo" aria-label="Sem grupo">
+            {% for e in groups[1] %}{{ group_chip(e, '', 'sem grupo') }}{% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+        </div>
+        <div class="card-actions">
+          <button type="button" class="secondary btn-left" data-undo hidden>Desfazer</button>
+          <button data-save>Salvar grupos</button>
+          <span class="muted" data-dirty hidden>Há mudanças não salvas.</span>
+        </div>
+      </form>
+      <script src="{{ url_for('static', filename='js/group-board.js', v='20261124a') }}" defer></script>
+      {% else %}<p class="muted">Ninguém inscrito ainda.</p>{% endif %}
+      {% call info_dialog('ajuda-grupos-gerenciar', 'Grupos') %}
+        <p>Os jogadores escolhem o grupo na inscrição (até {{ groups[0][0].capacity }} por grupo) e podem trocar enquanto houver vaga.</p>
+        <p>Aqui você arrasta qualquer um para outro grupo, sem esse limite, até o início, e depois salva; quem mudar de grupo recebe um e-mail. No celular, arraste pela alça <span aria-hidden="true">⠿</span>; no teclado, use as setas ← →.</p>
+        <p>Os nomes e o número de grupos mudam na aba Formato.</p>
+      {% endcall %}
+    </section>
     {% endif %}
-  {% else %}<p class="muted">Nenhuma ISO enviada.</p>{% endif %}
-  {% if not iso_uploading %}
-  <form method="post" action="{{ url_for('tournaments.iso_upload', slug=t.slug) }}" class="form" enctype="multipart/form-data" data-upload="{{ iso_max_bytes }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>{{ 'Trocar a ISO' if iso else 'Enviar a ISO' }}<input type="file" name="iso" accept="{{ iso_accept }}" required></label>
-    <p class="muted">Vai para o archive.org e fica disponível para download, na página do campeonato, para quem estiver logado. Até {{ iso_max_bytes|filesize }} ({{ iso_accept.replace(',', ', ') }}).</p>
-    {% include 'tournaments/_upload_progress.html' %}
-    <button>Enviar ISO</button>
-  </form>
-  {% if iso_options %}
-  {# Ou uma ISO já enviada (iso_catalog.tournament_options: do mesmo jogo base, que já dá para baixar). #}
-  <form method="post" action="{{ url_for('tournaments.iso_choose', slug=t.slug) }}" class="form iso-choose-form" id="iso-escolher">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    {{ iso_choice('iso-picker', label='Ou escolha uma ISO já enviada') }}
-    <p class="muted">As ISOs dos amistosos e as dos outros campeonatos, do {{ t.game_name }}. O download continua vindo de onde ela já está.</p>
-    <button id="iso-choose-button" hidden>Usar esta ISO</button>
-  </form>
-  {% call iso_picker(iso_options, 'iso-picker') %}
-    <p class="muted iso-request">Não encontrou a ISO? Envie o arquivo acima, em "{{ 'Trocar a ISO' if iso else 'Enviar a ISO' }}".</p>
-  {% endcall %}
-  <script src="{{ url_for('static', filename='js/iso-picker.js', v='20261122a') }}" defer></script>
-  <script>
-  (function () {
-    // "Usar esta ISO" só depois de escolher uma (static/js/iso-picker.js).
-    var form = document.getElementById('iso-escolher'), button = document.getElementById('iso-choose-button');
-    form.addEventListener('iso:change', function (e) { button.hidden = !e.detail.option; });
-  })();
-  </script>
-  {% endif %}
-  {% endif %}
-</section>
-{% endif %}
+
+    {% if candidates is not none %}
+    <section id="convidar" class="t-sub">
+      <h3>Convidar jogadores {{ info_button('ajuda-convidar', 'Sobre os convites') }}</h3>
+      <form method="post" action="{{ url_for('tournaments.invite', slug=t.slug) }}" class="form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {{ invite_picker(candidates, invited, invite_labels, submit_label='Enviar convites') }}
+      </form>
+      {% call info_dialog('ajuda-convidar', 'Convites') %}
+        <p>Seus amigos e quem já jogou campeonatos criados por você. Os convidados recebem um e-mail e o convite em "Meus campeonatos"; a inscrição continua sendo feita por eles.</p>
+      {% endcall %}
+    </section>
+    {% endif %}
+    {% endif %}{# full #}
+  </section>
+
+  {# --- Premiação: inscrição e divisão do prêmio --- #}
+  <section class="t-step" data-step="premiacao" id="etapa-premiacao" role="tabpanel" hidden>
+    {% if editing %}
+      {{ fields.premiacao() }}
+      {{ save_edit }}
+    {% else %}
+      <dl class="t-readonly"><dt>Inscrição</dt><dd>{{ t.entry_fee_cents|wcash if t.entry_fee_cents else 'Grátis' }}</dd>
+        {% if t.entry_fee_cents %}<dt>Divisão do prêmio</dt><dd>{{ t.prize_split.replace(',', ' / ') }} %</dd>{% endif %}</dl>
+      <p class="muted">A inscrição e o prêmio não mudam depois do início do campeonato.</p>
+    {% endif %}
+  </section>
+
+  {# --- Administradores: os amigos que ajudam a editar (tournament/editors.py) --- #}
+  <section class="t-step" data-step="administradores" id="etapa-administradores" role="tabpanel" hidden>
+    {% if t.status != 'cancelled' %}
+    <section id="ajudantes" class="t-sub">
+      <h3>Amigos que ajudam a editar {{ info_button('ajuda-ajudantes-gerenciar', 'Sobre os ajudantes') }}</h3>
+      {% if full %}
+      <form method="post" action="{{ url_for('tournaments.helpers_save', slug=t.slug) }}" class="form helpers-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {{ helpers_picker(helper_options, helpers, field_id='t-ajudantes', max=max_helpers, label='Amigos que ajudam a editar') }}
+        <div class="card-actions"><button>Salvar ajudantes</button></div>
+      </form>
+      {% else %}
+      <p>Responsáveis por este campeonato: {{ people_line(t.organizer_name, helpers, 'criou') }}.</p>
+      {% endif %}
+      {% call info_dialog('ajuda-ajudantes-gerenciar', 'Amigos que ajudam a editar') %}
+        <p>Amigos {{ 'seus' if session.player_id == t.organizer_id else 'de ' ~ t.organizer_name }} que ajudam a editar os dados, a imagem e a ISO do campeonato; o resto do Gerenciar continua só com quem criou.</p>
+        <p>Com ajudantes, o que um responsável alterar só entra depois que outro responsável confirmar: ele recebe um e-mail com o antes e o depois.</p>
+      {% endcall %}
+    </section>
+    {% else %}<p class="muted">Campeonato cancelado.</p>{% endif %}
+  </section>
+</div>
 
 {% if full and t.status not in ('finished', 'cancelled') %}
 {% if t.status != 'running' or is_admin %}
@@ -384,7 +513,8 @@
 </section>
 {% endif %}
 {% endif %}
-<script src="{{ url_for('static', filename='js/upload-progress.js') }}"></script>
+<script src="{{ url_for('static', filename='js/steps.js', v='20261126a') }}"></script>
+<script src="{{ url_for('static', filename='js/upload-progress.js', v='20261126a') }}"></script>
 <script src="{{ url_for('static', filename='js/archive-progress.js') }}"></script>
 <script src="{{ url_for('static', filename='js/pens.js') }}"></script>
 <script src="{{ url_for('static', filename='js/leg-flip.js') }}" defer></script>
@@ -413,7 +543,7 @@
     var mode = form.elements.team_mode.value, lost = [];
     if (mode === 'choose') {
       var ids = {};
-      form.querySelectorAll('input[name=team_ids]:checked').forEach(function (el) { ids[el.value] = 1; });
+      document.querySelectorAll('input[name=team_ids][form="edit-tournament"]:checked').forEach(function (el) { ids[el.value] = 1; });
       lost = kept.filter(function (x) { return !(x.team && ids[x.team]) && (x.named || before.mode !== 'choose'); });
       if (lost.length) lines.push('- ' + lost.length + ' inscrito(s) ficam sem time e precisam escolher outro.');
     } else if (mode === 'draw' && before.mode !== 'draw' && kept.length) {

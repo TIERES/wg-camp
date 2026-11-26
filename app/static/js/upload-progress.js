@@ -16,7 +16,7 @@
         toast('A ISO pode ter no máximo ' + Math.floor(max / 1048576) + ' MB.', 'error');
         return;
       }
-      var button = form.querySelector('button');
+      var button = e.submitter || form.querySelector('button');
       var bar = box.querySelector('progress');
       var label = box.querySelector('span');
       var xhr = new XMLHttpRequest();

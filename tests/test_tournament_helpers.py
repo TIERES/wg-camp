@@ -88,7 +88,8 @@ class TournamentHelpersTest(unittest.TestCase):
         # O ajudante: os dados, a imagem e a ISO - sem sortear, cancelar, convidar nem mexer nos ajudantes.
         helper = self.client(self.p1)
         page = helper.get(f"/torneios/{t['slug']}/gerenciar").get_data(as_text=True)
-        for shown in ("Dados do campeonato", "Imagem do campeonato", "ISO do campeonato", "Responsáveis por este campeonato"):
+        for shown in ('data-steps="tabs"', 'id="edit-tournament"', "Imagem do campeonato", "ISO do campeonato",
+                      "Responsáveis por este campeonato"):
             self.assertIn(shown, page)
         for hidden in ("Cancelar campeonato", "Fechar inscrições e sortear", "Convidar jogadores", "Salvar ajudantes"):
             self.assertNotIn(hidden, page)

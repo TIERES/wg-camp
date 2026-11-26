@@ -80,9 +80,9 @@ class TournamentEditTest(unittest.TestCase):
         page = self.client(self.owner).get(f"/torneios/{t['slug']}/gerenciar").data.decode()
         # O formulário de criar com os dados atuais.
         self.assertIn("Salvar alterações", page)
-        self.assertIn(f'name="game_title_id" value="{self.games[0]}" required checked', page)
+        self.assertIn(f'name="game_title_id" form="edit-tournament" value="{self.games[0]}" required checked', page)
         self.assertIn('value="W$10,00"', page)
-        self.assertIn(f'name="team_ids" value="{self.teams[0]}" checked', page)
+        self.assertIn(f'name="team_ids" form="edit-tournament" value="{self.teams[0]}" checked', page)
         self.assertIn('"format": "knockout"', page)  # o JavaScript preenche o formato com os dados atuais
         response = self.edit(t["slug"], name="Copa Nova", starts_on="2026-12-05", ends_on="2027-01-10",
                              game_title_id=str(self.games[1]), format="world_cup", max_players="8", groups="2",
@@ -198,7 +198,9 @@ class TournamentEditTest(unittest.TestCase):
         self.enroll(self.p2, t["slug"], self.teams[1])
         self.client(self.owner).post(f"/torneios/{t['slug']}/iniciar", data={"csrf_token": CSRF})
         page = self.client(self.owner).get(f"/torneios/{t['slug']}/gerenciar").data.decode()
-        self.assertNotIn("Salvar alterações", page)
+        # Só o formulário curto (nome, datas, regulamento e "Somente para amigos"), sem o de criar.
+        self.assertNotIn('id="edit-tournament"', page)
+        self.assertIn('id="basic-tournament"', page)
         self.assertNotIn('name="game_title_id"', page)
         self.edit(t["slug"], name="Copa Renomeada", game_title_id=str(self.games[1]), max_players="8",
                   entry_fee="W$ 50,00")

@@ -1,14 +1,19 @@
-{# O JavaScript de _tournament_fields.html: formato, times, prêmio e o botão de enviar. #}
+{# O JavaScript de _tournament_fields.html: formato, times e prêmio. Os campos podem estar fora do <form>
+   (no Gerenciar ficam nas abas e entram no formulário pelo atributo form): por isso as buscas e os eventos
+   usam `scope` (a área das etapas) e não o formulário. A validação ao enviar fica em static/js/steps.js. #}
 <script>
 (function () {
   var defaults = {{ defaults|tojson }};
   var select = document.getElementById('format');
   var form = select.form;
+  var scope = select.closest('[data-steps]') || form;
+  // Campo criado aqui fora do <form> (Gerenciar): entra nele pelo atributo form.
+  function own(el) { if (!form.contains(el.parentNode || el)) el.setAttribute('form', form.id); return el; }
   // O formulário enviado (criar) ou os dados atuais (editar, tournaments._form_values).
   var posted = {{ (form.to_dict() if form.to_dict is defined else form)|tojson }};
   function apply(useDefaults) {
     var fmt = select.value;
-    form.querySelectorAll('fieldset[data-formats]').forEach(function (fs) {
+    scope.querySelectorAll('fieldset[data-formats]').forEach(function (fs) {
       var on = fs.dataset.formats.split(' ').indexOf(fmt) >= 0;
       fs.hidden = !on;
       fs.querySelectorAll('input,select').forEach(function (el) { el.disabled = !on; });
@@ -41,6 +46,7 @@
         input.value = typed[i] || ''; input.disabled = off;
         label.append((i + 1) + 'º grupo', input);
         namesBox.appendChild(label);
+        own(input);
       }
     };
     form.elements.groups.addEventListener('input', syncNames);
@@ -219,10 +225,11 @@
           img.className = 'crest'; img.src = team.image; img.alt = '';
           option.append(box, img, ' ' + team.name);
           looseGroup().querySelector('.team-grid').appendChild(option);
+          own(box);
         }
         setTeam(team.id, true);
         refreshTeams();
-        form.dispatchEvent(new Event('change'));
+        scope.dispatchEvent(new Event('change'));
         done(team);
       })
       .catch(function () { fail('Não foi possível adicionar o time. Tente de novo.'); });
@@ -300,7 +307,7 @@
     refreshTeams();
     if (onlyChecked.checked) renderChosen();
     updateCsvSummary();
-    form.dispatchEvent(new Event('change'));
+    scope.dispatchEvent(new Event('change'));
   }
   function addMissing(name) {
     var li = document.createElement('li'), input = document.createElement('input'), hits = document.createElement('div');
@@ -364,27 +371,26 @@
       refreshTeams();
       filter.value = '';
       showChosen(true);
-      form.dispatchEvent(new Event('change'));
+      scope.dispatchEvent(new Event('change'));
     });
   });
   looseAdd.addEventListener('click', addLoose);
   // Enter na busca: cria o avulso quando o botão está à mostra (e nunca envia o formulário).
   filter.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); addLoose(); } });
 
-  // Prêmio só com inscrição; "Criar campeonato" (ou "Salvar") só com os obrigatórios preenchidos.
+  // Prêmio só com inscrição. O nome precisa de 3 letras de verdade (o minlength não confere o valor
+  // que já veio preenchido) e o regulamento de algum texto além de espaços.
   var fee = form.elements.entry_fee, prize = document.getElementById('prize-split');
-  var button = document.getElementById('create-button'), hint = document.getElementById('create-hint');
-  function filled(name, min) { return form.elements[name].value.trim().length >= (min || 1); }
   function refreshCreate() {
     var paid = /[1-9]/.test(fee.value);
     prize.hidden = !paid;
     form.elements.prize_split.disabled = !paid;
-    var ok = form.checkValidity() && filled('name', 3) && filled('rules');
-    button.disabled = !ok;
-    hint.hidden = ok;
+    var name = form.elements.name, rules = form.elements.rules;
+    name.setCustomValidity(name.value.trim().length < 3 ? 'O nome precisa de pelo menos 3 letras.' : '');
+    rules.setCustomValidity(rules.value.trim() ? '' : 'Escreva o regulamento / observações.');
   }
-  form.addEventListener('input', refreshCreate);
-  form.addEventListener('change', refreshCreate);
+  scope.addEventListener('input', refreshCreate);
+  scope.addEventListener('change', refreshCreate);
   refreshCreate();
 })();
 </script>
