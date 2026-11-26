@@ -111,10 +111,11 @@ class TournamentIsoTest(unittest.TestCase):
         self.assertIsNone(self.iso_row())
         self.assertEqual(list(Path(self.app.config["DOWNLOADS_DIR"]).iterdir()), [])
 
-    def test_create_form_has_no_iso_field(self):
+    def test_create_form_sends_the_iso_with_the_tournament(self):
+        # Etapa Patch do cadastro: o arquivo da ISO vai junto (tests/test_tournament_steps.py), com o progresso.
         page = self.client(self.owner).get("/torneios/novo").get_data(as_text=True)
-        self.assertNotIn('name="iso"', page)
-        self.assertIn("enviada depois de criar, em Gerenciar", page)
+        self.assertIn('<input type="file" name="iso"', page)
+        self.assertIn('class="upload-progress"', page)
 
     def test_too_big_is_refused_before_reading(self):
         self.app.config["TOURNAMENT_ISO_MAX_BYTES"] = 0

@@ -1,131 +1,196 @@
-{# Os campos de criar campeonato (new.html) e de editar antes do início (manage.html, editing):
-   form = os valores (o formulário enviado, ou tournaments._form_values). O JavaScript fica em
+{# Os campos do cadastro de campeonato, um macro por etapa (Básico, Patch, Formato, Participantes, Premiação):
+   new.html as mostra em passos (Avançar/Voltar) e manage.html em abas (static/js/steps.js). Importar com
+   `with context`: form = os valores (o formulário enviado, ou tournaments._form_values) e editing = Gerenciar
+   antes do início. No Gerenciar os campos ficam nas abas, fora do <form id="edit-tournament">, e entram nele pelo
+   atributo form (fa()). As explicações ficam nas janelas (i) (info_button/info_dialog). O JavaScript fica em
    _tournament_fields_js.html. #}
 {% from 'tournaments/_iso_picker.html' import iso_choice %}
+{% from '_dialog.html' import info_button, info_dialog %}
+{% macro fa() %}{% if editing %} form="edit-tournament"{% endif %}{% endmacro %}
+
+{# --- Básico: nome, datas, imagem (só ao criar; no Gerenciar ela tem o seu envio) e regulamento --- #}
+{% macro basico() %}
   <div class="form-row">
-    <label class="wide"><span>Nome do campeonato <span class="req">*</span></span><input name="name" maxlength="80" minlength="3" required value="{{ form.get('name', '') }}" placeholder="Copa WE Camp de Inverno"></label>
-    <label><span>Início provável <span class="req">*</span></span><input type="date" name="starts_on" required value="{{ form.get('starts_on', '') }}"></label>
-    <label>Fim provável<input type="date" name="ends_on" value="{{ form.get('ends_on', '') }}"></label>
+    <label class="wide"><span>Nome do campeonato <span class="req">*</span></span><input name="name"{{ fa() }} maxlength="80" minlength="3" required value="{{ form.get('name', '') }}" placeholder="Copa WE Camp de Inverno"></label>
+    <label><span>Início provável <span class="req">*</span></span><input type="date" name="starts_on"{{ fa() }} required value="{{ form.get('starts_on', '') }}"></label>
+    <label>Fim provável<input type="date" name="ends_on"{{ fa() }} value="{{ form.get('ends_on', '') }}"></label>
   </div>
   {% if not editing %}
-  <fieldset>
-    <legend>Imagem do campeonato <small class="muted">(opcional)</small></legend>
+  <div class="field-block">
+    <span class="field-title">Imagem do campeonato <small class="muted">(opcional)</small>{{ info_button('ajuda-imagem', 'Sobre a imagem do campeonato') }}</span>
     <div class="t-image-edit">
       <img id="t-image-preview" class="t-image-thumb" alt="" hidden>
-      <div>
-        <p class="muted">Logo ou arte do campeonato; aparece ao lado da capa do jogo. <strong>Tamanho ideal: 480 × 600 px</strong> (em pé, proporção 4:5, igual à capa); outras proporções aparecem inteiras, com sobra nas laterais ou em cima e embaixo. PNG, JPG ou WebP (PNG/WebP com fundo transparente ficam melhor). Dá para trocar depois, em Gerenciar.</p>
-        <input type="file" name="image" accept="image/png,image/jpeg,image/webp" data-resize="max:600" data-preview="t-image-preview" aria-label="Escolher imagem do campeonato">
-      </div>
+      <input type="file" name="image" accept="image/png,image/jpeg,image/webp" data-crop="480x600" data-preview="t-image-preview" aria-label="Escolher imagem do campeonato">
     </div>
-  </fieldset>
+  </div>
+  {% call info_dialog('ajuda-imagem', 'Imagem do campeonato') %}
+    <p>Logo ou arte do campeonato; aparece ao lado da capa do jogo, na página e nos cards.</p>
+    <p><strong>Tamanho final: 480 × 600 px</strong> (em pé, proporção 4:5, igual à capa). Ao escolher a imagem, você arrasta para ajustar o recorte dentro do quadro e usa o zoom para aproximar.</p>
+    <p>PNG, JPG ou WebP (PNG/WebP com fundo transparente ficam melhor). Dá para trocar depois, em Gerenciar.</p>
+  {% endcall %}
+  {% endif %}
+  <label><span>Regulamento / observações <span class="req">*</span></span><textarea name="rules"{{ fa() }} rows="5" maxlength="5000" required placeholder="Horários, regras do jogo, times permitidos...">{{ form.get('rules', '') }}</textarea></label>
+{% endmacro %}
+
+{# --- Patch: a ISO (só ao criar: escolher uma já enviada ou enviar o arquivo) e o jogo base --- #}
+{% macro patch() %}
+  {% if not editing %}
+  <div class="field-block t-iso-step">
+    <span class="field-title">ISO do campeonato <small class="muted">(opcional)</small>{{ info_button('ajuda-iso', 'Sobre a ISO do campeonato') }}</span>
+    {% if iso_options %}
+    {# A ISO já enviada (as dos amistosos e as dos campeonatos - iso_catalog.tournament_options); a janela fica
+       fora do formulário (new.html). Escolher uma marca o jogo base dela e tira o arquivo escolhido. #}
+    {{ iso_choice('iso-picker', label='Escolher uma ISO já enviada', value=iso_value) }}
+    {% endif %}
+    <label>{{ 'Ou envie o arquivo da ISO' if iso_options else 'Envie o arquivo da ISO' }}<input type="file" name="iso" accept="{{ iso_accept }}" id="iso-file"></label>
+  </div>
+  {% call info_dialog('ajuda-iso', 'ISO do campeonato') %}
+    <p>A ISO do jogo com o patch do campeonato.</p>
+    <ul>
+      {% if iso_options %}<li><strong>Escolher uma já enviada:</strong> as dos amistosos e as dos outros campeonatos. O jogo base passa a ser o dela, e o download continua vindo de onde ela já está.</li>{% endif %}
+      <li><strong>Enviar o arquivo:</strong> ao criar o campeonato, a ISO é enviada para o archive.org e fica disponível para download, na página do campeonato, para quem estiver logado. Até {{ iso_max_bytes|filesize }} ({{ iso_accept.replace(',', ', ') }}).</li>
+    </ul>
+    <p>É opcional agora: dá para enviar ou trocar a ISO quando quiser, em Gerenciar.</p>
+  {% endcall %}
   {% endif %}
   <fieldset class="game-pick">
     <legend>Jogo base <span class="req">*</span></legend>
     <div class="game-covers">
     {% for g in games %}
-      <label class="game-cover-option"><input type="radio" name="game_title_id" value="{{ g.id }}" required {% if form.get('game_title_id')|int == g.id %}checked{% endif %}>
+      <label class="game-cover-option"><input type="radio" name="game_title_id"{{ fa() }} value="{{ g.id }}" required {% if form.get('game_title_id')|int == g.id %}checked{% endif %}>
         <img src="{{ game_cover(g.code) }}" alt="" width="200" height="250"><span>{{ g.name }}{% if g.year %} <small class="muted">({{ g.year }})</small>{% endif %}</span></label>
     {% endfor %}
     </div>
-    {% if not editing %}
-    {% if iso_options %}
-    {# A ISO já enviada (as dos amistosos e as dos campeonatos - iso_catalog.tournament_options); a janela
-       fica fora do formulário (new.html). Escolher uma marca o jogo base dela (script em new.html). #}
-    <div class="t-iso-choice">
-      {{ iso_choice('iso-picker', label='ISO do campeonato (opcional)', value=iso_value) }}
-      <p class="muted">Escolha uma ISO já enviada (as dos amistosos e as dos outros campeonatos): o jogo base fica o dela. Ou, depois de criar, envie a ISO com o patch do campeonato em Gerenciar.</p>
-    </div>
-    {% else %}<p class="muted">A ISO com o patch do campeonato é enviada depois de criar, em Gerenciar.</p>{% endif %}
-    {% endif %}
   </fieldset>
+{% endmacro %}
+
+{# --- Formato: formato, vagas e as configurações das fases --- #}
+{% macro formato() %}
   <div class="form-row">
-    <label class="wide">Formato
-      <select name="format" id="format" required>
+    <label class="wide"><span>Formato {{ info_button('ajuda-formato', 'Sobre os formatos') }}</span>
+      <select name="format" id="format"{{ fa() }} required>
         {% for key, label in format_labels.items() %}<option value="{{ key }}" {% if form.get('format') == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
       </select>
     </label>
-    <label><span>Vagas <span class="req">*</span></span><input type="number" name="max_players" min="{{ min_players }}" max="{{ max_players }}" required value="{{ form.get('max_players', 8) }}"></label>
-    <label>Inscrição (W$, máx. {{ max_fee|wcash }})<input name="entry_fee" inputmode="numeric" data-wcash value="{{ form.get('entry_fee', '0,00') }}"></label>
+    <label><span>Vagas <span class="req">*</span></span><input type="number" name="max_players"{{ fa() }} min="{{ min_players }}" max="{{ max_players }}" required value="{{ form.get('max_players', 8) }}"></label>
   </div>
-  {% if editing and edit_entries %}{% set n = edit_entries|length %}<p class="muted">Mudar o valor da inscrição cancela {{ 'a inscrição feita' if n == 1 else 'as %d inscrições feitas' % n }}: o valor pago volta para cada inscrito, que recebe um e-mail para se inscrever de novo.</p>{% endif %}
-  <div id="prize-split" class="form-block">
-    <label><span>Divisão do prêmio (1º / 2º / 3º, em %) <span class="req">*</span></span>
-      <select name="prize_split" required>
-        <option value="">Escolha...</option>
-        {% for s in splits %}<option value="{{ s }}" {% if form.get('prize_split') == s %}selected{% endif %}>{{ s.replace(',', ' / ') }}</option>{% endfor %}
-      </select>
-    </label>
-    <p class="muted">Todo o valor das inscrições vira o prêmio, dividido entre os 3 primeiros.</p>
-  </div>
-  <p class="muted">Cada jogo também rende W$ para os jogadores (vitória/empate), pago pelo WE Camp.</p>
 
   <div class="form-row phase-row">
   <fieldset data-formats="league league_knockout">
     <legend>Pontos corridos</legend>
-    <label>Jogos<select name="legs"><option value="2">Turno e returno (ida e volta)</option><option value="1">Turno único</option></select></label>
+    <label>Jogos<select name="legs"{{ fa() }}><option value="2">Turno e returno (ida e volta)</option><option value="1">Turno único</option></select></label>
   </fieldset>
 
   <fieldset data-formats="league_knockout">
-    <legend>Classificação para o mata-mata</legend>
-    <label><span>Classificados para o mata-mata <span class="req">*</span></span><input type="number" name="playoff_qualifiers" id="playoff-qualifiers" min="2" value="4" required></label>
-    <p class="muted">Os primeiros da tabela vão ao mata-mata (1º contra o último classificado, 2º contra o penúltimo...). Precisa ser menor que o número de vagas. Se não fechar uma chave (2, 4, 8, 16...), os melhores colocados esperam na repescagem.</p>
+    <legend>Classificação para o mata-mata {{ info_button('ajuda-playoff', 'Sobre a classificação para o mata-mata') }}</legend>
+    <label><span>Classificados para o mata-mata <span class="req">*</span></span><input type="number" name="playoff_qualifiers"{{ fa() }} id="playoff-qualifiers" min="2" value="4" required></label>
   </fieldset>
 
   <fieldset data-formats="world_cup dynamic_groups">
-    <legend>Fase de grupos</legend>
+    <legend>Fase de grupos {{ info_button('ajuda-grupos', 'Sobre a fase de grupos') }}</legend>
     <div class="form-row">
-      <label>Grupos<input type="number" name="groups" min="1" max="16" value="2"></label>
-      <label>Classificados por grupo<input type="number" name="qualifiers" min="1" max="8" value="2"></label>
-      <label>Jogos nos grupos<select name="group_legs"><option value="1">Jogo único</option><option value="2">Ida e volta</option></select></label>
-      <label class="wide"><span>Confronto na fase de grupos <span class="req">*</span></span><select name="group_matchups" required>{% for key, label in matchup_labels.items() %}<option value="{{ key }}">{{ label }}{% if loop.first %} (padrão){% endif %}</option>{% endfor %}</select></label>
+      <label>Grupos<input type="number" name="groups"{{ fa() }} min="1" max="16" value="2"></label>
+      <label>Classificados por grupo<input type="number" name="qualifiers"{{ fa() }} min="1" max="8" value="2"></label>
+      <label>Jogos nos grupos<select name="group_legs"{{ fa() }}><option value="1">Jogo único</option><option value="2">Ida e volta</option></select></label>
+      <label class="wide"><span>Confronto na fase de grupos <span class="req">*</span></span><select name="group_matchups"{{ fa() }} required>{% for key, label in matchup_labels.items() %}<option value="{{ key }}">{{ label }}{% if loop.first %} (padrão){% endif %}</option>{% endfor %}</select></label>
     </div>
-    <p class="muted"><strong>Entre o grupo:</strong> cada um joga contra os do seu grupo. <strong>Entre outros grupos:</strong> cada um joga contra os jogadores dos outros grupos, e não contra os do seu. <strong>Entre todos os grupos:</strong> cada um joga contra todos os inscritos. Em todos, a classificação é por grupo e os primeiros de cada grupo vão ao mata-mata; os jogos são montados ao fechar as inscrições e sortear.</p>
     {# Grupos dinâmicos: um nome por grupo (os campos group_name, montados pelo _tournament_fields_js.html
        conforme o número de grupos). #}
     {% set typed_names = form.getlist('group_name') if form.getlist is defined else (form.get('group_names') or []) %}
     <fieldset data-formats="dynamic_groups" class="group-names-box">
-      <legend>Nomes dos grupos</legend>
+      <legend>Nomes dos grupos {{ info_button('ajuda-nomes-grupos', 'Sobre os grupos dinâmicos') }}</legend>
       <div class="group-names" id="group-names" data-names="{{ typed_names|tojson|forceescape }}"></div>
-      <p class="muted">Cada jogador escolhe o seu grupo na inscrição, e cada grupo aceita até Vagas ÷ Grupos jogadores. Até o início, o jogador pode trocar de grupo (se houver vaga) e você pode mudar qualquer um de grupo em Gerenciar. Nome em branco vira "Grupo A", "Grupo B"...</p>
     </fieldset>
-    <p class="muted">Grupos em jogo único: o mata-mata é cruzado como na Copa do Mundo (1º do grupo A contra o 2º do B...), com 2 classificados por grupo e 2, 4, 8 ou 16 grupos. Grupos em ida e volta (ou nos outros casos): os 1ºs enfrentam os 2ºs pela campanha, como na Libertadores. Se não fechar uma chave, os melhores colocados esperam na repescagem.</p>
   </fieldset>
 
   <fieldset data-formats="ucl">
-    <legend>Fase de liga (formato novo da Liga dos Campeões)</legend>
-    <p class="muted">Os inscritos são sorteados em potes. Cada um enfrenta adversários de todos os potes (inclusive o seu) e todos ficam numa tabela única. Os primeiros vão direto ao mata-mata; os seguintes (o dobro) disputam o playoff; os demais são eliminados. Oficial: 36 jogadores, 4 potes, 2 por pote, 8 direto.</p>
+    <legend>Fase de liga {{ info_button('ajuda-ucl', 'Sobre a fase de liga') }}</legend>
     <div class="form-row">
-      <label>Potes<input type="number" name="pots" min="1" max="8" value="4"></label>
-      <label>Adversários de cada pote<select name="per_pot"><option value="1">1 (um jogo por pote)</option><option value="2">2 (um em casa e um fora)</option></select></label>
-      <label>Classificados direto ao mata-mata<select name="direct">{% for n in (1, 2, 4, 8, 16) %}<option value="{{ n }}" {% if n == 2 %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
+      <label>Potes<input type="number" name="pots"{{ fa() }} min="1" max="8" value="4"></label>
+      <label>Adversários de cada pote<select name="per_pot"{{ fa() }}><option value="1">1 (um jogo por pote)</option><option value="2">2 (um em casa e um fora)</option></select></label>
+      <label>Classificados direto ao mata-mata<select name="direct"{{ fa() }}>{% for n in (1, 2, 4, 8, 16) %}<option value="{{ n }}" {% if n == 2 %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></label>
     </div>
   </fieldset>
 
   <fieldset data-formats="world_cup dynamic_groups ucl knockout league_knockout">
-    <legend>Mata-mata</legend>
+    <legend>Mata-mata {{ info_button('ajuda-mata-mata', 'Sobre o mata-mata') }}</legend>
     <div class="form-row">
-      <label>Confrontos<select name="ko_legs"><option value="1">Jogo único</option><option value="2">Ida e volta</option></select></label>
-      <label>Final<select name="final_legs"><option value="1">Jogo único</option><option value="2">Ida e volta</option></select></label>
+      <label>Confrontos<select name="ko_legs"{{ fa() }}><option value="1">Jogo único</option><option value="2">Ida e volta</option></select></label>
+      <label>Final<select name="final_legs"{{ fa() }}><option value="1">Jogo único</option><option value="2">Ida e volta</option></select></label>
     </div>
-    <label class="check"><input type="checkbox" name="third_place"> Disputa de 3º lugar (entre os eliminados nas semifinais)</label>
-    <p class="muted">Sem a disputa, o 3º lugar é o semifinalista eliminado com a melhor campanha no campeonato. Empate no agregado vai para os pênaltis do último jogo.</p>
-    <label class="check"><input type="checkbox" name="ko_arrange"> <span><strong>Ordem dinâmica do Mata-mata</strong> <small class="muted">— quando o mata-mata for sorteado (ou montado depois da fase anterior), você confere as chaves iniciais em Gerenciar e arrasta os jogadores para a posição que quiser, como nos Grupos dinâmicos: quem fica sem adversário passa direto, e um confronto pode ficar vazio (quem passar do confronto vizinho segue direto). Os jogos só são liberados quando você confirmar o chaveamento, e depois disso as posições não mudam mais. Vale quando o mata-mata tem 3 ou mais jogadores.</small></span></label>
+    <label class="check"><input type="checkbox" name="third_place"{{ fa() }}> Disputa de 3º lugar</label>
+    <label class="check"><input type="checkbox" name="ko_arrange"{{ fa() }}> <span><strong>Ordem dinâmica do Mata-mata</strong> {{ info_button('ajuda-ordem-dinamica', 'Sobre a Ordem dinâmica do Mata-mata') }}</span></label>
   </fieldset>
   </div>
 
+  {% call info_dialog('ajuda-formato', 'Formatos') %}
+    <ul>
+      <li><strong>Pontos corridos:</strong> todos contra todos numa tabela única; o primeiro é o campeão.</li>
+      <li><strong>Pontos corridos + mata-mata:</strong> a tabela e, depois, os primeiros vão a um mata-mata.</li>
+      <li><strong>Liga dos Campeões (formato novo):</strong> fase de liga com potes e uma tabela única, playoff e mata-mata.</li>
+      <li><strong>Copa:</strong> grupos sorteados e, depois, os primeiros de cada grupo vão ao mata-mata.</li>
+      <li><strong>Grupos dinâmicos:</strong> como a Copa, mas você nomeia os grupos e cada jogador escolhe o seu na inscrição.</li>
+      <li><strong>Eliminatórias:</strong> só o mata-mata, desde o começo.</li>
+    </ul>
+  {% endcall %}
+  {% call info_dialog('ajuda-playoff', 'Classificação para o mata-mata') %}
+    <p>Os primeiros da tabela vão ao mata-mata: 1º contra o último classificado, 2º contra o penúltimo... Precisa ser menor que o número de vagas.</p>
+    <p>Se não fechar uma chave (2, 4, 8, 16...), os melhores colocados esperam na repescagem.</p>
+  {% endcall %}
+  {% call info_dialog('ajuda-grupos', 'Fase de grupos') %}
+    <p><strong>Confronto na fase de grupos:</strong></p>
+    <ul>
+      <li><strong>Entre o grupo:</strong> cada um joga contra os do seu grupo.</li>
+      <li><strong>Entre outros grupos:</strong> cada um joga contra os jogadores dos outros grupos, e não contra os do seu.</li>
+      <li><strong>Entre todos os grupos:</strong> cada um joga contra todos os inscritos.</li>
+    </ul>
+    <p>Em todos, a classificação é por grupo e os primeiros de cada grupo vão ao mata-mata; os jogos são montados ao fechar as inscrições e sortear.</p>
+    <p><strong>Mata-mata depois dos grupos:</strong> com os grupos em jogo único, ele é cruzado como na Copa do Mundo (1º do grupo A contra o 2º do B...), com 2 classificados por grupo e 2, 4, 8 ou 16 grupos. Com os grupos em ida e volta (ou nos outros casos), os 1ºs enfrentam os 2ºs pela campanha, como na Libertadores. Se não fechar uma chave, os melhores colocados esperam na repescagem.</p>
+  {% endcall %}
+  {% call info_dialog('ajuda-nomes-grupos', 'Grupos dinâmicos') %}
+    <p>Cada jogador escolhe o seu grupo na inscrição, e cada grupo aceita até Vagas ÷ Grupos jogadores.</p>
+    <p>Até o início, o jogador pode trocar de grupo (se houver vaga) e você pode mudar qualquer um de grupo em Gerenciar.</p>
+    <p>Nome em branco vira "Grupo A", "Grupo B"...</p>
+  {% endcall %}
+  {% call info_dialog('ajuda-ucl', 'Fase de liga (formato novo da Liga dos Campeões)') %}
+    <p>Os inscritos são sorteados em potes. Cada um enfrenta adversários de todos os potes (inclusive o seu) e todos ficam numa tabela única.</p>
+    <p>Os primeiros vão direto ao mata-mata; os seguintes (o dobro) disputam o playoff; os demais são eliminados.</p>
+    <p>Oficial: 36 jogadores, 4 potes, 2 por pote, 8 direto.</p>
+  {% endcall %}
+  {% call info_dialog('ajuda-mata-mata', 'Mata-mata') %}
+    <p><strong>Disputa de 3º lugar:</strong> entre os eliminados nas semifinais. Sem a disputa, o 3º lugar é o semifinalista eliminado com a melhor campanha no campeonato.</p>
+    <p>Empate no agregado vai para os pênaltis do último jogo.</p>
+  {% endcall %}
+  {% call info_dialog('ajuda-ordem-dinamica', 'Ordem dinâmica do Mata-mata') %}
+    <p>Quando o mata-mata for sorteado (ou montado depois da fase anterior), você confere as chaves iniciais em Gerenciar e arrasta os jogadores para a posição que quiser, como nos Grupos dinâmicos.</p>
+    <p>Quem fica sem adversário passa direto, e um confronto pode ficar vazio (quem passar do confronto vizinho segue direto).</p>
+    <p>Os jogos só são liberados quando você confirmar o chaveamento, e depois disso as posições não mudam mais. Vale quando o mata-mata tem 3 ou mais jogadores.</p>
+  {% endcall %}
+{% endmacro %}
+
+{# --- Participantes: Somente para amigos (amigos) e os times (times); ao criar, os convites ficam entre os dois --- #}
+{% macro amigos() %}
+  <label class="check"><input type="checkbox" name="friends_only"{{ fa() }} id="friends-only" {% if form.get('friends_only') %}checked{% endif %}> <span><strong>Somente para amigos</strong> {{ info_button('ajuda-amigos', 'Sobre o Somente para amigos') }}</span></label>
+  {% call info_dialog('ajuda-amigos', 'Somente para amigos') %}
+    <p>O campeonato fica privado: sai das listas para quem não é seu amigo, e só os seus amigos se inscrevem e podem ser convidados.</p>
+    <p>Quem recebe o link vê os dados do campeonato, sem poder se inscrever.</p>
+    {% if editing and edit_entries %}<p>Quem já está inscrito e não é seu amigo sai, com a inscrição devolvida e um aviso por e-mail.</p>{% endif %}
+  {% endcall %}
+{% endmacro %}
+
+{% macro times() %}
   <fieldset>
-    <legend>Times</legend>
+    <legend>Times {{ info_button('ajuda-times', 'Sobre os times') }}</legend>
     <div class="form-row">
       <label class="wide">Como os jogadores ficam com os times
-        <select name="team_mode">
+        <select name="team_mode"{{ fa() }}>
           {% for key, label in team_modes.items() %}<option value="{{ key }}" {% if form.get('team_mode', 'free') == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
         </select>
       </label>
     </div>
-    <p class="muted" id="round-hint"{% if form.get('team_mode', 'free') != 'round' %} hidden{% endif %}>Ninguém fica com um time fixo: a cada partida, cada jogador escolhe o time no próprio jogo. Os pontos e a classificação ficam com o jogador; o time que ele usou aparece no card do Ao vivo e nos jogos da rodada (lido do jogo pelo RetroArch TIERES ou informado junto com o placar).</p>
+    <p class="muted" id="round-hint"{% if form.get('team_mode', 'free') != 'round' %} hidden{% endif %}>Ninguém fica com um time fixo: a cada partida, cada jogador escolhe o time no próprio jogo.</p>
     <div id="team-picker">
-      <p class="muted">Marque os times disponíveis (pelo menos um por vaga): um grupo inteiro, time a time abrindo o grupo, ou importe a lista de um arquivo CSV com os nomes separados por ";".{% if editing and edit_entries %}<br>Quem já escolheu um time que você desmarcar continua inscrito e recebe um e-mail para escolher outro.{% endif %}</p>
-      <p class="team-count-line">Times escolhidos: <strong id="team-count">0</strong></p>
+      <p class="team-count-line">Times escolhidos: <strong id="team-count">0</strong> <small class="muted">(pelo menos um por vaga)</small></p>
       <div class="form-row team-tools">
         <label class="wide">Buscar time<input type="search" id="team-filter" maxlength="60" placeholder="Nome do time..." autocomplete="off"></label>
         <button type="button" class="secondary" id="loose-add" hidden>Adicionar time avulso</button>
@@ -147,7 +212,7 @@
           <summary><label class="check" onclick="event.stopPropagation()"><input type="checkbox" class="group-toggle"> {{ g.group.name }}</label> <small class="muted">({{ g.teams|length }})</small></summary>
           <div class="team-grid">
           {% for team in g.teams %}
-            <label class="team-option" data-name="{{ team.name|lower }}"><input type="checkbox" name="team_ids" value="{{ team.id }}" {% if team.id in selected %}checked{% endif %}><img class="crest" src="{{ team.image }}" alt="" loading="lazy"> {{ team.name }}</label>
+            <label class="team-option" data-name="{{ team.name|lower }}"><input type="checkbox" name="team_ids"{{ fa() }} value="{{ team.id }}" {% if team.id in selected %}checked{% endif %}><img class="crest" src="{{ team.image }}" alt="" loading="lazy"> {{ team.name }}</label>
           {% endfor %}
           </div>
         </details>
@@ -155,6 +220,34 @@
       </div>
     </div>
   </fieldset>
+  {% call info_dialog('ajuda-times', 'Times') %}
+    <ul>
+      <li><strong>Livre:</strong> cada jogador digita o nome do seu time na inscrição.</li>
+      <li><strong>Um time diferente a cada rodada:</strong> ninguém fica com um time fixo; a cada partida, cada jogador escolhe o time no próprio jogo. Os pontos e a classificação ficam com o jogador; o time usado aparece no card do Ao vivo e nos jogos da rodada.</li>
+      <li><strong>Lista:</strong> cada jogador escolhe um time da lista que você marcar.</li>
+      <li><strong>Sorteio:</strong> os times da lista são sorteados no início; em Gerenciar você pode definir o time de quem quiser antes, e só os outros são sorteados.</li>
+    </ul>
+    <p>Para a lista, marque os times disponíveis (pelo menos um por vaga): um grupo inteiro, time a time abrindo o grupo, ou importe a lista de um arquivo CSV com os nomes separados por ";".</p>
+    {% if editing and edit_entries %}<p>Quem já escolheu um time que você desmarcar continua inscrito e recebe um e-mail para escolher outro.</p>{% endif %}
+  {% endcall %}
+{% endmacro %}
 
-  <label><span>Regulamento / observações <span class="req">*</span></span><textarea name="rules" rows="5" maxlength="5000" required placeholder="Horários, regras do jogo, times permitidos...">{{ form.get('rules', '') }}</textarea></label>
-  <label class="check"><input type="checkbox" name="friends_only" id="friends-only" {% if form.get('friends_only') %}checked{% endif %}> <span><strong>Somente para amigos</strong> <small class="muted">— o campeonato fica privado: sai das listas para quem não é seu amigo, e só os seus amigos se inscrevem e podem ser convidados. Quem recebe o link vê os dados do campeonato, sem poder se inscrever.{% if editing and edit_entries %} Quem já está inscrito e não é seu amigo sai, com a inscrição devolvida e um aviso por e-mail.{% endif %}</small></span></label>
+{# --- Premiação: valor da inscrição e divisão do prêmio --- #}
+{% macro premiacao() %}
+  <div class="form-row">
+    <label><span>Inscrição (W$, máx. {{ max_fee|wcash }}) {{ info_button('ajuda-premio', 'Sobre a inscrição e o prêmio') }}</span><input name="entry_fee"{{ fa() }} inputmode="numeric" data-wcash value="{{ form.get('entry_fee', '0,00') }}"></label>
+    <div id="prize-split" class="form-block">
+      <label><span>Divisão do prêmio (1º / 2º / 3º, em %) <span class="req">*</span></span>
+        <select name="prize_split"{{ fa() }} required>
+          <option value="">Escolha...</option>
+          {% for s in splits %}<option value="{{ s }}" {% if form.get('prize_split') == s %}selected{% endif %}>{{ s.replace(',', ' / ') }}</option>{% endfor %}
+        </select>
+      </label>
+    </div>
+  </div>
+  {% call info_dialog('ajuda-premio', 'Inscrição e prêmio') %}
+    <p>Todo o valor das inscrições vira o prêmio, dividido entre os 3 primeiros. Sem inscrição (W$ 0,00), não há prêmio para dividir.</p>
+    <p>Cada jogo também rende W$ para os jogadores (vitória/empate), pago pelo WE Camp.</p>
+    {% if editing and edit_entries %}{% set n = edit_entries|length %}<p>Mudar o valor da inscrição cancela {{ 'a inscrição feita' if n == 1 else 'as %d inscrições feitas' % n }}: o valor pago volta para cada inscrito, que recebe um e-mail para se inscrever de novo.</p>{% endif %}
+  {% endcall %}
+{% endmacro %}

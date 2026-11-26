@@ -61,7 +61,7 @@
     <div class="t-image-edit">
       <img class="t-image-thumb" id="iso-image-preview" src="{{ image_url('torneio', row.image) if row and row.image else '' }}" alt="" {% if not (row and row.image) %}hidden{% endif %}>
       <div>
-        <input type="file" name="image" accept="image/png,image/jpeg,image/webp" data-resize="max:600" data-preview="iso-image-preview" aria-label="Escolher imagem da ISO">
+        <input type="file" name="image" accept="image/png,image/jpeg,image/webp" data-crop="960x1200" data-preview="iso-image-preview" aria-label="Escolher imagem da ISO">
         <p class="muted">Sem imagem, o card mostra a capa do jogo base.</p>
         {% if row and row.image %}<label class="check"><input type="checkbox" name="remove_image"> Remover a imagem</label>{% endif %}
       </div>
@@ -94,5 +94,5 @@
 </script>
 <script src="{{ url_for('static', filename='js/upload-progress.js') }}"></script>
 <script src="{{ url_for('static', filename='js/archive-progress.js') }}"></script>
-<script src="{{ url_for('static', filename='js/image-resize.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/image-resize.js', v='20261126b') }}" defer></script>
 {% endblock %}

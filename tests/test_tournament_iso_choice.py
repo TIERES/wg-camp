@@ -69,7 +69,8 @@ class TournamentIsoChoiceTest(unittest.TestCase):
     def test_create_with_a_friendly_iso(self):
         page = self.client(self.owner).get("/torneios/novo").get_data(as_text=True)
         self.assertIn(f'data-value="c:{self.catalog}"', page)
-        self.assertIn("ISO do campeonato (opcional)", page)
+        self.assertIn('ISO do campeonato <small class="muted">(opcional)</small>', page)
+        self.assertIn("Escolher uma ISO já enviada", page)
         response = self.client(self.owner).post("/torneios/novo", data=self.form(iso=f"c:{self.catalog}"))
         self.assertIn("/gerenciar#iso", response.headers["Location"])
         t = self.query("SELECT * FROM tournaments")[0]

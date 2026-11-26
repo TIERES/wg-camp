@@ -100,8 +100,8 @@
       <div class="t-image-edit iso-image-field">
         <img class="t-image-thumb" id="iso-upload-preview" alt="" hidden>
         <div>
-          <label>Imagem da ISO (opcional)<input type="file" name="image" accept="image/png,image/jpeg,image/webp" data-resize="max:1200" data-preview="iso-upload-preview"></label>
-          <small class="muted">Logo ou arte da ISO: aparece nos cards e, em tamanho grande, na página da ISO. Em pé (proporção 4:5) fica melhor. PNG, JPG ou WebP. Sem imagem, vale a capa do jogo base.</small>
+          <label>Imagem da ISO (opcional)<input type="file" name="image" accept="image/png,image/jpeg,image/webp" data-crop="960x1200" data-preview="iso-upload-preview"></label>
+          <small class="muted">Logo ou arte da ISO: aparece nos cards e, em tamanho grande, na página da ISO. Em pé (4:5): ao escolher, você ajusta o recorte. PNG, JPG ou WebP. Sem imagem, vale a capa do jogo base.</small>
         </div>
       </div>
       {{ helpers_picker(friends, field_id='iso-upload-ajudantes', max=max_helpers, hint='Eles também editam o nome, o jogo base e a imagem e enviam um arquivo novo. O que um de vocês alterar, outro confirma pelo e-mail, que leva o antes e o depois.') }}
@@ -235,9 +235,9 @@
       <div class="t-image-edit iso-image-field">
         <img class="t-image-thumb" id="iso-edit-preview" alt="" hidden>
         <div>
-          <label>Imagem da ISO (opcional)<input type="file" name="image" accept="image/png,image/jpeg,image/webp" data-resize="max:1200" data-preview="iso-edit-preview"></label>
+          <label>Imagem da ISO (opcional)<input type="file" name="image" accept="image/png,image/jpeg,image/webp" data-crop="960x1200" data-preview="iso-edit-preview"></label>
           <label class="check" id="iso-edit-remove" hidden><input type="checkbox" name="remove_image"> Tirar a imagem (fica a capa do jogo base)</label>
-          <small class="muted">Para manter a imagem, deixe em branco. Em pé (proporção 4:5) fica melhor. PNG, JPG ou WebP.</small>
+          <small class="muted">Para manter a imagem, deixe em branco. Em pé (4:5): ao escolher, você ajusta o recorte. PNG, JPG ou WebP.</small>
         </div>
       </div>
       {# Só quem enviou escolhe os ajudantes: para os outros o campo fica desligado (não vai no formulário). #}
@@ -309,7 +309,7 @@
 {% endif %}
 <script src="{{ url_for('static', filename='js/upload-progress.js', v='20261113a') }}"></script>
 <script src="{{ url_for('static', filename='js/archive-progress.js') }}"></script>
-<script src="{{ url_for('static', filename='js/image-resize.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/image-resize.js', v='20261126b') }}" defer></script>
 {# ISO minha com imagem e ainda sem o cartão do link compartilhado: o navegador monta e envia
    (static/js/share-image.js, tournaments.iso_share_image), como no campeonato. #}
 {% for i in my_isos if i.image and not i.share_image %}<script src="{{ url_for('static', filename='js/share-image.js', v='20261112a') }}" data-image="{{ image_url('torneio', i.image) }}" data-origin="{{ i.image }}" data-post="{{ url_for('tournaments.iso_share_image', catalog_id=i.id) }}" data-csrf="{{ csrf_token() }}" defer></script>

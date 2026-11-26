@@ -1,5 +1,5 @@
 // Cartão da imagem do campeonato para o link compartilhado (WhatsApp, Telegram, Discord...).
-// A imagem é guardada em WebP (image-resize.js), que esses aplicativos nem sempre mostram, e
+// A imagem é guardada em WebP (o recorte de image-resize.js), que esses aplicativos nem sempre mostram, e
 // em pé; eles querem JPEG ou PNG deitado, 1200 x 630. Como o servidor não mexe em imagem
 // (app/images.py), quem monta o cartão é o navegador de quem gerencia o campeonato: a imagem
 // inteira no meio, sobre ela mesma ampliada, desfocada e escurecida, e envia em JPEG
