@@ -349,7 +349,7 @@ class KnockoutArrangeWebTest(unittest.TestCase):
         self.assertNotIn('id="bracket-board"', manage)
         # 5 numa chave de 8: os 3 que passam direto aparecem na 1ª rodada com "Sem adversário" e o aviso.
         show = owner.get(f"/torneios/{slug}?aba=tabela").get_data(as_text=True)
-        self.assertEqual(show.count("<em class=\"muted\">Sem adversário</em>"), 3)
+        self.assertEqual(show.count("<span>Sem Adversário</span>"), 3)
         self.assertEqual(show.count("passa direto para a fase seguinte."), 3)
         again = owner.post(f"/torneios/{slug}/chaveamento", data={"csrf_token": CSRF, "acao": "salvar", **form},
                            follow_redirects=True)
