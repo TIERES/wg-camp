@@ -1226,3 +1226,13 @@ header a.brand img { width:40px; height:40px; border-radius:9px; flex-shrink:0; 
 /* "Excluir" o card de uma partida interrompida (live/_delete.html) em Meus jogos; no card, .live-act. */
 .my-match.mm-delete { border-left-color:#9ca3af; background:#262b33 !important } .my-match.mm-delete .match-line small { color:#9ca3af; font-weight:400 }
 .my-match-actions a.button.secondary { background:#374151; color:var(--text) } .my-match-actions button.danger { background:#f87171; color:#2a0b0b }
+/* "Selecionar placar" (tournaments/_pick_dialog.html): a janela larga com os cards do Ao vivo, 2 por linha
+   no computador; embaixo de cada card, o placar que ele dá ao jogo e o "Usar este placar". */
+.result-form .result-buttons { flex-wrap:wrap; justify-content:center }
+.pick-dialog { width:min(64rem, calc(100vw - 2rem)) } .pick-dialog .form-dialog-body { display:grid }
+.pick-dialog h2 [data-pick-game] { color:#9ca3af; font-weight:600 }
+.pick-cards { align-items:start } .pick-cards > p { grid-column:1 / -1; margin:0 }
+.pick-item { display:grid; gap:.5rem; min-width:0 } .pick-item .live-card { margin:0 }
+.pick-use { display:flex; flex-wrap:wrap; gap:.4rem .75rem; align-items:center; justify-content:space-between; max-width:none; margin:0; font-size:.9rem }
+/* Vagas (aba Participantes do cadastro - _tournament_fields.html vagas()): um campo curto, não a linha toda. */
+.form-row > .slots-field { flex:0 1 12rem }

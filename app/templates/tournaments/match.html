@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'tournaments/_macros.html' import score, pending_legend %}{% from '_dialog.html' import form_dialog, info_button, info_dialog %}
+{% extends 'base.html' %}{% from 'tournaments/_macros.html' import score, pending_legend %}{% from '_dialog.html' import form_dialog, info_button, info_dialog %}{% from 'tournaments/_pick_dialog.html' import pick_button, pick_dialog %}
 {% block title %}Jogo · {{ t.name }}{% endblock %}{% block content %}
 <p><a href="{{ url_for('tournaments.show', slug=t.slug, aba='jogos') }}">← {{ t.name }}</a></p>
 <section class="match-head">
@@ -33,7 +33,9 @@
     {% elif live_now %}Ao vivo agora: placar lido do jogo pelo RetroArch TIERES
     {% else %}Ainda sem resultado{% endif %}
   </p>{% endif %}
-  {% if goals and goals.url %}<a class="button secondary" href="{{ goals.url }}">{{ 'Placar Ao Vivo' if goals.live else 'Ver card Ao Vivo' }}</a>{% endif %}
+  {# O card do jogo no Ao vivo (live.linked_cards) ou, para o organizador, a janela para escolher um (_pick_dialog.html). #}
+  {% if card_url %}<a class="button secondary" href="{{ card_url }}">{{ 'Placar Ao Vivo' if live_now else 'Ver placar' }}</a>
+  {% elif can_pick %}{{ pick_button(t.slug, m, players[0], players[1], back=true) }}{% endif %}
   </div>
   {% if quitter and m.status in ('reported', 'disputed', 'confirmed') %}<p class="friendly-warn">{{ quitter }} saiu da partida no meio do jogo (vale o placar de quando parou){% if m.status == 'confirmed' %} e perdeu o triplo de XP{% else %}: se o placar for confirmado, perde o triplo de XP - mesmo que tenha sido queda de conexão{% endif %}.</p>
   <p class="friendly-note muted">Joguem até o fim, mesmo faltando pouco tempo. Se a conexão cair, usem o Reconectar do Kaillera para continuar de onde parou ou joguem de novo: enquanto ninguém confirmar o placar de quando parou, vale a partida nova, sem a penalidade.</p>{% endif %}
@@ -144,5 +146,6 @@
   {% else %}<p class="muted">Nada ainda.</p>{% endif %}
 </section>
 <script src="{{ url_for('static', filename='js/pens.js') }}"></script>
+{% if can_pick %}{{ pick_dialog() }}{% endif %}
 {% if round_teams %}<datalist id="round-team-list">{% for name in round_teams %}<option value="{{ name }}">{% endfor %}</datalist>{% endif %}
 {% endblock %}

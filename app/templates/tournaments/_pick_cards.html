@@ -1,0 +1,26 @@
+{# Os cards da janela "Selecionar placar" (tournaments.pick_scores -> static/js/pick-score.js): as partidas livres
+   entre os dois jogadores do jogo, com a ISO do campeonato, que já terminaram (live.pick_cards), cada uma com o
+   placar que ela dá ao jogo, do ponto de vista dele (mandante x visitante - live.picked_score), e o "Usar este
+   placar". Dentro da janela, o card vai sem os botões dele (picking). Sem nenhuma, só o aviso. #}
+{% set picking = true %}
+{% if cards %}
+<p class="muted">Escolha o card do Ao vivo em que esta partida foi jogada: o placar dele vira o resultado do jogo, e os gols, as assistências e os cartões passam a contar no campeonato.</p>
+{% if m.status != 'scheduled' %}<p class="notice">Este jogo já tem placar: o do card escolhido entra no lugar dele (o W$ do resultado anterior é estornado).</p>{% endif %}
+{% endif %}
+{% for c in cards %}{% set score = scores[c.id] %}
+<div class="pick-item">
+  {% include 'live/_card.html' %}
+  <form method="post" action="{{ url_for('tournaments.pick_score', slug=t.slug, match_id=m.id) }}" class="pick-use">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="partida" value="{{ c.id }}">
+    {% if back %}<input type="hidden" name="voltar" value="jogo">{% endif %}
+    {% if score %}
+    <span>No jogo: <strong>{{ home }} {{ score[0] }} x {{ score[1] }} {{ away }}</strong>{% if score[2] is not none %} <small class="muted">({{ score[2] }} x {{ score[3] }} nos pênaltis)</small>{% endif %}</span>
+    <button>Usar este placar</button>
+    {% else %}
+    <span class="muted">{{ home }} e {{ away }} não estão um de cada lado nesta partida.</span>
+    {% endif %}
+  </form>
+</div>
+{% else %}
+<p class="pick-empty">Não foram encontrados jogos entre {{ home }} e {{ away }} nesse campeonato.</p>
+{% endfor %}

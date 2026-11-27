@@ -196,6 +196,25 @@ class LiveMatchesTest(unittest.TestCase):
         self.assertEqual(count("TIER"), 2)  # pedaço do nick: os dois
         self.assertEqual(count("S_"), 1)  # "_" não é curinga (senão "TIERES" + aspas também casaria)
 
+    def test_player_filter_with_two_players_in_any_side(self):
+        """Jogador 1 e Jogador 2: as partidas entre os dois, com qualquer um como P1 ou P2."""
+        self.post(state(kickoff=1000), players="TIERES,ANDERSHOW")
+        self.post(state(kickoff=2000), players="ANDERSHOW,TIERES")
+        self.post(state(kickoff=3000), players="TIERES,TERCEIRO")
+
+        def count(**filters):
+            return self.cards(**filters).count('<article class="live-card')
+        self.assertEqual(count(jogador="TIERES", jogador2="ANDERSHOW"), 2)
+        self.assertEqual(count(jogador="ANDERSHOW", jogador2="TIERES"), 2)
+        self.assertEqual(count(jogador2="TIERES"), 3)  # só o Jogador 2: as partidas dele
+        self.assertEqual(count(jogador="ANDERSHOW", jogador2="TERCEIRO"), 0)
+        page = self.app.test_client().get("/ao-vivo?jogador=TIERES&jogador2=TERCEIRO").get_data(as_text=True)
+        self.assertIn('<label for="live-jogador">Jogador 1</label>', page)
+        self.assertIn('<label for="live-jogador2">Jogador 2</label>', page)
+        self.assertIn('id="live-jogador2" name="jogador2" value="TERCEIRO"', page)
+        self.assertIn("/ao-vivo/cards?jogador=TIERES&amp;jogador2=TERCEIRO", page)
+        self.assertEqual(without_suggestions(page).count('<article class="live-card'), 1)
+
     def test_filters_and_limit(self):
         for n in range(12):
             self.post(state(kickoff=1000 + n, goals=(n % 3, 0), final=True), players="TIERES,P%d" % n)
@@ -1872,7 +1891,7 @@ class LiveMatchesTest(unittest.TestCase):
         page = client.get("/torneios/liga-1/jogos/%d" % match_id).get_data(as_text=True)
         self.assertIn('class="live-scorers match-scorers pending"', page)
         self.assertIn('data-dialog="gols-a-confirmar"', page)
-        self.assertIn(">Ver card Ao Vivo</a>", page)
+        self.assertIn(">Ver placar</a>", page)
         self.assertNotIn(">Gols</a>", page)
         with self.app.app_context():
             reports.auto_confirm(get_db(), at=datetime.now(timezone.utc) + timedelta(hours=25))
@@ -1889,7 +1908,7 @@ class LiveMatchesTest(unittest.TestCase):
         # Página do jogo: os gols de cada lado do ponto de vista do campeonato (mandante = ANDERSHOW).
         page = client.get("/torneios/liga-1/jogos/%d" % match_id).get_data(as_text=True)
         self.assertNotIn("gols-a-confirmar", page)
-        self.assertIn(">Ver card Ao Vivo</a>", page)
+        self.assertIn(">Ver placar</a>", page)
         home, away = page.split('class="match-ball"')
         self.assertIn("<li>J.Leko 20'</li>", home)
         self.assertEqual(away.count("<li>S.Vryzas 17' <small>(Karagounis)</small></li>"), 2)
@@ -2603,6 +2622,134 @@ class LiveMatchesTest(unittest.TestCase):
         games = self.app.test_client().get("/torneios/liga-1?aba=jogos").get_data(as_text=True)
         self.assertIn("<span>Croácia</span><small>ANDERSHOW</small>", games)
         self.assertIn("<span>Grécia</span><small>TIERES</small>", games)
+
+    # --- "Selecionar placar" (Gerenciar e página do jogo) ---------------------------------
+
+    def free_league_game(self, goals=(2, 1)):
+        """O jogo da liga jogado antes de o campeonato ser liberado: a partida fica como "Partida livre"."""
+        self.make_league()
+        with self.app.app_context():
+            get_db().execute("UPDATE tournaments SET status = 'registration'")
+            get_db().commit()
+        self.finish_live(goals=goals)
+        with self.app.app_context():
+            get_db().execute("UPDATE tournaments SET status = 'running'")
+            get_db().commit()
+        return self.rows("SELECT id FROM live_matches")[0]["id"], self.rows("SELECT id FROM tournament_matches")[0]["id"]
+
+    def test_pick_score_turns_a_free_match_card_into_the_game_result(self):
+        live_id, match_id = self.free_league_game(goals=(2, 1))  # TIERES (LOCAL) 2 x 1 ANDERSHOW
+        self.assertIsNone(self.rows("SELECT tournament_match_id FROM live_matches")[0]["tournament_match_id"])
+        self.assertIn("Partida livre", self.cards())
+        admin = self.admin()
+        pick_url = "/torneios/liga-1/partidas/%d/placares" % match_id
+        page = admin.get("/torneios/liga-1/gerenciar").get_data(as_text=True)
+        # Sem card ligado: "Selecionar placar" antes do Salvar; "Detalhes" vira botão.
+        self.assertIn('data-pick-score="%s"' % pick_url, page)
+        self.assertIn('data-game="ANDERSHOW x TIERES"', page)
+        self.assertNotIn('name="jogador1"', page)  # a janela já vem filtrada: sem campos de filtro
+        self.assertLess(page.index("Selecionar placar</button>"), page.index('value="salvar">Salvar</button>'))
+        self.assertIn('<a class="button secondary" href="/torneios/liga-1/jogos/%d">Detalhes</a>' % match_id, page)
+        self.assertIn('id="selecionar-placar"', page)
+        self.assertIn("js/pick-score.js", page)
+        detail = admin.get("/torneios/liga-1/jogos/%d" % match_id).get_data(as_text=True)
+        self.assertIn('data-pick-score="%s?voltar=jogo"' % pick_url, detail)
+        self.assertNotIn("Ver placar", detail)
+        # A janela: o card sem os botões dele e o placar do ponto de vista do jogo (mandante = ANDERSHOW).
+        cards = admin.get(pick_url).get_data(as_text=True)
+        self.assertEqual(cards.count('<article class="live-card'), 1)
+        self.assertIn("No jogo: <strong>ANDERSHOW 1 x 2 TIERES</strong>", cards)
+        self.assertIn('<input type="hidden" name="partida" value="%d">' % live_id, cards)
+        self.assertIn("Usar este placar", cards)
+        self.assertNotIn("Ocultar", cards)
+        # O organizador (TIERES) joga este jogo: só a administração escolhe o placar.
+        self.player(self.tieres).post("/torneios/liga-1/partidas/%d/placar-ao-vivo" % match_id,
+                                      data={"csrf_token": CSRF, "partida": live_id})
+        self.assertEqual(self.rows("SELECT status FROM tournament_matches")[0]["status"], "scheduled")
+        # "Usar este placar": o resultado confirmado e o card passa a ser do jogo.
+        response = admin.post("/torneios/liga-1/partidas/%d/placar-ao-vivo" % match_id,
+                              data={"csrf_token": CSRF, "partida": live_id})
+        self.assertTrue(response.headers["Location"].endswith("/torneios/liga-1/gerenciar#jogo-%d" % match_id))
+        match = self.rows("SELECT * FROM tournament_matches")[0]
+        self.assertEqual((match["status"], match["home_goals"], match["away_goals"]), ("confirmed", 1, 2))
+        live = self.rows("SELECT * FROM live_matches")[0]
+        self.assertEqual((live["tournament_match_id"], live["game_report"]),
+                         (match_id, "reportado: card escolhido pelo organizador"))
+        last = self.rows("SELECT * FROM match_reports ORDER BY id DESC LIMIT 1")[0]
+        self.assertEqual((last["action"], last["comment"]),
+                         ("resolve", "Placar do card nº %d do Ao vivo, escolhido pelo organizador." % live_id))
+        # Agora "Ver placar" (o card no Ao vivo), no Gerenciar e na página do jogo.
+        page = admin.get("/torneios/liga-1/gerenciar").get_data(as_text=True)
+        self.assertIn('<a class="button secondary" href="/ao-vivo?partida=%d" title="Ver o card desta partida no Ao vivo">'
+                      'Ver placar</a>' % live_id, page)
+        self.assertNotIn("Selecionar placar</button>", page)
+        detail = admin.get("/torneios/liga-1/jogos/%d" % match_id).get_data(as_text=True)
+        self.assertIn('href="/ao-vivo?partida=%d">Ver placar</a>' % live_id, detail)
+        self.assertNotIn("data-pick-score", detail)
+        # O card é do campeonato: sai da janela, leva ao campeonato e os gols vão para a artilharia.
+        self.assertEqual(admin.get(pick_url).get_data(as_text=True).strip(),
+                         '<p class="pick-empty">Não foram encontrados jogos entre ANDERSHOW e TIERES nesse campeonato.</p>')
+        self.assertIn("Liga WE Camp", self.cards())
+        self.assertIn("S.Vryzas", self.app.test_client().get("/torneios/liga-1?aba=artilharia").get_data(as_text=True))
+        # O mesmo card de novo: recusado, o resultado continua.
+        admin.post("/torneios/liga-1/partidas/%d/placar-ao-vivo" % match_id, data={"csrf_token": CSRF, "partida": live_id})
+        self.assertEqual(len(self.rows("SELECT * FROM match_reports WHERE action = 'resolve'")), 1)
+
+    def test_pick_score_from_the_match_page_and_cards_that_cannot_be_picked(self):
+        live_id, match_id = self.free_league_game(goals=(1, 1))
+        admin = self.admin()
+        url = "/torneios/liga-1/partidas/%d/placar-ao-vivo" % match_id
+        # Card de simulação, de outros jogadores ou que não existe: nada muda.
+        self.post(state(goals=(3, 0), kickoff=5000), players="TIERES,TERCEIRO")
+        other = self.rows("SELECT id FROM live_matches WHERE id != ?", live_id)[0]["id"]
+        with self.app.app_context():
+            get_db().execute("UPDATE live_matches SET status = 'finished' WHERE id = ?", (other,))
+            get_db().commit()
+        for card in (other, 999, "x"):
+            admin.post(url, data={"csrf_token": CSRF, "partida": card})
+        self.assertEqual(self.rows("SELECT status FROM tournament_matches")[0]["status"], "scheduled")
+        # A janela: só as partidas entre os dois do jogo (a do TERCEIRO não); a dos dois do mesmo lado
+        # aparece, sem o "Usar este placar".
+        self.post(state(goals=(2, 2), kickoff=9000, pads=(0, 0, 1)), players="TIERES,ANDERSHOW,TERCEIRO")
+        with self.app.app_context():
+            get_db().execute("UPDATE live_matches SET status = 'finished'")
+            get_db().commit()
+        pick_url = "/torneios/liga-1/partidas/%d/placares" % match_id
+        cards = admin.get(pick_url).get_data(as_text=True)
+        self.assertEqual(cards.count('<article class="live-card'), 2)
+        self.assertNotIn('name="partida" value="%d"' % other, cards)
+        self.assertEqual(cards.count("Usar este placar"), 1)
+        self.assertIn("ANDERSHOW e TIERES não estão um de cada lado nesta partida.", cards)
+        # Com a ISO do campeonato, só as partidas com ela.
+        with self.app.app_context():
+            db = get_db()
+            t = db.execute("SELECT id FROM tournaments").fetchone()["id"]
+            db.execute("INSERT INTO tournament_isos (tournament_id, stored_name, original_filename, file_size, md5, "
+                       "archive_name, content_id, created_at, updated_at) VALUES (?, 'x', 'Outra.bin', 1, 'x', 'x', "
+                       "'AAAA0000:1', ?, ?)", (t, now(), now()))
+            db.commit()
+        self.assertIn("Não foram encontrados jogos entre ANDERSHOW e TIERES nesse campeonato.",
+                      admin.get(pick_url).get_data(as_text=True))
+        with self.app.app_context():
+            get_db().execute("UPDATE tournament_isos SET content_id = 'BA9BDE21:1C473F60'")
+            get_db().commit()
+        self.assertEqual(admin.get(pick_url).get_data(as_text=True).count('<article class="live-card'), 2)
+        # Da página do jogo: volta para ela.
+        response = admin.post(url, data={"csrf_token": CSRF, "partida": live_id, "voltar": "jogo"})
+        self.assertTrue(response.headers["Location"].endswith("/torneios/liga-1/jogos/%d" % match_id))
+        match = self.rows("SELECT * FROM tournament_matches")[0]
+        self.assertEqual((match["status"], match["home_goals"], match["away_goals"]), ("confirmed", 1, 1))
+
+    def test_picked_score_from_the_game_point_of_view(self):
+        from app import live
+        row = {"id": 0, "status": "finished", "local_goals": 1, "visita_goals": 1, "state_json": json.dumps({"pens": [4, 3]}),
+               "local_players_json": '["TIERES"]', "visita_players_json": '["ANDERSHOW"]',
+               "home_nick": "andershow", "away_nick": "TIERES"}
+        with self.app.app_context():
+            db = get_db()
+            self.assertEqual(live.picked_score(db, row), (1, 1, 3, 4))  # pênaltis do mandante (VISITA) primeiro
+            self.assertEqual(live.picked_score(db, dict(row, status="abandoned")), (1, 1, None, None))
+            self.assertIsNone(live.picked_score(db, dict(row, visita_players_json='["TERCEIRO"]')))
 
 
 if __name__ == "__main__":

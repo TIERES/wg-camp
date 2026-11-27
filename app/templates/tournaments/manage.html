@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% from 'tournaments/_macros.html' import match_line, status_chip, leg_flip, stage_rounds %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% from '_avatar.html' import avatar, avatar_button %}{% from '_carousel.html' import carousel %}{% from '_icons.html' import icon %}{% from '_dialog.html' import form_dialog %}{% from '_helpers_picker.html' import helpers_picker, people_line %}{% from 'tournaments/_changes.html' import change_list %}{% from 'tournaments/_iso_picker.html' import iso_choice, iso_picker %}{% from '_dialog.html' import info_button, info_dialog %}{% import 'tournaments/_tournament_fields.html' as fields with context %}{% block title %}Gerenciar {{ t.name }} · Campeonatos WE Camp{% endblock %}{% block content %}
+{% extends 'base.html' %}{% from 'tournaments/_macros.html' import match_line, status_chip, leg_flip, stage_rounds %}{% from 'tournaments/_pick_dialog.html' import pick_button, pick_dialog %}{% from 'tournaments/_invite_picker.html' import invite_picker %}{% from '_avatar.html' import avatar, avatar_button %}{% from '_carousel.html' import carousel %}{% from '_icons.html' import icon %}{% from '_dialog.html' import form_dialog %}{% from '_helpers_picker.html' import helpers_picker, people_line %}{% from 'tournaments/_changes.html' import change_list %}{% from 'tournaments/_iso_picker.html' import iso_choice, iso_picker %}{% from '_dialog.html' import info_button, info_dialog %}{% import 'tournaments/_tournament_fields.html' as fields with context %}{% block title %}Gerenciar {{ t.name }} · Campeonatos WE Camp{% endblock %}{% block content %}
 {# Formulários de resultado de uma lista de jogos (com ou sem Ida/Volta). #}
 {% macro result_forms(ms) %}{% for m in ms %}{% set shown = m if m.status == 'confirmed' else reported_score(m) %}
     <form method="post" action="{{ url_for('tournaments.result', slug=t.slug, match_id=m.id) }}" class="result-form{% if m.status == 'confirmed' %} done{% endif %}" id="jogo-{{ m.id }}">
@@ -7,10 +7,14 @@
       <span class="goals"><input type="number" name="home_goals" min="0" max="99" value="{{ shown.home_goals if shown and shown.home_goals is not none }}" required aria-label="Gols do mandante" class="score-{{ m.status }}" title="{{ score_tips[m.status] }}"> x <input type="number" name="away_goals" min="0" max="99" value="{{ shown.away_goals if shown and shown.away_goals is not none }}" required aria-label="Gols do visitante" class="score-{{ m.status }}" title="{{ score_tips[m.status] }}"></span>
       <span class="away">{{ side_name(names, m, 'away') }}</span>
       {% if m.id in decisive %}<span class="pens" data-agg="{{ decisive[m.id]|join(',') }}">{{ 'Empate no agregado' if decisive[m.id] != (0, 0) else 'Empate' }}, pênaltis: <input type="number" name="home_pens" min="0" max="99" value="{{ m.home_pens if m.home_pens is not none }}" aria-label="Pênaltis mandante"> x <input type="number" name="away_pens" min="0" max="99" value="{{ m.away_pens if m.away_pens is not none }}" aria-label="Pênaltis visitante"></span>{% endif %}
+      {# Antes do Salvar: "Ver placar" (o card do jogo no Ao vivo - live.linked_cards) ou, sem ele,
+         "Selecionar placar" (a janela com os cards ainda sem jogo - _pick_dialog.html). #}
+      {% set card_url = live_cards.get(m.id) %}
+      {% set view_card %}{% if card_url %}<a class="button secondary" href="{{ card_url }}" title="Ver o card desta partida no Ao vivo">Ver placar</a>{% endif %}{% endset %}
       <span class="result-buttons">
-        {% if my_entry_id in (m.home_entry_id, m.away_entry_id) %}<small class="muted">Seu jogo: reporte na <a href="{{ url_for('tournaments.match', slug=t.slug, match_id=m.id) }}">página do jogo</a></small>
-        {% else %}<button name="acao" value="salvar">{{ 'Corrigir' if m.status == 'confirmed' else 'Salvar' }}</button>{% if m.status == 'confirmed' %}<button name="acao" value="apagar" class="secondary btn-left" formnovalidate>Apagar</button>{% elif m.status in ('reported', 'disputed') %}<button name="acao" value="apagar" class="secondary btn-left" formnovalidate title="Descarta o placar enviado e deixa os jogadores reportarem de novo">Liberar novo reporte</button>{% endif %}{% endif %}
-        {{ status_chip(m) }} <a href="{{ url_for('tournaments.match', slug=t.slug, match_id=m.id) }}">detalhes</a></span>
+        {% if my_entry_id in (m.home_entry_id, m.away_entry_id) %}<small class="muted">Seu jogo: reporte na <a href="{{ url_for('tournaments.match', slug=t.slug, match_id=m.id) }}">página do jogo</a></small>{{ view_card }}
+        {% else %}{{ view_card if card_url else pick_button(t.slug, m, entry_nicks[m.home_entry_id], entry_nicks[m.away_entry_id]) }}<button name="acao" value="salvar">{{ 'Corrigir' if m.status == 'confirmed' else 'Salvar' }}</button>{% if m.status == 'confirmed' %}<button name="acao" value="apagar" class="secondary btn-left" formnovalidate>Apagar</button>{% elif m.status in ('reported', 'disputed') %}<button name="acao" value="apagar" class="secondary btn-left" formnovalidate title="Descarta o placar enviado e deixa os jogadores reportarem de novo">Liberar novo reporte</button>{% endif %}{% endif %}
+        {{ status_chip(m) }} <a class="button secondary" href="{{ url_for('tournaments.match', slug=t.slug, match_id=m.id) }}">Detalhes</a></span>
     </form>
     {% endfor %}
 {% endmacro %}
@@ -68,7 +72,7 @@
     <p class="muted">Nenhum jogo foi disputado ainda: dá para desfazer o sorteio, reabrir as inscrições para incluir novos participantes e sortear de novo.</p>
     {% call form_dialog('reabrir-inscricoes', url_for('tournaments.reopen_registration', slug=t.slug), 'Reabrir as inscrições?', 'Reabrir inscrições') %}
       <p>O sorteio é desfeito: {{ 'a chave do mata-mata em rascunho é apagada' if bracket_board else 'a tabela, os grupos e os jogos são apagados' }} e o campeonato volta para <strong>Inscrições abertas</strong>.</p>
-      <p>Os {{ entries|length }} inscritos continuam no campeonato, com o que pagaram{% if t.team_mode != 'round' %} e o mesmo time{% endif %}. Novos jogadores podem se inscrever: confira as vagas na aba Formato{% if t.team_mode in ('choose', 'draw') %} e se há times livres na lista da aba Participantes{% endif %}. Para começar, use de novo <em>Fechar inscrições e sortear</em>.</p>
+      <p>Os {{ entries|length }} inscritos continuam no campeonato, com o que pagaram{% if t.team_mode != 'round' %} e o mesmo time{% endif %}. Novos jogadores podem se inscrever: confira as vagas na aba Participantes{% if t.team_mode in ('choose', 'draw') %} e se há times livres na lista dela{% endif %}. Para começar, use de novo <em>Fechar inscrições e sortear</em>.</p>
       {% if not bracket_board %}<p>Os inscritos recebem um e-mail avisando que o sorteio será refeito.</p>{% endif %}
     {% endcall %}
   {% elif not can_finish %}
@@ -156,6 +160,7 @@
     {% else %}{{ result_forms(rnd.matches) }}{% endif %}
   </details>
   {% endfor %}
+  {{ pick_dialog() }}
 </section>
 {% endif %}
 
@@ -304,20 +309,21 @@
     {% endif %}
   </section>
 
-  {# --- Formato: formato, vagas e as fases --- #}
+  {# --- Formato: formato e as fases --- #}
   <section class="t-step" data-step="formato" id="etapa-formato" role="tabpanel" hidden>
     {% if editing %}
       {{ fields.formato() }}
       {{ save_edit }}
     {% else %}
-      <dl class="t-readonly"><dt>Formato</dt><dd>{{ format_label }}</dd><dt>Como funciona</dt><dd>{{ summary }}</dd><dt>Vagas</dt><dd>{{ t.max_players }}</dd></dl>
+      <dl class="t-readonly"><dt>Formato</dt><dd>{{ format_label }}</dd><dt>Como funciona</dt><dd>{{ summary }}</dd></dl>
       <p class="muted">O formato não muda depois do início do campeonato.</p>
     {% endif %}
   </section>
 
-  {# --- Participantes: Somente para amigos, times, inscritos, grupos e convites --- #}
+  {# --- Participantes: vagas, Somente para amigos, times, inscritos, grupos e convites --- #}
   <section class="t-step" data-step="participantes" id="etapa-participantes" role="tabpanel" hidden>
     {% if editing %}
+      {{ fields.vagas() }}
       {{ fields.amigos() }}
       {{ fields.times() }}
       {{ save_edit }}
@@ -326,10 +332,10 @@
       {% call info_dialog('ajuda-amigos-andamento', 'Somente para amigos') %}
         <p>Campeonato privado: fora das listas para quem não é amigo de quem criou, e só os amigos se inscrevem (quem já está inscrito continua). Quem recebe o link vê os dados do campeonato, sem poder se inscrever.</p>
       {% endcall %}
-      <dl class="t-readonly"><dt>Times</dt><dd>{{ team_modes[t.team_mode] }}</dd></dl>
+      <dl class="t-readonly"><dt>Vagas</dt><dd>{{ t.max_players }}</dd><dt>Times</dt><dd>{{ team_modes[t.team_mode] }}</dd></dl>
       {{ save_basic }}
     {% else %}
-      <dl class="t-readonly"><dt>Somente para amigos</dt><dd>{{ 'Sim' if t.friends_only else 'Não' }}</dd><dt>Times</dt><dd>{{ team_modes[t.team_mode] }}</dd></dl>
+      <dl class="t-readonly"><dt>Vagas</dt><dd>{{ t.max_players }}</dd><dt>Somente para amigos</dt><dd>{{ 'Sim' if t.friends_only else 'Não' }}</dd><dt>Times</dt><dd>{{ team_modes[t.team_mode] }}</dd></dl>
     {% endif %}
 
     {% if full %}

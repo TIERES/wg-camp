@@ -2044,7 +2044,15 @@ def manage(slug):
             "pool": [dict(row, image=team_image(row)) for row in store.available_teams(db, tournament["id"])]
             if tournament["team_mode"] in ("choose", "draw") else None,
             "crests": {e["id"]: crest(e["team_id"], e["team_name"]) for e in entries if e["team_name"]}}
+    # "Ver placar" (o card do jogo no Ao vivo) ou "Selecionar placar" (a janela com os cards sem jogo).
+    live_cards = {}
+    if full and current and tournament["status"] == "running":
+        from . import live
+        live_cards = live.linked_cards(db, [row[0] for row in db.execute(
+            "SELECT m.id FROM tournament_matches m JOIN tournament_stages s ON s.id = m.stage_id "
+            "WHERE s.tournament_id = ?", (tournament["id"],))])
     return render_template("tournaments/manage.html", t=tournament, entries=entries, shown_entries=shown_entries,
+                           live_cards=live_cards, entry_nicks={e["id"]: e["username"] for e in entries},
                            groups=groups, bracket_board=bracket_board, team_board=team_board, steps=STEPS,
                            format_label=formats.FORMATS.get(tournament["format"], tournament["format"]),
                            summary=formats.describe(tournament["format"], store.settings_of(tournament))
@@ -2576,23 +2584,40 @@ def _save_match_teams(db, tournament, match_id):
         for key in ("home_team", "away_team")))
 
 
+def _result_target(tournament, match_id):
+    """Para onde voltar depois de lançar o resultado: a página do jogo (voltar=jogo) ou o jogo no Gerenciar."""
+    if request.form.get("voltar") == "jogo":
+        return url_for("tournaments.match", slug=tournament["slug"], match_id=match_id)
+    return url_for("tournaments.manage", slug=tournament["slug"]) + f"#jogo-{match_id}"
+
+
+def _result_actor(db, tournament, match_id):
+    """Quem lança o resultado do jogo: (user_id da administração, inscrição do
+    organizador no campeonato) - ou None, com o aviso, se o organizador joga a
+    partida (os jogos dele, só a administração decide)."""
+    match = db.execute("SELECT * FROM tournament_matches WHERE id = ?", (match_id,)).fetchone()
+    if match and not is_admin() and reports.player_entry(db, tournament, match, session.get("player_id")):
+        flash("Você joga esta partida: reporte o placar como jogador. Contestações dos seus jogos são decididas "
+              "pela administração do WE Camp.", "error")
+        return None
+    user_id = session.get("user_id") if is_admin() else None
+    organizer = None if user_id else db.execute(
+        "SELECT * FROM tournament_entries WHERE tournament_id = ? AND player_id = ?",
+        (tournament["id"], session.get("player_id"))).fetchone()
+    return user_id, organizer
+
+
 @bp.post("/<slug>/partidas/<int:match_id>")
 @manager_required
 def result(tournament, match_id):
     """Organizador/admin define, corrige ou apaga o resultado."""
     db = get_db()
-    back = request.form.get("voltar") == "jogo"
-    target = (url_for("tournaments.match", slug=tournament["slug"], match_id=match_id) if back
-              else url_for("tournaments.manage", slug=tournament["slug"]) + f"#jogo-{match_id}")
+    target = _result_target(tournament, match_id)
     match = db.execute("SELECT * FROM tournament_matches WHERE id = ?", (match_id,)).fetchone()
-    if match and not is_admin() and reports.player_entry(db, tournament, match, session.get("player_id")):
-        flash("Você joga esta partida: reporte o placar como jogador. Contestações dos seus jogos são decididas "
-              "pela administração do WE Camp.", "error")
+    actor = _result_actor(db, tournament, match_id)
+    if actor is None:
         return redirect(target)
-    user_id = session.get("user_id") if is_admin() else None
-    organizer = None if user_id else db.execute(
-        "SELECT * FROM tournament_entries WHERE tournament_id = ? AND player_id = ?",
-        (tournament["id"], session.get("player_id"))).fetchone()
+    user_id, organizer = actor
     comment = request.form.get("comment", "")
     if request.form.get("acao") == "apagar":
         _run(lambda db, t: reports.clear(db, t, match_id, user_id=user_id, entry=organizer), tournament,
@@ -2608,6 +2633,59 @@ def result(tournament, match_id):
                 reports.resolve(db, t, match_id, score, user_id=user_id, entry=organizer, comment=comment)
                 _save_match_teams(db, t, match_id)
             _run(save, tournament, "Resultado salvo.")
+    notify.check_completion(db, tournament)
+    return redirect(target)
+
+
+# --- "Selecionar placar": o card do Ao vivo de um jogo jogado sem a ligação automática ---
+
+def _match_nicks(db, match):
+    """(nick do mandante, do visitante) do jogo."""
+    rows = {row["id"]: row["username"] for row in db.execute(
+        "SELECT e.id, p.username FROM tournament_entries e JOIN players p ON p.id = e.player_id WHERE e.id IN (?, ?)",
+        (match["home_entry_id"], match["away_entry_id"]))}
+    return rows.get(match["home_entry_id"], ""), rows.get(match["away_entry_id"], "")
+
+
+@bp.get("/<slug>/partidas/<int:match_id>/placares")
+@manager_required
+def pick_scores(tournament, match_id):
+    """Os cards da janela "Selecionar placar" (static/js/pick-score.js), já
+    filtrados: as partidas livres entre os dois jogadores do jogo, com a ISO do
+    campeonato (live.pick_cards)."""
+    db = get_db()
+    m = _match_or_404(db, tournament, match_id)
+    home, away = _match_nicks(db, m)
+    from . import live
+    cards, scores = live.pick_cards(db, tournament["id"], home, away, limit=20)
+    return render_template("tournaments/_pick_cards.html", t=tournament, m=m, cards=cards, scores=scores,
+                           home=home, away=away, back=request.args.get("voltar") == "jogo")
+
+
+@bp.post("/<slug>/partidas/<int:match_id>/placar-ao-vivo")
+@manager_required
+def pick_score(tournament, match_id):
+    """O card escolhido na janela "Selecionar placar" passa a ser do jogo, e o
+    placar dele vira o resultado (live.pick_card)."""
+    db = get_db()
+    target = _result_target(tournament, match_id)
+    actor = _result_actor(db, tournament, match_id)
+    live_id = request.form.get("partida", "")
+    if actor is None:
+        return redirect(target)
+    if not live_id.isdigit():
+        flash("Escolha um card do Ao vivo.", "error")
+        return redirect(target)
+    from . import live
+    user_id, organizer = actor
+    picked = []
+    _run(lambda db, t: picked.append(live.pick_card(db, t, match_id, int(live_id), user_id=user_id, entry=organizer)),
+         tournament, None)
+    if picked:
+        home, away = _match_nicks(db, db.execute("SELECT * FROM tournament_matches WHERE id = ?", (match_id,)).fetchone())
+        score = picked[0]
+        pens = f" ({score[2]} x {score[3]} nos pênaltis)" if score[2] is not None else ""
+        flash(f"Placar do card nº {live_id} salvo: {home} {score[0]} x {score[1]} {away}{pens}.", "success")
     notify.check_completion(db, tournament)
     return redirect(target)
 
@@ -2659,9 +2737,13 @@ def match(slug, match_id):
     goals = live.match_goals(db, m, (m["home_goals"], m["away_goals"]) if m["status"] == "confirmed"
                              else (reported["home_goals"], reported["away_goals"]) if reported else None,
                              live_now["id"] if live_now else None)
+    open_ = tournament["status"] == "running" and m["stage_status"] == "running"
+    # "Ver placar" (o card do jogo no Ao vivo) ou, para o organizador, "Selecionar placar".
+    card_url = live.linked_cards(db, [match_id]).get(match_id)
     return render_template(
         "tournaments/match.html", t=tournament, m=m, names=names, me=me, manager=manager, h2h=h2h, live_now=live_now,
-        quitter=quitter, goals=goals, walkover=walkover,
+        quitter=quitter, goals=goals, walkover=walkover, card_url=card_url,
+        can_pick=manager and open_ and not card_url and bool(home and away),
         confirm_hours=setting(db, "torneios_confirmacao_horas"),
         history=reports.history(db, match_id), labels=reports.ACTION_LABELS,
         disputer=reports.disputer(db, match_id) if m["status"] == "disputed" else None,
@@ -2669,7 +2751,7 @@ def match(slug, match_id):
         confirmed_by=reports.confirmed_by(db, match_id) if m["status"] == "reported" else [],
         dispute=reports.last_dispute(db, match_id) if m["status"] == "disputed" else None,
         deadline=reports.deadline(db, m) if m["status"] == "reported" else None,
-        decisive=store.needs_pens(db, m), pens_agg=store.other_legs_goals(db, m), open=tournament["status"] == "running" and m["stage_status"] == "running",
+        decisive=store.needs_pens(db, m), pens_agg=store.other_legs_goals(db, m), open=open_,
         # Um time diferente a cada rodada: os campos "Time de ..." no reporte e no resultado do organizador.
         round_teams=[row["name"] for row in db.execute(
             "SELECT name FROM teams WHERE is_active = 1 ORDER BY name COLLATE NOCASE")]
