@@ -1957,6 +1957,8 @@ def manage(slug):
         complete = store.stage_complete(db, current["stage"])
         next_stage = store.has_next_stage(tournament, current["stage"])
         can_advance, can_finish = complete and next_stage, complete and not next_stage
+    # Reabrir as inscrições (store.reopen_registration): só sem nenhum jogo disputado.
+    reopen_block = store.reopen_block(db, tournament) if tournament["status"] == "running" else None
     open_reports = db.execute(
         "SELECT m.* FROM tournament_matches m JOIN tournament_stages s ON s.id = m.stage_id "
         "WHERE s.tournament_id = ? AND m.status IN ('disputed', 'reported') ORDER BY m.status = 'reported', m.id",
@@ -2052,7 +2054,7 @@ def manage(slug):
                            open_reports=open_reports, my_entry_id=None if is_admin() or not my_entry else my_entry[0],
                            current=current, stages=stages, names=_names(db, tournament), decisive=decisive,
                            auto_finish_at=notify.auto_finish_at(tournament),
-                           can_advance=can_advance, can_finish=can_finish, is_admin=is_admin(),
+                           can_advance=can_advance, can_finish=can_finish, is_admin=is_admin(), reopen_block=reopen_block,
                            status_labels=STATUS_LABELS, iso=iso_row, iso_uploading=iso.uploading(iso_row),
                            iso_source=iso_catalog.source_view(db, iso_row["source"]) if iso.chosen(iso_row) else None,
                            iso_options=iso_catalog.tournament_options(db, me, current_app,
@@ -2450,6 +2452,28 @@ def start(tournament):
         notify.tournament_started(db, started)
     return redirect(url_for("tournaments.show", slug=tournament["slug"]) if ok
                     else url_for("tournaments.manage", slug=tournament["slug"]))
+
+
+@bp.post("/<slug>/reabrir-inscricoes")
+@manager_required
+def reopen_registration(tournament):
+    """Desfaz o sorteio de um campeonato iniciado sem nenhum jogo disputado
+    (store.reopen_registration): as inscrições voltam a ficar abertas. Quem já
+    recebeu o "está valendo" por e-mail recebe o aviso de que o sorteio será
+    refeito (com a chave do mata-mata ainda em rascunho, ninguém foi avisado)."""
+    db = get_db()
+    draft = store.arranging_stage(db, tournament) is not None
+    players = [row["player_id"] for row in store.entries_of(db, tournament["id"])]
+    ok = _run(store.reopen_registration, tournament,
+              "Inscrições reabertas: o sorteio foi desfeito. Inclua quem faltou e inicie de novo para sortear.")
+    if ok and not draft:
+        text = (f"As inscrições de {tournament['name']} foram reabertas pela organização para a entrada de novos "
+                "participantes. O sorteio feito antes foi desfeito: os jogos que você recebeu não valem mais.\n\n"
+                "Sua inscrição continua garantida" + (", com o mesmo time" if tournament["team_mode"] != "round" else "")
+                + ". Quando o campeonato iniciar de novo, você recebe por e-mail os jogos do novo sorteio.")
+        notify.entry_notices(db, tournament, [(player_id, f"🔄 {tournament['name']}: inscrições reabertas", text)
+                                              for player_id in players])
+    return redirect(url_for("tournaments.manage", slug=tournament["slug"]))
 
 
 @bp.post("/<slug>/chaveamento")

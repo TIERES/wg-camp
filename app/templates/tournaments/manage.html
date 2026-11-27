@@ -63,6 +63,17 @@
       <button {% if entries|length < 2 %}disabled{% endif %}>Fechar inscrições e sortear ({{ entries|length }} inscritos)</button></form>
     <p class="muted">{% if groups %}Os grupos ficam como estão em <a href="#grupos">Grupos</a>; o sorteio define a ordem dos jogos dentro de cada um.{% else %}O sorteio monta a tabela, os grupos, os potes ou a chave com os inscritos atuais.{% endif %} Depois disso ninguém mais entra nem sai.</p>
   {% endif %}
+  {% if t.status == 'running' %}{% if not reopen_block %}
+    <button type="button" class="secondary" data-dialog="reabrir-inscricoes" aria-haspopup="dialog">Reabrir inscrições</button>
+    <p class="muted">Nenhum jogo foi disputado ainda: dá para desfazer o sorteio, reabrir as inscrições para incluir novos participantes e sortear de novo.</p>
+    {% call form_dialog('reabrir-inscricoes', url_for('tournaments.reopen_registration', slug=t.slug), 'Reabrir as inscrições?', 'Reabrir inscrições') %}
+      <p>O sorteio é desfeito: {{ 'a chave do mata-mata em rascunho é apagada' if bracket_board else 'a tabela, os grupos e os jogos são apagados' }} e o campeonato volta para <strong>Inscrições abertas</strong>.</p>
+      <p>Os {{ entries|length }} inscritos continuam no campeonato, com o que pagaram{% if t.team_mode != 'round' %} e o mesmo time{% endif %}. Novos jogadores podem se inscrever: confira as vagas na aba Formato{% if t.team_mode in ('choose', 'draw') %} e se há times livres na lista da aba Participantes{% endif %}. Para começar, use de novo <em>Fechar inscrições e sortear</em>.</p>
+      {% if not bracket_board %}<p>Os inscritos recebem um e-mail avisando que o sorteio será refeito.</p>{% endif %}
+    {% endcall %}
+  {% elif not can_finish %}
+    <p class="muted">As inscrições não podem mais ser reabertas. {{ reopen_block }}</p>
+  {% endif %}{% endif %}
   {% if can_advance %}
     <form method="post" action="{{ url_for('tournaments.advance', slug=t.slug) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Gerar próxima fase (mata-mata)</button></form>
     <p class="muted">Os resultados da fase atual ficam travados depois disso.</p>
