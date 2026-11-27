@@ -54,16 +54,17 @@
     syncNames();
   }
 
-  // Classificados para o mata-mata: menos que as vagas.
+  // Classificados para o mata-mata (aba Formato): menos que as vagas (aba Participantes). O aviso fica nas
+  // vagas, que vêm depois no cadastro: ao avançar no Formato, elas ainda não foram escolhidas.
   var slots = form.elements.max_players, playoff = document.getElementById('playoff-qualifiers');
   function limitPlayoff() {
-    var max = Math.max(2, (parseInt(slots.value, 10) || 0) - 1);
-    playoff.max = max;
-    playoff.setCustomValidity(parseInt(playoff.value, 10) > max
-      ? 'Precisa ser menor que o número de vagas (' + slots.value + ').' : '');
+    var qualifiers = parseInt(playoff.value, 10) || 0;
+    slots.setCustomValidity(!playoff.disabled && qualifiers >= (parseInt(slots.value, 10) || 0)
+      ? 'Precisa ser maior que os classificados para o mata-mata (' + qualifiers + ', na aba Formato).' : '');
   }
   slots.addEventListener('input', limitPlayoff);
   playoff.addEventListener('input', limitPlayoff);
+  select.addEventListener('change', limitPlayoff);
   limitPlayoff();
 
   // Times: lista só nos modos com lista; marcar o grupo marca todos os times dele. Quem vai

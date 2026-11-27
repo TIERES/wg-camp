@@ -1472,14 +1472,18 @@ def iso_filter(db, text):
 
 def list_cards(db, tournament_id=None, kind=None, tournament_query="", only_live=False, recent_only=False, player="",
                date_from="", date_to="", match_id=None, iso_query="", interrupted=False, limit=CARDS_LIMIT,
-               count=False):
+               count=False, player2="", pickable=False, iso_sql=None):
     """As últimas partidas (ao vivo primeiro), com os filtros da página:
     tournament_id = os jogos daquele campeonato (o link "Ao vivo" da tabela);
     kind = Rankeado, Amistoso ou Partida livre (_KIND_WHERE); tournament_query =
     o nome digitado de um campeonato (tournaments_named); match_id = só aquela
     partida (o placar ao lado do time na tabela do campeonato); iso_query = o
     texto do filtro "ISO" (iso_filter); interrupted = só as interrompidas (a
-    caixa "Partidas interrompidas")."""
+    caixa "Partidas interrompidas"); player2 = um segundo jogador, que também
+    jogou a partida (o "Jogador 2": as partidas entre os dois, em qualquer
+    lado); pickable = só as que o organizador pode escolher para um jogo de
+    campeonato (_PICKABLE - o "Selecionar placar"); iso_sql = o SQL de uma ISO
+    (_iso_where - a do campeonato, tournament_iso_where)."""
     reap(db)
     where, params = ["m.verified = 1"], []  # só com os dois jogadores logados (refresh)
     if only_live:
@@ -1507,14 +1511,20 @@ def list_cards(db, tournament_id=None, kind=None, tournament_query="", only_live
         params.extend(values)
     if interrupted:
         where.append("m.status = 'abandoned'")
-    if player:
+    if pickable:
+        where.append(_PICKABLE)
+    if iso_sql:
+        where.append(iso_sql)
+    for nick in (player, player2):
+        if not nick:
+            continue
         # O nick de uma conta (o que a sugestão do campo preenche): só as
         # partidas dele ("TIERES" não traz as do TIERES_ART); um pedaço do
         # nick procura em todos. "_" e "%" valem como letras (listing.like).
         from .listing import like
-        exact = db.execute("SELECT 1 FROM players WHERE username = ? COLLATE NOCASE", (player,)).fetchone()
+        exact = db.execute("SELECT 1 FROM players WHERE username = ? COLLATE NOCASE", (nick,)).fetchone()
         where.append("m.players_json LIKE ? ESCAPE '\\'")
-        params.append(like('"%s"' % player if exact else player))
+        params.append(like('"%s"' % nick if exact else nick))
     start, end = _local_day(date_from), _local_day(date_to, end=True)
     if start:
         where.append("m.started_at >= ?")
@@ -1588,6 +1598,132 @@ def tournament_live(db, tournament_id):
             "WHERE g.stage_id = ? AND gm.entry_id IN (?, ?)",
             (row["tm_stage_id"], row["home_entry_id"], row["away_entry_id"])))
     return {"groups": groups, "entries": entries, "matches": matches, "match_urls": match_urls, "live_ids": live_ids}
+
+
+# --- "Selecionar placar" (Gerenciar e página do jogo) --------------------------
+#
+# O jogo de campeonato jogado sem a ligação automática (detect_context) - por
+# exemplo, antes de o organizador sortear o campeonato: a partida ficou como
+# "Partida livre". O organizador escolhe o card dela e o placar vira o
+# resultado do jogo, como se ele o tivesse lançado (reports.resolve); o card
+# passa a ser do jogo (artilharia, cartões, página do jogo).
+
+# Os cards que podem ser escolhidos: partida livre (sem campeonato e sem
+# amistoso - as do amistoso já fazem o placar dele) que já terminou ou parou,
+# com todos logados, que não é simulação nem foi excluída ou descartada.
+_PICKABLE = ("(m.status != 'live' AND m.is_test = 0 AND m.verified = 1 AND m.deleted_at IS NULL "
+             "AND m.tournament_match_id IS NULL AND m.friendly_id IS NULL)")
+PICKED_NOTE = "Placar do card nº %d do Ao vivo, escolhido pelo organizador."
+# (Começa com "reportado": o card vale no jogo - não volta pelo Reconectar nem é excluído pelos jogadores.)
+PICKED_OUTCOME = "reportado: card escolhido pelo organizador"
+
+
+def picked_score(db, row):
+    """(gols do mandante, do visitante, pênaltis do mandante, do visitante) que
+    o card `row` (com home_nick e away_nick do jogo) dá ao jogo de campeonato,
+    ou None se os dois do jogo não estão um de cada lado dele. Na partida
+    interrompida com o placar final combinado pelos dois (free.py), vale ele;
+    os pênaltis, só da partida que terminou."""
+    sides = _home_side(row)
+    if sides is None:
+        return None
+    goals = (row["local_goals"] or 0, row["visita_goals"] or 0)
+    if row["status"] == "abandoned":
+        agreed = db.execute("SELECT local_goals, visita_goals FROM free_match_scores WHERE live_match_id = ? "
+                            "AND status = 'confirmed'", (row["id"],)).fetchone()
+        if agreed is not None:
+            goals = (agreed["local_goals"], agreed["visita_goals"])
+    pens = _match_state(row).get("pens") or ()
+    pens = (pens[sides[0]], pens[sides[1]]) if row["status"] == "finished" and len(pens) == 2 else (None, None)
+    return (goals[sides[0]], goals[sides[1]], *pens)
+
+
+def tournament_iso_where(db, tournament_id):
+    """SQL de "a partida m foi jogada com a ISO do campeonato" (_iso_where): a
+    ISO dele e, se ela foi escolhida na lista, a de origem (do cadastro de
+    amistosos ou de outro campeonato). None: campeonato sem ISO."""
+    row = db.execute("SELECT * FROM tournament_isos WHERE tournament_id = ?", (tournament_id,)).fetchone()
+    if row is None:
+        return None
+    tournaments, catalog = [str(int(tournament_id))], None
+    kind, _, raw = ((row["source"] if "source" in row.keys() else None) or "").partition(":")
+    if raw.isdigit():
+        if kind == "c":
+            catalog = raw
+        elif kind == "t":
+            tournaments.append(raw)
+    return _iso_where(catalog, ",".join(tournaments))
+
+
+def pick_cards(db, tournament_id, home_nick, away_nick, limit=CARDS_LIMIT):
+    """Os cards que o organizador pode escolher para o jogo entre home_nick e
+    away_nick (_PICKABLE): as partidas entre os dois (em qualquer lado) com a
+    ISO do campeonato (sem ISO, qualquer uma), e o placar que cada uma dá ao
+    jogo: (cards, {id do card: picked_score ou None})."""
+    cards = list_cards(db, player=home_nick, player2=away_nick, pickable=True,
+                       iso_sql=tournament_iso_where(db, tournament_id), limit=limit)
+    scores = {}
+    for c in cards:
+        row = db.execute("SELECT * FROM live_matches WHERE id = ?", (c["id"],)).fetchone()
+        scores[c["id"]] = picked_score(db, dict(row, home_nick=home_nick, away_nick=away_nick))
+    return cards, scores
+
+
+def pick_card(db, tournament, match_id, live_id, user_id=None, entry=None):
+    """O organizador escolheu o card `live_id` para o jogo `match_id`: o card
+    passa a ser do jogo e o placar dele vira o resultado (reports.resolve, com
+    o W$ e o mata-mata). No campeonato com um time diferente a cada rodada,
+    os times que cada um usou vão para o jogo; com a ISO do campeonato, o card
+    ensina os times e o campeonato da ISO, como na ligação automática.
+    Devolve o placar; TournamentError se o card ou o jogo não servem."""
+    from .tournament import reports, store
+    from .tournament.store import TournamentError
+    row = db.execute("SELECT * FROM live_matches m WHERE m.id = ? AND %s%s" % (
+        _PICKABLE, "" if _is_admin() else " AND m.hidden = 0"), (live_id,)).fetchone()
+    if row is None:
+        raise TournamentError("Este card não pode ser escolhido: só o de uma partida livre que já terminou "
+                              "(sem campeonato nem amistoso).")
+    game = db.execute(
+        "SELECT m.id, s.tournament_id, hp.username AS home_nick, ap.username AS away_nick FROM tournament_matches m "
+        "JOIN tournament_stages s ON s.id = m.stage_id "
+        "JOIN tournament_entries he ON he.id = m.home_entry_id JOIN players hp ON hp.id = he.player_id "
+        "JOIN tournament_entries ae ON ae.id = m.away_entry_id JOIN players ap ON ap.id = ae.player_id "
+        "WHERE m.id = ?", (match_id,)).fetchone()
+    if game is None or game["tournament_id"] != tournament["id"]:
+        raise TournamentError("Jogo não encontrado.")
+    score = picked_score(db, dict(row, home_nick=game["home_nick"], away_nick=game["away_nick"]))
+    if score is None:
+        raise TournamentError("%s e %s precisam estar um de cada lado no card escolhido."
+                              % (game["home_nick"], game["away_nick"]))
+    db.execute("UPDATE live_matches SET tournament_match_id = ?, game_report = ? WHERE id = ?",
+               (match_id, PICKED_OUTCOME, live_id))
+    reports.resolve(db, tournament, match_id, score, user_id=user_id, entry=entry, comment=PICKED_NOTE % live_id)
+    if tournament["team_mode"] == "round":
+        linked = db.execute(_TOURNAMENT_LIVE_SQL + "WHERE m.id = ?", (live_id,)).fetchone()
+        store.set_match_teams(db, tournament, match_id, *_game_teams(db, linked))
+    # A ISO do campeonato (ou ele sem ISO identificada), como em detect_context.
+    if db.execute("SELECT 1 FROM tournaments t LEFT JOIN tournament_isos ti ON ti.tournament_id = t.id WHERE t.id = ? "
+                  "AND (ti.content_id IS NULL OR ti.content_id = ? COLLATE NOCASE OR t.id IN "
+                  "(SELECT tournament_id FROM iso_profiles WHERE content_id = ? COLLATE NOCASE))",
+                  (tournament["id"], row["content_id"], row["content_id"])).fetchone():
+        learn_slots(db, live_id)
+    return score
+
+
+def linked_cards(db, match_ids):
+    """{jogo de campeonato: endereço do card dele no Ao vivo} - o "Ver placar"
+    do Gerenciar e da página do jogo: o card rolando agora ou o mais recente.
+    Simulações, excluídos e descartados nunca; o ocultado pelo administrador,
+    só para ele."""
+    ids = [int(i) for i in match_ids]
+    if not ids:
+        return {}
+    rows = db.execute(
+        "SELECT id, tournament_match_id FROM live_matches WHERE tournament_match_id IN (%s) AND is_test = 0 "
+        "AND verified = 1 AND deleted_at IS NULL%s ORDER BY status = 'live', started_at, id"
+        % (",".join("?" * len(ids)), "" if _is_admin() else " AND hidden = 0"), ids).fetchall()
+    # Em ordem: o último de cada jogo (a partida rolando, ou a mais recente) fica.
+    return {row["tournament_match_id"]: url_for("live.index", partida=row["id"]) for row in rows}
 
 
 # O 2º PC manda o fim logo depois do 1º: espera isso antes de reportar.
@@ -2163,15 +2299,17 @@ def friendly_scorers(db, friendly_row, games):
 
 
 def _filters():
-    """Filtros da página. Campeonato (autocompletar): Rankeado, Amistoso ou
-    Partida livre (stats.kind_filter), o nome de um campeonato ou o id dele
-    (o link "Ao vivo" da tabela do campeonato); interrompidas=1 = só as
-    partidas interrompidas."""
+    """Filtros da página. Jogador 1 (jogador) e Jogador 2 (jogador2): as
+    partidas de um, ou entre os dois, em qualquer lado. Campeonato
+    (autocompletar): Rankeado, Amistoso ou Partida livre (stats.kind_filter),
+    o nome de um campeonato ou o id dele (o link "Ao vivo" da tabela do
+    campeonato); interrompidas=1 = só as partidas interrompidas."""
     from .tournament.stats import kind_filter
     args = request.args
     championship = args.get("campeonato", "").strip()[:120]
     kind = kind_filter(championship)
-    return {"player": args.get("jogador", "").strip()[:32], "kind": kind,
+    return {"player": args.get("jogador", "").strip()[:32], "player2": args.get("jogador2", "").strip()[:32],
+            "kind": kind,
             "tournament_id": int(championship) if championship.isdigit() else None,
             "tournament_query": championship if championship and not kind and not championship.isdigit() else "",
             "match_id": int(args["partida"]) if args.get("partida", "").isdigit() else None,

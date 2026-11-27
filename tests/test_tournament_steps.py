@@ -86,6 +86,11 @@ class StepsTest(unittest.TestCase):
         self.assertIn('id="create-button" data-step-finish', page)
         self.assertIn('novalidate data-step-validate data-upload=', page)
         self.assertIn('<input type="file" name="iso"', page)  # a ISO junto com o cadastro
+        # As vagas ficam em Participantes (os times da lista e os grupos dependem delas), antes dos times.
+        vagas = page.index('name="max_players"')
+        self.assertLess(page.index('id="etapa-participantes"'), vagas)
+        self.assertLess(vagas, page.index('name="team_mode"'))
+        self.assertLess(vagas, page.index('id="etapa-premiacao"'))
         # As explicações longas ficam nas janelas (i).
         self.assertIn('data-dialog="ajuda-grupos"', page)
         self.assertIn('id="ajuda-grupos"', page)
@@ -104,6 +109,8 @@ class StepsTest(unittest.TestCase):
         self.assertLess(page.index('id="iso"'), page.index('id="etapa-formato"'))
         self.assertLess(page.index('id="etapa-participantes"'), page.index('id="inscritos"'))
         self.assertLess(page.index('id="etapa-administradores"'), page.index('id="ajudantes"'))
+        self.assertLess(page.index('id="etapa-participantes"'), page.index('name="max_players"'))
+        self.assertLess(page.index('name="max_players"'), page.index('id="etapa-premiacao"'))
 
     def test_saving_returns_to_the_same_tab(self):
         _, t = self.create()

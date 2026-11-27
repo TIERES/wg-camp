@@ -84,7 +84,8 @@
   {% set can_delete = c.delete and c.delete.state == 'pending' %}
   {% set can_confirm = c.confirm and c.confirm.state == 'pending' %}
   {% set bc = c.broadcast %}
-  {% if can_confirm or fin or can_delete or session.user_id or (bc and bc.url) %}
+  {# Na janela "Selecionar placar" (tournaments/_pick_cards.html - picking), sem os botões: só o "Usar este placar". #}
+  {% if not picking and (can_confirm or fin or can_delete or session.user_id or (bc and bc.url)) %}
   <div class="live-actions">
     {% if bc and bc.url %}<a class="button live-act live-youtube{{ '' if bc.live else ' secondary' }}" href="{{ bc.url }}" target="_blank" rel="noopener" title="{{ 'Assistir a partida ao vivo no YouTube' if bc.status != 'done' else 'Ver a gravação da partida no YouTube' }}"><span class="live-act-text">{{ 'Assistir no YouTube' if bc.status != 'done' else 'Ver no YouTube' }}</span></a>{% endif %}
     {# Transmitir: a partida ao vivo, ou a encerrada como reprise (do replay); some depois que a transmissão terminou. #}

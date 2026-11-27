@@ -1,0 +1,20 @@
+{# "Selecionar placar" (Gerenciar e página do jogo): o botão {{ pick_button(...) }} abre esta janela, que já vem
+   filtrada - as partidas livres entre os dois jogadores do jogo, com a ISO do campeonato (static/js/pick-score.js
+   busca tournaments.pick_scores -> _pick_cards.html). "Usar este placar" grava o placar do card no jogo
+   (tournaments.pick_score). #}
+{% macro pick_button(slug, m, home, away, back=false) -%}
+<button type="button" class="secondary" data-pick-score="{{ url_for('tournaments.pick_scores', slug=slug, match_id=m.id, voltar='jogo' if back else none) }}"
+        data-game="{{ home }} x {{ away }}" aria-haspopup="dialog" title="Escolher o card do Ao vivo em que esta partida foi jogada">Selecionar placar</button>
+{%- endmacro %}
+
+{% macro pick_dialog() -%}
+<dialog class="form-dialog pick-dialog" id="selecionar-placar" aria-labelledby="selecionar-placar-titulo">
+  <div class="form-dialog-body">
+    <h2 id="selecionar-placar-titulo">Selecionar placar: <span data-pick-game></span></h2>
+    <div class="live-cards pick-cards" data-pick-list aria-live="polite"></div>
+    <div class="card-actions dialog-actions"><button type="button" class="secondary" data-dialog-close>Fechar</button></div>
+  </div>
+</dialog>
+<script src="{{ url_for('static', filename='js/live-cards.js', v='20261122a') }}"></script>
+<script src="{{ url_for('static', filename='js/pick-score.js', v='20261127b') }}" defer></script>
+{%- endmacro %}

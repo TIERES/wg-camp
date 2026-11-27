@@ -64,7 +64,7 @@
   </fieldset>
 {% endmacro %}
 
-{# --- Formato: formato, vagas e as configurações das fases --- #}
+{# --- Formato: formato e as configurações das fases (as vagas ficam em Participantes) --- #}
 {% macro formato() %}
   <div class="form-row">
     <label class="wide"><span>Formato {{ info_button('ajuda-formato', 'Sobre os formatos') }}</span>
@@ -72,7 +72,6 @@
         {% for key, label in format_labels.items() %}<option value="{{ key }}" {% if form.get('format') == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
       </select>
     </label>
-    <label><span>Vagas <span class="req">*</span></span><input type="number" name="max_players"{{ fa() }} min="{{ min_players }}" max="{{ max_players }}" required value="{{ form.get('max_players', 8) }}"></label>
   </div>
 
   <div class="form-row phase-row">
@@ -168,7 +167,18 @@
   {% endcall %}
 {% endmacro %}
 
-{# --- Participantes: Somente para amigos (amigos) e os times (times); ao criar, os convites ficam entre os dois --- #}
+{# --- Participantes: as vagas (vagas), Somente para amigos (amigos) e os times (times); ao criar, os convites
+   ficam entre os dois últimos --- #}
+{% macro vagas() %}
+  <div class="form-row">
+    <label class="slots-field"><span>Vagas <span class="req">*</span> {{ info_button('ajuda-vagas', 'Sobre as vagas') }}</span><input type="number" name="max_players"{{ fa() }} min="{{ min_players }}" max="{{ max_players }}" required value="{{ form.get('max_players', 8) }}"></label>
+  </div>
+  {% call info_dialog('ajuda-vagas', 'Vagas') %}
+    <p>Quantos jogadores podem se inscrever (de {{ min_players }} a {{ max_players }}).</p>
+    <p>As vagas valem para o resto do campeonato: nos times da lista, é preciso escolher pelo menos um time por vaga; nos grupos dinâmicos, cada grupo aceita até Vagas ÷ Grupos jogadores; e os classificados para o mata-mata (Pontos corridos + mata-mata) precisam ser menos que as vagas.</p>
+  {% endcall %}
+{% endmacro %}
+
 {% macro amigos() %}
   <label class="check"><input type="checkbox" name="friends_only"{{ fa() }} id="friends-only" {% if form.get('friends_only') %}checked{% endif %}> <span><strong>Somente para amigos</strong> {{ info_button('ajuda-amigos', 'Sobre o Somente para amigos') }}</span></label>
   {% call info_dialog('ajuda-amigos', 'Somente para amigos') %}
