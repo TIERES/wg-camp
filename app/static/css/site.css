@@ -239,6 +239,7 @@ table.standings { padding:0; font-size:.9rem } .standings th,.standings td { pad
 .bracket-round h4 { margin:0; color:var(--accent); font-size:.85rem; text-transform:uppercase; letter-spacing:.04em }
 .tie { background:var(--card); border:1px solid #374151; border-radius:8px; overflow:hidden; width:100%; max-width:440px } .tie.third { border-style:dashed }
 .tie-label { font-size:.75rem; color:#9ca3af; padding:.3rem .6rem 0 }
+.tie-note { font-size:.75rem; color:#9ca3af; padding:.35rem .6rem .45rem } /* quem passa direto por não ter adversário */
 .tie-slot { display:flex; justify-content:space-between; gap:.5rem; padding:.45rem .6rem; border-bottom:1px solid #374151 }
 .tie-slot.winner { background:#064e3b; font-weight:700 }
 .tie-slot { align-items:center } .tie-score { flex-shrink:0 } .tie-score small { font-size:.75em; opacity:.85 }
