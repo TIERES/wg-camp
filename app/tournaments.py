@@ -415,6 +415,9 @@ def _stage_views(db, tournament, provisional=None):
                     empty_slots[tie["id"]] = sides
                     if sides == {"a", "b"}:
                         empty.add(tie["id"])
+            # Quem passa direto por não ter adversário (confronto is_bye com um jogador só): o card aparece
+            # com "Sem adversário" e o aviso de que ele segue para a fase seguinte.
+            usernames = {row["id"]: row["username"] for row in store.entries_of(db, tournament["id"])}
             per_round = {}
             for tie in ties:
                 per_round.setdefault(tie["round"], []).append(tie)
@@ -431,7 +434,9 @@ def _stage_views(db, tournament, provisional=None):
                             aggregate[m["home_entry_id"]] += m["home_goals"]
                             aggregate[m["away_entry_id"]] += m["away_goals"]
                     feeder = None if tie["is_third_place"] else feeders.get(tie["id"])
+                    alone = [e for e in (tie["entry_a"], tie["entry_b"]) if e]
                     items.append({"tie": tie, "legs": legs, "aggregate": aggregate,
+                                  "passes": usernames.get(alone[0]) if tie["is_bye"] and len(alone) == 1 else None,
                                   "empty_slots": empty_slots.get(tie["id"], set()),
                                   "label": "Disputa de 3º lugar" if tie["is_third_place"] else
                                   "Repescagem" if feeder else "Confronto vazio" if tie["id"] in empty else None,

@@ -84,8 +84,9 @@
     <h4>{{ rnd.name }}</h4>
     {# Última rodada: a disputa de 3º lugar em cima e a final logo abaixo, juntas no meio entre as semifinais. #}
     <div class="bracket-ties{% if rnd.is_last %} final-ties{% endif %}">
-    {# Quem passa direto aparece só na rodada seguinte. #}
-    {% for item in rnd['items'] if not item.tie.is_bye %}{% set tie = item.tie %}
+    {# Quem passa direto por não ter adversário aparece com "Sem adversário" e o aviso; o confronto
+       vazio (sem ninguém) fica de fora. #}
+    {% for item in rnd['items'] if not item.tie.is_bye or item.passes %}{% set tie = item.tie %}
     {% set mine = slug and my_entry and my_entry in (tie.entry_a, tie.entry_b) and item.legs %}
     {% set target = (item.legs|selectattr('status', 'ne', 'confirmed')|first or item.legs|last) if mine else none %}
     {# Por time: gols de cada jogo (none sem placar), pênaltis e quantos confirmados. #}
@@ -135,10 +136,11 @@
       {% if item.label %}<div class="tie-label">{{ item.label }}</div>{% endif %}
       {% for s in slots %}
       <div class="tie-slot{% if tie.winner_entry_id and tie.winner_entry_id == s.entry %} winner{% endif %}">
-        <span>{% if s.entry %}{{ side_name(names, only, 'home' if s.entry == only.home_entry_id else 'away') if only else names[s.entry] }}{% set place = (view.tie_trophies or {}).get(tie.id, {}).get(s.entry) %}{% if place %}{{ trophy_badge(place) }}{% endif %}{% elif s.slot in item.empty_slots %}<em class="muted">vaga vazia</em>{% elif tie.is_bye and s.slot == 'b' %}<em class="muted">passa direto</em>{% elif item.waits_for and s.slot == 'b' %}<em class="muted">aguarda o {{ item.waits_for }}</em>{% else %}<em class="muted">a definir</em>{% endif %}</span>
+        <span>{% if s.entry %}{{ side_name(names, only, 'home' if s.entry == only.home_entry_id else 'away') if only else names[s.entry] }}{% set place = (view.tie_trophies or {}).get(tie.id, {}).get(s.entry) %}{% if place %}{{ trophy_badge(place) }}{% endif %}{% elif item.passes %}<span class="entry bye-entry"><img class="crest" src="{{ url_for('static', filename='images/sem-adversario.svg') }}" alt=""><span class="entry-name"><span>Sem Adversário</span></span></span>{% elif s.slot in item.empty_slots %}<em class="muted">vaga vazia</em>{% elif item.waits_for and s.slot == 'b' %}<em class="muted">aguarda o {{ item.waits_for }}</em>{% else %}<em class="muted">a definir</em>{% endif %}</span>
         {% if s.goals %}<span class="tie-score score-val score-{{ s.status }}" title="{{ score_tips[s.status] }}">{% if tie.legs == 2 %}<small aria-hidden="true">Agr.</small><span class="visually-hidden">Agregado:</span> {% endif %}<strong>{{ s.goals|sum }}</strong>{% if s.pens is not none %} <small>({{ s.pens }} pên.)</small>{% endif %}</span>{% endif %}
       </div>
       {% endfor %}
+      {% if item.passes %}<div class="tie-note">{{ item.passes }} passa direto para a fase seguinte.</div>{% endif %}
     {% if target %}</a>{% else %}</div>{% endif %}
     {% endif %}
     {% endfor %}
