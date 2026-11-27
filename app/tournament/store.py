@@ -925,6 +925,58 @@ def start(db, tournament, rng=random):
                (now(), now(), tournament["id"]))
 
 
+# --- Reabrir as inscrições ----------------------------------------------------
+#
+# Campeonato iniciado sem nenhum jogo disputado (sem placar reportado, WO,
+# desistência nem jogo do Ao vivo ligado): o organizador desfaz o sorteio e as
+# inscrições voltam a ficar abertas - entra quem faltou (ou sai quem não vai
+# jogar) e o sorteio é feito de novo ao iniciar. Os inscritos continuam com o
+# que pagaram e com o time (no modo sorteio, o time sorteado fica; o
+# organizador pode trocar em Participantes).
+
+def reopen_block(db, tournament):
+    """Por que as inscrições deste campeonato não podem ser reabertas, ou None."""
+    if tournament["status"] != "running":
+        return "Só um campeonato em andamento pode ter as inscrições reabertas."
+    tid = tournament["id"]
+    if db.execute("SELECT count(*) FROM tournament_stages WHERE tournament_id = ?", (tid,)).fetchone()[0] > 1:
+        return "O campeonato já passou da primeira fase."
+    played = db.execute(
+        "SELECT 1 FROM tournament_matches m JOIN tournament_stages s ON s.id = m.stage_id WHERE s.tournament_id = ? "
+        "AND (m.status != 'scheduled' OR m.walkover_entry_id IS NOT NULL OR m.live_session_id IS NOT NULL "
+        "OR m.quitter_id IS NOT NULL OR EXISTS (SELECT 1 FROM match_reports r WHERE r.match_id = m.id) "
+        "OR EXISTS (SELECT 1 FROM live_matches l WHERE l.tournament_match_id = m.id)) LIMIT 1", (tid,)).fetchone()
+    if played:
+        return "Já há jogo com placar (ou jogo do Ao vivo ligado) neste campeonato."
+    if db.execute("SELECT 1 FROM tournament_entries WHERE tournament_id = ? AND withdrawn_at IS NOT NULL",
+                  (tid,)).fetchone():
+        return "Um jogador já desistiu do campeonato em andamento."
+    return None
+
+
+def reopen_registration(db, tournament):
+    """Desfaz o início (start): apaga as fases, grupos, confrontos e jogos ainda
+    sem placar e volta o campeonato para inscrições abertas."""
+    reason = reopen_block(db, tournament)
+    if reason:
+        raise TournamentError("Não dá para reabrir as inscrições: " + reason)
+    tid = tournament["id"]
+    stage_ids = [row["id"] for row in db.execute("SELECT id FROM tournament_stages WHERE tournament_id = ?", (tid,))]
+    for stage_id in stage_ids:
+        db.execute("DELETE FROM tournament_matches WHERE stage_id = ?", (stage_id,))
+        db.execute("UPDATE tournament_ties SET next_tie_id = NULL, loser_next_tie_id = NULL WHERE stage_id = ?",
+                   (stage_id,))
+        db.execute("DELETE FROM tournament_ties WHERE stage_id = ?", (stage_id,))
+        db.execute("DELETE FROM tournament_group_members WHERE group_id IN "
+                   "(SELECT id FROM tournament_groups WHERE stage_id = ?)", (stage_id,))
+        db.execute("DELETE FROM tournament_groups WHERE stage_id = ?", (stage_id,))
+        db.execute("DELETE FROM tournament_stages WHERE id = ?", (stage_id,))
+    # O aviso "está valendo" (announce.py) volta a aparecer quando o campeonato iniciar de novo.
+    db.execute("DELETE FROM tournament_notices_seen WHERE tournament_id = ?", (tid,))
+    db.execute("UPDATE tournaments SET status = 'registration', started_at = NULL, all_played_at = NULL, "
+               "updated_at = ? WHERE id = ?", (now(), tid))
+
+
 # --- Mata-mata: confrontos ----------------------------------------------------
 
 def _tie(db, tie_id):
